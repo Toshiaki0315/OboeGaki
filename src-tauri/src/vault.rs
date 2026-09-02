@@ -155,6 +155,29 @@ fn is_markdown(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// `candidate` が vault の中に留まるか。Tauri commands の入口で必ず通す。
+///
+/// 実在する部分を canonicalize して判定する（シンボリックリンク越しの
+/// 脱出や `..` を防ぐ）。ファイル自体がまだ無ければ親フォルダで判定する
+/// （新規保存の経路）。判定の規則は `inside` と同じ「外を指すものは扱わない」。
+pub fn contains(root: &Path, candidate: &Path) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let target = if candidate.exists() {
+        candidate.to_path_buf()
+    } else {
+        match candidate.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => return false,
+        }
+    };
+    match target.canonicalize() {
+        Ok(resolved) => resolved.starts_with(&root),
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +298,42 @@ mod tests {
         symlink(root.path(), root.path().join("loop")).unwrap();
 
         assert_eq!(Vault::new(root.path()).scan(), vec![a]);
+    }
+
+    #[test]
+    fn test_contains_中のファイルは通し外のファイルは弾く() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let inner = note(root.path(), "sub/a.md");
+        let escape = note(outside.path(), "b.md");
+
+        assert!(contains(root.path(), &inner));
+        assert!(!contains(root.path(), &escape));
+    }
+
+    #[test]
+    fn test_contains_ドットドットでの脱出を弾く() {
+        let root = TempDir::new().unwrap();
+        let outside = note(root.path().parent().unwrap(), "escape.md");
+        let sneaky = root.path().join("..").join(outside.file_name().unwrap());
+        assert!(!contains(root.path(), &sneaky));
+    }
+
+    #[test]
+    fn test_contains_外を指すリンク越しの書き込みを弾く() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        symlink(outside.path(), root.path().join("linkdir")).unwrap();
+
+        assert!(!contains(root.path(), &root.path().join("linkdir/x.md")));
+    }
+
+    #[test]
+    fn test_contains_まだ無いファイルは親フォルダで判定する() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("sub")).unwrap();
+
+        assert!(contains(root.path(), &root.path().join("sub/new.md")));
+        assert!(!contains(root.path(), Path::new("/no/such/dir/new.md")));
     }
 }

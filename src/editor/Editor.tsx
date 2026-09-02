@@ -15,11 +15,17 @@ import { livePreview } from "./live-preview";
 
 type Props = {
   initialDoc: string;
+  /** 文書が変わるたびに呼ぶ。text の取り出しは呼び出し側の判断で行う
+      （毎打鍵で全文を作らないため、関数を渡す） */
+  onDocChanged?: (getText: () => string) => void;
 };
 
-export function Editor({ initialDoc }: Props) {
+export function Editor({ initialDoc, onDocChanged }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  // onDocChanged の同一性で EditorView を作り直さないよう ref 経由で読む
+  const notify = useRef(onDocChanged);
+  notify.current = onDocChanged;
 
   useEffect(() => {
     if (!host.current) return;
@@ -33,6 +39,11 @@ export function Editor({ initialDoc }: Props) {
           markdown({ extensions: [relaxedAsterisk] }),
           livePreview,
           EditorView.lineWrapping,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              notify.current?.(() => update.state.doc.toString());
+            }
+          }),
         ],
       }),
     });
