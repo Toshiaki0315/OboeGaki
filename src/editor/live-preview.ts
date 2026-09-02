@@ -12,13 +12,21 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { type EditorState, RangeSetBuilder } from "@codemirror/state";
-import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import {
+  HighlightStyle,
+  syntaxHighlighting,
+  syntaxTree,
+} from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 
 // 隠す対象のマーカーノード。対象は今後のフェーズで広げる
 const MARK_NODES = new Set(["EmphasisMark", "HeaderMark"]);
 
-function touchesSelection(state: EditorState, from: number, to: number): boolean {
+function touchesSelection(
+  state: EditorState,
+  from: number,
+  to: number,
+): boolean {
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
 }
 
@@ -47,10 +55,14 @@ const hideMarkers = ViewPlugin.fromClass(
             // 親（Emphasis / ATXHeading1 など）にカーソルが触れている間は
             // ソースを見せる
             const parent = node.node.parent;
-            if (parent && touchesSelection(view.state, parent.from, parent.to)) return;
+            if (parent && touchesSelection(view.state, parent.from, parent.to))
+              return;
             // HeaderMark は直後の空白も一緒に隠す（`# ` の 2 文字）
             let end = node.to;
-            if (node.name === "HeaderMark" && view.state.sliceDoc(end, end + 1) === " ") {
+            if (
+              node.name === "HeaderMark" &&
+              view.state.sliceDoc(end, end + 1) === " "
+            ) {
               end += 1;
             }
             builder.add(node.from, end, Decoration.replace({}));

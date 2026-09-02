@@ -5,7 +5,7 @@
 setup:            ## 初回セットアップ
 	npm install
 
-run:              ## アプリ起動（Tauri dev = WKWebView）
+run:              ## アプリ起動（Tauri dev = WKWebView。初回は Rust ビルドで数分）
 	npm run tauri dev
 
 test:             ## フロントエンドのテスト
@@ -14,5 +14,14 @@ test:             ## フロントエンドのテスト
 test-rust:        ## Rust 側のテスト
 	cd src-tauri && cargo test
 
-check: test test-rust  ## コミット前チェック（型 + テスト全部）
+fmt:              ## フォーマット修正
+	npx prettier --write src
+	cd src-tauri && cargo fmt
+
+check:            ## コミット前チェック（lint + 型 + テスト全部）
+	npx prettier --check src
+	npx vitest run
 	npx tsc --noEmit
+	cd src-tauri && cargo fmt --check
+	cd src-tauri && cargo clippy -- -D warnings
+	cd src-tauri && cargo test

@@ -16,7 +16,10 @@ const parser = baseParser.configure(relaxedAsterisk);
 
 function readOracle(name: string): OracleCase[] {
   return JSON.parse(
-    readFileSync(new URL(`../../spikes/01-flanking/${name}`, import.meta.url), "utf8"),
+    readFileSync(
+      new URL(`../../spikes/01-flanking/${name}`, import.meta.url),
+      "utf8",
+    ),
   );
 }
 
@@ -46,7 +49,8 @@ function spansOf(text: string): Span[] | null {
   return out.sort((a, b) => a.open[0] - b.open[0]);
 }
 
-const byPos = (spans: Span[]) => [...spans].sort((a, b) => a.open[0] - b.open[0]);
+const byPos = (spans: Span[]) =>
+  [...spans].sort((a, b) => a.open[0] - b.open[0]);
 
 describe("relaxedAsterisk は参照実装と同じ強調を検出する", () => {
   const cases = readOracle("oracle.json");

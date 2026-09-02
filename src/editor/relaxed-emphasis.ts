@@ -39,7 +39,13 @@ export const relaxedAsterisk: MarkdownConfig = {
         const canOpen = after !== "" && !/\s/.test(after);
         const canClose = before !== "" && !/\s/.test(before);
         if (!canOpen && !canClose) return end; // 消費だけして装飾にしない
-        return cx.addDelimiter(delimForLength[length]!, pos, end, canOpen, canClose);
+        return cx.addDelimiter(
+          delimForLength[length]!,
+          pos,
+          end,
+          canOpen,
+          canClose,
+        );
       },
     },
   ],

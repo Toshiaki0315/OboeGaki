@@ -1,0 +1,40 @@
+# make check と同じ内容を CI で回す。
+# ランナーは macos-14（Apple Silicon）— 対象プラットフォームが macOS のみ
+# （ADR-0012）なので、Linux 用の WebKit 依存を入れるより速くて確実。
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prettier --check src
+      - run: npx vitest run
+      - run: npx tsc --noEmit
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: cargo fmt --check
+        working-directory: src-tauri
+      - run: cargo clippy -- -D warnings
+        working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri
