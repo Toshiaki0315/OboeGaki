@@ -73,3 +73,17 @@ export async function trashNote(root: string, path: string): Promise<string> {
 export async function restoreNote(root: string, path: string): Promise<string> {
   return invoke<string>("note_restore", { root, path });
 }
+
+export type SearchHit = {
+  /** vault からの相対パス */
+  path: string;
+  title: string;
+  snippet: string;
+};
+
+export async function searchNotes(
+  root: string,
+  query: string,
+): Promise<SearchHit[]> {
+  return invoke<SearchHit[]>("note_search", { root, query });
+}

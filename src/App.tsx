@@ -8,9 +8,11 @@ import {
   readNote,
   renameNote,
   restoreNote,
+  searchNotes,
   trashNote,
   useAppStore,
   writeNote,
+  type SearchHit,
 } from "./stores/app";
 import "./App.css";
 
@@ -57,6 +59,9 @@ function App() {
   const currentPathRef = useRef(currentPath);
   currentPathRef.current = currentPath;
   const dirtyRef = useRef(false); // 保存されていない編集があるか
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const searchSoon = useMemo(() => createDebouncer(200), []);
 
   async function chooseVault() {
     const picked = await open({ directory: true });
@@ -114,6 +119,20 @@ function App() {
     selectNote(null);
     setDoc(null);
     setStatus("");
+  }
+
+  function handleQueryChanged(next: string) {
+    setQuery(next);
+    if (!next.trim()) {
+      searchSoon.cancel();
+      setHits([]);
+      return;
+    }
+    searchSoon.schedule(() => {
+      const root = vaultRootRef.current;
+      if (!root) return;
+      void searchNotes(root, next).then(setHits);
+    });
   }
 
   async function handleRestore(path: string) {
@@ -206,18 +225,42 @@ function App() {
           <button onClick={() => void handleCreate()}>＋ 新規</button>
           <button onClick={() => void chooseVault()}>フォルダ変更</button>
         </header>
-        <ul>
-          {notes.map((path) => (
-            <li key={path}>
-              <button
-                className={path === currentPath ? "selected" : ""}
-                onClick={() => void openNote(path)}
-              >
-                {noteLabel(vaultRoot, path)}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <input
+          className="search-input"
+          type="search"
+          placeholder="検索"
+          value={query}
+          onChange={(event) => handleQueryChanged(event.currentTarget.value)}
+        />
+        {query.trim() ? (
+          <ul>
+            {hits.map((hit) => (
+              <li key={hit.path}>
+                <button
+                  className="search-hit"
+                  onClick={() => void openNote(`${vaultRoot}/${hit.path}`)}
+                >
+                  <span className="hit-title">{hit.title}</span>
+                  <span className="hit-snippet">{hit.snippet}</span>
+                </button>
+              </li>
+            ))}
+            {hits.length === 0 && <li className="no-hits">見つかりません</li>}
+          </ul>
+        ) : (
+          <ul>
+            {notes.map((path) => (
+              <li key={path}>
+                <button
+                  className={path === currentPath ? "selected" : ""}
+                  onClick={() => void openNote(path)}
+                >
+                  {noteLabel(vaultRoot, path)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {trashNotes.length > 0 && (
           <details className="trash-section">
             <summary>ゴミ箱（{trashNotes.length}）</summary>

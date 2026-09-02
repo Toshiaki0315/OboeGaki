@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::autosave;
+use crate::index_db::{IndexDb, SearchHit};
 use crate::vault::{contains, Vault};
 use crate::watcher::{self, Suppressor};
 
@@ -45,10 +46,13 @@ pub fn vault_open(
 ) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
-    // 監視は付随機能なので、失敗しても vault は開く（ログだけ残す）
+    // 監視と索引は付随機能なので、失敗しても vault は開く（ログだけ残す）
     match watcher::start(app, vault.root().to_path_buf(), state.suppressor.clone()) {
         Ok(active) => *state.watcher.lock().expect("watcher lock") = Some(active),
         Err(error) => eprintln!("外部変更の監視を開始できなかった: {error}"),
+    }
+    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault)) {
+        eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
     }
     Ok(vault
         .scan()
@@ -72,7 +76,23 @@ pub fn note_write(
 ) -> Result<(), String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
-    autosave::save_atomic(&path, &text).map_err(|e| e.to_string())
+    autosave::save_atomic(&path, &text).map_err(|e| e.to_string())?;
+    // 索引の後追い。失敗しても保存は成立している（次の sync が取り直す）
+    let vault = Vault::new(&root);
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn note_search(root: String, query: String) -> Result<Vec<SearchHit>, String> {
+    let vault = Vault::new(&root);
+    IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.search(&query))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

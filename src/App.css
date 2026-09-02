@@ -169,3 +169,45 @@ body {
   padding: 0.15rem 0.5rem;
   cursor: pointer;
 }
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.9rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  margin: 0 0 0.5rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+
+.search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.hit-title {
+  font-weight: 600;
+}
+
+.hit-snippet {
+  font-size: 0.8rem;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.no-hits {
+  padding: 0.4rem 0.5rem;
+  opacity: 0.6;
+  font-size: 0.9rem;
+}

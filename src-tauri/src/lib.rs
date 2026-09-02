@@ -4,6 +4,7 @@
 
 pub mod autosave;
 pub mod commands;
+pub mod index_db;
 pub mod vault;
 pub mod watcher;
 
@@ -22,6 +23,7 @@ pub fn run() {
             commands::note_trash,
             commands::trash_list,
             commands::note_restore,
+            commands::note_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
