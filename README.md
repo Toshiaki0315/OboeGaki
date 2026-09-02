@@ -28,14 +28,21 @@ CodeMirror 6（編集コア）/ Lezer（パーサ）/ Zustand / dnd-kit
 2. ✅ **マーカー隠蔽**（`spikes/02-marker-hiding/`）— `Decoration.replace` で
    R1/R4/R5 相当が構造的に成立。Undo 1 段も確認
 3. ✅ **IME**（`spikes/03-ime/`）— 手動確認 3 項目パス。
-   WKWebView（Tauri 実行環境）での再確認だけ残課題
+   WKWebView（Tauri 実機ウィンドウ）でも再確認済み
+
+## 第 2 マイルストーン: Tauri の足場 — **完了**（2026-09-02）
+
+- ✅ `create-tauri-app`（React + TS + Vite）の骨格。命名は ADR-0032 準拠
+- ✅ スパイク成果を `src/editor/` に TS 移植（flanking 緩和・マーカー隠蔽・
+  React ラッパ。文書を React state / Zustand にミラーしない）
+- ✅ テスト基盤: vitest（参照実装オラクル等価性 16 件）+ cargo test +
+  `make check`
+- ✅ WKWebView 上で IME 3 項目パス
 
 ## 次のマイルストーン
 
-Tauri v2 の足場を作り、スパイクの成果をエディタコアとして移植する:
-
-- `npm create tauri-app`（React + TS + Vite）で骨格を作る
-- WKWebView 上で IME 3 項目を再確認（スパイク #3 の残課題）
-- テスト基盤（vitest + cargo test）と CI を先に整える — hitofude と同じく
-  TDD で進めるため
-- 参照実装の spec を新スタック前提に書き直す章立てを決める
+- 開発規約の整備: 新リポジトリ用 CLAUDE.md（TDD サイクル・不可侵ルールの
+  新スタック版）と CI（GitHub Actions で make check 相当）
+- spec を新スタック前提に書き直す章立てを決める（Qt 前提の §3.3/§6.4 の扱い）
+- Phase 1 相当の着手: vault のオープン・保存・autosave を Rust 側
+  （Tauri commands）に実装 — hitofude の core/ + storage/ に相当

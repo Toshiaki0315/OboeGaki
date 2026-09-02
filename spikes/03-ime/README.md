@@ -15,10 +15,12 @@ hitofude docs/manual_test.md と同じ制約）ため、スパイク #2 の環�
 CM6 は composition 中の DOM 更新を保留する設計（hitofude の R6 で
 自前実装していたガードに相当）で、それが実際に日本語 IME で機能した。
 
-## 残る確認事項
+## WKWebView での再確認（2026-09-02、`npm run tauri dev` の実機ウィンドウ）
 
-この確認は Chromium（Claude Code の Browser pane）上のもの。
-**Tauri の macOS 実行環境は WKWebView（Safari 系）**なので、Tauri の
-足場ができた時点で同じ 3 項目を WKWebView 上でも通すこと。
-composition イベントの細部は WebKit と Blink で差があり得る。
-確認したら結果をここに追記する。
+上記は Chromium（Claude Code の Browser pane）上の確認だったため、
+Tauri の実行環境である WKWebView（Safari 系）でも同じ 3 項目を通した。
+**3 項目すべて問題なし。** composition イベントの WebKit / Blink 差は
+この範囲では顕在化しなかった。
+
+これで IME に関する残課題は解消。以後は hitofude と同様、リリース前の
+手動チェックリスト（docs/manual_test.md）で担保する。
