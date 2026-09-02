@@ -7,7 +7,9 @@
 //   - tokenize='trigram'。3 文字ずつの重なりで索引するため、日本語の
 //     部分一致が形態素解析なしで動く
 //   - trigram は 2 文字以下のクエリにヒットしない（「人事」「経費」等）ので、
-//     3 文字未満は notes.title/preview への LIKE にフォールバックする
+//     3 文字未満は notes.title/preview/path への LIKE にフォールバックする
+//   - パス（フォルダ名）も検索対象。「日記」フォルダのノートは「日記」で
+//     見つかるべき（実機フィードバック 2026-09-03）
 //
 // スキーマは参照実装の必要部分から育てる方針（ULID id・tags・links・pinned は
 // 該当機能を移植するときに足す。索引は捨てられるので移行も作り直しでよい）。
@@ -21,6 +23,10 @@ use rusqlite::Connection;
 use crate::vault::Vault;
 
 pub const INDEX_FILE: &str = "index.sqlite";
+/// スキーマの世代。合わない索引は**丸ごと捨てて作り直す**（T7: 索引は
+/// 捨ててよいキャッシュなので、移行コードを書くより作り直しが正しい）。
+/// 2: notes_fts の path を索引対象にし、LIKE フォールバックにも path を足した
+const SCHEMA_VERSION: i64 = 2;
 /// この文字数以上なら trigram FTS、未満なら LIKE フォールバック。
 const FTS_MIN_CHARS: usize = 3;
 const SEARCH_LIMIT: usize = 50;
@@ -95,8 +101,8 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
     )?;
     tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
     tx.execute(
-        "INSERT INTO notes_fts(title, body, path) VALUES (?1, ?2, ?3)",
-        rusqlite::params![title, text, relative],
+        "INSERT INTO notes_fts(title, path, body) VALUES (?1, ?2, ?3)",
+        rusqlite::params![title, relative, text],
     )?;
     Ok(())
 }
@@ -107,10 +113,19 @@ pub struct IndexDb {
 
 impl IndexDb {
     /// 管理フォルダの中の索引を開く（無ければ作る）。
+    /// スキーマの世代が合わなければ捨てて作り直す（次の sync が埋め直す）。
     pub fn open(managed_dir: &Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(managed_dir.join(INDEX_FILE))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version != SCHEMA_VERSION {
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS notes;
+                 DROP TABLE IF EXISTS notes_fts;",
+            )?;
+            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS notes (
                 path       TEXT PRIMARY KEY,
@@ -121,8 +136,8 @@ impl IndexDb {
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
                 title,
+                path,
                 body,
-                path UNINDEXED,
                 tokenize = 'trigram'
             );",
         )?;
@@ -190,7 +205,7 @@ impl IndexDb {
             // フレーズとして引用符で包む（FTS クエリ構文の注入を避ける）
             let phrase = format!("\"{}\"", trimmed.replace('"', "\"\""));
             let mut statement = self.conn.prepare(
-                "SELECT path, title, snippet(notes_fts, 1, '', '', '…', 12)
+                "SELECT path, title, snippet(notes_fts, 2, '', '', '…', 12)
                  FROM notes_fts WHERE notes_fts MATCH ?1
                  ORDER BY rank LIMIT ?2",
             )?;
@@ -212,7 +227,9 @@ impl IndexDb {
             let like = format!("%{escaped}%");
             let mut statement = self.conn.prepare(
                 "SELECT path, title, preview FROM notes
-                 WHERE title LIKE ?1 ESCAPE '\\' OR preview LIKE ?1 ESCAPE '\\'
+                 WHERE title LIKE ?1 ESCAPE '\\'
+                    OR preview LIKE ?1 ESCAPE '\\'
+                    OR path LIKE ?1 ESCAPE '\\'
                  ORDER BY title LIMIT ?2",
             )?;
             let rows =
@@ -346,6 +363,43 @@ mod tests {
         db.upsert(&vault, &path).unwrap();
 
         assert_eq!(paths(&db.search("差し替えた中身").unwrap()), vec!["a.md"]);
+    }
+
+    #[test]
+    fn test_search_フォルダ名でも見つかる() {
+        // 実機で発覚した回帰: 「日記」フォルダのノートが「日記」で出なかった。
+        // 題名にもプレビューにも語が無く、パスにだけある場合を保証する
+        let (_root, vault) = vault_with(&[
+            ("日記/2026-09-02.md", "# 今日の記録\n"),
+            ("会議メモ/週次.md", "# 週次\n\n進捗の共有。\n"),
+        ]);
+        let db = synced(&vault);
+        // 2 文字 → LIKE フォールバックがパスに当たる
+        assert_eq!(
+            paths(&db.search("日記").unwrap()),
+            vec!["日記/2026-09-02.md"]
+        );
+        // 3 文字以上 → trigram FTS がパスに当たる
+        assert_eq!(
+            paths(&db.search("会議メモ").unwrap()),
+            vec!["会議メモ/週次.md"]
+        );
+    }
+
+    #[test]
+    fn test_古いスキーマの索引は捨てて作り直す() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n作り直しの検証。\n")]);
+        // 旧世代の索引ファイルを装う: 版数 0 + 互換性の無いテーブル
+        let index_path = vault.managed_dir().join(INDEX_FILE);
+        {
+            let conn = Connection::open(&index_path).unwrap();
+            conn.execute_batch("CREATE TABLE notes (old_only TEXT);")
+                .unwrap();
+        }
+
+        let db = synced(&vault); // 開き直しで作り直されるはず
+
+        assert_eq!(paths(&db.search("作り直しの検証").unwrap()), vec!["a.md"]);
     }
 
     #[test]
