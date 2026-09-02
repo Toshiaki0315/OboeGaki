@@ -2,6 +2,9 @@
 // vault・保存・監視などの永続化コマンドはここに載せていく
 // （hitofude の core/ + storage/ に相当する層。GUI 非依存でテストする）。
 
+pub mod autosave;
+pub mod vault;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
