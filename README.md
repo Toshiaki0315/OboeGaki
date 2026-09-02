@@ -43,6 +43,7 @@ CodeMirror 6（編集コア）/ Lezer（パーサ）/ Zustand / dnd-kit
 
 - ✅ 開発規約の整備（2026-09-02）: CLAUDE.md（TDD サイクル・不可侵ルール
   T1〜T7）と CI（GitHub Actions / macos-14 で make check と同内容）
-- spec を新スタック前提に書き直す章立てを決める（Qt 前提の §3.3/§6.4 の扱い）
+- ✅ spec の新スタック対応（2026-09-02）: ADR-0034 + §3.3・§6.1・§6.4 差し替え、
+  §3.4・§4・§6.3 に読み替え注記
 - Phase 1 相当の着手: vault のオープン・保存・autosave を Rust 側
   （Tauri commands）に実装 — hitofude の core/ + storage/ に相当

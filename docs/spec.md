@@ -5,10 +5,11 @@
 > Python パッケージ名 `hitofude` だけはユーザーに見えないので据え置き。
 
 **対象OS**: macOS 13 Ventura 以降（Apple Silicon。~~Intel~~ → **ADR-0012 で対象外**）
-**開発言語**: Python 3.12+
-**GUIフレームワーク**: PySide6（Qt 6.8 LTS 系 / 6.9系）
+**開発言語**: ~~Python 3.12+~~ → TypeScript + Rust（**ADR-0034**）
+**GUIフレームワーク**: ~~PySide6~~ → Tauri v2 + React 19 + CodeMirror 6（**ADR-0034**）
 **保存先**: ローカルファイルシステム（`.md` プレーンテキスト）
-**作成日**: 2026-08-07
+**作成日**: 2026-08-07（2026-09-02 に ADR-0034 で実装基盤を移行。読み替えの
+全体像は [../CLAUDE.md](../CLAUDE.md) の「spec の読み方」を見よ）
 
 ---
 
@@ -89,119 +90,41 @@ Claude Code 等のコーディングエージェントに渡す場合は、**§9
 | `::ハイライト::` | **採用**（GFM にないため独自）。設定で無効化可能 |
 | `- [ ]` / `- [x]` | GFM タスクリストとして採用 |
 
-### 3.3 Qt での実装方式の比較（**実機検証済み**）
+### 3.3 編集モデル: CodeMirror 6 の decoration 方式（**スパイク検証済み**）
 
-Qt には Markdown を扱う道が 2 つある。どちらを採るかがこのプロジェクト最大の分岐点。
+> → **ADR-0034 で全面置換**（2026-09-02）。旧「Qt での実装方式の比較」の
+> 実機検証記録（`setMarkdown()` の往復破壊、0.5pt 隠蔽の描画幅実測）は
+> 参照実装リポジトリ hitofude の docs/spec.md に残っている。
 
-#### 方式 Q1: `QTextDocument.setMarkdown()` / `toMarkdown()` を使う（＝ C 方式）
+編集モデルへの要件は移行前と変わらない:
 
-Qt 5.14 以降、`QTextDocument` は Markdown の読み書きを標準サポートする。一見これが最短ルートに見える。
+1. **ソース文字列が唯一の真実**（エディタが持つ生の Markdown がそのまま保存内容）
+2. マーカーを隠しても**位置対応が崩れない**
+3. 装飾が **Undo 履歴を汚さない**
+4. **差分レンダリング**（変更・可視範囲だけ再計算）
 
-**→ 却下。実機検証で往復変換が壊れることを確認した。**
+CM6 はこの 4 つを**構造で**満たす（`spikes/02-marker-hiding/` で実測済み）。
+Qt では欠陥への防御として規約化していたものが、CM6 では設計の性質になる:
 
-PySide6 6.8.0.2 で以下を実行した結果:
-
-```python
-d = QTextDocument()
-d.setMarkdown(src)
-print(d.toMarkdown())
-```
-
-入力:
-
-````markdown
-```python
-x = 1
-```
-
-| A | B |
-|---|---|
-| 1 | 2 |
-
-[link](https://x.com)  #tag
-````
-
-出力（抜粋、原文ママ）:
-
-```
-```python
-x = 1
-
-|```
- |A|B|
-|-|-|
-|1|2|
-
-[link](https://x.com)  \#tag
-```
-
-**確認された破壊**:
-
-1. **フェンスドコードブロックの閉じフェンスが消失**し、直後の表の行と融合して `|``` ` という壊れた行が生成された。
-2. **表の整形が崩れ**、閉じフェンスの残骸を巻き込んだ。
-3. `#tag` が `\#tag` に**エスケープされ**、タグとして機能しなくなった。
-4. 空白・改行の正規化により、保存のたびにファイルの diff が発生する（Git 管理と相性が最悪）。
-
-加えて Qt 公式ドキュメントも「`toMarkdown()` は無効化を指定しても GitHub 拡張を出力してしまうことがある（将来修正されうる）」「QTextDocument が表現できても純粋な Markdown に書けない属性は欠落する」「YAML front matter のパーサは同梱していない」と明記している。
-
-> **結論**: ~~`setMarkdown()` は **読み取り専用のエクスポート/プレビュー用途に限定**する。~~ 編集モデルには絶対に使わない。
-> → **ADR-0007 で変更**: エクスポート用途も含め**どこでも使用禁止**。フェンスの言語・生 HTML・脚注・空 alt の画像も落とすため、書き出しも markdown-it-py（`core/html.py`）に移した。`tests/test_architecture.py` が全ファイルを検査している。
-
-#### 方式 Q2: `QPlainTextEdit` + `QSyntaxHighlighter` でソース文字列に装飾を重ねる（＝ B 方式）
-
-**→ 採用。**
-
-- ドキュメントの中身は**常に生の Markdown 文字列**。`toPlainText()` がそのまま保存内容になる。
-- `QSyntaxHighlighter.highlightBlock()` が変更ブロックだけに対して自動で呼ばれるため、**差分レンダリングが標準で効く**（G5 に直結）。
-- Undo/Redo、IME、検索、コピペはすべて Qt の標準実装がそのまま使える。
-
-##### 検証: マーカーは本当に「隠せる」のか
-
-Qt の `QTextCharFormat` には CSS の `display:none` に相当する機能がない。そのため「マーカーを隠す」を近似する必要がある。3 案を実測した（`QTextDocument.idealWidth()` で描画幅を計測、DejaVu Sans 14pt、文字列 `**abc**`）。
-
-| 手法 | 描画幅 | 評価 |
+| 要件 | CM6 での実現 | Qt で必要だった防御（消滅） |
 |---|---|---|
-| 何もしない | 80.12 px | — |
-| 前景色を薄いグレーに（dim） | 80.12 px | 幅が変わらない＝マーカーの隙間が残る。Obsidian 初期実装と同等 |
-| **`setFontPointSize(0.5)`** | **44.12 px** | **採用**。マーカー 4 文字分が 38px → 2px に潰れる |
-| `setFontPointSize(0.5)` + `setFontStretch(1)` | 44.88 px | 改善せず。不要 |
-| （参考）マーカーなしの `abc` | 42.12 px | 理論下限 |
+| ソースが真実 | `EditorState.doc` がそのまま保存内容。往復変換が存在しない | `setMarkdown()` 全面禁止（旧 R2 / ADR-0007） |
+| マーカー隠蔽 | `Decoration.replace`。装飾は文書と別レイヤで、文書は 1 文字も変わらない | 0.5pt 縮小で近似（旧 R4） |
+| 位置 1:1 | 装飾が文書を変えないので崩れようがない | 文字を実在させ続けることで担保 |
+| Undo 無汚染 | 装飾は Undo スタックに乗らない（実測: 入力 → カーソル移動 4 回 → undo 1 回で復元） | `QTextBlockFormat` 全面禁止（旧 R5 / ADR-0002） |
+| 差分計算 | 装飾の構築は `view.visibleRanges` 走査に限る（T6）。再解析は Lezer がインクリメンタルに行う | 旧/新 2 ブロックだけ `rehighlightBlock()`（旧 R7） |
 
-**結論**: `setFontPointSize(0.5)` により、マーカー 1 文字あたり残る幅は **約 0.5px**。人間の目には消えて見え、かつ以下の重要な性質を保つ。
-
-- 文字は**実在し続ける**ので、`QTextCursor` の位置とソース文字列のオフセットが**常に 1:1 で一致する**。位置マッピングのテーブルが一切要らない。これが本方式最大の利点。
-- キャレットが要素内に入った瞬間、フォントサイズを本来の値に戻すだけでマーカーが現れる（リビール）。
-
-**注意点（実装時に必ず対処）**:
-
-- 極小フォントは行の高さ計算に影響しうる。**マーカーには本文と同じフォントファミリを指定した上でサイズのみ縮める**こと。行高が跳ねる場合も `QTextBlockFormat` は使わない（**ADR-0002**。効かないうえ Undo を 1 段消費する）。
-- テキスト選択時、潰れたマーカーも選択範囲に含まれる（＝コピーすると `**` が付いてくる）。これは**仕様として正しい**（生 Markdown をコピーできる）。プレーンテキストとしてコピーしたい場合は `Cmd+Shift+C` を別途割り当てる。
-
-##### 検証: ブロックレベルの装飾（余白・インデント・行高）
-
-> **→ ADR-0002 で変更。** 以下の記述は実装前の検証時点のもの。実機で追試したところ
-> `QPlainTextDocumentLayout` はブロック書式を無視し、また下記の対処コードは
-> Undo 履歴を破壊することが分かった。v1 ではブロック書式を使わない。
-
-`highlightBlock()` は `QTextCharFormat` しか適用できず、**`QTextBlockFormat`（インデント、上下マージン、行高）は変更できない**。見出しの上下余白、リストのぶら下げインデント、引用の左マージンにはこれが必須。
-
-検証したところ、`QTextCursor.mergeBlockFormat()` でブロック書式は適用できるが、**副作用として `document.isModified()` が True になり、Undo スタックにも積まれる**ことを確認した。
-
-**対処（必須）**:
-
-```python
-doc.blockSignals(True)
-was_modified = doc.isModified()
-doc.setUndoRedoEnabled(False)  # ← アンドゥ汚染を防ぐ
-cursor.mergeBlockFormat(block_format)
-doc.setUndoRedoEnabled(True)
-doc.setModified(was_modified)  # ← 「変更あり」フラグの誤検知を防ぐ
-doc.blockSignals(False)
-```
-
-この処理は `highlightBlock()` の中では**行わない**（再入の危険がある）。`QTextDocument.contentsChange` シグナル経由で、ハイライト完了後にキューイングして実行する（§6.3）。
+**マーカー選択の性質**（旧版と同じ仕様を維持）: 隠れたマーカーも選択・
+コピーには含まれる。生 Markdown をコピーできるのは仕様として正しい。
 
 ### 3.4 Markdown パーサの選定と、その使い分け（**実機検証済み**）
+
+> → **ADR-0034 で手段を置換**: パーサは **@lezer/markdown に一本化**した。
+> Lezer はブロックもインラインも**文字オフセット付き**で返すため、下記の
+> 「ブロック = markdown-it / インライン = 自作スキャナ」という二層分担の
+> 根拠だった制約が消えた。§6.5 の**検出規則**（flanking 緩和・優先順・
+> 長さ完全一致）はそのまま有効で、`src/editor/relaxed-emphasis.ts` が実装、
+> 参照実装オラクルテストが等価性を守る。以下は旧スタックの検証記録として残す。
 
 `markdown-it-py`（検証時点の最新: **4.2.0**）を採用。CommonMark 100% 準拠、プラグイン機構あり、純 Python。
 
@@ -228,6 +151,11 @@ inline         | map=[0, 1]
 ---
 
 ## 4. 技術選定
+
+> → **ADR-0034 で全面置換**: 新スタックの技術選定表は
+> [ADR-0034](adr/0034-migrate-to-tauri-cm6.md) にある。以下は旧スタックの
+> 選定記録として残す（FTS5 trigram・watchdog 相当・front matter などの
+> **選定理由**は新スタックでも参照価値がある）。
 
 | 領域 | 採用 | バージョン目安 | 理由 / 備考 |
 |---|---|---|---|
@@ -362,104 +290,41 @@ inline         | map=[0, 1]
 
 ### 6.1 モジュール構成
 
-> → **2026-08-18 に現状化**: 実装が進んで増えたモジュールを反映した
-> （B〜G 群のタスクで追加されたもの）。`block_decorator.py` は ADR-0002 で
-> 廃止。`styles.qss` は使わない方針（QSS はネイティブな見た目を壊す）。
->
-> → **2026-08-24 追補**: 下の木のあとに増えたもの（この節の全面書き直しは
-> していないので、**実物は `hitofude/` を見ること**）。
->
-> - `core/`: `searchquery.py`（検索式）/ `notelink.py`・`code_langs.py`（補完）/
->   `folding.py`（見出しの折りたたみ）/ `table.py` の折り返し（ADR-0017）/
->   `llm.py`・`keywords.py`・`related.py`（ADR-0025）/ `ocr.py`（ADR-0027）/
->   `extract.py`・`graph.py`（M-1 / M-2）
-> - `storage/`: `history.py`（版の履歴。ADR-0023）
-> - `editor/`: `math_cache.py`（ADR-0020）/ `mermaid_cache.py`（ADR-0021）/
->   `importer.py` の PDF・OCR 経路
-> - `ui/`: `outline_pane.py`（ADR-0022）/ `history_dialog.py` /
->   `assistant_pane.py`・`graph_window.py`。`sidebar.py` はタグに加えて
->   **フォルダと保存した検索**も並べる
-> - ほか: `tools/ocr/ocr.swift`（`make run` が `resources/bin/` へ組む）
+> → **ADR-0034 で全面置換**（2026-09-02）。旧 hitofude のモジュール木と
+> その追補は参照実装リポジトリの docs/spec.md にある。
 
 ```
-hitofude/
-├── __main__.py              # エントリポイント
-├── app.py                   # QApplication のセットアップ、テーマ、シングルインスタンス
-├── config.py                # QSettings ラッパ、既定値
-├── theme.py                 # ThemeColors dataclass, ライト/ダーク定義
-│
-├── core/                    # ── GUI に依存しない層（ここは pytest で完全にテストできる）
-│   ├── models.py            #   BlockInfo, InlineSpan, BlockType, SpanType
-│   ├── document.py          #   Note: パス/本文/front matter/派生情報（title/preview/digest）
-│   ├── frontmatter.py       #   YAML front matter の分離と再結合
-│   ├── block_parser.py      #   markdown-it-py ラッパ → BlockInfo のリスト + 行単位分類
-│   ├── inline_scanner.py    #   1 行 → InlineSpan のリスト（正規表現。ADR-0001）
-│   ├── code_tokens.py       #   コードの字句解析（B-6 / 画面の色分け）
-│   ├── html.py              #   Markdown → HTML（B-2 / ADR-0007。書き出しの本流）
-│   ├── tags.py              #   #tag の抽出、階層タグの分解
-│   ├── wikilink.py          #   [[ノート名]] の名前の扱い（E-6）
-│   ├── activation.py        #   Cmd+クリックで何を起こすかの判定（D-1 / D-2）
-│   ├── search.py            #   ノート内検索（Cmd+F）
-│   ├── outline.py           #   見出しの一覧（C-2）
-│   ├── table.py             #   表の整形（ADR-0003）
-│   ├── stats.py             #   文字数と行数
-│   ├── template.py          #   テンプレートの差し込み（E-4）
-│   ├── references.py        #   本文が指す添付の集計（E-5）
-│   ├── paths.py             #   vault 外を指す参照を弾く
-│   ├── textpos.py           #   Python ↔ UTF-16 の位置変換（R4 の境界）
-│   ├── imported.py          #   取り込んだ文字の Markdown 整形（F-1）
-│   └── slides.py            #   Markdown をスライド構造に割る（F-4）
-│
-├── storage/                 # ── 永続化層
-│   ├── vault.py             #   ノートフォルダの走査、CRUD、ゴミ箱
-│   ├── index_db.py          #   SQLite + FTS5。検索、タグ集計
-│   ├── watcher.py           #   watchdog。外部変更の検知（Qt 橋渡しのみ例外的に Qt 依存）
-│   └── autosave.py          #   デバウンス保存、アトミック書き込み、クラッシュ退避
-│
-├── editor/                  # ── エディタウィジェット層
-│   ├── editor_widget.py     #   MarkdownEditor(QPlainTextEdit)
-│   ├── highlighter.py       #   MarkdownHighlighter(QSyntaxHighlighter)
-│   ├── painter_overlay.py   #   paintEvent での背景バー・チェックボックス描画（ADR-0002）
-│   ├── input_handler.py     #   Enter / Tab の入力補助（リスト継続等）
-│   ├── commands.py          #   Cmd+B などのテキスト変換コマンド
-│   ├── attachments.py       #   貼り付け元から添付を取り出す（A-2）
-│   ├── image_cache.py       #   本文に描く画像の読み込みとキャッシュ（A-2）
-│   ├── exporter.py          #   HTML / PDF への書き出し（ADR-0007）
-│   ├── importer.py          #   外の形式からの取り込み（F 群）
-│   ├── pptx_import.py       #   PowerPoint → Markdown（F-3）
-│   └── pptx_export.py       #   Markdown → PowerPoint（F-5）
-│
-├── ui/                      # ── アプリケーション UI 層
-│   ├── main_window.py       #   メインウィンドウ。保存フロー・競合・外部変更の束ね役
-│   ├── export_actions.py    #   書き出し・印刷・取り込みの束（G-4 の通知込み）
-│   ├── search_actions.py    #   探す系の束（Cmd+O / Cmd+Shift+F / Cmd+R）
-│   ├── save_controller.py   #   保存フローの束（デバウンス・競合・退避・改名追従）
-│   ├── note_actions.py      #   ノートの CRUD（ゴミ箱・ピン・改名・雛形・片づけ・右クリック）
-│   ├── status_bar.py        #   ステータスバー（保存時刻・モード・文字数の背景集計）
-│   ├── panes.py             #   3 ペインの分割と幅の保存・復元
-│   ├── sidebar.py           #   タグツリー
-│   ├── note_list.py         #   ノート一覧（QListView + カスタムデリゲート）
-│   ├── note_list_pane.py    #   一覧とヘッダ（並び順・新規ボタン）
-│   ├── editor_pane.py       #   エディタと検索バーの束
-│   ├── find_bar.py          #   ノート内検索のバー（Cmd+F）
-│   ├── format_toolbar.py    #   書式ツールバー（B-1）
-│   ├── backlink_bar.py      #   バックリンクの帯（E-6 / ADR-0011）
-│   ├── quick_open.py        #   Cmd+O / Cmd+Shift+F のパレット
-│   ├── conflict_dialog.py   #   競合ダイアログ（§7.5）
-│   ├── preferences.py       #   環境設定
-│   ├── menus.py             #   メニューバーの組み立て（ショートカットの一元管理）
-│   ├── shortcut_sheet.py    #   ショートカット一覧（C-7）
-│   ├── index_sync.py        #   重い処理の背景実行（§6.6, §7.3）
-│   └── icons.py             #   線で描くアイコンと共通寸法
-│
-└── resources/
-    ├── icons/               #   アプリアイコン
-    ├── templates/           #   同梱テンプレート
-    ├── vendor/              #   同梱 JS（Mermaid）
-    └── manual.md            #   同梱マニュアル
+OboeGaki/
+├── src/                        # ── フロントエンド（React + TypeScript）
+│   ├── main.tsx / App.tsx      #   エントリポイント
+│   ├── editor/                 #   CM6 エディタ層
+│   │   ├── Editor.tsx          #     React ラッパ。CM6 は React ツリーの外で生かす（T2）
+│   │   ├── relaxed-emphasis.ts #     `*` の flanking 緩和（T4。検出規則は §6.5）
+│   │   └── live-preview.ts     #     マーカー隠蔽とリビール（T1/T6。ルールは §6.4）
+│   ├── stores/                 #   Zustand。アプリ状態のみ。文書はミラーしない〔予定〕
+│   └── ui/                     #   ペイン・一覧・サイドバー・パレット〔予定〕
+└── src-tauri/src/              # ── Rust 側（WebView 非依存。cargo test でヘッドレステスト）
+    ├── lib.rs                  #   Tauri commands の登録だけの薄い層
+    ├── vault.rs                #   走査・CRUD・ゴミ箱・旧 .hitofude の改名引き継ぎ〔予定〕
+    ├── index_db.rs             #   SQLite + FTS5 trigram（§7.3）〔予定〕
+    ├── watcher.rs              #   notify による外部変更検知（§7.5）〔予定〕
+    └── autosave.rs             #   デバウンス保存・アトミック書き込み（§7.4）〔予定〕
 ```
 
-**設計原則**: `core/` と `storage/` は PySide6 に依存させない（`storage/watcher.py` の Qt シグナル橋渡し部分を除く）。これによりパーサ・保存ロジックをヘッドレスでテストできる。
+**旧モジュールとの対応**:
+
+| 旧（hitofude） | 新 | 備考 |
+|---|---|---|
+| `core/block_parser.py` | **消滅** | ブロック構造は Lezer の木が持つ |
+| `core/inline_scanner.py` | `src/editor/relaxed-emphasis.ts` + Lezer 組み込み | 検出規則（§6.5）は不変。参照実装オラクルテストが等価性を守る |
+| `core/` のドメインロジック（tags, wikilink, search, outline…） | 表示に使うものは TS 側、索引・走査に使うものは Rust 側 | 両方から要るものは Rust に置き command 経由で呼ぶ |
+| `storage/` | `src-tauri/src/` | watcher の Qt シグナル橋渡しは Tauri イベントに置き換え |
+| `editor/` | `src/editor/` | painter_overlay 相当は decoration / widget で実現 |
+| `ui/` | `src/ui/` + `src/stores/` | — |
+
+**設計原則**（旧 R3 → T3）: `src-tauri/` は Tauri commands の薄い層を除いて
+純 Rust で書き、ヘッドレスでテストする。`src/editor/` の拡張は DOM 非依存
+（Lezer 単体でテストできる形）に保つ。
 
 ### 6.2 データモデル
 
@@ -529,6 +394,13 @@ class InlineSpan:
 
 ### 6.3 レンダリングパイプライン
 
+> → **ADR-0034 で手段を置換**: このパイプラインは Qt 実装のもの。CM6 では
+> 「入力 → Lezer が差分再解析 → ViewPlugin が可視範囲の装飾を再構築」の
+> 一本道になり、ブロック状態のビットフラグも自前では持たない（フェンス・
+> front matter・引用の入れ子は Lezer の木がそのまま表す）。autosave の
+> デバウンス 800ms とアトミック書き込み（§7.4）は変わらず有効。
+> 以下は旧スタックの設計記録として残す。
+
 ```
 ユーザー入力
     │
@@ -580,17 +452,19 @@ QUOTE_SHIFT = 4  # 上位ビットに引用の深さを詰める
 
 これがこのアプリの体験を決める中核ロジック。**リビール条件を厳密に定義する。**
 
-`MarkdownEditor.cursorPositionChanged` を受け、変化した「旧フォーカスブロック」と「新フォーカスブロック」だけを `rehighlightBlock()` する（全体再ハイライトは絶対にしない。G5 が壊れる）。
-
-`MarkdownHighlighter` は `self._reveal_position: int | None`（ドキュメント全体でのキャレット位置）と `self._has_selection: bool` を保持する。
+> → **ADR-0034 で実現手段のみ置換**: 旧実装は `cursorPositionChanged` で旧/新
+> 2 ブロックを `rehighlightBlock()` していた。CM6 では `ViewPlugin` が
+> `docChanged || selectionSet || viewportChanged` のときに可視範囲の装飾を
+> 作り直す（T6）。リビール状態は保持せず、毎回 `state.selection` から導出する。
+> **以下の条件の表は挙動仕様としてそのまま有効。**
 
 | 対象 | 隠す条件 | 現す条件 |
 |---|---|---|
 | **インラインマーカー**（`**`, `*`, `` ` ``, `~~`, `::`） | 常に隠す | キャレットが `[open_start, close_end]` の**閉区間**内にあるとき、その span のマーカーのみ現す（両端を含むので、直後にカーソルを置いた状態で編集できる） |
 | **リンク** `[text](url)` | `(url)` 部分と `[` `]` を隠す | キャレットが `[open_start, close_end]` 内にあるとき全体を現す |
 | **見出しマーカー** `## ` | 常に隠す | キャレットがその**ブロック内のどこか**にあるとき現す |
-| **リストマーカー** `- `, `1. ` | 箇条書きは潰す / 番号付きは残す | `- ` は点で描く（深さで ● ○ ■）。[ADR-0026](adr/0026-bullet-glyphs.md) で但し書きの「置換描画」を採った |
-| **タスクマーカー** `- [ ] ` | `[ ]` を `☐` としてオーバーレイ描画し、原文は極小化 | ブロックにキャレットがあるとき原文を現す |
+| **リストマーカー** `- `, `1. ` | 箇条書きは隠す / 番号付きは残す | `- ` は点で描く（深さで ● ○ ■）。[ADR-0026](adr/0026-bullet-glyphs.md) の判断を維持 |
+| **タスクマーカー** `- [ ] ` | `[ ]` をチェックボックス描画に置き換える | ブロックにキャレットがあるとき原文を現す |
 | **引用マーカー** `> ` | 常に隠す（左の縦バーで表現） | ブロックにキャレットがあるとき現す |
 | **コードフェンス** ` ```lang ` | 常に隠す（ブロック背景で表現） | フェンス行またはブロック内にキャレットがあるとき現す |
 | **水平線** `---` | 常に隠す（線を描画） | ブロックにキャレットがあるとき現す |
@@ -600,10 +474,13 @@ QUOTE_SHIFT = 4  # 上位ビットに引用の深さを詰める
 
 **タイミングの段階化（Typora の挙動を踏襲）**:
 
-- **インライン**は入力確定と同時に反映（`highlightBlock` が同期で走るので自然にこうなる）。
-- **ブロック**（`## `, `- [ ] `, `> `）は「キャレットがそのブロックを離れた時点」で確定。実装上は、リビール条件が「ブロック内にキャレットがあるか」なので、これは自動的に満たされる。
+- **インライン**は入力確定と同時に反映（装飾の再計算が同期で走るので自然にこうなる）。
+- **ブロック**（`## `, `- [ ] `, `> `）は「キャレットがそのブロックを離れた時点」で確定。リビール条件が「ブロック内にキャレットがあるか」なので、これは自動的に満たされる。
 
-**リビール時のちらつき対策**: フォントサイズが `0.5pt ↔ 15pt` に切り替わると行が横方向にガクッと動く。これは仕様として許容する（Obsidian / Typora も同じ挙動）。ただし**縦方向は動かしてはいけない**（→ **ADR-0002 で方法を変更**。`QTextBlockFormat` は `QPlainTextDocumentLayout` が無視するうえ Undo を 1 段消費するので使わない。行の高さは R4 と同じ「文字の大きさ」で作る）。
+**リビール時のちらつき**: マーカーが現れると行が横方向に動く。仕様として
+許容する（Obsidian / Typora も同じ挙動）。縦方向は動かしてはいけない —
+CM6 の `Decoration.replace` はフォントサイズをいじらないので、旧版で
+警戒していた行高の揺れは構造的に起きない。
 
 ### 6.5 インラインスキャナの仕様
 
