@@ -9,10 +9,11 @@ type AppState = {
   notes: string[];
   currentPath: string | null;
   openVault: (root: string) => Promise<void>;
-  selectNote: (path: string) => void;
+  refresh: () => Promise<void>;
+  selectNote: (path: string | null) => void;
 };
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   vaultRoot: null,
   notes: [],
   currentPath: null,
@@ -20,6 +21,13 @@ export const useAppStore = create<AppState>((set) => ({
   async openVault(root) {
     const notes = await invoke<string[]>("vault_open", { root });
     set({ vaultRoot: root, notes, currentPath: null });
+  },
+
+  async refresh() {
+    const root = get().vaultRoot;
+    if (!root) return;
+    const notes = await invoke<string[]>("vault_open", { root });
+    set({ notes });
   },
 
   selectNote(path) {
@@ -37,4 +45,20 @@ export async function writeNote(
   text: string,
 ): Promise<void> {
   await invoke("note_write", { root, path, text });
+}
+
+export async function createNote(root: string, title: string): Promise<string> {
+  return invoke<string>("note_create", { root, title });
+}
+
+export async function renameNote(
+  root: string,
+  path: string,
+  title: string,
+): Promise<string> {
+  return invoke<string>("note_rename", { root, path, title });
+}
+
+export async function trashNote(root: string, path: string): Promise<string> {
+  return invoke<string>("note_trash", { root, path });
 }

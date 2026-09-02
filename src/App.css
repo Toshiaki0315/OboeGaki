@@ -96,3 +96,43 @@ body {
   opacity: 0.7;
   min-height: 1.2em;
 }
+
+.note-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  max-width: 46rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.75rem 1rem 0;
+  box-sizing: border-box;
+}
+
+.title-input {
+  flex: 1;
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: inherit;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 0.2rem 0;
+}
+
+.title-input:focus {
+  outline: none;
+  border-bottom-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.note-header button,
+.note-list header button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}

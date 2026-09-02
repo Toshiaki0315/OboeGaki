@@ -39,3 +39,26 @@ pub fn note_write(root: String, path: String, text: String) -> Result<(), String
     let path = guarded(&root, &path)?;
     autosave::save_atomic(&path, &text).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn note_create(root: String, title: String) -> Result<String, String> {
+    let vault = Vault::new(&root);
+    let path = vault.create(&title).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn note_rename(root: String, path: String, title: String) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    let renamed = Vault::new(&root)
+        .rename(&path, &title)
+        .map_err(|e| e.to_string())?;
+    Ok(renamed.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn note_trash(root: String, path: String) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    let moved = Vault::new(&root).trash(&path).map_err(|e| e.to_string())?;
+    Ok(moved.to_string_lossy().into_owned())
+}

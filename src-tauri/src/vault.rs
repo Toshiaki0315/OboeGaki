@@ -21,6 +21,10 @@ pub const ATTACHMENTS_DIR: &str = "attachments";
 pub const TEMPLATES_DIR: &str = "templates";
 
 const MARKDOWN_SUFFIXES: [&str; 2] = ["md", "markdown"];
+/// タイトルが空のときのフォールバック（参照実装 core/document.py と同じ値）。
+pub const UNTITLED: &str = "無題";
+/// ファイル名の上限は 255 バイト。日本語は 1 文字 3 バイトなので余裕を取る。
+const MAX_FILENAME_BYTES: usize = 200;
 /// 走査から外すフォルダ。watcher 側もこれを使うこと（参照実装の E-4 の教訓:
 /// 2 か所に書くと「一覧には出ないのに索引には入る」食い違いが出る）。
 const SKIP_DIRS: [&str; 4] = [TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR];
@@ -146,6 +150,102 @@ impl Vault {
             _ => false,
         }
     }
+
+    /// 新しいノートを vault 直下に作って、そのパスを返す。
+    ///
+    /// 本文はタイトルの見出し 1 行（ADR-0005 の「タイトル ↔ 見出し」の対応）。
+    /// front matter の id は履歴（ADR-0023）を実装するときに足す。
+    pub fn create(&self, title: &str) -> io::Result<PathBuf> {
+        let stem = sanitize_filename(title);
+        let path = unique_path(&self.root, &stem, ".md", None);
+        crate::autosave::save_atomic(&path, &format!("# {title}\n\n"))?;
+        Ok(path)
+    }
+
+    /// タイトル変更に合わせてファイル名を変える。
+    ///
+    /// 元のフォルダに留める（参照実装 K-1: サブフォルダのノートが改名だけで
+    /// vault 直下へ出ない）。同名の衝突も同じフォルダの中だけを見る。
+    /// 自分自身は衝突相手にしない（APFS は大文字小文字を区別しない）。
+    /// 同じ名前なら何もしない。旧名は `.trash` に残さない（改名は削除ではない）。
+    pub fn rename(&self, path: &Path, title: &str) -> io::Result<PathBuf> {
+        if !self.inside(path) {
+            return Err(outside_error("保管フォルダの外は改名できない", path));
+        }
+        let folder = match path.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => self.root.clone(),
+        };
+        let stem = sanitize_filename(title);
+        if folder.join(format!("{stem}.md")) == *path {
+            return Ok(path.to_path_buf()); // 同じ名前。動かす意味が無い
+        }
+        let target = unique_path(&folder, &stem, ".md", Some(path));
+        fs::rename(path, &target)?;
+        Ok(target)
+    }
+
+    /// `.trash` へ移す（spec §7.6）。
+    ///
+    /// 階層を保って入れる（参照実装 K-5: ファイル自身が場所を覚えているので
+    /// 戻すときに元のフォルダへ帰れる）。同名があればタイムスタンプを付ける。
+    /// 既にゴミ箱の中なら何もしない（入れ子の .trash/.trash/ を作らない）。
+    pub fn trash(&self, path: &Path) -> io::Result<PathBuf> {
+        // 境界は字句ではなく実体で見る（`.trash/../大事.md` を通さない）
+        let root = self.root.canonicalize()?;
+        let resolved = path
+            .canonicalize()
+            .map_err(|_| outside_error("保管フォルダの外は捨てられない", path))?;
+        let Ok(relative) = resolved.strip_prefix(&root) else {
+            return Err(outside_error("保管フォルダの外は捨てられない", path));
+        };
+        let mut components = relative.components();
+        if components.next()
+            == Some(std::path::Component::Normal(std::ffi::OsStr::new(
+                TRASH_DIR,
+            )))
+        {
+            // 既にゴミ箱の中。動かすと .trash/.trash/ へ入れ子になって
+            // 戻せなくなる。望みの状態は既に満ちている
+            return Ok(path.to_path_buf());
+        }
+        let target = self.trash_dir().join(relative);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let target = if target.exists() {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let stem = target
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("無題")
+                .to_string();
+            let suffix = target
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| format!(".{s}"))
+                .unwrap_or_default();
+            let parent = target.parent().map(Path::to_path_buf).unwrap_or_default();
+            // タイムスタンプでも衝突したら（同一秒に 2 回捨てた）連番で逃がす
+            unique_path(&parent, &format!("{stem}-{stamp}"), &suffix, None)
+        } else {
+            target
+        };
+        fs::rename(path, &target)?;
+        // TODO: 期限つき掃除（purge_trash）を実装するときは、ここで mtime を
+        // 刻み直す（rename は mtime を変えないため「捨ててから」を数えられない）
+        Ok(target)
+    }
+}
+
+fn outside_error(message: &str, path: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("{message}: {}", path.display()),
+    )
 }
 
 fn is_markdown(path: &Path) -> bool {
@@ -153,6 +253,75 @@ fn is_markdown(path: &Path) -> bool {
         .and_then(|e| e.to_str())
         .map(|e| MARKDOWN_SUFFIXES.contains(&e.to_ascii_lowercase().as_str()))
         .unwrap_or(false)
+}
+
+/// タイトルをファイル名に使える形へ直す（spec §7.1）。
+///
+/// NFC 正規化 → 制御文字を除去 → `/:\` を `-` に → 空白を 1 つに畳む →
+/// 先頭のドットを剥がす（隠しファイル化を防ぐ）→ 200 バイト以内に切り詰め。
+/// 空になったら「無題」。
+pub fn sanitize_filename(title: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let mut text = String::new();
+    for character in title.nfc() {
+        // Python の isprintable 相当の近似: 制御文字（空白は残す）と
+        // 不可視の書式文字（ZWSP や BOM など）を落とす
+        if (character.is_control() && !character.is_whitespace()) || is_format_char(character) {
+            continue;
+        }
+        // パス区切りと、Finder が嫌う `:` をハイフンに
+        if matches!(character, '/' | ':' | '\\') {
+            text.push('-');
+        } else {
+            text.push(character);
+        }
+    }
+    // 空白を 1 つに畳んで前後を落とし、先頭のドットを剥がす（隠しファイル化を防ぐ）
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut result = collapsed.trim_start_matches('.').trim().to_string();
+    while result.len() > MAX_FILENAME_BYTES {
+        result.pop();
+    }
+    if result.is_empty() {
+        UNTITLED.to_string()
+    } else {
+        result
+    }
+}
+
+fn is_format_char(character: char) -> bool {
+    matches!(
+        character,
+        '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{FEFF}'
+    )
+}
+
+fn is_same_file(candidate: &Path, other: Option<&Path>) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Some(other) = other else {
+        return false;
+    };
+    // 同じ実体を指しているか。名前ではなく実体で見る（APFS の既定は
+    // 大文字小文字を区別しないので、名前を比べると別物に見える）
+    match (fs::metadata(candidate), fs::metadata(other)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// 重複しないパスを返す。衝突したら `-2`, `-3` を付ける（spec §7.1）。
+///
+/// `ignoring` に動かそうとしている当人を渡すと、それは衝突と数えない。
+/// 渡さないと、大文字小文字だけ変えた改名で自分自身を衝突相手と見て
+/// `-2` が付く（APFS は大文字小文字を区別しないため）。
+pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<&Path>) -> PathBuf {
+    let mut candidate = directory.join(format!("{stem}{suffix}"));
+    let mut index = 2;
+    while candidate.exists() && !is_same_file(&candidate, ignoring) {
+        candidate = directory.join(format!("{stem}-{index}{suffix}"));
+        index += 1;
+    }
+    candidate
 }
 
 /// `candidate` が vault の中に留まるか。Tauri commands の入口で必ず通す。
@@ -335,5 +504,178 @@ mod tests {
 
         assert!(contains(root.path(), &root.path().join("sub/new.md")));
         assert!(!contains(root.path(), Path::new("/no/such/dir/new.md")));
+    }
+
+    #[test]
+    fn test_sanitize_日本語のタイトルはそのまま通る() {
+        assert_eq!(sanitize_filename("会議の記録"), "会議の記録");
+    }
+
+    #[test]
+    fn test_sanitize_パス区切りとコロンをハイフンに変える() {
+        assert_eq!(sanitize_filename("a/b:c\\d"), "a-b-c-d");
+    }
+
+    #[test]
+    fn test_sanitize_空白を畳んで前後を落とす() {
+        assert_eq!(sanitize_filename("  a \t b\n c  "), "a b c");
+    }
+
+    #[test]
+    fn test_sanitize_先頭のドットを剥がす() {
+        assert_eq!(sanitize_filename("...secret"), "secret");
+    }
+
+    #[test]
+    fn test_sanitize_制御文字を除去する() {
+        assert_eq!(sanitize_filename("a\u{0007}b\u{200B}c"), "abc");
+    }
+
+    #[test]
+    fn test_sanitize_200バイトに文字境界で切り詰める() {
+        let long = "あ".repeat(100); // 300 バイト
+        let result = sanitize_filename(&long);
+        assert!(result.len() <= 200);
+        assert_eq!(result, "あ".repeat(66)); // 66 × 3 = 198 バイト
+    }
+
+    #[test]
+    fn test_sanitize_空になったら無題() {
+        assert_eq!(sanitize_filename("   "), "無題");
+        assert_eq!(sanitize_filename("..."), "無題");
+    }
+
+    #[test]
+    fn test_unique_path_衝突が無ければそのままの名前() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(
+            unique_path(dir.path(), "a", ".md", None),
+            dir.path().join("a.md")
+        );
+    }
+
+    #[test]
+    fn test_unique_path_衝突したら連番を付ける() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("a.md"), "").unwrap();
+        fs::write(dir.path().join("a-2.md"), "").unwrap();
+        assert_eq!(
+            unique_path(dir.path(), "a", ".md", None),
+            dir.path().join("a-3.md")
+        );
+    }
+
+    #[test]
+    fn test_unique_path_当人は衝突相手にしない() {
+        let dir = TempDir::new().unwrap();
+        let own = dir.path().join("a.md");
+        fs::write(&own, "").unwrap();
+        assert_eq!(unique_path(dir.path(), "a", ".md", Some(&own)), own);
+    }
+
+    #[test]
+    fn test_create_見出し付きの新規ノートを作る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let path = vault.create("無題").unwrap();
+        assert_eq!(path, root.path().join("無題.md"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "# 無題\n\n");
+    }
+
+    #[test]
+    fn test_create_同名があれば連番を付ける() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.create("無題").unwrap();
+        let second = vault.create("無題").unwrap();
+        assert_eq!(second, root.path().join("無題-2.md"));
+    }
+
+    #[test]
+    fn test_rename_元のフォルダに留めて改名する() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let old = note(root.path(), "sub/旧名.md");
+        let renamed = vault.rename(&old, "新名").unwrap();
+        assert_eq!(renamed, root.path().join("sub/新名.md"));
+        assert!(!old.exists());
+        assert_eq!(fs::read_to_string(&renamed).unwrap(), "# note\n");
+    }
+
+    #[test]
+    fn test_rename_同じ名前なら何もしない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let path = note(root.path(), "同じ.md");
+        assert_eq!(vault.rename(&path, "同じ").unwrap(), path);
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_rename_衝突したら連番を付ける() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        note(root.path(), "先客.md");
+        let old = note(root.path(), "旧名.md");
+        let renamed = vault.rename(&old, "先客").unwrap();
+        assert_eq!(renamed, root.path().join("先客-2.md"));
+    }
+
+    #[test]
+    fn test_rename_vault外は拒否する() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let escape = note(outside.path(), "外.md");
+        let vault = Vault::new(root.path());
+        assert!(vault.rename(&escape, "新名").is_err());
+        assert!(escape.exists());
+    }
+
+    #[test]
+    fn test_trash_階層を保ってゴミ箱へ移す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let path = note(root.path(), "sub/捨てる.md");
+        let moved = vault.trash(&path).unwrap();
+        assert_eq!(moved, vault.trash_dir().join("sub/捨てる.md"));
+        assert!(!path.exists());
+        assert!(moved.exists());
+    }
+
+    #[test]
+    fn test_trash_同名があればタイムスタンプを付ける() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let first = note(root.path(), "同名.md");
+        vault.trash(&first).unwrap();
+        let second = note(root.path(), "同名.md");
+        let moved = vault.trash(&second).unwrap();
+        assert_ne!(moved, vault.trash_dir().join("同名.md"));
+        let name = moved.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with("同名-") && name.ends_with(".md"));
+    }
+
+    #[test]
+    fn test_trash_既にゴミ箱の中なら動かさない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let path = note(root.path(), "x.md");
+        let moved = vault.trash(&path).unwrap();
+        assert_eq!(vault.trash(&moved).unwrap(), moved);
+        assert!(moved.exists());
+    }
+
+    #[test]
+    fn test_trash_vault外は拒否する() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let escape = note(outside.path(), "外.md");
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        assert!(vault.trash(&escape).is_err());
+        assert!(escape.exists());
     }
 }
