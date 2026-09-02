@@ -1,11 +1,31 @@
 // Tauri commands。フロントとの境界の薄い層で、ロジックは持たない（T3）。
 // パスを受け取る command は必ず vault::contains で封じ込めを確認する。
+// ファイルを動かす command は Suppressor に記録し、自分の書き込みが
+// 「外部変更」としてフロントへ跳ね返らないようにする（spec §7.5）。
 
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::autosave;
 use crate::vault::{contains, Vault};
+use crate::watcher::{self, Suppressor};
+
+/// vault ごとに 1 本の watcher と、自書き込みの無視リスト。
+/// 新しい vault を開いたら watcher を置き換える（drop で旧監視は止まる）。
+pub struct WatchState {
+    watcher: Mutex<Option<notify::RecommendedWatcher>>,
+    suppressor: Arc<Suppressor>,
+}
+
+impl Default for WatchState {
+    fn default() -> Self {
+        Self {
+            watcher: Mutex::new(None),
+            suppressor: Arc::new(Suppressor::default()),
+        }
+    }
+}
 
 fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
     let candidate = Path::new(path).to_path_buf();
@@ -16,11 +36,20 @@ fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
     }
 }
 
-/// vault を開く: 改名引き継ぎ + レイアウト作成 + 走査。
+/// vault を開く: 改名引き継ぎ + レイアウト作成 + 監視開始 + 走査。
 #[tauri::command]
-pub fn vault_open(root: String) -> Result<Vec<String>, String> {
+pub fn vault_open(
+    app: tauri::AppHandle,
+    state: tauri::State<WatchState>,
+    root: String,
+) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
+    // 監視は付随機能なので、失敗しても vault は開く（ログだけ残す）
+    match watcher::start(app, vault.root().to_path_buf(), state.suppressor.clone()) {
+        Ok(active) => *state.watcher.lock().expect("watcher lock") = Some(active),
+        Err(error) => eprintln!("外部変更の監視を開始できなかった: {error}"),
+    }
     Ok(vault
         .scan()
         .into_iter()
@@ -35,31 +64,55 @@ pub fn note_read(root: String, path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn note_write(root: String, path: String, text: String) -> Result<(), String> {
+pub fn note_write(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+    text: String,
+) -> Result<(), String> {
     let path = guarded(&root, &path)?;
+    state.suppressor.mark(&path);
     autosave::save_atomic(&path, &text).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn note_create(root: String, title: String) -> Result<String, String> {
+pub fn note_create(
+    state: tauri::State<WatchState>,
+    root: String,
+    title: String,
+) -> Result<String, String> {
     let vault = Vault::new(&root);
     let path = vault.create(&title).map_err(|e| e.to_string())?;
+    state.suppressor.mark(&path);
     Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub fn note_rename(root: String, path: String, title: String) -> Result<String, String> {
+pub fn note_rename(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+    title: String,
+) -> Result<String, String> {
     let path = guarded(&root, &path)?;
+    state.suppressor.mark(&path);
     let renamed = Vault::new(&root)
         .rename(&path, &title)
         .map_err(|e| e.to_string())?;
+    state.suppressor.mark(&renamed);
     Ok(renamed.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub fn note_trash(root: String, path: String) -> Result<String, String> {
+pub fn note_trash(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+) -> Result<String, String> {
     let path = guarded(&root, &path)?;
+    state.suppressor.mark(&path);
     let moved = Vault::new(&root).trash(&path).map_err(|e| e.to_string())?;
+    state.suppressor.mark(&moved);
     Ok(moved.to_string_lossy().into_owned())
 }
 
@@ -73,10 +126,16 @@ pub fn trash_list(root: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn note_restore(root: String, path: String) -> Result<String, String> {
+pub fn note_restore(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+) -> Result<String, String> {
     let path = guarded(&root, &path)?;
+    state.suppressor.mark(&path);
     let restored = Vault::new(&root)
         .restore(&path)
         .map_err(|e| e.to_string())?;
+    state.suppressor.mark(&restored);
     Ok(restored.to_string_lossy().into_owned())
 }

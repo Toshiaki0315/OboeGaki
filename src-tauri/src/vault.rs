@@ -27,7 +27,7 @@ pub const UNTITLED: &str = "無題";
 const MAX_FILENAME_BYTES: usize = 200;
 /// 走査から外すフォルダ。watcher 側もこれを使うこと（参照実装の E-4 の教訓:
 /// 2 か所に書くと「一覧には出ないのに索引には入る」食い違いが出る）。
-const SKIP_DIRS: [&str; 4] = [TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR];
+pub(crate) const SKIP_DIRS: [&str; 4] = [TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR];
 
 /// 旧名 `.hitofude` を `.OboeGaki` へ改名して引き継ぐ（ADR-0032）。
 ///
@@ -351,7 +351,7 @@ fn outside_error(message: &str, path: &Path) -> io::Error {
     )
 }
 
-fn is_markdown(path: &Path) -> bool {
+pub(crate) fn is_markdown(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| MARKDOWN_SUFFIXES.contains(&e.to_ascii_lowercase().as_str()))

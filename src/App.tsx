@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { confirm, open } from "@tauri-apps/plugin-dialog";
-import { Editor } from "./editor/Editor";
+import { ask, confirm, open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+import { Editor, type EditorHandle } from "./editor/Editor";
 import { createDebouncer } from "./lib/debounce";
 import {
   createNote,
@@ -49,6 +50,13 @@ function App() {
   const autosave = useMemo(() => createDebouncer(AUTOSAVE_DELAY_MS), []);
   // flush 時に「どのノートの内容か」を取り違えないよう、保存関数ごと持つ
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
+  const editorRef = useRef<EditorHandle>(null);
+  // 外部変更イベントのハンドラは一度だけ登録するので、最新値は ref で読む
+  const vaultRootRef = useRef(vaultRoot);
+  vaultRootRef.current = vaultRoot;
+  const currentPathRef = useRef(currentPath);
+  currentPathRef.current = currentPath;
+  const dirtyRef = useRef(false); // 保存されていない編集があるか
 
   async function chooseVault() {
     const picked = await open({ directory: true });
@@ -65,6 +73,7 @@ function App() {
     const text = await readNote(vaultRoot, path);
     selectNote(path);
     setDoc(text);
+    dirtyRef.current = false;
     setStatus("");
   }
 
@@ -118,9 +127,11 @@ function App() {
     if (!vaultRoot || !currentPath) return;
     const root = vaultRoot;
     const path = currentPath;
+    dirtyRef.current = true;
     setStatus("未保存");
     pendingSave.current = async () => {
       await writeNote(root, path, getText());
+      dirtyRef.current = false;
       setStatus("保存済み");
     };
     autosave.schedule(() => {
@@ -132,6 +143,52 @@ function App() {
 
   // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
   useEffect(() => () => autosave.flush(), [autosave]);
+
+  // 外部変更（spec §7.5）。一覧は少し待ってまとめて更新し、開いている
+  // ノートは未編集なら静かにリロード、編集中なら確認を挟む
+  const refreshSoon = useMemo(() => createDebouncer(300), []);
+  useEffect(() => {
+    const unlisten = listen<{ path: string; kind: string }>(
+      "vault-changed",
+      (event) => void handleExternalChange(event.payload),
+    );
+    return () => void unlisten.then((stop) => stop());
+    // eslint 相当の依存警告は無い構成だが、意図として登録は一度だけ。
+    // ハンドラが読む値はすべて ref 経由
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleExternalChange(change: { path: string; kind: string }) {
+    if (!vaultRootRef.current) return;
+    refreshSoon.schedule(() => void useAppStore.getState().refresh());
+    if (change.path !== currentPathRef.current) return;
+    if (change.kind === "removed") {
+      // 改名・ゴミ箱移動の途中経過でも届くので、断定はしない
+      setStatus("このノートは外部で移動または削除されました");
+      return;
+    }
+    const root = vaultRootRef.current;
+    const text = await readNote(root, change.path);
+    if (!dirtyRef.current) {
+      editorRef.current?.replaceText(text); // 静かにリロード（キャレット維持）
+      return;
+    }
+    // 競合。spec §7.5 は 3 択（外部 / 自分 / 両方残す）だが、
+    // 「両方残す」は未実装なので 2 択で確認する（TODO: 競合コピーの作成）
+    const useExternal = await ask(
+      "このノートは外部でも変更されています。外部の変更を読み込み直しますか？\n（「いいえ」で自分の版を保存して上書きします）",
+      { title: "覚書", kind: "warning" },
+    );
+    if (useExternal) {
+      autosave.cancel();
+      pendingSave.current = null;
+      dirtyRef.current = false;
+      editorRef.current?.replaceText(text);
+      setStatus("外部の変更を読み込みました");
+    } else {
+      autosave.flush();
+    }
+  }
 
   if (!vaultRoot) {
     return (
@@ -195,6 +252,7 @@ function App() {
             </header>
             <Editor
               key={currentPath}
+              ref={editorRef}
               initialDoc={doc}
               onDocChanged={handleDocChanged}
             />
