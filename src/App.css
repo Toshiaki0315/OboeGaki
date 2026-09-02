@@ -1,0 +1,27 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, "Hiragino Sans", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.editor-host .cm-editor {
+  font-size: 16px;
+}
+
+.editor-host .cm-editor.cm-focused {
+  outline: none;
+}
+
+.editor-host .cm-content {
+  font-family: inherit;
+  line-height: 1.8;
+}
