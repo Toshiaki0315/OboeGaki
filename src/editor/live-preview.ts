@@ -18,9 +18,19 @@ import {
   syntaxTree,
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
+import { highlightTag } from "./extended-inline";
 
-// 隠す対象のマーカーノード。対象は今後のフェーズで広げる
-const MARK_NODES = new Set(["EmphasisMark", "HeaderMark"]);
+// 隠す対象のマーカーノード（§6.4 のリビール表のインライン分）。
+// URL はマーカーではないが「`(url)` 部分を隠す」規則なのでここに含める
+const MARK_NODES = new Set([
+  "EmphasisMark",
+  "HeaderMark",
+  "StrikethroughMark",
+  "HighlightMark",
+  "CodeMark",
+  "LinkMark",
+  "URL",
+]);
 
 function touchesSelection(
   state: EditorState,
@@ -81,6 +91,20 @@ const style = HighlightStyle.define([
   { tag: tags.heading1, fontWeight: "700", fontSize: "1.6em" },
   { tag: tags.heading2, fontWeight: "700", fontSize: "1.3em" },
   { tag: tags.heading3, fontWeight: "700", fontSize: "1.15em" },
+  { tag: tags.strikethrough, textDecoration: "line-through", opacity: "0.7" },
+  {
+    tag: highlightTag,
+    backgroundColor: "color-mix(in srgb, #ffd60a 45%, transparent)",
+    borderRadius: "2px",
+  },
+  {
+    tag: tags.monospace,
+    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+    fontSize: "0.9em",
+    backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+    borderRadius: "3px",
+  },
+  { tag: tags.link, color: "#0a84ff", textDecoration: "underline" },
 ]);
 
 export const livePreview = [hideMarkers, syntaxHighlighting(style)];

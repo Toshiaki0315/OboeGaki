@@ -11,6 +11,7 @@ import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
+import { extendedInline } from "./extended-inline";
 import { livePreview } from "./live-preview";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -67,7 +68,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         extensions: [
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown({ extensions: [relaxedAsterisk] }),
+          markdown({ extensions: [relaxedAsterisk, extendedInline] }),
           livePreview,
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
