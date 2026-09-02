@@ -62,3 +62,21 @@ pub fn note_trash(root: String, path: String) -> Result<String, String> {
     let moved = Vault::new(&root).trash(&path).map_err(|e| e.to_string())?;
     Ok(moved.to_string_lossy().into_owned())
 }
+
+#[tauri::command]
+pub fn trash_list(root: String) -> Result<Vec<String>, String> {
+    Ok(Vault::new(&root)
+        .trash_list()
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
+#[tauri::command]
+pub fn note_restore(root: String, path: String) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    let restored = Vault::new(&root)
+        .restore(&path)
+        .map_err(|e| e.to_string())?;
+    Ok(restored.to_string_lossy().into_owned())
+}

@@ -136,3 +136,36 @@ body {
   padding: 0.3rem 0.7rem;
   cursor: pointer;
 }
+
+.trash-section {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  font-size: 0.9rem;
+}
+
+.trash-section summary {
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  opacity: 0.7;
+}
+
+.trash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  opacity: 0.8;
+}
+
+.trash-item button {
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: none;
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}

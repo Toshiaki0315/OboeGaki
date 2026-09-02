@@ -239,6 +239,109 @@ impl Vault {
         // 刻み直す（rename は mtime を変えないため「捨ててから」を数えられない）
         Ok(target)
     }
+
+    /// ゴミ箱の中の Markdown ファイルを名前順で返す。
+    ///
+    /// `scan()` は `.trash` を除くので、こちらは専用の走査。ゴミ箱の中は
+    /// こちらが作った階層なので、除外規則もリンク追跡も要らない
+    /// （シンボリックリンクは辿らない）。
+    pub fn trash_list(&self) -> Vec<PathBuf> {
+        let mut found = Vec::new();
+        collect_markdown(&self.trash_dir(), &mut found);
+        found
+    }
+
+    /// ゴミ箱から元のフォルダへ戻す（参照実装 K-5）。
+    ///
+    /// `.trash/` の中の位置がそのまま元の位置。フォルダが消えていたら
+    /// 作り直す（捨てる前には在ったのだから、戻すのに要る）。
+    /// 戻したあと、ゴミ箱の中に空の殻を残さない。
+    pub fn restore(&self, path: &Path) -> io::Result<PathBuf> {
+        let trash = self.trash_dir().canonicalize()?;
+        let resolved = path
+            .canonicalize()
+            .map_err(|_| outside_error("ゴミ箱の中だけ戻せる", path))?;
+        let Ok(relative) = resolved.strip_prefix(&trash) else {
+            return Err(outside_error("ゴミ箱の中だけ戻せる", path));
+        };
+        if relative.as_os_str().is_empty() {
+            return Err(outside_error("ゴミ箱の中だけ戻せる", path));
+        }
+        let destination = match relative.parent() {
+            Some(parent) => self.root.join(parent),
+            None => self.root.clone(),
+        };
+        fs::create_dir_all(&destination)?;
+        let stem = resolved
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(UNTITLED);
+        let suffix = resolved
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| format!(".{s}"))
+            .unwrap_or_default();
+        let target = unique_path(&destination, stem, &suffix, None);
+        fs::rename(&resolved, &target)?;
+        if let Some(parent) = resolved.parent() {
+            prune_empty_dirs(parent, &trash);
+        }
+        Ok(target)
+    }
+}
+
+/// 空になったフォルダを `boundary` の手前まで遡って消す。
+///
+/// ゴミ箱の中だけで使う。ユーザーに見えるフォルダは空でも残す
+/// （ADR-0024）。完全に空のときだけ消す。
+fn prune_empty_dirs(start: &Path, boundary: &Path) {
+    let mut probe = start.to_path_buf();
+    loop {
+        let Ok(resolved) = probe.canonicalize() else {
+            return;
+        };
+        if resolved == *boundary || !resolved.starts_with(boundary) {
+            return;
+        }
+        match fs::read_dir(&resolved) {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    return; // 空ではない
+                }
+            }
+            Err(_) => return,
+        }
+        if fs::remove_dir(&resolved).is_err() {
+            return;
+        }
+        match probe.parent() {
+            Some(parent) => probe = parent.to_path_buf(),
+            None => return,
+        }
+    }
+}
+
+/// リンクを辿らずに Markdown ファイルだけを名前順で集める（ゴミ箱用）。
+fn collect_markdown(directory: &Path, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+    paths.sort();
+    for entry in paths {
+        let is_symlink = entry
+            .symlink_metadata()
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(true);
+        if is_symlink {
+            continue;
+        }
+        if entry.is_dir() {
+            collect_markdown(&entry, found);
+        } else if is_markdown(&entry) {
+            found.push(entry);
+        }
+    }
 }
 
 fn outside_error(message: &str, path: &Path) -> io::Error {
@@ -677,5 +780,62 @@ mod tests {
         vault.ensure_layout().unwrap();
         assert!(vault.trash(&escape).is_err());
         assert!(escape.exists());
+    }
+
+    #[test]
+    fn test_trash_list_ゴミ箱の中の階層ごとノートを名前順で返す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let a = vault.trash(&note(root.path(), "a.md")).unwrap();
+        let inner = vault.trash(&note(root.path(), "sub/inner.md")).unwrap();
+        note(root.path(), "生きている.md"); // ゴミ箱の外は入らない
+
+        assert_eq!(vault.trash_list(), vec![a, inner]);
+    }
+
+    #[test]
+    fn test_trash_list_ゴミ箱が無ければ空() {
+        let root = TempDir::new().unwrap();
+        assert_eq!(Vault::new(root.path()).trash_list(), Vec::<PathBuf>::new());
+    }
+
+    #[test]
+    fn test_restore_元のフォルダへ戻しフォルダが消えていれば作り直す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let moved = vault.trash(&note(root.path(), "sub/a.md")).unwrap();
+        fs::remove_dir(root.path().join("sub")).unwrap(); // 元フォルダが消えた状況
+
+        let restored = vault.restore(&moved).unwrap();
+
+        assert_eq!(restored, root.path().join("sub/a.md"));
+        assert!(restored.exists());
+        // ゴミ箱の中に空の殻（.trash/sub/）を残さない
+        assert!(!vault.trash_dir().join("sub").exists());
+        assert!(vault.trash_dir().exists()); // ゴミ箱自体は消さない
+    }
+
+    #[test]
+    fn test_restore_同名があれば連番を付ける() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let moved = vault.trash(&note(root.path(), "a.md")).unwrap();
+        note(root.path(), "a.md"); // 同名の後継が生まれている
+
+        let restored = vault.restore(&moved).unwrap();
+        assert_eq!(restored, root.path().join("a-2.md"));
+    }
+
+    #[test]
+    fn test_restore_ゴミ箱の外は拒否する() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let alive = note(root.path(), "生きている.md");
+        assert!(vault.restore(&alive).is_err());
+        assert!(alive.exists());
     }
 }

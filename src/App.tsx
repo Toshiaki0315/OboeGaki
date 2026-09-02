@@ -6,6 +6,7 @@ import {
   createNote,
   readNote,
   renameNote,
+  restoreNote,
   trashNote,
   useAppStore,
   writeNote,
@@ -27,9 +28,22 @@ function noteStem(path: string): string {
   return base.replace(/\.(md|markdown)$/i, "");
 }
 
+function trashLabel(root: string, path: string): string {
+  const prefix = `${root}/.trash/`;
+  const relative = path.startsWith(prefix) ? path.slice(prefix.length) : path;
+  return relative.replace(/\.(md|markdown)$/i, "");
+}
+
 function App() {
-  const { vaultRoot, notes, currentPath, openVault, refresh, selectNote } =
-    useAppStore();
+  const {
+    vaultRoot,
+    notes,
+    trashNotes,
+    currentPath,
+    openVault,
+    refresh,
+    selectNote,
+  } = useAppStore();
   const [doc, setDoc] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const autosave = useMemo(() => createDebouncer(AUTOSAVE_DELAY_MS), []);
@@ -93,6 +107,13 @@ function App() {
     setStatus("");
   }
 
+  async function handleRestore(path: string) {
+    if (!vaultRoot) return;
+    const restored = await restoreNote(vaultRoot, path);
+    await refresh();
+    await openNote(restored); // 戻したノートをそのまま開いて見せる
+  }
+
   function handleDocChanged(getText: () => string) {
     if (!vaultRoot || !currentPath) return;
     const root = vaultRoot;
@@ -140,6 +161,19 @@ function App() {
             </li>
           ))}
         </ul>
+        {trashNotes.length > 0 && (
+          <details className="trash-section">
+            <summary>ゴミ箱（{trashNotes.length}）</summary>
+            <ul>
+              {trashNotes.map((path) => (
+                <li key={path} className="trash-item">
+                  <span>{trashLabel(vaultRoot, path)}</span>
+                  <button onClick={() => void handleRestore(path)}>戻す</button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </aside>
       <section className="editor-pane">
         {doc !== null && currentPath !== null ? (

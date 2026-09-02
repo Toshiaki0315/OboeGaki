@@ -7,27 +7,34 @@ import { invoke } from "@tauri-apps/api/core";
 type AppState = {
   vaultRoot: string | null;
   notes: string[];
+  trashNotes: string[];
   currentPath: string | null;
   openVault: (root: string) => Promise<void>;
   refresh: () => Promise<void>;
   selectNote: (path: string | null) => void;
 };
 
+async function fetchLists(root: string) {
+  const notes = await invoke<string[]>("vault_open", { root });
+  const trashNotes = await invoke<string[]>("trash_list", { root });
+  return { notes, trashNotes };
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   vaultRoot: null,
   notes: [],
+  trashNotes: [],
   currentPath: null,
 
   async openVault(root) {
-    const notes = await invoke<string[]>("vault_open", { root });
-    set({ vaultRoot: root, notes, currentPath: null });
+    const lists = await fetchLists(root);
+    set({ vaultRoot: root, ...lists, currentPath: null });
   },
 
   async refresh() {
     const root = get().vaultRoot;
     if (!root) return;
-    const notes = await invoke<string[]>("vault_open", { root });
-    set({ notes });
+    set(await fetchLists(root));
   },
 
   selectNote(path) {
@@ -61,4 +68,8 @@ export async function renameNote(
 
 export async function trashNote(root: string, path: string): Promise<string> {
   return invoke<string>("note_trash", { root, path });
+}
+
+export async function restoreNote(root: string, path: string): Promise<string> {
+  return invoke<string>("note_restore", { root, path });
 }
