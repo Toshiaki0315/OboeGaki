@@ -19,15 +19,23 @@ CodeMirror 6（編集コア）/ Lezer（パーサ）/ Zustand / dnd-kit
 | `fixtures/*.md` | 振る舞い検証用の入力（basic / japanese / edge_cases / large） | スタック非依存の仕様資産 |
 | `fixtures/golden/*.json` | 各 fixture の期待ハイライト結果（行ごとの block 種別と range） | range のオフセットと分類は新スキャナの検証にそのまま使える。書式ラベル（`hidden:0.5` 等）は Qt 実装の表現なので読み替える |
 
-## 最初のマイルストーン
+## 最初のマイルストーン: スパイク 3 本 — **全部 GO**（2026-09-02）
 
-リポジトリ整備より先に、技術的な山場のスパイクを通す:
+移行判断のゲートだった技術検証は完了。詳細は各 `spikes/*/README.md`。
 
-1. **日本語 flanking** — `日本語の**強調**` を CommonMark の flanking 規則を
-   緩めて検出できるか（Lezer の markdown パーサ拡張で解けるか）。
-   参照: spec §6.5、`fixtures/golden/japanese.json`
-2. マーカー隠蔽 — `Decoration.replace` でカーソル近傍だけソースを見せる
-   Obsidian 型ライブプレビューの最小実装
-3. IME — 変換中に装飾更新が確定文字列を壊さないこと（手動確認）
+1. ✅ **日本語 flanking**（`spikes/01-flanking/`）— Lezer 拡張 30 行で解決。
+   参照実装オラクルと fixtures 段落 113/113 一致
+2. ✅ **マーカー隠蔽**（`spikes/02-marker-hiding/`）— `Decoration.replace` で
+   R1/R4/R5 相当が構造的に成立。Undo 1 段も確認
+3. ✅ **IME**（`spikes/03-ime/`）— 手動確認 3 項目パス。
+   WKWebView（Tauri 実行環境）での再確認だけ残課題
 
-ここが通らなければ移行計画自体を見直す。
+## 次のマイルストーン
+
+Tauri v2 の足場を作り、スパイクの成果をエディタコアとして移植する:
+
+- `npm create tauri-app`（React + TS + Vite）で骨格を作る
+- WKWebView 上で IME 3 項目を再確認（スパイク #3 の残課題）
+- テスト基盤（vitest + cargo test）と CI を先に整える — hitofude と同じく
+  TDD で進めるため
+- 参照実装の spec を新スタック前提に書き直す章立てを決める
