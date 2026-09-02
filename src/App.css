@@ -188,10 +188,12 @@ body {
   border-color: color-mix(in srgb, currentColor 35%, transparent);
 }
 
-.search-hit {
+/* `.note-list li button` の display: block に負けないよう同じ詳細度で書く */
+.note-list li button.search-hit {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  min-width: 0;
 }
 
 .hit-title {
@@ -199,6 +201,8 @@ body {
 }
 
 .hit-snippet {
+  display: block;
+  max-width: 100%;
   font-size: 0.8rem;
   opacity: 0.65;
   overflow: hidden;
