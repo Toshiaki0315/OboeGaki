@@ -1,7 +1,12 @@
 // 書式トグル（spec §5.4）の検証。分岐が本体なのでここで網羅する。
 
 import { describe, expect, test } from "vitest";
-import { insertLink, toggleWrap } from "./format-commands";
+import {
+  insertLink,
+  shiftHeading,
+  toggleCheckbox,
+  toggleWrap,
+} from "./format-commands";
 
 describe("toggleWrap", () => {
   test("選択が無ければ記号だけ置いて間にキャレットを入れる", () => {
@@ -108,5 +113,43 @@ describe("insertLink", () => {
       selectStart: caret,
       selectEnd: caret,
     });
+  });
+});
+
+describe("shiftHeading", () => {
+  test("下げると # が増え、段落は見出しになる", () => {
+    expect(shiftHeading("# 題", 1)).toBe("## 題");
+    expect(shiftHeading("段落", 1)).toBe("# 段落");
+  });
+
+  test("上げると # が減り、H1 は段落へ戻る", () => {
+    expect(shiftHeading("## 題", -1)).toBe("# 題");
+    expect(shiftHeading("# 題", -1)).toBe("題");
+  });
+
+  test("範囲外は変化しない（None 相当）", () => {
+    expect(shiftHeading("段落", -1)).toBeNull();
+    expect(shiftHeading("###### 題", 1)).toBeNull();
+  });
+});
+
+describe("toggleCheckbox", () => {
+  test("タスク項目は [ ] と [x] を往復する", () => {
+    expect(toggleCheckbox("- [ ] やる", "list")).toBe("- [x] やる");
+    expect(toggleCheckbox("- [x] 済み", "list")).toBe("- [ ] 済み");
+  });
+
+  test("ただのリスト項目にはチェックボックスを付ける", () => {
+    expect(toggleCheckbox("- 項目", "list")).toBe("- [ ] 項目");
+    expect(toggleCheckbox("  3. 番号", "list")).toBe("  3. [ ] 番号");
+  });
+
+  test("ただの行はリスト項目に変えたうえで付ける", () => {
+    expect(toggleCheckbox("ただの文", "paragraph")).toBe("- [ ] ただの文");
+  });
+
+  test("見出しとコードはタスクにしない（事故防止）", () => {
+    expect(toggleCheckbox("# 見出し", "heading")).toBeNull();
+    expect(toggleCheckbox("const a = 1;", "code")).toBeNull();
   });
 });

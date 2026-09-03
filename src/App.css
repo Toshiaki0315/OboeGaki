@@ -215,3 +215,66 @@ body {
   opacity: 0.6;
   font-size: 0.9rem;
 }
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 25%, transparent);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  z-index: 10;
+}
+
+.palette {
+  width: min(32rem, 90vw);
+  background: Canvas;
+  color: CanvasText;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px color-mix(in srgb, black 35%, transparent);
+  padding: 0.6rem;
+}
+
+.palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 1rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.4rem;
+}
+
+.palette-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.palette ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+.palette li button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.palette li button.selected {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}

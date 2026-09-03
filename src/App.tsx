@@ -6,6 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import type { Activation } from "./editor/activation";
 import { createDebouncer } from "./lib/debounce";
+import { rankCandidates } from "./lib/fuzzy";
 import {
   createNote,
   imageSource,
@@ -66,6 +67,11 @@ function App() {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const searchSoon = useMemo(() => createDebouncer(200), []);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // クイックオープン（Cmd+O、spec §5.4）
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [paletteIndex, setPaletteIndex] = useState(0);
 
   async function chooseVault() {
     const picked = await open({ directory: true });
@@ -192,6 +198,40 @@ function App() {
   // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
   useEffect(() => () => autosave.flush(), [autosave]);
 
+  // グローバルショートカット（spec §5.4）。ハンドラは一度だけ登録し、
+  // 最新の状態は ref 経由で読む
+  const shortcutActions = useRef({
+    create: handleCreate,
+    flushSave: () => autosave.flush(),
+  });
+  shortcutActions.current = {
+    create: handleCreate,
+    flushSave: () => autosave.flush(),
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "o" && !event.shiftKey) {
+        event.preventDefault();
+        setQuickOpen((open) => !open);
+        setPaletteQuery("");
+        setPaletteIndex(0);
+      } else if (key === "n" && !event.shiftKey) {
+        event.preventDefault();
+        void shortcutActions.current.create();
+      } else if (key === "s" && !event.shiftKey) {
+        event.preventDefault();
+        shortcutActions.current.flushSave(); // 自動保存があるので実質フラッシュ
+      } else if (key === "f" && event.shiftKey) {
+        event.preventDefault(); // 全ノート検索（Cmd+Shift+F）
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // 起動時間の実測（spec §6.6）。ベンチ時は Rust 側が印字して終了する
   useEffect(() => {
     invoke<number>("startup_elapsed_ms")
@@ -262,6 +302,7 @@ function App() {
           <button onClick={() => void chooseVault()}>フォルダ変更</button>
         </header>
         <input
+          ref={searchInputRef}
           className="search-input"
           type="search"
           placeholder="検索"
@@ -311,6 +352,72 @@ function App() {
           </details>
         )}
       </aside>
+      {quickOpen &&
+        (() => {
+          const labels = notes.map((path) => noteLabel(vaultRoot, path));
+          const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
+          const choose = (rankedIndex: number) => {
+            const noteIndex = ranked[rankedIndex];
+            if (noteIndex === undefined) return;
+            setQuickOpen(false);
+            void openNote(notes[noteIndex]);
+          };
+          return (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setQuickOpen(false)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <input
+                  autoFocus
+                  className="palette-input"
+                  placeholder="ノート名で開く"
+                  value={paletteQuery}
+                  onChange={(event) => {
+                    setPaletteQuery(event.currentTarget.value);
+                    setPaletteIndex(0);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setQuickOpen(false);
+                    else if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setPaletteIndex((i) =>
+                        Math.min(i + 1, ranked.length - 1),
+                      );
+                    } else if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setPaletteIndex((i) => Math.max(i - 1, 0));
+                    } else if (event.key === "Enter") {
+                      event.preventDefault();
+                      choose(paletteIndex);
+                    }
+                  }}
+                />
+                <ul>
+                  {ranked.map((noteIndex, rankedIndex) => (
+                    <li key={notes[noteIndex]}>
+                      <button
+                        className={
+                          rankedIndex === paletteIndex ? "selected" : ""
+                        }
+                        onMouseEnter={() => setPaletteIndex(rankedIndex)}
+                        onClick={() => choose(rankedIndex)}
+                      >
+                        {labels[noteIndex]}
+                      </button>
+                    </li>
+                  ))}
+                  {ranked.length === 0 && (
+                    <li className="no-hits">見つかりません</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          );
+        })()}
       <section className="editor-pane">
         {doc !== null && currentPath !== null ? (
           <>
