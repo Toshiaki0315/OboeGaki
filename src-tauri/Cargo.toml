@@ -1,5 +1,6 @@
 [package]
 name = "oboegaki"
+default-run = "oboegaki"
 version = "0.1.0"
 description = "覚書 — ライブプレビュー型 Markdown エディタ"
 authors = ["NOMURA Toshiaki"]
