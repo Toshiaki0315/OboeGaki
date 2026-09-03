@@ -32,6 +32,13 @@ import {
   vaultErrorText,
 } from "./lib/last-vault";
 import {
+  loadSearches,
+  removeSearch,
+  saveSearches,
+  upsertSearch,
+  type SavedSearch,
+} from "./lib/saved-searches";
+import {
   clampPaneWidth,
   contentWidthCss,
   CONTENT_WIDTHS,
@@ -179,7 +186,33 @@ function App() {
   currentPathRef.current = currentPath;
   const dirtyRef = useRef(false); // 保存されていない編集があるか
   const [query, setQuery] = useState("");
+  // メニューのハンドラは一度だけ登録するので、最新の式は ref で読む
+  const queryRef = useRef(query);
+  queryRef.current = query;
   const [hits, setHits] = useState<SearchHit[]>([]);
+  // 保存した検索（K-4）。名前を付けた検索式をサイドバーに置く
+  const [searches, setSearches] = useState<SavedSearch[]>(() =>
+    loadSearches(localStorage),
+  );
+  // 「検索を保存…」の名前入力。null は閉じている
+  const [savingSearch, setSavingSearch] = useState<string | null>(null);
+  const searchName = useRef<HTMLInputElement>(null);
+
+  function keepSearches(next: SavedSearch[]) {
+    setSearches(next);
+    saveSearches(localStorage, next);
+  }
+
+  function confirmSaveSearch() {
+    const name = searchName.current?.value.trim() ?? "";
+    const typed = savingSearch?.trim() ?? "";
+    if (!name || !typed) return;
+    setSavingSearch(null);
+    // 同じ名前は上書き（検索式の更新に使う）
+    keepSearches(upsertSearch(searches, { name, query: typed }));
+    setStatus(`検索「${name}」を保存しました`);
+  }
+
   // タグでの絞り込み（C-4）。検索とは排他 — どちらも一覧の中身を差し替える
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tagNotes, setTagNotes] = useState<NoteEntry[]>([]);
@@ -1040,6 +1073,14 @@ function App() {
       setPaletteIndex(0);
     },
     "search-all": () => searchInputRef.current?.focus(),
+    "save-search": () => {
+      const typed = queryRef.current.trim();
+      if (!typed) {
+        setStatus("保存する検索式がありません（検索欄に打ってから）");
+        return;
+      }
+      setSavingSearch(typed);
+    },
     outline: toggleOutline,
     "heading-palette": openHeadingPalette,
     "toggle-trees": () =>
@@ -1429,6 +1470,33 @@ function App() {
                 ))}
               </ul>
             </>
+          )}
+          {settings.treesVisible && searches.length > 0 && (
+            <details className="search-section" open>
+              <summary>保存した検索（{searches.length}）</summary>
+              <ul>
+                {searches.map((entry) => (
+                  <li key={entry.name}>
+                    <button
+                      className="saved-search-row"
+                      title={entry.query}
+                      onClick={() => handleQueryChanged(entry.query)}
+                    >
+                      <span className="saved-search-name">{entry.name}</span>
+                    </button>
+                    <button
+                      className="saved-search-remove"
+                      title="この検索を外す"
+                      onClick={() =>
+                        keepSearches(removeSearch(searches, entry.name))
+                      }
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
           {settings.treesVisible && (
             <details className="folder-section" open>
@@ -2111,6 +2179,39 @@ function App() {
             </div>
           );
         })()}
+      {savingSearch !== null && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setSavingSearch(null)}
+        >
+          <div
+            className="palette"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="palette-title">検索を保存</header>
+            <div className="table-dialog-fields">
+              <label>
+                サイドバーに出す名前
+                <input
+                  ref={searchName}
+                  autoFocus
+                  // 既定は式そのもの（短い式ならそのまま通せる）
+                  defaultValue={savingSearch}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") confirmSaveSearch();
+                    else if (event.key === "Escape") setSavingSearch(null);
+                  }}
+                />
+              </label>
+            </div>
+            <p className="dialog-text">検索式: {savingSearch}</p>
+            <div className="conflict-actions">
+              <button onClick={() => setSavingSearch(null)}>やめる</button>
+              <button onClick={confirmSaveSearch}>保存</button>
+            </div>
+          </div>
+        </div>
+      )}
       {templateName !== null && (
         <div
           className="palette-backdrop"
