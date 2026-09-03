@@ -35,6 +35,9 @@ pub struct WatchState {
     /// 開いている vault のロック（H-1 層 2）。**開いている間は持ち続ける**
     /// （手放すと OS がロックを外す）。別の vault を開いたら置き換える。
     lock: Mutex<Option<crate::vault_lock::VaultLock>>,
+    /// 走査が動いているか（M-6）。**二重に走らせない** — 同じ索引を
+    /// 2 本で書くと、片方の見た「消えた」がもう片方の書き込みを消す
+    syncing: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for WatchState {
@@ -43,6 +46,7 @@ impl Default for WatchState {
             watcher: Mutex::new(None),
             suppressor: Arc::new(Suppressor::default()),
             lock: Mutex::new(None),
+            syncing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -429,6 +433,50 @@ pub fn note_backlinks(
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.backlinks(&title))
         .map_err(|e| e.to_string())
+}
+
+/// ファイルと索引を手で合わせ直す（M-6）。始めたら true、走査中なら false。
+///
+/// 監視（watcher）は動いている間しか効かず、閉じている間の操作や
+/// ネットワーク越しの変更は取りこぼす。**取りこぼしたことは画面から
+/// 分からない**ので、押せば必ず合う道を用意する。
+///
+/// `full` は索引を捨てて全部読み直す（索引そのものが疑わしいとき）。
+/// 終わったら `index-synced` に結果を載せて知らせる。
+#[tauri::command]
+pub fn index_sync(
+    app: tauri::AppHandle,
+    state: tauri::State<WatchState>,
+    root: String,
+    full: bool,
+) -> Result<bool, String> {
+    use std::sync::atomic::Ordering;
+    if state.syncing.swap(true, Ordering::SeqCst) {
+        return Ok(false); // 走査中。**押しても無反応に見せない**のは呼ぶ側
+    }
+    let syncing = state.syncing.clone();
+    std::thread::spawn(move || {
+        use tauri::Emitter;
+        let vault = Vault::new(&root);
+        let outcome = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+            if full {
+                db.rebuild(&vault)
+            } else {
+                db.sync(&vault)
+            }
+        });
+        syncing.store(false, Ordering::SeqCst);
+        match outcome {
+            Ok(result) => {
+                let _ = app.emit("index-synced", (full, result));
+            }
+            Err(error) => {
+                eprintln!("索引の同期に失敗した: {error}");
+                let _ = app.emit("index-sync-failed", error.to_string());
+            }
+        }
+    });
+    Ok(true)
 }
 
 /// 退避の置き場（vault ごと）。アプリのデータフォルダの下に作る。

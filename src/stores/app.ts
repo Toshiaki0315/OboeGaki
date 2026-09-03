@@ -262,6 +262,16 @@ export async function clearRecovery(root: string): Promise<void> {
   await invoke("recovery_clear", { root });
 }
 
+/// 走査の結果（M-6）。「何も起きなかった」と「壊れている」を分けるために
+/// 何件動いたかを返す。
+export type SyncResult = { added: number; updated: number; removed: number };
+
+/// ファイルと索引を手で合わせ直す。始めたら true、走査中なら false。
+/// 終わりは "index-synced" イベントで届く。
+export async function syncIndex(root: string, full: boolean): Promise<boolean> {
+  return invoke<boolean>("index_sync", { root, full });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

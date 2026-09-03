@@ -35,6 +35,14 @@ const SEARCH_LIMIT: usize = 50;
 /// 一覧に出す本文の頭。参照実装 core/document.py の preview と同じ 200 文字。
 const PREVIEW_CHARS: usize = 200;
 
+/// 走査の結果（M-6 の知らせに使う）。
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct SyncResult {
+    pub added: usize,
+    pub updated: usize,
+    pub removed: usize,
+}
+
 /// 一覧に出すノートの素材（ADR-0022 系の一覧強化）。
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub struct NoteMeta {
@@ -224,7 +232,11 @@ impl IndexDb {
 
     /// vault と索引の差分同期。(mtime_ns, size_bytes) が一致する行は触らない。
     /// 読めないファイルは飛ばす（1 つのせいで全体を止めない）。
-    pub fn sync(&mut self, vault: &Vault) -> rusqlite::Result<()> {
+    ///
+    /// 何が増えて・変わって・消えたかを返す。**「何も起きなかった」と
+    /// 「壊れている」を分ける**ため — 手で同期した人には、変わらなかった
+    /// ことをはっきり言わないと失敗と区別が付かない。
+    pub fn sync(&mut self, vault: &Vault) -> rusqlite::Result<SyncResult> {
         let root = vault.root().to_path_buf();
         let mut existing: HashMap<String, (i64, i64)> = HashMap::new();
         {
@@ -241,6 +253,7 @@ impl IndexDb {
         }
         let tx = self.conn.transaction()?;
         let mut seen: HashSet<String> = HashSet::new();
+        let mut result = SyncResult::default();
         for absolute in vault.scan() {
             let Ok(relative) = absolute.strip_prefix(&root) else {
                 continue;
@@ -255,15 +268,37 @@ impl IndexDb {
             if existing.get(&relative) == Some(&(mtime, size)) {
                 continue; // 変わっていない
             }
+            if existing.contains_key(&relative) {
+                result.updated += 1;
+            } else {
+                result.added += 1;
+            }
             index_one(&tx, &root, &absolute)?;
         }
         for gone in existing.keys().filter(|path| !seen.contains(*path)) {
+            result.removed += 1;
             tx.execute("DELETE FROM notes WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM notes_fts WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM tags WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM links WHERE path = ?1", [gone])?;
         }
-        tx.commit()
+        tx.commit()?;
+        Ok(result)
+    }
+
+    /// 索引を捨てて全部読み直す（M-6「索引を作り直す」）。
+    ///
+    /// **捨ててよいのは索引だけ**（T7 / ADR-0023）。`.md` も
+    /// `.OboeGaki/history/` も触らない。差分同期で拾えない「索引そのものが
+    /// 疑わしい」ときの最後の手段で、ノートの数だけ時間がかかる。
+    pub fn rebuild(&mut self, vault: &Vault) -> rusqlite::Result<SyncResult> {
+        self.conn.execute_batch(
+            "DELETE FROM notes;
+             DELETE FROM notes_fts;
+             DELETE FROM tags;
+             DELETE FROM links;",
+        )?;
+        self.sync(vault)
     }
 
     /// 一覧の素材を返す。並び順はフロント側の持ち物（設定で切り替える）。
@@ -652,6 +687,39 @@ mod tests {
         fs::remove_file(root.path().join("a.md")).unwrap();
         db.sync(&vault).unwrap();
         assert_eq!(db.search("改訂した中身").unwrap(), vec![]);
+    }
+
+    #[test]
+    fn test_sync_何が増えて変わって消えたかを返す() {
+        // **「何も起きなかった」と「壊れている」を分ける。** 変わらなかった
+        // ことをはっきり言わないと、押した人には失敗と区別が付かない
+        let (root, vault) = vault_with(&[("a.md", "# a\n"), ("b.md", "# b\n")]);
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+
+        let first = db.sync(&vault).unwrap();
+        assert_eq!((first.added, first.updated, first.removed), (2, 0, 0));
+
+        // 2 回目は何も変わらない
+        let again = db.sync(&vault).unwrap();
+        assert_eq!((again.added, again.updated, again.removed), (0, 0, 0));
+
+        fs::write(root.path().join("a.md"), "# a\n\n書き足した\n").unwrap();
+        fs::remove_file(root.path().join("b.md")).unwrap();
+        let changed = db.sync(&vault).unwrap();
+        assert_eq!((changed.added, changed.updated, changed.removed), (0, 1, 1));
+    }
+
+    #[test]
+    fn test_rebuild_全部読み直す() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n"), ("b.md", "# b\n")]);
+        let mut db = synced(&vault);
+
+        // **捨ててよいのは索引だけ**（T7）。作り直しても .md は触らない
+        let result = db.rebuild(&vault).unwrap();
+
+        assert_eq!((result.added, result.updated, result.removed), (2, 0, 0));
+        assert_eq!(db.list_notes().unwrap().len(), 2);
+        assert_eq!(paths(&db.search("# a").unwrap()), ["a.md"]);
     }
 
     #[test]

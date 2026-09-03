@@ -67,6 +67,10 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("move-note", "フォルダへ移動…", None)?)
         .item(&item("open-vault", "保管フォルダを開く…", None)?)
         .separator()
+        // 手入れ（M-6）。監視が取りこぼしたぶんを押せば必ず合わせられる
+        .item(&item("resync", "最新の情報に同期", None)?)
+        .item(&item("rebuild-index", "索引を作り直す", None)?)
+        .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
         .item(&item("export-html", "HTML に書き出し…", None)?)
         .separator()
@@ -209,6 +213,7 @@ pub fn run() {
             commands::folder_delete,
             commands::note_move,
             commands::note_backlinks,
+            commands::index_sync,
             commands::recovery_stash,
             commands::recovery_discard,
             commands::recovery_pending,

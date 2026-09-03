@@ -70,6 +70,7 @@ import {
   renameFolder,
   restoreRecovery,
   stashNote,
+  syncIndex,
   discardStash,
   historyRestore,
   imageSource,
@@ -88,6 +89,7 @@ import {
   type Backlink,
   type HistoryEntry,
   type SearchHit,
+  type SyncResult,
 } from "./stores/app";
 import "./App.css";
 
@@ -957,6 +959,8 @@ function App() {
     "place-manual": () => void handlePlaceManual(),
     preferences: () => setPreferences(true),
     "open-vault": () => void chooseVault(),
+    resync: () => void handleSync(false),
+    "rebuild-index": () => void handleSync(true),
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
     history: () => void openHistory(),
@@ -990,6 +994,51 @@ function App() {
   useEffect(() => {
     const unlisten = listen<string>("menu", (event) => {
       menuActions.current[event.payload]?.();
+    });
+    return () => void unlisten.then((stop) => stop());
+  }, []);
+
+  /// ファイルと索引を手で合わせ直す（M-6）。**打ちかけを先に書く**
+  /// （走査は保存済みのものを読む）。
+  async function handleSync(full: boolean) {
+    if (!vaultRoot) return;
+    autosave.flush();
+    const started = await syncIndex(vaultRoot, full);
+    if (!started) {
+      setStatus("いま同期しています。終わるまでお待ちください");
+      return;
+    }
+    setStatus(
+      full
+        ? "索引を作り直しています…（ノートの数だけ時間がかかります）"
+        : "最新の情報に同期しています…",
+    );
+  }
+
+  // 走査の結果を知らせる（M-6）。**「変わりはありません」まで言う** —
+  // 変わらなかったことを言わないと、押した人には失敗と区別が付かない
+  useEffect(() => {
+    const unlisten = listen<[boolean, SyncResult]>("index-synced", (event) => {
+      const [full, result] = event.payload;
+      const parts = [
+        result.added > 0 && `${result.added} 件増えました`,
+        result.updated > 0 && `${result.updated} 件変わりました`,
+        result.removed > 0 && `${result.removed} 件消えました`,
+      ].filter(Boolean);
+      const head = full ? "索引を作り直しました" : "最新の情報に同期しました";
+      setStatus(
+        parts.length
+          ? `${head}（${parts.join("、")}）`
+          : `${head}（変わりはありません）`,
+      );
+      void useAppStore.getState().refresh();
+    });
+    return () => void unlisten.then((stop) => stop());
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<string>("index-sync-failed", (event) => {
+      setStatus(`索引の同期に失敗しました: ${event.payload}`);
     });
     return () => void unlisten.then((stop) => stop());
   }, []);
