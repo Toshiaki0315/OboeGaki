@@ -465,6 +465,73 @@ impl IndexDb {
         rows.collect()
     }
 
+    /// 関連するノートの根拠を索引から集める（L-3）。
+    ///
+    /// **モデルは通さない。** 関係の根拠は索引の中にある（`[[…]]` の
+    /// 指し合い・同じタグ・題名の言及）。並べ方は `related::rank`。
+    pub fn related_signals(
+        &self,
+        path: &str,
+        title: &str,
+    ) -> rusqlite::Result<Vec<crate::related::Signal>> {
+        use crate::related::{Signal, LINK, SHARED_TAG, TEXT};
+        let mut found = Vec::new();
+
+        // 手で結んだものがいちばん強い: 指されている
+        for back in self.backlinks(title)? {
+            found.push(Signal {
+                key: back.path,
+                reason: "このノートを指している".to_string(),
+                weight: LINK,
+            });
+        }
+        // 指している（題名で引き当てる。まだ無いノートは相手が居ない）
+        let mut statement = self.conn.prepare(
+            "SELECT other.path, links.target FROM links
+             JOIN notes AS other ON other.title = links.target COLLATE NOCASE
+             WHERE links.path = ?1",
+        )?;
+        let rows = statement.query_map([path], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (other, target) = row?;
+            found.push(Signal {
+                key: other,
+                reason: format!("[[{target}]] で指している"),
+                weight: LINK,
+            });
+        }
+        // 同じタグ
+        let mut statement = self.conn.prepare(
+            "SELECT other.path, mine.tag FROM tags AS mine
+             JOIN tags AS other ON other.tag = mine.tag
+             WHERE mine.path = ?1 AND other.path <> ?1",
+        )?;
+        let rows = statement.query_map([path], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (other, tag) = row?;
+            found.push(Signal {
+                key: other,
+                reason: format!("同じタグ #{tag}"),
+                weight: SHARED_TAG,
+            });
+        }
+        // 題名が本文に出てくる（手で結んでいなくても言及は関係の印）
+        if !title.is_empty() {
+            for hit in self.search(title)? {
+                found.push(Signal {
+                    key: hit.path,
+                    reason: "題名が本文に出てくる".to_string(),
+                    weight: TEXT,
+                });
+            }
+        }
+        Ok(found)
+    }
+
     /// 題名 → 指している先（と続柄）の対応（M-2 のリンクの図）。
     ///
     /// **図は索引から作る。** 本文を全部読み直すと 5,000 ノートで待たされる。
@@ -888,6 +955,31 @@ mod tests {
 
         assert!(db.notes_with_tag("会議").unwrap().is_empty());
         assert!(db.notes_with_tag("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_related_signals_索引から根拠を集める() {
+        let (_root, vault) = vault_with(&[
+            ("会議メモ.md", "# 会議メモ\n\n#仕事 の記録。\n"),
+            ("日報.md", "# 日報\n\n#仕事 と [[会議メモ]]\n"),
+            ("計画.md", "# 計画\n\n会議メモ について書いた。\n"),
+            ("無関係.md", "# 無関係\n\nべつの話。\n"),
+        ]);
+        let db = synced(&vault);
+
+        let signals = db.related_signals("会議メモ.md", "会議メモ").unwrap();
+        let found = crate::related::rank(&signals, "会議メモ.md", 8);
+
+        let keys: Vec<&str> = found.iter().map(|item| item.key.as_str()).collect();
+        assert!(keys.contains(&"日報.md"));
+        assert!(keys.contains(&"計画.md"));
+        assert!(!keys.contains(&"無関係.md"));
+        // **手で結んだ関係がいちばん強い**（リンク + 同じタグ > 言及だけ）
+        assert_eq!(found[0].key, "日報.md");
+        assert!(found[0]
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("指している")));
     }
 
     #[test]

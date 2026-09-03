@@ -314,6 +314,23 @@ export async function trashAttachments(
   return invoke<number>("attachments_trash", { root, paths });
 }
 
+/// 関連するノート（L-3）。**モデルは通さない**ので、Ollama が無くても出る。
+export type RelatedNote = {
+  /// vault からの相対パス
+  path: string;
+  title: string;
+  /// 出た理由（そのまま画面に出す）
+  reasons: string[];
+};
+
+export async function noteRelated(
+  root: string,
+  path: string,
+  title: string,
+): Promise<RelatedNote[]> {
+  return invoke<RelatedNote[]>("note_related", { root, path, title });
+}
+
 /// リンクの図の素材（M-2）。`[指すノートの題名, 指し先, 続柄]`。
 export async function linkMap(
   root: string,

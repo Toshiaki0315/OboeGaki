@@ -95,6 +95,7 @@ import {
   moveNote,
   noteBacklinks,
   noteExists,
+  noteRelated,
   notesInFolder,
   pendingRecovery,
   renameFolder,
@@ -119,6 +120,7 @@ import {
   useAppStore,
   writeNote,
   type Backlink,
+  type RelatedNote,
   type HistoryEntry,
   type SearchHit,
   type SyncResult,
@@ -769,6 +771,28 @@ function App() {
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [answer, setAnswer] = useState("");
   const [thinking, setThinking] = useState(false);
+
+  // 関連するノート（L-3）。**モデルは通さない**ので、Ollama が無くても出る
+  const [related, setRelated] = useState<RelatedNote[]>([]);
+
+  // 開いているノートが変わったら引き直す（索引が更新されたときも）
+  useEffect(() => {
+    if (!assistantOpen || !vaultRoot || !currentPath) {
+      setRelated([]);
+      return;
+    }
+    let alive = true;
+    void noteRelated(vaultRoot, currentPath, noteStem(currentPath))
+      .then((found) => {
+        if (alive) setRelated(found);
+      })
+      .catch(() => {
+        if (alive) setRelated([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [assistantOpen, vaultRoot, currentPath, notes]);
 
   // 開いたときだけ動いているか確かめる（**押してから断らない**）
   useEffect(() => {
@@ -2812,6 +2836,29 @@ function App() {
         {assistantOpen && (
           <aside className="assistant-pane">
             <header>アシスタント</header>
+            {/* 関連するノートは索引から出す。**Ollama が無くても出る** */}
+            {related.length > 0 && (
+              <div className="related-notes">
+                <div className="related-title">関連するノート</div>
+                <ul>
+                  {related.map((entry) => (
+                    <li key={entry.path}>
+                      <button
+                        onClick={() =>
+                          void openNote(`${vaultRoot}/${entry.path}`)
+                        }
+                      >
+                        <span className="related-name">{entry.title}</span>
+                        {/* **理由をそのまま出す**（読めないと確かめようがない） */}
+                        <span className="related-reason">
+                          {entry.reasons.join(" / ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {llmReady === false ? (
               // **押してから断らない**（G-3 のゴミ箱と同じ作法）
               <p className="assistant-note">

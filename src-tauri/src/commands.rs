@@ -766,6 +766,48 @@ pub fn recovery_clear(app: tauri::AppHandle, root: String) -> Result<(), String>
     Ok(())
 }
 
+/// 関連するノート（L-3）。**モデルは通さない** — 根拠は索引の中にある
+/// ので、Ollama を入れていなくても出る。
+#[derive(serde::Serialize)]
+pub struct RelatedNote {
+    /// vault からの相対パス
+    pub path: String,
+    pub title: String,
+    /// 出た理由（**そのまま画面に出す**。読めないと確かめようがない）
+    pub reasons: Vec<String>,
+}
+
+#[tauri::command]
+pub fn note_related(root: String, path: String, title: String) -> Result<Vec<RelatedNote>, String> {
+    let vault = Vault::new(&root);
+    let relative = Path::new(&path)
+        .strip_prefix(&root)
+        .map(|rest| rest.to_string_lossy().into_owned())
+        .unwrap_or(path.clone());
+    let db = IndexDb::open(&vault.managed_dir()).map_err(|e| e.to_string())?;
+    let signals = db
+        .related_signals(&relative, &title)
+        .map_err(|e| e.to_string())?;
+    let ranked = crate::related::rank(&signals, &relative, crate::related::DEFAULT_LIMIT);
+    let titles: std::collections::HashMap<String, String> = db
+        .list_notes()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|note| (note.path, note.title))
+        .collect();
+    Ok(ranked
+        .into_iter()
+        .map(|item| RelatedNote {
+            title: titles
+                .get(&item.key)
+                .cloned()
+                .unwrap_or_else(|| item.key.clone()),
+            path: item.key,
+            reasons: item.reasons,
+        })
+        .collect())
+}
+
 /// リンクの図の素材（M-2）。`(指すノートの題名, 指し先, 続柄)`。
 ///
 /// **図は索引から作る。** 本文を全部読み直すと大きな vault で待たされる。

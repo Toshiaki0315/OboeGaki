@@ -12,6 +12,7 @@ pub mod llm;
 pub mod ocr;
 pub mod recovery;
 pub mod references;
+pub mod related;
 pub mod search_query;
 pub mod tags;
 pub mod template;
@@ -241,6 +242,7 @@ pub fn run() {
             commands::note_move,
             commands::note_backlinks,
             commands::link_map,
+            commands::note_related,
             commands::index_sync,
             commands::recovery_stash,
             commands::recovery_discard,
