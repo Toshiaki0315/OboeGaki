@@ -64,3 +64,70 @@ describe("createDebouncer", () => {
     expect(debouncer.pending).toBe(false);
   });
 });
+
+describe("非同期 action と flush の完了待ち", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // レビュー 2026-09-04: flush が「発射」しか保証せず、保存（非同期）の
+  // 完了前に改名・ピン留め・書き出しが走ってデータが巻き戻っていた
+
+  test("test_flushは非同期actionの完了まで待てる", async () => {
+    const debouncer = createDebouncer(800);
+    let settled = false;
+    debouncer.schedule(async () => {
+      await Promise.resolve();
+      settled = true;
+    });
+    await debouncer.flush();
+    expect(settled).toBe(true);
+  });
+
+  test("test_発射済みで実行中の保存もflushで待てる", async () => {
+    const debouncer = createDebouncer(800);
+    let release!: () => void;
+    let settled = false;
+    debouncer.schedule(
+      () =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            settled = true;
+            resolve();
+          };
+        }),
+    );
+    vi.advanceTimersByTime(800); // タイマーで発射（まだ完了していない）
+    expect(debouncer.pending).toBe(false);
+    const waited = debouncer.flush(); // 予約は無いが、実行中を待つ
+    release();
+    await waited;
+    expect(settled).toBe(true);
+  });
+
+  test("test_実行中に次が発射されても直列になる", async () => {
+    const debouncer = createDebouncer(800);
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    debouncer.schedule(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+          order.push("first-start");
+        }),
+    );
+    vi.advanceTimersByTime(800);
+    debouncer.schedule(async () => {
+      order.push("second-start");
+    });
+    const waited = debouncer.flush();
+    order.push("first-release");
+    releaseFirst();
+    await waited;
+    expect(order).toEqual(["first-start", "first-release", "second-start"]);
+  });
+
+  test("test_flushは予約も実行中も無ければ即座に解決する", async () => {
+    const debouncer = createDebouncer(800);
+    await expect(debouncer.flush()).resolves.toBeUndefined();
+  });
+});

@@ -413,7 +413,7 @@ function App() {
       );
       // **元の場所にはリンクだけ残す**（書いた文は新しいノートへ移った）
       editorRef.current?.replaceSelection(found.link);
-      autosave.flush();
+      await autosave.flush();
       await refresh();
       setStatus(`「${found.title}」に切り出しました`);
     } catch (error) {
@@ -423,7 +423,7 @@ function App() {
 
   async function handleDuplicate(path: string) {
     if (!vaultRoot) return;
-    autosave.flush(); // 打ちかけを書き切ってから写す
+    await autosave.flush(); // 打ちかけを書き切ってから写す
     try {
       const copy = await duplicateNote(vaultRoot, path);
       await refresh();
@@ -544,7 +544,7 @@ function App() {
   /// 範囲しか DOM に無いので、そのまま刷ると本文が欠ける。
   async function handlePrint() {
     if (!vaultRoot || !currentPath) return;
-    autosave.flush();
+    await autosave.flush(); // 保存前の本文を刷らない
     const text = await readNote(vaultRoot, currentPath);
     const body = renderBody(
       text,
@@ -558,7 +558,7 @@ function App() {
   /// **ざっくり作って手で整える**前提。割り方は lib/slides.ts が決める。
   async function handleExportPptx() {
     if (!vaultRoot || !currentPath) return;
-    autosave.flush();
+    await autosave.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
     const target = await save({
@@ -663,7 +663,7 @@ function App() {
 
   async function handleExport() {
     if (!vaultRoot || !currentPath) return;
-    autosave.flush();
+    await autosave.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
     const html = await embedImages(
@@ -715,19 +715,22 @@ function App() {
 
   async function openHistory() {
     if (!vaultRoot || !currentPath) return;
-    autosave.flush(); // 未保存分を書き切ってから一覧を出す
+    await autosave.flush(); // 未保存分を書き切ってから一覧を出す
     setHistoryEntries(await historyList(vaultRoot, currentPath));
   }
 
   async function restoreVersion(entry: HistoryEntry) {
     if (!vaultRoot || !currentPath) return;
+    // **予約は聞く前に破棄する。** 確認ダイアログ中や書き戻しの直後に
+    // 自動保存が発火すると、戻したはずの版が今の本文で潰れる
+    //（レビュー 2026-09-04。openHistory が書き切っているので失うものは無い）
+    autosave.cancel();
     const ok = await confirm(
       `${entry.stamp} の版に戻しますか？\n（今の内容も履歴に残ります）`,
       { title: "覚書", kind: "warning" },
     );
     if (!ok) return;
     const text = await historyRestore(vaultRoot, currentPath, entry.path);
-    autosave.cancel();
     pendingSave.current = null;
     dirtyRef.current = false;
     editorRef.current?.replaceText(text);
@@ -776,7 +779,7 @@ function App() {
   async function chooseVault() {
     const picked = await open({ directory: true });
     if (typeof picked !== "string") return;
-    autosave.flush();
+    await autosave.flush(); // 前の vault の未保存分を書き切ってから移る
     try {
       await openVault(picked, settingsRef.current.trashDays);
     } catch (error) {
@@ -860,7 +863,7 @@ function App() {
   /// ノートを読ませる。**本文は書き換えない**（答えは横に出すだけ）。
   async function askAssistant(task: string) {
     if (!vaultRoot || !currentPath) return;
-    autosave.flush(); // 打ちかけを書き切ってから読ませる
+    await autosave.flush(); // 打ちかけを書き切ってから読ませる
     const text = editorRef.current?.getText() ?? "";
     setAnswer("");
     setThinking(true);
@@ -986,7 +989,7 @@ function App() {
 
   async function openNote(path: string, cursor: number | null = null) {
     if (!vaultRoot) return;
-    autosave.flush(); // 前のノートの未保存分を書き切ってから切り替える
+    await autosave.flush(); // 前のノートの未保存分を書き切ってから切り替える
     const text = await readNote(vaultRoot, path);
     selectNote(path);
     setInitialCursor(cursor);
@@ -1061,7 +1064,7 @@ function App() {
             `${vaultRoot}/${dialog.folder}/`,
             `${vaultRoot}/${renamed}/`,
           );
-          autosave.flush();
+          await autosave.flush();
           await openNote(moved);
         }
         if (folderFilter === dialog.folder) setFolderFilter(renamed);
@@ -1099,7 +1102,7 @@ function App() {
     if (!vaultRoot || !path) return;
     setMoveOpen(false);
     setMoveTarget(null);
-    autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    await autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const moved = await moveNote(vaultRoot, path, folder);
       await refresh();
@@ -1119,7 +1122,7 @@ function App() {
     const trimmed = title.trim();
     if (!trimmed || trimmed === noteStem(currentPath)) return;
     renaming.current = true;
-    autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    await autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const renamed = await renameNote(vaultRoot, currentPath, trimmed);
       await refresh();
@@ -1172,7 +1175,7 @@ function App() {
     const path = target ?? currentPath;
     if (!vaultRoot || !path) return;
     const current = notes.find((entry) => entry.path === path);
-    autosave.flush(); // 未保存分を書き切ってから front matter を触る
+    await autosave.flush(); // 未保存分を書き切ってから front matter を触る
     const text = await pinNote(vaultRoot, path, !current?.pinned);
     // 開いているノートなら、書き換わった front matter を読み直す
     if (path === currentPath) {
@@ -1368,9 +1371,15 @@ function App() {
         getText(),
         settingsRef.current.historyMinutes,
       );
-      dirtyRef.current = false;
-      setStatus("保存済み");
-      setSavedAt(Date.now());
+      // 完了する頃には別のノートが開いているかもしれない。共有の
+      // dirty と表示を触るのは**今もそのノートを開いているときだけ**
+      //（レビュー 2026-09-04: 取り違えると次の外部変更が「未編集」と
+      // 判定され、打ったばかりの内容が静かにリロードで消える）
+      if (currentPathRef.current === path) {
+        dirtyRef.current = false;
+        setStatus("保存済み");
+        setSavedAt(Date.now());
+      }
       // 書けたので保険は要らない。**退避したときだけ**捨てに行く
       // （毎回の保存でディスクを余分に叩かない）
       if (stashed.current.delete(path)) void discardStash(root, path);
@@ -1382,9 +1391,12 @@ function App() {
       lastStash.current = now;
       void keepStash(root, path, getText());
     }
-    autosave.schedule(() => {
-      void pendingSave.current?.().catch((error) => {
-        setStatus(`保存に失敗: ${String(error)}`);
+    autosave.schedule(async () => {
+      // Promise を返す（= flush が完了を待てる）。失敗はここで受け止める
+      await pendingSave.current?.().catch((error) => {
+        if (currentPathRef.current === path) {
+          setStatus(`保存に失敗: ${String(error)}`);
+        }
         // 保存できないまま落ちても書いたものを失わない（H-1）
         void keepStash(root, path, getText());
       });
@@ -1407,7 +1419,12 @@ function App() {
   }, [doc, currentPath, statsSoon]);
 
   // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
-  useEffect(() => () => autosave.flush(), [autosave]);
+  useEffect(
+    () => () => {
+      void autosave.flush(); // 完了は待てない（React の破棄は同期）
+    },
+    [autosave],
+  );
 
   // グローバルショートカット（spec §5.4）。ハンドラは一度だけ登録し、
   // 最新の状態は ref 経由で読む
@@ -1520,7 +1537,7 @@ function App() {
     if (!vaultRoot) return;
     // **書きかけの本文も数える。** 先に保存しないと、貼ったばかりの画像が
     // 「どこからも指されていない」ことになって消える
-    autosave.flush();
+    await autosave.flush();
     const found = await unusedAttachments(vaultRoot);
     if (found.length === 0) {
       setStatus("どの添付もノートから使われています");
@@ -1546,7 +1563,7 @@ function App() {
   /// （走査は保存済みのものを読む）。
   async function handleSync(full: boolean) {
     if (!vaultRoot) return;
-    autosave.flush();
+    await autosave.flush();
     const started = await syncIndex(vaultRoot, full);
     if (!started) {
       setStatus("いま同期しています。終わるまでお待ちください");
@@ -1648,7 +1665,10 @@ function App() {
       return;
     }
     // 競合。3 択（外部 / 自分 / 両方残す = spec §7.5）をアプリ内の
-    // ダイアログで聞く（ネイティブの ask は 2 択しかできない）
+    // ダイアログで聞く（ネイティブの ask は 2 択しかできない）。
+    // **予約は先に破棄する** — 残したまま聞くと、答える前に自動保存が
+    // 発火して自分の版で外部の変更を潰す（レビュー 2026-09-04）
+    autosave.cancel();
     setConflict({ path: change.path, externalText: text });
     // 競合の解決を待つ間は保存できない。**その間も保険は要る**（H-1）
     void keepStash(root, change.path, editorRef.current?.getText() ?? "");
@@ -1721,7 +1741,17 @@ function App() {
       return;
     }
     if (choice === "mine") {
-      autosave.flush(); // 自分の版で上書き保存
+      // flush は予約が無いと何もしない（保存が一度失敗した後など）。
+      // 予約の有無に関わらず、必ず今の本文を書く（レビュー 2026-09-04）
+      await autosave.flush();
+      if (dirtyRef.current) {
+        try {
+          await pendingSave.current?.();
+        } catch (error) {
+          setStatus(`保存に失敗: ${String(error)}`);
+          return;
+        }
+      }
       setStatus("自分の版で上書きしました");
       return;
     }
