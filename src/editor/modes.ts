@@ -10,10 +10,12 @@ import {
   type DecorationSet,
   EditorView,
   keymap,
+  scrollPastEnd,
   ViewPlugin,
   type ViewUpdate,
 } from "@codemirror/view";
 import {
+  Compartment,
   type EditorState,
   type Range,
   RangeSet,
@@ -125,13 +127,36 @@ const typewriterScroll = EditorView.updateListener.of((update) => {
   });
 });
 
-function toggle(effect: typeof setFocusMode) {
-  return (view: EditorView) => {
-    const field = effect === setFocusMode ? focusModeField : typewriterField;
-    view.dispatch({ effects: effect.of(!view.state.field(field)) });
-    return true;
-  };
-}
+const toggleFocus = (view: EditorView) => {
+  view.dispatch({
+    effects: setFocusMode.of(!view.state.field(focusModeField)),
+  });
+  return true;
+};
+
+// タイプライタは文末の先までスクロールできないと中央に寄せられない
+// （短いノートで「効いていない」ように見える。実機フィードバック 2026-09-04）。
+// モード中だけ scrollPastEnd を差し込む
+const pastEnd = new Compartment();
+
+const toggleTypewriter = (view: EditorView) => {
+  const next = !view.state.field(typewriterField);
+  view.dispatch({
+    effects: [
+      setTypewriter.of(next),
+      pastEnd.reconfigure(next ? scrollPastEnd() : []),
+    ],
+  });
+  if (next) {
+    // 切替の瞬間にも今の行を中央へ
+    view.dispatch({
+      effects: EditorView.scrollIntoView(view.state.selection.main.head, {
+        y: "center",
+      }),
+    });
+  }
+  return true;
+};
 
 const dimTheme = EditorView.baseTheme({
   ".cm-dim-line": { opacity: "0.3", transition: "opacity 0.15s" },
@@ -142,9 +167,10 @@ export const editorModes = [
   typewriterField,
   focusDim,
   typewriterScroll,
+  pastEnd.of([]),
   dimTheme,
   keymap.of([
-    { key: "Mod-Shift-d", run: toggle(setFocusMode) },
-    { key: "Mod-Shift-y", run: toggle(setTypewriter) },
+    { key: "Mod-Shift-d", run: toggleFocus },
+    { key: "Mod-Shift-y", run: toggleTypewriter },
   ]),
 ];
