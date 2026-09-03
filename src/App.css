@@ -481,3 +481,30 @@ button.danger {
     color: #ff8a80;
   }
 }
+
+/* コードブロックの配色（TASKS 2-1）。ライトは Pygments friendly 系、
+   ダークは github-dark 系。参照実装 core/html.py と同じ組*/
+:root {
+  --app-bg: #ffffff;
+  --code-keyword: #007020;
+  --code-string: #4070a0;
+  --code-comment: #60a0b0;
+  --code-number: #40a070;
+  --code-type: #0e84b5;
+  --code-func: #06287e;
+  --code-def: #06287e;
+  --code-prop: #517918;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #1e1e1e;
+    --code-keyword: #ff7b72;
+    --code-string: #a5d6ff;
+    --code-comment: #8b949e;
+    --code-number: #79c0ff;
+    --code-type: #ffa657;
+    --code-func: #d2a8ff;
+    --code-def: #d2a8ff;
+    --code-prop: #7ee787;
+  }
+}

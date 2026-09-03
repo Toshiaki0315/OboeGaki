@@ -10,6 +10,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
+import { syntaxHighlighting } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
@@ -23,6 +24,7 @@ import {
   type Activation,
 } from "./activation";
 import { attachmentEvents, type SaveAttachment } from "./attachments";
+import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import {
   imageResolver,
@@ -162,7 +164,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           }),
           markdown({
             extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
+            // フェンス内は言語別に入れ子でパースする（TASKS 2-1）。
+            // パーサ本体は最初にその言語が現れたときに遅延ロードされる
+            codeLanguages: resolveCodeLanguage,
           }),
+          syntaxHighlighting(codeHighlight),
           livePreview,
           editorModes,
           imageResolver.of(resolveImage ?? (async () => null)),
