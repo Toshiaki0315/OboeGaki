@@ -360,6 +360,34 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // ネイティブメニュー（Rust 側 build_menu）からのイベント。
+  // ハンドラは一度だけ登録し、最新の動作は ref 経由で読む
+  const menuActions = useRef<Record<string, () => void>>({});
+  menuActions.current = {
+    "new-note": () => void handleCreate(),
+    "open-vault": () => void chooseVault(),
+    save: () => autosave.flush(),
+    "export-html": () => void handleExport(),
+    history: () => void openHistory(),
+    trash: () => void handleTrash(),
+    "quick-open": () => {
+      setQuickOpen((open) => !open);
+      setPaletteQuery("");
+      setPaletteIndex(0);
+    },
+    "search-all": () => searchInputRef.current?.focus(),
+    outline: toggleOutline,
+    "source-mode": () => editorRef.current?.toggleSourceMode(),
+    "focus-mode": () => editorRef.current?.toggleFocusMode(),
+    typewriter: () => editorRef.current?.toggleTypewriterMode(),
+  };
+  useEffect(() => {
+    const unlisten = listen<string>("menu", (event) => {
+      menuActions.current[event.payload]?.();
+    });
+    return () => void unlisten.then((stop) => stop());
+  }, []);
+
   // 起動時間の実測（spec §6.6）。ベンチ時は Rust 側が印字して終了する
   useEffect(() => {
     invoke<number>("startup_elapsed_ms")

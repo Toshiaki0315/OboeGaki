@@ -16,13 +16,18 @@ import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
 import { formatKeymap } from "./format-commands";
-import { editorModes } from "./modes";
+import { editorModes, toggleFocus, toggleTypewriter } from "./modes";
 import {
   activationClicks,
   activationHandler,
   type Activation,
 } from "./activation";
-import { imageResolver, livePreview, type ImageResolver } from "./live-preview";
+import {
+  imageResolver,
+  livePreview,
+  toggleSourceMode,
+  type ImageResolver,
+} from "./live-preview";
 import { outlineOf, type OutlineItem } from "./outline";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -37,6 +42,10 @@ export type EditorHandle = {
   getOutline: () => OutlineItem[];
   /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
   revealPos: (pos: number) => void;
+  /// 表示モードの切り替え（メニューバーから呼ぶ）
+  toggleSourceMode: () => void;
+  toggleFocusMode: () => void;
+  toggleTypewriterMode: () => void;
 };
 
 type Props = {
@@ -82,6 +91,15 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       getOutline() {
         return view.current ? outlineOf(view.current.state) : [];
+      },
+      toggleSourceMode() {
+        if (view.current) toggleSourceMode(view.current);
+      },
+      toggleFocusMode() {
+        if (view.current) toggleFocus(view.current);
+      },
+      toggleTypewriterMode() {
+        if (view.current) toggleTypewriter(view.current);
       },
       revealPos(pos) {
         const current = view.current;

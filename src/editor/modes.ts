@@ -127,7 +127,7 @@ const typewriterScroll = EditorView.updateListener.of((update) => {
   });
 });
 
-const toggleFocus = (view: EditorView) => {
+export const toggleFocus = (view: EditorView) => {
   view.dispatch({
     effects: setFocusMode.of(!view.state.field(focusModeField)),
   });
@@ -139,7 +139,7 @@ const toggleFocus = (view: EditorView) => {
 // モード中だけ scrollPastEnd を差し込む
 const pastEnd = new Compartment();
 
-const toggleTypewriter = (view: EditorView) => {
+export const toggleTypewriter = (view: EditorView) => {
   const next = !view.state.field(typewriterField);
   view.dispatch({
     effects: [
