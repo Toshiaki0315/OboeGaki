@@ -337,6 +337,117 @@ mod tests {
         assert_eq!(HOST, "127.0.0.1");
     }
 
+    /// **本物の Ollama に通す**（動いているときだけ）。
+    ///
+    /// 参照実装は「作り物のせいで試験をすり抜けた」（LLM 側に画像を
+    /// 渡していなかった）と書いている。口の形だけを見る試験では、
+    /// 本物の応答が変わったときに気づけない。
+    ///
+    /// 既定では走らせない（Ollama を入れていない人の `make check` を
+    /// 赤くしない）。`cargo test -- --ignored` で通す。
+    #[test]
+    #[ignore = "本物の Ollama が動いているときだけ"]
+    fn test_本物のollamaに通る() {
+        const PORT: u16 = 11434;
+        assert!(available(PORT), "Ollama が動いていない");
+        let found = models(PORT);
+        assert!(!found.is_empty(), "モデルが入っていない");
+        let model = found
+            .iter()
+            .find(|name| name.starts_with("gemma3:1b"))
+            .or_else(|| found.first())
+            .unwrap()
+            .clone();
+
+        let mut pieces = 0;
+        let started = std::time::Instant::now();
+        let answer = generate(
+            PORT,
+            &model,
+            &prompt_for("summary", "覚書", "覚書は Markdown のエディタです。"),
+            8192,
+            Duration::from_secs(120),
+            "1m",
+            |_| pieces += 1,
+        )
+        .expect("生成できなかった");
+        println!(
+            "{model}: {:?} / {} 文字 / {pieces} 回に分けて届いた",
+            started.elapsed(),
+            answer.chars().count()
+        );
+        assert!(!answer.trim().is_empty(), "答えが空");
+        // **流れてきたぶんを渡している**（黙って待たせない）
+        assert!(pieces > 1, "まとめて届いた: {pieces}");
+    }
+
+    /// 降ろす道が本当に効くか（ADR-0025 追記）。
+    #[test]
+    #[ignore = "本物の Ollama が動いているときだけ"]
+    fn test_本物のollamaでモデルを降ろせる() {
+        const PORT: u16 = 11434;
+        assert!(available(PORT), "Ollama が動いていない");
+        let model = models(PORT)
+            .into_iter()
+            .find(|name| name.starts_with("gemma3:1b"))
+            .expect("gemma3:1b が要る");
+
+        // 一度読ませて載せる
+        generate(
+            PORT,
+            &model,
+            "こんにちは",
+            2048,
+            Duration::from_secs(120),
+            "30m",
+            |_| {},
+        )
+        .unwrap();
+        assert!(is_loaded(PORT, &model), "載っていない");
+
+        unload(PORT, &model).unwrap();
+        // 降りるまで少し待つ（Ollama が llama-server を畳む）
+        for _ in 0..20 {
+            if !is_loaded(PORT, &model) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        assert!(!is_loaded(PORT, &model), "降りていない");
+    }
+
+    /// 既定のモデル（gemma3:4b）で、実際のノートくらいの長さを読ませる。
+    /// ADR-0025 の実測（12.8 秒／要約 1 本）と並べるため。
+    #[test]
+    #[ignore = "本物の Ollama が動いているときだけ"]
+    fn test_本物のollamaで既定のモデルの速さを測る() {
+        const PORT: u16 = 11434;
+        let model = "gemma3:4b";
+        if !available(PORT) || !models(PORT).iter().any(|name| name == model) {
+            eprintln!("{model} が無いので飛ばす");
+            return;
+        }
+        let body = "# 会議メモ\n\n## 決めたこと\n\n- 予算は前年度と同じ\n                    - 日程は 9 月 20 日\n\n## 持ち帰り\n\n- 会場の確認\n"
+            .repeat(6);
+        let started = std::time::Instant::now();
+        let answer = generate(
+            PORT,
+            model,
+            &prompt_for("summary", "会議メモ", &body),
+            8192,
+            Duration::from_secs(300),
+            "1m",
+            |_| {},
+        )
+        .expect("生成できなかった");
+        println!(
+            "{model}: {:?} / {} 文字",
+            started.elapsed(),
+            answer.chars().count()
+        );
+        assert!(!answer.trim().is_empty());
+    }
+
     #[test]
     fn test_prompt_渡した資料だけを見るよう頼む() {
         let prompt = prompt_for("summary", "会議メモ", "本文");
