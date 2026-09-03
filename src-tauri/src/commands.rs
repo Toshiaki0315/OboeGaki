@@ -38,6 +38,11 @@ pub struct WatchState {
     /// 走査が動いているか（M-6）。**二重に走らせない** — 同じ索引を
     /// 2 本で書くと、片方の見た「消えた」がもう片方の書き込みを消す
     syncing: Arc<std::sync::atomic::AtomicBool>,
+    /// 全走査（sync / rebuild）の直列化。syncing フラグは「押しても
+    /// 無反応に見せない」ための表示用で、**vault_open の背景同期と
+    /// folder_rename の同期はフラグを見ていなかった**（レビュー
+    /// 2026-09-04）。実際の相互排除はこのロックが持つ
+    sync_gate: Arc<Mutex<()>>,
     /// 生成が走っているか（TASKS 4-8）。**答えの途中でモデルを降ろさない**
     /// ためと、二重に始めないため
     generating: Arc<std::sync::atomic::AtomicBool>,
@@ -50,6 +55,7 @@ impl Default for WatchState {
             suppressor: Arc::new(Suppressor::default()),
             lock: Mutex::new(None),
             syncing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            sync_gate: Arc::new(Mutex::new(())),
             generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -129,12 +135,18 @@ pub fn vault_open(
         let root = root.clone();
         let app = app.clone();
         let days = trash_days.unwrap_or(DEFAULT_TRASH_DAYS);
+        let gate = state.sync_gate.clone();
         std::thread::spawn(move || {
             use tauri::Emitter;
             let vault = Vault::new(&root);
-            if let Err(error) =
+            // 全走査は 1 本ずつ（sync_gate）。開いた直後にフォルダ改名や
+            // 手動同期が重なると、古いスナップショットの「消えた」が
+            // 新しい行を消す（レビュー 2026-09-04）
+            let sync_outcome = {
+                let _serialized = gate.lock().expect("sync gate");
                 IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
-            {
+            };
+            if let Err(error) = sync_outcome {
                 eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
             }
             history::prune(&history_root(&root), chrono::Local::now().naive_local());
@@ -158,8 +170,12 @@ pub fn vault_open(
 /// **本当に無いときだけ聞く**ために使う。
 #[tauri::command]
 pub fn note_exists(root: String, path: String) -> Result<bool, String> {
-    let path = guarded(&root, &path)?;
-    Ok(path.is_file())
+    // guarded はフォルダごと外部削除されると canonicalize に失敗して
+    // 「vault の外」というエラーに化け、フロントの void 経路が全部飛ぶ
+    //（削除ダイアログも退避も出ず、自動保存が消したフォルダを復活させる —
+    // レビュー 2026-09-04）。ここの問いは「在るか」なので、判定できない
+    // ものは「無い」と答える
+    Ok(guarded(&root, &path).map(|p| p.is_file()).unwrap_or(false))
 }
 
 #[tauri::command]
@@ -521,16 +537,20 @@ pub fn index_sync(
         return Ok(false); // 走査中。**押しても無反応に見せない**のは呼ぶ側
     }
     let syncing = state.syncing.clone();
+    let gate = state.sync_gate.clone();
     std::thread::spawn(move || {
         use tauri::Emitter;
         let vault = Vault::new(&root);
-        let outcome = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
-            if full {
-                db.rebuild(&vault)
-            } else {
-                db.sync(&vault)
-            }
-        });
+        let outcome = {
+            let _serialized = gate.lock().expect("sync gate");
+            IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+                if full {
+                    db.rebuild(&vault)
+                } else {
+                    db.sync(&vault)
+                }
+            })
+        };
         syncing.store(false, Ordering::SeqCst);
         match outcome {
             Ok(result) => {
@@ -891,7 +911,11 @@ pub fn folder_rename(
             eprintln!("履歴の置き場を移せなかった: {error}");
         }
     }
-    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault)) {
+    let sync_outcome = {
+        let _serialized = state.sync_gate.lock().expect("sync gate");
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
+    };
+    if let Err(error) = sync_outcome {
         eprintln!("索引の更新に失敗した: {error}");
     }
     Ok(renamed)

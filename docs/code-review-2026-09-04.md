@@ -61,10 +61,10 @@
 
 ### Rust 層
 
-- `note_exists` がフォルダごと外部削除されたとき false でなくエラーを返し、フロントの
+- ✅ 対応済み（同日） `note_exists` がフォルダごと外部削除されたとき false でなくエラーを返し、フロントの
   `void` 経路が全部飛ぶ → 削除ダイアログも退避も出ず、**自動保存が消したはずの
   フォルダとノートを復活させる**（commands.rs:159 + vault.rs:1285 + App.tsx:1631）
-- 索引の二重実行ガード `syncing` が `index_sync` にしか掛かっておらず、`vault_open` の
+- ✅ 対応済み（同日） 索引の二重実行ガード `syncing` が `index_sync` にしか掛かっておらず、`vault_open` の
   背景 sync・`folder_rename` の sync と競合すると**改名直後のノートが一覧・検索から
   消える**（commands.rs:132/894。手動同期まで直らない）
 - **全 53 コマンドが非 async** = 逐次実行。OCR（実測 0.85s/枚）・Ollama プローブ
