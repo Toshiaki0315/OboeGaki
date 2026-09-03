@@ -81,4 +81,20 @@ describe("renderHtml", () => {
     expect(html).not.toContain("<math");
     expect(html).toContain("\\frac{a");
   });
+
+  test("Mermaid は描いた SVG をそのまま埋める（ADR-0021）", () => {
+    const md = "```mermaid\ngraph TD;\n```\n";
+    const svg = "<svg><g>図</g></svg>";
+    const html = renderHtml(md, "図", new Map([["graph TD;", svg]]));
+    expect(html).toContain(svg);
+    // 外部リソースを参照しない（JS を読み込まない）
+    expect(html).not.toContain("<script");
+  });
+
+  test("描けなかった図はコードのまま出す", () => {
+    const md = "```mermaid\ngraph TD;\n```\n";
+    const html = renderHtml(md, "図", new Map());
+    expect(html).toContain("<code");
+    expect(html).toContain("graph TD;");
+  });
 });

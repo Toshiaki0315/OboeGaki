@@ -511,6 +511,27 @@ body.resizing {
   font-variant-numeric: tabular-nums;
 }
 
+/* Mermaid 図（ADR-0021）。描けるまではコードのまま見せる */
+.editor-host .cm-mermaid {
+  display: block;
+  text-align: center;
+  margin: 0.6em 0;
+}
+
+.editor-host .cm-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.editor-host .cm-mermaid-source {
+  margin: 0;
+  text-align: left;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  opacity: 0.6;
+  white-space: pre-wrap;
+}
+
 /* 保存した検索（K-4）。名前だけを出し、式は title で見せる */
 .search-section {
   margin-top: 1rem;

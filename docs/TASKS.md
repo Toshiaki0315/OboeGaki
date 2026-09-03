@@ -98,7 +98,9 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **4-1. 数式**（ADR-0036 で 0009 / 0020 を置換）
       Temml で LaTeX → MathML。画面（CM6 widget）も HTML 書き出しも
       同じ文字列を使い、組むのは WebKit。同梱は実測 +215KB
-- [ ] **4-2. Mermaid 図**（ADR-0021）配布サイズへの影響も測る
+- [x] **4-2. Mermaid 図**（ADR-0037 で 0021 を置換）
+      同じ WebView で描き、書き出しには SVG を埋める。動的 import なので
+      主バンドルは +2KB（合計 +3.4MB は開くまで読み込まれない）
 - [ ] **4-3. PDF 書き出し・印刷**（ADR-0007）WebView の印刷機能を検証
 - [ ] **4-4. HTML 書き出しのコード色分け**（core/html。2-1 と同じ字句解析を再利用）
 - [ ] **4-5. PowerPoint 取り込み / 書き出し / スライド分割**（F-3〜F-5）

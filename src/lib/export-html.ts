@@ -143,8 +143,31 @@ const STYLE = `
 `;
 
 /// 完結した HTML 文書を返す。
-export function renderHtml(markdownText: string, title: string): string {
-  const body = renderer().render(markdownText);
+///
+/// `diagrams` は描き終えた Mermaid 図（コード → SVG）。**描画は非同期**
+/// なので呼ぶ側が先に済ませて渡す（ここは純関数のまま保つ）。無い図は
+/// コードブロックのまま出す。
+export function renderHtml(
+  markdownText: string,
+  title: string,
+  diagrams?: Map<string, string>,
+): string {
+  const md = renderer();
+  if (diagrams && diagrams.size > 0) {
+    const fence = md.renderer.rules.fence;
+    md.renderer.rules.fence = (tokens, index, options, env, self) => {
+      const token = tokens[index];
+      if (token.info.trim() === "mermaid") {
+        const svg = diagrams.get(token.content.trim());
+        // **SVG をそのまま埋める**（外部リソースを参照しない = ADR-0007）
+        if (svg) return `<figure class="mermaid">${svg}</figure>\n`;
+      }
+      return fence
+        ? fence(tokens, index, options, env, self)
+        : self.renderToken(tokens, index, options);
+    };
+  }
+  const body = md.render(markdownText);
   return [
     "<!doctype html>",
     '<html lang="ja">',

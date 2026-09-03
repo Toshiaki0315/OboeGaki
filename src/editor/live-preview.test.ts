@@ -52,6 +52,7 @@ function simplify(range: Range<Decoration>): Deco {
       checked?: boolean;
       url?: string;
       mathml?: string;
+      code?: string;
     };
   };
   let kind = "hide";
@@ -62,6 +63,7 @@ function simplify(range: Range<Decoration>): Deco {
     kind = `checkbox:${spec.widget.checked}`;
   else if (spec.widget?.url !== undefined) kind = `image:${spec.widget.url}`;
   else if (spec.widget?.mathml !== undefined) kind = "math";
+  else if (spec.widget?.code !== undefined) kind = "mermaid";
   else if (spec.widget) kind = "hr";
   return { from: range.from, to: range.to, kind };
 }
@@ -479,5 +481,31 @@ describe("数式（ADR-0036）", () => {
   test("コードの中は数式にしない", () => {
     const doc = "`$x$` と書く";
     expect(decorationsOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
+  });
+});
+
+describe("Mermaid 図（ADR-0021）", () => {
+  const doc = "本文\n\n```mermaid\ngraph TD;\n  A-->B;\n```\n\n続き";
+
+  test("ブロックまるごと図に置き換える", () => {
+    const from = doc.indexOf("```");
+    const to = doc.lastIndexOf("```") + 3;
+    expect(has(decorationsOf(doc, 0), { from, to, kind: "mermaid" })).toBe(
+      true,
+    );
+  });
+
+  test("キャレットが触れている間はコードのまま（式と同じ判断）", () => {
+    const inside = doc.indexOf("graph");
+    expect(decorationsOf(doc, inside).some((d) => d.kind === "mermaid")).toBe(
+      false,
+    );
+  });
+
+  test("他の言語のフェンスは図にしない", () => {
+    const code = "```js\nlet a = 1;\n```\n";
+    expect(decorationsOf(code, 0).some((d) => d.kind === "mermaid")).toBe(
+      false,
+    );
   });
 });

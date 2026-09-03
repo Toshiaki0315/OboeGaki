@@ -40,6 +40,7 @@ import {
   wikiLinkTag,
 } from "./extended-inline";
 import { mathSpanAt, renderMath } from "./math";
+import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
 // 隠す対象のインラインマーカー（§6.4 のリビール表のインライン分）。
@@ -57,6 +58,21 @@ const MARK_NODES = new Set([
 
 /// ソースモード（Cmd+/）。ON の間はすべてのライブプレビュー装飾を止めて
 /// 生の Markdown を見せる（§6.4「全マーカー: ソースモード ON で常に全表示」）。
+/// 図の見た目（ADR-0021）。**装飾の鍵に含める**ので StateField で持つ
+/// （読むだけの DOM 参照にすると、テーマを変えても古い図が残る）。
+export const setDiagramTheme = StateEffect.define<MermaidTheme>();
+
+export const diagramThemeField = StateField.define<MermaidTheme>({
+  create: () => "light",
+  update(value, tr) {
+    let next = value;
+    for (const effect of tr.effects) {
+      if (effect.is(setDiagramTheme)) next = effect.value;
+    }
+    return next;
+  },
+});
+
 export const setSourceMode = StateEffect.define<boolean>();
 
 export const sourceModeField = StateField.define<boolean>({
@@ -187,6 +203,38 @@ class MathWidget extends WidgetType {
   }
   ignoreEvent(): boolean {
     return false; // 式の上を押したらキャレットを置きたい
+  }
+}
+
+/// Mermaid 図（ADR-0021）。描けるまでは生のコードを見せ、出来たところで
+/// 差し替える（画像 widget と同じ手口）。
+class MermaidWidget extends WidgetType {
+  constructor(
+    readonly code: string,
+    readonly theme: MermaidTheme,
+  ) {
+    super();
+  }
+  eq(other: MermaidWidget): boolean {
+    return other.code === this.code && other.theme === this.theme;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const host = document.createElement("div");
+    host.className = "cm-mermaid";
+    const waiting = document.createElement("pre");
+    waiting.className = "cm-mermaid-source";
+    waiting.textContent = this.code; // 描けるまでの代役
+    host.append(waiting);
+    void renderMermaid(this.code, this.theme).then((svg) => {
+      if (!svg) return; // 描けなければコードのまま（直せる状態を保つ）
+      host.innerHTML = svg;
+      // 図の高さが後から決まるので、行レイアウトを測り直させる
+      view.requestMeasure();
+    });
+    return host;
+  }
+  ignoreEvent(): boolean {
+    return false; // 図を押したらキャレットを置きたい
   }
 }
 
@@ -561,6 +609,32 @@ export function previewDecorations(
         }
         // --- コードブロック: 全行に背景、フェンス行はブロック外にいる間隠す
         case "FencedCode": {
+          // --- Mermaid（ADR-0021）: ブロックまるごと図にする。
+          //     リビールはブロック全体（式と同じ判断）
+          const languageNode = node.node.getChild("CodeInfo");
+          const languageName = languageNode
+            ? state.sliceDoc(languageNode.from, languageNode.to).trim()
+            : "";
+          if (languageName === "mermaid") {
+            if (touchesSelection(state, node.from, node.to)) return false;
+            const first = state.doc.lineAt(node.from);
+            const last = state.doc.lineAt(node.to);
+            const code = state
+              .sliceDoc(first.to + 1, last.from)
+              .replace(/\n$/, "")
+              .trim();
+            if (!code) return false;
+            out.push(
+              Decoration.replace({
+                widget: new MermaidWidget(
+                  code,
+                  state.field(diagramThemeField, false) ?? "light",
+                ),
+                block: true,
+              }).range(node.from, node.to),
+            );
+            return false;
+          }
           pushLineClass(out, state, node.from, node.to, "cm-codeblock-line");
           if (touchesSelection(state, node.from, node.to)) return;
           const first = state.doc.lineAt(node.from);

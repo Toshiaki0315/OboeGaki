@@ -41,11 +41,14 @@ import { autoPair, urlPasteLink } from "./auto-pair";
 import { tagCompletion } from "./tag-complete";
 import { noteLinkCompletion } from "./note-link-complete";
 import {
+  diagramThemeField,
   imageResolver,
   livePreview,
+  setDiagramTheme,
   toggleSourceMode,
   type ImageResolver,
 } from "./live-preview";
+import type { MermaidTheme } from "./mermaid";
 import { outlineOf, type OutlineItem } from "./outline";
 import { statsOf, type TextStats } from "./stats";
 
@@ -65,6 +68,8 @@ export type EditorHandle = {
   getText: () => string;
   /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
   revealPos: (pos: number) => void;
+  /// 図の見た目をテーマに合わせる（ADR-0021。変えると図を描き直す）
+  setDiagramTheme: (theme: MermaidTheme) => void;
   /// 表示モードの切り替え（メニューバーから呼ぶ）
   toggleSourceMode: () => void;
   toggleFocusMode: () => void;
@@ -96,6 +101,8 @@ type Props = {
   /** 開いた直後のキャレット位置（雛形の `{{cursor}}`。UTF-16 単位）。
       省くと front matter の後ろ = 本文の先頭 */
   initialCursor?: number | null;
+  /** 図の見た目（ADR-0021）。開いた時点のテーマ */
+  diagramTheme?: MermaidTheme;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
@@ -109,6 +116,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     knownTags,
     knownNotes,
     initialCursor,
+    diagramTheme,
   },
   ref,
 ) {
@@ -152,6 +160,12 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       getText() {
         return view.current?.state.doc.toString() ?? "";
+      },
+      setDiagramTheme(theme) {
+        const current = view.current;
+        if (!current) return;
+        if (current.state.field(diagramThemeField, false) === theme) return;
+        current.dispatch({ effects: setDiagramTheme.of(theme) });
       },
       toggleSourceMode() {
         if (view.current) toggleSourceMode(view.current);
@@ -232,6 +246,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         },
         extensions: [
           frontMatterHide,
+          diagramThemeField.init(() => diagramTheme ?? "light"),
           history(),
           autoPair, // 選択を * や [ で囲む（spec §5.5-4）
           // タグ補完（C-4）。↑↓ / Enter は completionKeymap が持つ。

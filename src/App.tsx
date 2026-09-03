@@ -13,6 +13,11 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
+import {
+  collectMermaid,
+  renderMermaid,
+  type MermaidTheme,
+} from "./editor/mermaid";
 import { createDebouncer } from "./lib/debounce";
 import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
@@ -387,7 +392,13 @@ function App() {
     autosave.flush();
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
-    let html = renderHtml(text, title);
+    // 図は先に描いてから渡す（描画は非同期。書き出しには SVG を埋める）
+    const diagrams = new Map<string, string>();
+    for (const code of collectMermaid(text)) {
+      const svg = await renderMermaid(code, diagramTheme);
+      if (svg) diagrams.set(code, svg);
+    }
+    let html = renderHtml(text, title, diagrams);
     const sources = new Set(
       [...html.matchAll(/<img src="([^"]+)"/g)].map((found) => found[1]),
     );
@@ -515,6 +526,9 @@ function App() {
     setDoc(null);
   }
 
+  // 図の見た目（ADR-0021）。新しく開くノートにも渡す
+  const [diagramTheme, setDiagramTheme] = useState<MermaidTheme>("light");
+
   // 見た目（テーマ）。**「システムに合わせる」も含めて data-theme を書く** —
   // CSS 側に @media を持たせると、手で選んだ設定と 2 か所で決まってずれる
   useEffect(() => {
@@ -522,6 +536,9 @@ function App() {
     const apply = () => {
       const resolved = resolveTheme(settings.theme, media.matches);
       document.documentElement.dataset.theme = resolved;
+      setDiagramTheme(resolved);
+      // 図もテーマに合わせて描き直す（ADR-0021）
+      editorRef.current?.setDiagramTheme(resolved);
     };
     apply();
     media.addEventListener("change", apply);
@@ -1805,6 +1822,7 @@ function App() {
                   .notes.map((entry) => noteStem(entry.path))
               }
               initialCursor={initialCursor}
+              diagramTheme={diagramTheme}
             />
           </>
         ) : (
