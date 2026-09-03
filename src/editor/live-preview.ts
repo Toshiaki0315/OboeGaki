@@ -493,6 +493,8 @@ function listDepth(node: SyntaxNode): number {
 }
 
 /// 各行に行クラスを付ける（引用の縦バー・コードブロックの背景）。
+/// 行の帯を掛ける。**上下の端には印を付ける**（帯の内側に余白を作るため。
+/// 端が分からないと、文字が縁にくっついて窮屈に見える）。
 function pushLineClass(
   out: Range<Decoration>[],
   state: EditorState,
@@ -500,13 +502,20 @@ function pushLineClass(
   to: number,
   className: string,
 ) {
+  const lines: number[] = [];
   let pos = from;
   while (pos <= to) {
     const line = state.doc.lineAt(pos);
-    out.push(Decoration.line({ class: className }).range(line.from));
+    lines.push(line.from);
     if (line.to >= to) break;
     pos = line.to + 1;
   }
+  lines.forEach((start, index) => {
+    const edges =
+      (index === 0 ? ` ${className}-first` : "") +
+      (index === lines.length - 1 ? ` ${className}-last` : "");
+    out.push(Decoration.line({ class: className + edges }).range(start));
+  });
 }
 
 /// `from..to` の範囲のライブプレビュー装飾を計算する（EditorState だけで動く）。
@@ -600,7 +609,19 @@ export function previewDecorations(
           // Mermaid の図は blockWidgetField が作る（行をまたぐ装飾は
           // plugin 由来では効かない）。ここでは背景とフェンス隠しだけ
           if (mermaidCode(state, node.node) !== null) return false;
-          pushLineClass(out, state, node.from, node.to, "cm-codeblock-line");
+          // **帯を掛けるのは中身の行だけ。** フェンス（```）は書き方であって
+          // 中身ではない（`:::note` と同じ扱いに揃えた。実機報告 2026-09-04）
+          const fenceFirst = state.doc.lineAt(node.from);
+          const fenceLast = state.doc.lineAt(node.to);
+          if (fenceLast.from > fenceFirst.to) {
+            pushLineClass(
+              out,
+              state,
+              fenceFirst.to + 1,
+              Math.max(fenceFirst.to + 1, fenceLast.from - 1),
+              "cm-codeblock-line",
+            );
+          }
           if (touchesSelection(state, node.from, node.to)) return;
           const first = state.doc.lineAt(node.from);
           const last = state.doc.lineAt(node.to);
@@ -814,14 +835,17 @@ export function blockWidgetDecorations(
     // **色を付けるのは中身の行だけ。** 区切り（`:::note …` と `:::`）は
     // 書き方であって中身ではないので、帯に含めない（実機報告 2026-09-04:
     // 「設定の文も色がついている」）
-    const first = state.doc.lineAt(note.open.to).number + 1;
-    const last = state.doc.lineAt(note.close.from).number - 1;
-    for (let number = first; number <= last; number++) {
-      const line = state.doc.line(number);
-      out.push(
-        Decoration.line({ class: `cm-note-line cm-note-${note.kind}` }).range(
-          line.from,
-        ),
+    const body = {
+      from: state.doc.lineAt(note.open.to).to + 1,
+      to: state.doc.lineAt(note.close.from).from - 1,
+    };
+    if (body.to >= body.from) {
+      pushLineClass(
+        out,
+        state,
+        body.from,
+        body.to,
+        `cm-note-${note.kind} cm-note-line`,
       );
     }
     // **知らない綴りは区切り行も隠さない**（間違いに気づく手掛かりを残す）。
@@ -1052,6 +1076,23 @@ const blockTheme = EditorView.baseTheme({
     backgroundColor: "color-mix(in srgb, currentColor 6%, transparent)",
     fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
     fontSize: "0.9em",
+  },
+  // 帯の内側に余白を作る（文字が縁にくっつくと窮屈に見える）
+  ".cm-codeblock-line-first": {
+    paddingTop: "0.5em",
+    borderRadius: "6px 6px 0 0",
+  },
+  ".cm-codeblock-line-last": {
+    paddingBottom: "0.5em",
+    borderRadius: "0 0 6px 6px",
+  },
+  ".cm-note-line-first": {
+    paddingTop: "0.5em",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-note-line-last": {
+    paddingBottom: "0.5em",
+    borderBottomRightRadius: "6px",
   },
   ".cm-list-bullet": {
     display: "inline-block",

@@ -74,6 +74,15 @@ function simplify(range: Range<Decoration>): Deco {
   return { from: range.from, to: range.to, kind };
 }
 
+/// 行クラスは複数付く（帯 + 上下の端）ので、**含むか**で見る。
+const hasLineClass = (decos: Deco[], from: number, className: string) =>
+  decos.some(
+    (deco) =>
+      deco.from === from &&
+      deco.kind.startsWith("line:") &&
+      deco.kind.slice("line:".length).split(" ").includes(className),
+  );
+
 const has = (decos: Deco[], expected: Deco) =>
   decos.some(
     (d) =>
@@ -93,36 +102,29 @@ describe("previewDecorations（ブロック系）", () => {
     const doc = "> 引用です\n\n本文";
     const decos = decorationsOf(doc, doc.length); // カーソルは引用の外
     expect(has(decos, { from: 0, to: 2, kind: "hide" })).toBe(true);
-    expect(
-      has(decos, { from: 0, to: 0, kind: "line:cm-blockquote-line" }),
-    ).toBe(true);
+    expect(hasLineClass(decos, 0, "cm-blockquote-line")).toBe(true);
   });
 
   test("引用の行にカーソルがあると > を見せる（縦バーは維持）", () => {
     const doc = "> 引用です\n\n本文";
     const decos = decorationsOf(doc, 3); // 引用行の中
     expect(has(decos, { from: 0, to: 2, kind: "hide" })).toBe(false);
-    expect(
-      has(decos, { from: 0, to: 0, kind: "line:cm-blockquote-line" }),
-    ).toBe(true);
+    expect(hasLineClass(decos, 0, "cm-blockquote-line")).toBe(true);
   });
 
-  test("コードブロックは全行に背景を付けフェンス行を隠す", () => {
+  test("**中身の行にだけ**背景を付け、フェンス行を隠す", () => {
+    // フェンス（```）は書き方であって中身ではない（`:::note` と同じ扱い）
     const doc = "本文\n\n```js\nconst a = 1;\n```\n\nあと";
     const decos = decorationsOf(doc, 0); // ブロックの外
     const fenceOpen = doc.indexOf("```js");
     const codeLine = doc.indexOf("const");
     const fenceClose = doc.lastIndexOf("```");
-    for (const lineFrom of [fenceOpen, codeLine, fenceClose]) {
-      expect(
-        has(decos, {
-          from: lineFrom,
-          to: lineFrom,
-          kind: "line:cm-codeblock-line",
-        }),
-        `line ${lineFrom}`,
-      ).toBe(true);
-    }
+    expect(hasLineClass(decos, codeLine, "cm-codeblock-line")).toBe(true);
+    expect(hasLineClass(decos, fenceOpen, "cm-codeblock-line")).toBe(false);
+    expect(hasLineClass(decos, fenceClose, "cm-codeblock-line")).toBe(false);
+    // 帯の上下の端には印が付く（内側に余白を作るため）
+    expect(hasLineClass(decos, codeLine, "cm-codeblock-line-first")).toBe(true);
+    expect(hasLineClass(decos, codeLine, "cm-codeblock-line-last")).toBe(true);
     expect(
       has(decos, { from: fenceOpen, to: fenceOpen + 5, kind: "hide" }),
     ).toBe(true);
@@ -138,13 +140,11 @@ describe("previewDecorations（ブロック系）", () => {
     expect(
       has(decos, { from: fenceOpen, to: fenceOpen + 5, kind: "hide" }),
     ).toBe(false);
-    expect(
-      has(decos, {
-        from: fenceOpen,
-        to: fenceOpen,
-        kind: "line:cm-codeblock-line",
-      }),
-    ).toBe(true);
+    // 背景は中身の行に残る（フェンス行には元から付けない）
+    expect(hasLineClass(decos, doc.indexOf("const"), "cm-codeblock-line")).toBe(
+      true,
+    );
+    expect(hasLineClass(decos, fenceOpen, "cm-codeblock-line")).toBe(false);
   });
 
   test("水平線は線の描画に置き換え、カーソルが乗ると原文を見せる", () => {
