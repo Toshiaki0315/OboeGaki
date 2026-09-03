@@ -26,7 +26,8 @@ pub const INDEX_FILE: &str = "index.sqlite";
 /// スキーマの世代。合わない索引は**丸ごと捨てて作り直す**（T7: 索引は
 /// 捨ててよいキャッシュなので、移行コードを書くより作り直しが正しい）。
 /// 2: notes_fts の path を索引対象にし、LIKE フォールバックにも path を足した
-const SCHEMA_VERSION: i64 = 2;
+/// 3: tags テーブルを追加（サイドバーのタグ一覧）
+const SCHEMA_VERSION: i64 = 3;
 /// この文字数以上なら trigram FTS、未満なら LIKE フォールバック。
 const FTS_MIN_CHARS: usize = 3;
 const SEARCH_LIMIT: usize = 50;
@@ -115,6 +116,13 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
         "INSERT INTO notes_fts(title, path, body) VALUES (?1, ?2, ?3)",
         rusqlite::params![title, relative, text],
     )?;
+    tx.execute("DELETE FROM tags WHERE path = ?1", [&relative])?;
+    for tag in crate::tags::extract_tags(&text) {
+        tx.execute(
+            "INSERT OR IGNORE INTO tags(path, tag) VALUES (?1, ?2)",
+            rusqlite::params![relative, tag],
+        )?;
+    }
     Ok(())
 }
 
@@ -133,7 +141,8 @@ impl IndexDb {
         if version != SCHEMA_VERSION {
             conn.execute_batch(
                 "DROP TABLE IF EXISTS notes;
-                 DROP TABLE IF EXISTS notes_fts;",
+                 DROP TABLE IF EXISTS notes_fts;
+                 DROP TABLE IF EXISTS tags;",
             )?;
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         }
@@ -150,7 +159,13 @@ impl IndexDb {
                 path,
                 body,
                 tokenize = 'trigram'
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS tags (
+                path TEXT NOT NULL,
+                tag  TEXT NOT NULL,
+                PRIMARY KEY (path, tag)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);",
         )?;
         Ok(Self { conn })
     }
@@ -193,6 +208,7 @@ impl IndexDb {
         for gone in existing.keys().filter(|path| !seen.contains(*path)) {
             tx.execute("DELETE FROM notes WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM notes_fts WHERE path = ?1", [gone])?;
+            tx.execute("DELETE FROM tags WHERE path = ?1", [gone])?;
         }
         tx.commit()
     }
@@ -210,6 +226,16 @@ impl IndexDb {
                 mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
             })
         })?;
+        rows.collect()
+    }
+
+    /// タグと件数（多い順 → 名前順）。サイドバーのタグ一覧の素材。
+    pub fn tag_list(&self) -> rusqlite::Result<Vec<(String, i64)>> {
+        let mut statement = self.conn.prepare(
+            "SELECT tag, COUNT(*) AS uses FROM tags
+             GROUP BY tag ORDER BY uses DESC, tag ASC",
+        )?;
+        let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
         rows.collect()
     }
 
@@ -444,6 +470,33 @@ mod tests {
         assert_eq!(found[0].preview, "進捗の共有について。");
         assert!(found[0].mtime_ms > 1_600_000_000_000); // ms 単位である
         assert_eq!(found[1].path, "日記/今日.md");
+    }
+
+    #[test]
+    fn test_tag_list_タグと件数を返し_変更と削除に追従する() {
+        let (root, vault) = vault_with(&[
+            ("a.md", "# a\n\n#work/会議 と #メモ\n"),
+            ("b.md", "# b\n\n#メモ だけ\n"),
+        ]);
+        let mut db = synced(&vault);
+        assert_eq!(
+            db.tag_list().unwrap(),
+            vec![("メモ".to_string(), 2), ("work/会議".to_string(), 1)]
+        );
+
+        // タグを消す編集に追従する
+        fs::write(root.path().join("b.md"), "# b\n\nタグ無しに変えた\n").unwrap();
+        db.sync(&vault).unwrap();
+        // 同数のタイはバイト順（ASCII が先）
+        assert_eq!(
+            db.tag_list().unwrap(),
+            vec![("work/会議".to_string(), 1), ("メモ".to_string(), 1)]
+        );
+
+        // ノートの削除にも追従する
+        fs::remove_file(root.path().join("a.md")).unwrap();
+        db.sync(&vault).unwrap();
+        assert_eq!(db.tag_list().unwrap(), Vec::<(String, i64)>::new());
     }
 
     #[test]

@@ -12,9 +12,12 @@ type NoteMeta = {
   mtime_ms: number;
 };
 
+export type TagCount = { tag: string; count: number };
+
 type AppState = {
   vaultRoot: string | null;
   notes: NoteEntry[];
+  tags: TagCount[];
   trashNotes: string[];
   currentPath: string | null;
   openVault: (root: string) => Promise<void>;
@@ -31,13 +34,16 @@ async function fetchLists(root: string) {
     preview: meta.preview,
     mtimeMs: meta.mtime_ms,
   }));
+  const tagPairs = await invoke<[string, number][]>("tag_list", { root });
+  const tags: TagCount[] = tagPairs.map(([tag, count]) => ({ tag, count }));
   const trashNotes = await invoke<string[]>("trash_list", { root });
-  return { notes, trashNotes };
+  return { notes, tags, trashNotes };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   vaultRoot: null,
   notes: [],
+  tags: [],
   trashNotes: [],
   currentPath: null,
 

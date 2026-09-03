@@ -395,3 +395,36 @@ body {
   opacity: 0.5;
   font-variant-numeric: tabular-nums;
 }
+
+.tag-section {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  font-size: 0.9rem;
+}
+
+.tag-section summary {
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  opacity: 0.7;
+}
+
+.note-list li button.tag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tag-name {
+  color: #0a84ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-count {
+  font-size: 0.75rem;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}

@@ -196,6 +196,15 @@ pub fn image_read(root: String, path: String) -> Result<String, String> {
     crate::assets::read_data_url(Path::new(&root), Path::new(&path)).map_err(|e| e.to_string())
 }
 
+/// タグと件数（サイドバーのタグ一覧）。
+#[tauri::command]
+pub fn tag_list(root: String) -> Result<Vec<(String, i64)>, String> {
+    let vault = Vault::new(&root);
+    IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.tag_list())
+        .map_err(|e| e.to_string())
+}
+
 /// 一覧の素材（題名・プレビュー・更新時刻）。並び順はフロント側の持ち物。
 #[tauri::command]
 pub fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String> {

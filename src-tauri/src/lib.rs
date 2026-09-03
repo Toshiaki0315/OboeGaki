@@ -7,6 +7,7 @@ pub mod autosave;
 pub mod commands;
 pub mod history;
 pub mod index_db;
+pub mod tags;
 pub mod vault;
 pub mod watcher;
 
@@ -116,6 +117,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::vault_open,
             commands::note_list,
+            commands::tag_list,
             commands::note_read,
             commands::note_write,
             commands::note_create,

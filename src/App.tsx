@@ -52,6 +52,7 @@ function App() {
   const {
     vaultRoot,
     notes,
+    tags,
     trashNotes,
     currentPath,
     openVault,
@@ -521,6 +522,24 @@ function App() {
               ))}
             </ul>
           </>
+        )}
+        {tags.length > 0 && (
+          <details className="tag-section" open>
+            <summary>タグ（{tags.length}）</summary>
+            <ul>
+              {tags.map(({ tag, count }) => (
+                <li key={tag}>
+                  <button
+                    className="tag-row"
+                    onClick={() => handleQueryChanged(`#${tag}`)}
+                  >
+                    <span className="tag-name">#{tag}</span>
+                    <span className="tag-count">{count}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         {trashNotes.length > 0 && (
           <details className="trash-section">
