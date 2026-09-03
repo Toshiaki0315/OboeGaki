@@ -361,14 +361,20 @@ body {
   padding: 0.15rem 0.4rem;
 }
 
-.note-row {
+/* `.note-list li button` の display: block に負けないよう同じ詳細度で書く
+   （検索結果 .search-hit と同じ轍。プレビューの無い行で題名と日付が
+   1 行に流れていた） */
+.note-list li button.note-row {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.1rem;
   min-width: 0;
 }
 
 .note-row-title {
+  display: block;
+  max-width: 100%;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
