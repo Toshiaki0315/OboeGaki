@@ -48,12 +48,16 @@ export function wrapSelections(
   if (!(opening in AUTO_PAIRS)) return null;
   if (state.selection.ranges.every((range) => range.empty)) return null;
   return state.changeByRange((range) => {
-    const replacement = wrapPair(
-      state.doc.toString(),
-      range.from,
-      range.to,
-      opening,
-    );
+    // 全文の toString はしない（選択のたびに全文を組み立てると
+    // 大きいノートで無駄が出る）。wrapPair は選択の中身しか見ない
+    const selected = state.sliceDoc(range.from, range.to);
+    const replacement = wrapPair(selected, 0, selected.length, opening);
+    if (replacement) {
+      replacement.start += range.from;
+      replacement.end += range.from;
+      replacement.selectStart += range.from;
+      replacement.selectEnd += range.from;
+    }
     if (!replacement) {
       // 複数選択の中の空カーソルには、打った文字をそのまま入れる
       return {

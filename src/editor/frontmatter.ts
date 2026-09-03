@@ -64,8 +64,10 @@ export const frontMatterField = StateField.define<FrontMatterRange | null>({
   update(value, tr) {
     if (!tr.docChanged) return value;
     // front matter とその直後に触れない編集なら、位置はそのまま
-    //（from は常に 0 なので写す必要も無い）
-    if (value && !tr.changes.touchesRange(0, value.to + 1)) return value;
+    //（from は常に 0 なので写す必要も無い）。範囲は value.to まで —
+    // to+1 にすると本文先頭への**挿入**（境界の点）まで「触れた」扱いに
+    // なり、ノート冒頭で打つたびに全文を走査していた（レビュー 2026-09-04）
+    if (value && !tr.changes.touchesRange(0, value.to)) return value;
     if (!value && !tr.changes.touchesRange(0, 4)) return null;
     return frontMatterRange(tr.newDoc.toString());
   },

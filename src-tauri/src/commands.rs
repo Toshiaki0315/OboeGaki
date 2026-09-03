@@ -621,7 +621,9 @@ pub async fn export_write_binary(path: String, data: String) -> Result<(), Strin
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
         .map_err(|e| e.to_string())?;
-    fs::write(&path, bytes).map_err(|e| e.to_string())
+    // 書き出しもアトミックに（export_write と同じ）。途中で落ちて
+    // 壊れた .pptx が残らない（レビュー 2026-09-04）
+    crate::autosave::save_bytes_atomic(Path::new(&path), &bytes).map_err(|e| e.to_string())
 }
 
 /// 取り込むファイルを base64 で読む（TASKS 4-5 の PowerPoint など）。
@@ -630,6 +632,16 @@ pub async fn export_write_binary(path: String, data: String) -> Result<(), Strin
 /// 選ぶのはユーザー。書き込みはしないので、封じ込めの対象にしない。
 #[tauri::command]
 pub async fn import_read(path: String) -> Result<String, String> {
+    // 丸ごとメモリへ載せて base64（1.33 倍）で運ぶ経路なので、上限を切る。
+    // 500MB の PDF で実質 2GB 近く食う（レビュー 2026-09-04）
+    const MAX_IMPORT_BYTES: u64 = 256 * 1024 * 1024;
+    let size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > MAX_IMPORT_BYTES {
+        return Err(format!(
+            "ファイルが大きすぎます（{}MB。上限 256MB）",
+            size / (1024 * 1024)
+        ));
+    }
     use base64::Engine;
     let bytes = fs::read(&path).map_err(|e| e.to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))

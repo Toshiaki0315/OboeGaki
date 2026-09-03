@@ -82,7 +82,7 @@
   無制限・生成の中断手段なし・**パニックすると `generating` が立ちっぱなしで
   再起動まで LLM 機能が死ぬ**（`syncing` にも同型）・`timeout_minutes * 60` が
   debug でパニックし得る（llm.rs:138, commands.rs:616）
-- `import_read` はファイル全体を base64 でメモリへ（500MB の PDF で約 2GB）。
+- ✅ 対応済み（同日: 上限 256MB + 書き出しのアトミック化） `import_read` はファイル全体を base64 でメモリへ（500MB の PDF で約 2GB）。
   上限なし。`export_write_binary` だけ非アトミック（壊れた .pptx が残り得る）
 - ✅ 対応済み（同日） watcher が**イベント 1 件ごとに SQLite を開き直す**（PRAGMA + CREATE TABLE 一式）。
   git checkout / 同期の一括変更で詰まり、FSEvents の合体で索引に穴が開く
@@ -135,7 +135,7 @@
 
 - ✅ 対応済み（同日） **live-preview.ts:324 に生の NUL バイト**が 2 つ埋まっており、`grep`/`git grep` が
   このファイルを**丸ごとスキップ**する（レビュー中に実害を確認。`"�"` 表記へ）
-- ✅ 対応済み（同日） `guarded()` が検査後に**生のパス**を返す TOCTOU / `move_note` の行き先フォルダに
+- ✅ 対応済み（同日） ✅ 対応済み（同日） `guarded()` が検査後に**生のパス**を返す TOCTOU / `move_note` の行き先フォルダに
   実体ベースの封じ込め検査なし / `history_restore` の `version` が vault 内なら素通し
 - ✅ 対応済み（同日） Mutex の `.expect()` がコマンド実行経路に 5 箇所 — どこかでパニックすると毒されて
   **以降の vault_open / watcher が全部落ち続ける**
@@ -151,7 +151,7 @@
   （競合と外部削除は**キーボードだけでは脱出不能**）
 - `RangeSet.empty` シングルトンを WeakMap のキーにしている（分割ペインを
   入れた瞬間に別文書のメタデータを読む地雷）
-- auto-pair が選択ごとに `doc.toString()` / front matter があるとノート冒頭の
+- ✅ 対応済み（同日） auto-pair が選択ごとに `doc.toString()` / front matter があるとノート冒頭の
   打鍵ごとに全文 `toString()`（frontmatter.ts:69 の touchesRange が挿入にも真）
 - ✅ 対応済み（同日） ベンチの「本番と同じ拡張一式」コメントが実態と乖離（editorModes・補完・検索等が
   抜け、計測文書に数式・:::note・mermaid が無い）。**基準合格の実測が
@@ -182,3 +182,19 @@
    アトミック化 — 1 件ずつは小さい修正
 4. `note_exists` のエラー化け + `syncing` ガードの拡張
 5. コマンドの async 化（重いものから: OCR・LLM・import・attachments_unused）
+
+## 対応状況の整理（2026-09-04 追記）
+
+高・中の指摘はすべて対応済み。低で**意図して残した**もの:
+
+- CSP（`csp: null`）— 本番ビルドでの検証が要る（mermaid のインライン
+  style・data: 画像との両立）。配布前のタスクとして残す
+- モーダルのフォーカストラップ / Esc — 競合・外部削除は「選ばず逃げる」を
+  許すかの設計判断を伴うため、UI 改善のスライスへ
+- LLM 生成の**中断手段** — 新機能（llm_cancel）として別スライスへ
+- vault 内シンボリックリンクの二重索引 — 「兄弟への別名リンクは辿る」は
+  意図した設計（コメントに理由あり）。実害が出たら再検討
+- `RangeSet.empty` を WeakMap の鍵にする形 — 単一エディタでは無害。
+  分割ペインを入れるとき、field 値を {set, meta} に持ち替える
+- App.tsx（3,000 行）の分割と App 層のテスト導入 — 最大の構造課題。
+  独立したリファクタリングのスライスとして計画する
