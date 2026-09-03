@@ -472,13 +472,119 @@ export function tableDecorations(state: EditorState): Range<Decoration>[] {
   return out;
 }
 
+/// 表の範囲とリビール状態。DecorationSet は不変オブジェクトなので、
+/// 付帯情報は WeakMap でぶら下げる（field の値を DecorationSet のまま
+/// 保ち、provide とテストを単純にするため）
+type TableMeta = { zones: { from: number; to: number }[]; revealKey: string };
+const tableMeta = new WeakMap<DecorationSet, TableMeta>();
+
+function tableZones(state: EditorState): { from: number; to: number }[] {
+  const zones: { from: number; to: number }[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name === "Table") {
+        zones.push({ from: node.from, to: node.to });
+        return false;
+      }
+      return node.node.parent === null || node.name === "Document"
+        ? undefined
+        : false;
+    },
+  });
+  return zones;
+}
+
+function revealKeyOf(
+  state: EditorState,
+  zones: { from: number; to: number }[],
+): string {
+  return zones
+    .map((zone, index) =>
+      touchesSelection(state, zone.from, zone.to) ? index : -1,
+    )
+    .filter((index) => index >= 0)
+    .join(",");
+}
+
+function computeTableSet(state: EditorState): DecorationSet {
+  const set = RangeSet.of(tableDecorations(state), true);
+  const zones = tableZones(state);
+  tableMeta.set(set, { zones, revealKey: revealKeyOf(state, zones) });
+  return set;
+}
+
+/// この編集は表に関わり得るか。変更行の前後 1 行（旧文書側も）に `|` が
+/// あるか、挿入テキストが `|` を含むときだけ真。表の生成・破壊は
+/// 必ず `|` の近くで起きる、という近似
+function editNearTables(tr: {
+  startState: EditorState;
+  newDoc: EditorState["doc"];
+  changes: {
+    iterChanges: (
+      f: (
+        fromA: number,
+        toA: number,
+        fromB: number,
+        toB: number,
+        inserted: { toString: () => string },
+      ) => void,
+    ) => void;
+  };
+}): boolean {
+  let near = false;
+  const hasPipeAround = (doc: EditorState["doc"], from: number, to: number) => {
+    const start = doc.lineAt(Math.min(from, doc.length)).number;
+    const end = doc.lineAt(Math.min(to, doc.length)).number;
+    for (
+      let n = Math.max(1, start - 1);
+      n <= Math.min(doc.lines, end + 1);
+      n++
+    ) {
+      if (doc.line(n).text.includes("|")) return true;
+    }
+    return false;
+  };
+  tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+    if (near) return;
+    if (inserted.toString().includes("|")) {
+      near = true;
+      return;
+    }
+    if (
+      hasPipeAround(tr.newDoc, fromB, toB) ||
+      hasPipeAround(tr.startState.doc, fromA, toA)
+    ) {
+      near = true;
+    }
+  });
+  return near;
+}
+
 export const tableField = StateField.define<DecorationSet>({
-  create: (state) => RangeSet.of(tableDecorations(state), true),
+  create: computeTableSet,
   update(value, tr) {
     const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
-    if (tr.docChanged || tr.selection || modeChanged) {
-      return RangeSet.of(tableDecorations(tr.state), true);
+    if (!tr.docChanged && !tr.selection && !modeChanged) return value;
+    if (modeChanged) return computeTableSet(tr.state);
+    const meta = tableMeta.get(value);
+    if (!meta) return computeTableSet(tr.state);
+
+    if (tr.docChanged) {
+      if (editNearTables(tr)) return computeTableSet(tr.state);
+      // 表に関わらない編集: 位置だけ写像して使い回す
+      const zones = meta.zones.map((zone) => ({
+        from: tr.changes.mapPos(zone.from, 1),
+        to: tr.changes.mapPos(zone.to, -1),
+      }));
+      const revealKey = revealKeyOf(tr.state, zones);
+      if (revealKey !== meta.revealKey) return computeTableSet(tr.state);
+      const mapped = value.map(tr.changes);
+      tableMeta.set(mapped, { zones, revealKey });
+      return mapped;
     }
+    // カーソル移動のみ: リビール状態が変わったときだけ再計算
+    const revealKey = revealKeyOf(tr.state, meta.zones);
+    if (revealKey !== meta.revealKey) return computeTableSet(tr.state);
     return value;
   },
   provide: (field) => EditorView.decorations.from(field),

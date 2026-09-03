@@ -15,6 +15,7 @@ import {
   setSourceMode,
   sourceModeField,
   tableDecorations,
+  tableField,
   type TableData,
 } from "./live-preview";
 
@@ -278,6 +279,59 @@ describe("previewDecorations（ブロック系）", () => {
     const doc = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n他";
     expect(tableWidgetOf(doc, doc.indexOf("1"))).toBeNull();
     expect(tableWidgetOf(doc, doc.length)).not.toBeNull();
+  });
+
+  test("表に関わらない編集では表の装飾セットを使い回す（性能）", () => {
+    // ベンチで発覚: 打鍵・カーソル移動のたびに全表を再抽出すると
+    // 10,000 語 + 多数の表で p95 が 16ms を割る
+    const doc =
+      "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n本文の段落。\n\nもう一つの段落。";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, tableField],
+    });
+    const before = state.field(tableField);
+    expect(before.size).toBe(1);
+
+    // 表から離れた場所での挿入 → 同じ装飾セットのまま（位置写像のみ）
+    const typed = state.update({
+      changes: { from: doc.length, insert: "あ" },
+      selection: { anchor: doc.length + 1 },
+    }).state;
+    expect(typed.field(tableField).size).toBe(1);
+    expect((typed.field(tableField) as unknown) === (before as unknown)).toBe(
+      false,
+    ); // 写像で新しいインスタンスにはなる
+    // 表の外どうしのカーソル移動 → 再計算しない（同一インスタンス）
+    const moved = typed.update({
+      selection: { anchor: doc.indexOf("段落") },
+    }).state;
+    expect(moved.field(tableField)).toBe(typed.field(tableField));
+
+    // 表へカーソルが入る → リビール（装飾が消える）
+    const inTable = moved.update({ selection: { anchor: 2 } }).state;
+    expect(inTable.field(tableField).size).toBe(0);
+    // 表から出る → 表が戻る
+    const outAgain = inTable.update({
+      selection: { anchor: doc.indexOf("本文") },
+    }).state;
+    expect(outAgain.field(tableField).size).toBe(1);
+
+    // 表の中身を編集 → 再抽出される（古いセルのまま残らない）
+    const edited = outAgain.update({
+      changes: {
+        from: doc.indexOf("1"),
+        to: doc.indexOf("1") + 1,
+        insert: "9",
+      },
+    }).state;
+    const data = (
+      edited.field(tableField).iter().value?.spec as {
+        widget?: { data?: TableData };
+      }
+    ).widget?.data;
+    expect(data?.rows).toEqual([["9", "2"]]);
   });
 
   test("チェックボックスへのイベントは CM6 に渡さない（実機の回帰）", () => {

@@ -9,8 +9,19 @@ pub mod index_db;
 pub mod vault;
 pub mod watcher;
 
+use std::sync::OnceLock;
+use std::time::Instant;
+
+/// プロセス開始時刻。起動時間の実測（spec §6.6: 起動 < 1.5 秒）に使う。
+static STARTED: OnceLock<Instant> = OnceLock::new();
+
+pub fn started() -> Instant {
+    *STARTED.get_or_init(Instant::now)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = STARTED.set(Instant::now());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -26,6 +37,7 @@ pub fn run() {
             commands::note_restore,
             commands::note_search,
             commands::image_read,
+            commands::startup_elapsed_ms,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

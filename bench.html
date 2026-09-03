@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>覚書 エディタ性能計測</title>
+    <style>
+      body { font-family: -apple-system, "Hiragino Sans", sans-serif; margin: 1rem; }
+      #out { font-size: 14px; white-space: pre; margin-bottom: 1rem; }
+      #host { border: 1px solid #ccc; height: 60vh; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>キー入力 → 画面反映（spec §6.6: p95 &lt; 16ms / 10,000 語）</h1>
+    <div id="out">計測中…</div>
+    <div id="host"></div>
+    <script type="module" src="/src/bench/editor-bench.ts"></script>
+  </body>
+</html>

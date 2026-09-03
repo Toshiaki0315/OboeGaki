@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ask, confirm, open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { createDebouncer } from "./lib/debounce";
@@ -163,6 +164,13 @@ function App() {
 
   // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
   useEffect(() => () => autosave.flush(), [autosave]);
+
+  // 起動時間の実測（spec §6.6）。ベンチ時は Rust 側が印字して終了する
+  useEffect(() => {
+    invoke<number>("startup_elapsed_ms")
+      .then((ms) => console.info(`起動 → UI マウント: ${ms}ms`))
+      .catch(() => {}); // Tauri 外（素のブラウザ）では黙って無視
+  }, []);
 
   // 外部変更（spec §7.5）。一覧は少し待ってまとめて更新し、開いている
   // ノートは未編集なら静かにリロード、編集中なら確認を挟む

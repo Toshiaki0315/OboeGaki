@@ -87,6 +87,22 @@ pub fn note_write(
     Ok(())
 }
 
+/// プロセス開始から UI マウントまでの時間（spec §6.6: 起動 < 1.5 秒の実測）。
+/// フロントが最初のマウントで呼ぶ。OBOEGAKI_BENCH_STARTUP=1 のときは
+/// 値を印字してから終了する（make bench-startup 用）。
+#[tauri::command]
+pub fn startup_elapsed_ms() -> u64 {
+    let elapsed = crate::started().elapsed().as_millis() as u64;
+    if std::env::var("OBOEGAKI_BENCH_STARTUP").is_ok() {
+        println!("起動 → UI マウント: {elapsed}ms（基準: < 1500ms）");
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            std::process::exit(0);
+        });
+    }
+    elapsed
+}
+
 /// 本文の画像参照を data URL で返す（ADR-0004）。解決の起点は vault ルート。
 #[tauri::command]
 pub fn image_read(root: String, path: String) -> Result<String, String> {
