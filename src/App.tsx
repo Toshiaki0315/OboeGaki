@@ -29,6 +29,8 @@ import { highlightCodeHtml } from "./lib/export-code";
 import { splitDeck } from "./lib/slides";
 import { buildPptx } from "./lib/pptx";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
+import { toMarkdown } from "./lib/imported";
+import { pdfPages } from "./lib/pdf-import";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -473,15 +475,19 @@ function App() {
   async function handleImportPptx() {
     if (!vaultRoot) return;
     const picked = await open({
-      filters: [{ name: "PowerPoint", extensions: ["pptx"] }],
+      filters: [{ name: "読み込める資料", extensions: ["pdf", "pptx"] }],
     });
     if (typeof picked !== "string") return;
     setStatus("読み込んでいます…");
     try {
       const data = await invoke<string>("import_read", { path: picked });
       const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-      const title = (picked.split("/").pop() ?? "資料").replace(/\.pptx$/i, "");
-      const markdown = slidesToMarkdown(title, await readPptx(bytes));
+      const name = picked.split("/").pop() ?? "資料";
+      const title = name.replace(/\.(pptx|pdf)$/i, "");
+      // 形式ごとに読み方は違うが、**整えるのは同じ**（lib/imported.ts）
+      const markdown = /\.pdf$/i.test(name)
+        ? toMarkdown(await pdfPages(bytes), title)
+        : slidesToMarkdown(title, await readPptx(bytes));
       if (!markdown) {
         // 中身が無ければ題名だけのノートを作らせない
         setStatus("文字を取り出せませんでした");

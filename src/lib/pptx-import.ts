@@ -43,53 +43,18 @@ export type ImportedSlide = {
   notes: string;
 };
 
-// 文の終わりに見える記号。ここで終わる段落は本文として扱う
-const SENTENCE_END = "。．.！？!?";
+// 取り込みの共通部（文字の正規化・ページ番号・見出しらしさ）は
+// lib/imported.ts が持つ。**2 か所に置くと片方だけ直されてずれる**
+// （PDF の取り込みと PowerPoint の取り込みで、同じ文字が違う形になる）。
+import {
+  isPageNumber,
+  looksLikeHeading,
+  normalizeText,
+  SENTENCE_END,
+} from "./imported";
+
 // 箇条書き 1 段ぶんの字下げ（このアプリの既定）
 const INDENT = "    ";
-const MAX_HEADING_LENGTH = 40;
-const BULLET_RE = /^[-*・•]\s/;
-const PAGE_NUMBER_RE = /^[-–—\s]*\(?\d{1,3}\)?\s*(\/\s*\d{1,3})?[-–—\s]*$/;
-
-/// 取り込んだ文字を揃える。
-///
-/// **NFKC は飾りではない。** 書き出した資料を読み戻すと `本⽇`
-/// （KANGXI RADICAL SUN）が出てきて、**「本日」では検索に掛からない**。
-/// 取り込んだ瞬間に揃えないと、あとから気づけない。
-///
-/// **全角の約物は変えない。** NFKC は `（）` を `()` にするが、取り込んだ
-/// だけで句読点が変わるのは筋が悪い。退避してから正規化する。
-export function normalizeText(text: string): string {
-  const keep = "（）［］｛｝「」『』、。！？：；〜ー－―";
-  const marks: string[] = [];
-  const stashed = text.replace(new RegExp(`[${keep}]`, "g"), (mark) => {
-    marks.push(mark);
-    return ` \u0000${marks.length - 1}\u0000 `;
-  });
-  return stashed
-    .normalize("NFKC")
-    .replace(/ \u0000(\d+)\u0000 /g, (_, index) => marks[Number(index)]);
-}
-
-/// その行がページ番号だけか。
-///
-/// **迷ったら残す。** 消しすぎると本文が減り、読み手は減ったことに
-/// 気づけない（`2026` や `1. はじめに` は残す）。
-export function isPageNumber(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed) return false;
-  if (/^\d{4}$/.test(trimmed)) return false; // 年
-  return PAGE_NUMBER_RE.test(trimmed);
-}
-
-/// その行が見出しらしいか。短くて、文の終わりの記号が無く、箇条書きでもない。
-/// **外れることがある**が、`###` が余分に付くのは目で見て直せる。
-export function looksLikeHeading(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.length > MAX_HEADING_LENGTH) return false;
-  if (BULLET_RE.test(trimmed) || isPageNumber(trimmed)) return false;
-  return !SENTENCE_END.includes(trimmed[trimmed.length - 1]);
-}
 
 /// スライドの並びを Markdown にする。
 ///
@@ -320,3 +285,7 @@ function readParagraphs(shape: Element): ImportedParagraph[] {
     })
     .filter((paragraph) => paragraph.runs.length > 0);
 }
+
+// 取り込みの共通部を、この入口からも使えるようにしておく
+// （PowerPoint の取り込みを見ている人が探しに行かなくて済む）
+export { isPageNumber, looksLikeHeading, normalizeText };
