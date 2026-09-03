@@ -390,6 +390,14 @@ function App() {
     return () => void unlisten.then((stop) => stop());
   }, []);
 
+  // 背景の索引同期が終わったら一覧を引き直す（大きな vault の初回同期）
+  useEffect(() => {
+    const unlisten = listen("index-updated", () => {
+      void useAppStore.getState().refresh();
+    });
+    return () => void unlisten.then((stop) => stop());
+  }, []);
+
   // 起動時間の実測（spec §6.6）。ベンチ時は Rust 側が印字して終了する
   useEffect(() => {
     invoke<number>("startup_elapsed_ms")

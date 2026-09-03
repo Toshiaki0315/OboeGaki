@@ -110,6 +110,20 @@ pub fn start(
             // FSEvents は改名・削除・編集を同じ顔で届けることがあるので、
             // 今そこに在るかどうかで分類する
             let kind = if path.exists() { "changed" } else { "removed" };
+            // 索引はここで直接追従させる（vault_open の全体同期を
+            // 待たない）。失敗しても通知は流す — 表示の更新が先
+            let vault = crate::vault::Vault::new(&root);
+            let updated =
+                crate::index_db::IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+                    if kind == "changed" {
+                        db.upsert(&vault, &path)
+                    } else {
+                        db.remove(&vault, &path)
+                    }
+                });
+            if let Err(error) = updated {
+                eprintln!("外部変更を索引へ反映できなかった: {error}");
+            }
             let _ = app.emit(
                 "vault-changed",
                 ChangePayload {

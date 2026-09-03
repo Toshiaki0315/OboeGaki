@@ -137,6 +137,8 @@ impl IndexDb {
         let conn = Connection::open(managed_dir.join(INDEX_FILE))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // 背景同期と watcher の更新が同時に走っても SQLITE_BUSY で落とさない
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version != SCHEMA_VERSION {
             conn.execute_batch(
@@ -227,6 +229,19 @@ impl IndexDb {
             })
         })?;
         rows.collect()
+    }
+
+    /// 1 ファイルを索引から外す（ゴミ箱移動・改名の旧パス・外部削除）。
+    pub fn remove(&mut self, vault: &Vault, absolute: &Path) -> rusqlite::Result<()> {
+        let Ok(relative) = absolute.strip_prefix(vault.root()) else {
+            return Ok(());
+        };
+        let relative = relative.to_string_lossy().into_owned();
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM notes WHERE path = ?1", [&relative])?;
+        tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
+        tx.execute("DELETE FROM tags WHERE path = ?1", [&relative])?;
+        tx.commit()
     }
 
     /// タグと件数（多い順 → 名前順）。サイドバーのタグ一覧の素材。
@@ -496,6 +511,21 @@ mod tests {
         // ノートの削除にも追従する
         fs::remove_file(root.path().join("a.md")).unwrap();
         db.sync(&vault).unwrap();
+        assert_eq!(db.tag_list().unwrap(), Vec::<(String, i64)>::new());
+    }
+
+    #[test]
+    fn test_remove_1ファイルを索引から外す() {
+        let (root, vault) = vault_with(&[
+            ("a.md", "# a\n\n#タグ 付きの本文。\n"),
+            ("b.md", "# b\n\n残る方。\n"),
+        ]);
+        let mut db = synced(&vault);
+
+        db.remove(&vault, &root.path().join("a.md")).unwrap();
+
+        assert_eq!(db.list_notes().unwrap().len(), 1);
+        assert_eq!(db.search("タグ 付きの本文").unwrap(), vec![]);
         assert_eq!(db.tag_list().unwrap(), Vec::<(String, i64)>::new());
     }
 

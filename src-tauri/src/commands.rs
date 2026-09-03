@@ -62,15 +62,31 @@ pub fn vault_open(
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
     // 監視と索引は付随機能なので、失敗しても vault は開く（ログだけ残す）
-    match watcher::start(app, vault.root().to_path_buf(), state.suppressor.clone()) {
+    match watcher::start(
+        app.clone(),
+        vault.root().to_path_buf(),
+        state.suppressor.clone(),
+    ) {
         Ok(active) => *state.watcher.lock().expect("watcher lock") = Some(active),
         Err(error) => eprintln!("外部変更の監視を開始できなかった: {error}"),
     }
-    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault)) {
-        eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
+    // 索引の全体同期と履歴の掃除は背景で行う（5,000 ノートで 2.2 秒 —
+    // bench.md）。終わったら index-updated でフロントが一覧を引き直す
+    {
+        let root = root.clone();
+        let app = app.clone();
+        std::thread::spawn(move || {
+            use tauri::Emitter;
+            let vault = Vault::new(&root);
+            if let Err(error) =
+                IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
+            {
+                eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
+            }
+            history::prune(&history_root(&root), chrono::Local::now().naive_local());
+            let _ = app.emit("index-updated", ());
+        });
     }
-    // 履歴の掃除（ADR-0023: 50 版 / 30 日）。失敗しても開くのは止めない
-    history::prune(&history_root(&root), chrono::Local::now().naive_local());
     Ok(vault
         .scan()
         .into_iter()
@@ -255,6 +271,11 @@ pub fn note_create(
     let vault = Vault::new(&root);
     let path = vault.create(&title).map_err(|e| e.to_string())?;
     state.suppressor.mark(&path);
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -271,6 +292,14 @@ pub fn note_rename(
         .rename(&path, &title)
         .map_err(|e| e.to_string())?;
     state.suppressor.mark(&renamed);
+    // 索引: 旧パスを外し、新パスを載せ直す
+    let vault = Vault::new(&root);
+    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+        db.remove(&vault, &path)?;
+        db.upsert(&vault, &renamed)
+    }) {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
     // 鍵がパスなので、置き場を付け替えないと履歴が見えなくなる
     if let Err(error) = history::rekey(
         &history_root(&root),
@@ -290,8 +319,15 @@ pub fn note_trash(
 ) -> Result<String, String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
-    let moved = Vault::new(&root).trash(&path).map_err(|e| e.to_string())?;
+    let vault = Vault::new(&root);
+    let moved = vault.trash(&path).map_err(|e| e.to_string())?;
     state.suppressor.mark(&moved);
+    // ゴミ箱の中は索引に入れない（検索・一覧の対象外）
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.remove(&vault, &path))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
     Ok(moved.to_string_lossy().into_owned())
 }
 
@@ -312,9 +348,13 @@ pub fn note_restore(
 ) -> Result<String, String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
-    let restored = Vault::new(&root)
-        .restore(&path)
-        .map_err(|e| e.to_string())?;
+    let vault = Vault::new(&root);
+    let restored = vault.restore(&path).map_err(|e| e.to_string())?;
     state.suppressor.mark(&restored);
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &restored))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
     Ok(restored.to_string_lossy().into_owned())
 }

@@ -25,8 +25,9 @@ type AppState = {
   selectNote: (path: string | null) => void;
 };
 
+// 一覧の引き直しだけ（軽い）。索引の同期はしない — 同期は vault_open の
+// 背景スレッドと watcher が担い、終わると index-updated が飛んでくる
 async function fetchLists(root: string) {
-  await invoke<string[]>("vault_open", { root }); // 索引同期と監視の開始
   const metas = await invoke<NoteMeta[]>("note_list", { root });
   const notes: NoteEntry[] = metas.map((meta) => ({
     path: `${root}/${meta.path}`,
@@ -48,6 +49,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentPath: null,
 
   async openVault(root) {
+    // レイアウト作成・監視開始・背景の索引同期を起動してから一覧を引く
+    await invoke<string[]>("vault_open", { root });
     const lists = await fetchLists(root);
     set({ vaultRoot: root, ...lists, currentPath: null });
   },
