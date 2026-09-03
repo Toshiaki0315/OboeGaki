@@ -156,4 +156,27 @@ describe("previewDecorations（ブロック系）", () => {
       has(decos, { from: done, to: done + 6, kind: "checkbox:true" }),
     ).toBe(true);
   });
+
+  test("チェックボックスへのイベントは CM6 に渡さない（実機の回帰）", () => {
+    // ignoreEvent が false だと、mousedown で CM6 がカーソルをその行に置き、
+    // リビールで widget が消えて click が成立しない（2026-09-03 実機で発覚）
+    const doc = "- [ ] やる\n\n他";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [
+        markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
+      ],
+    });
+    const checkbox = previewDecorations(state, 0, doc.length)
+      .map(
+        (r) =>
+          r.value.spec as {
+            widget?: { checked?: boolean; ignoreEvent?: (e: Event) => boolean };
+          },
+      )
+      .find((spec) => spec.widget?.checked !== undefined)?.widget;
+    expect(checkbox).toBeDefined();
+    expect(checkbox!.ignoreEvent!(new Event("mousedown"))).toBe(true);
+  });
 });

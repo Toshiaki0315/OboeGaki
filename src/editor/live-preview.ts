@@ -100,7 +100,10 @@ class CheckboxWidget extends WidgetType {
     box.type = "checkbox";
     box.className = "cm-task-checkbox";
     box.checked = this.checked;
-    box.onclick = (event) => {
+    // click ではなく mousedown で切り替える。click を待つと、その前の
+    // mousedown をエディタが処理してカーソルがこの行へ来てしまい、
+    // リビールで widget ごと消えて click が成立しない（実機で発覚）
+    box.onmousedown = (event) => {
       event.preventDefault();
       view.dispatch({
         changes: {
@@ -112,8 +115,10 @@ class CheckboxWidget extends WidgetType {
     };
     return box;
   }
+  // チェックボックス上のイベントは widget が自分で処理し、CM6 に渡さない
+  // （渡すとカーソル移動 → リビールで widget が消える）
   ignoreEvent(): boolean {
-    return false;
+    return true;
   }
 }
 
