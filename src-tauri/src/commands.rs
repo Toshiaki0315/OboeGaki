@@ -393,6 +393,91 @@ pub fn note_backlinks(
         .map_err(|e| e.to_string())
 }
 
+/// 退避の置き場（vault ごと）。アプリのデータフォルダの下に作る。
+///
+/// vault の中に置かないのは、**保存できない理由が vault 側にあることが多い**
+/// ため（権限・容量・同期の衝突）。書けない場所へ保険を置いても保険にならない。
+fn recovery_dir(app: &tauri::AppHandle, root: &str) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(crate::recovery::vault_dir(&base, Path::new(root)))
+}
+
+/// 未保存の内容を退避する（保存できないまま落ちたときの保険）。
+#[tauri::command]
+pub fn recovery_stash(
+    app: tauri::AppHandle,
+    root: String,
+    path: String,
+    text: String,
+) -> Result<(), String> {
+    let path = guarded(&root, &path)?;
+    let dir = recovery_dir(&app, &root)?;
+    crate::recovery::stash(&dir, &path, &text)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// 保存できたので退避を捨てる。
+#[tauri::command]
+pub fn recovery_discard(app: tauri::AppHandle, root: String, path: String) -> Result<(), String> {
+    let path = guarded(&root, &path)?;
+    crate::recovery::discard(&recovery_dir(&app, &root)?, &path);
+    Ok(())
+}
+
+/// 前回の未保存内容（起動時に拾う）。
+#[tauri::command]
+pub fn recovery_pending(
+    app: tauri::AppHandle,
+    root: String,
+) -> Result<Vec<crate::recovery::Stashed>, String> {
+    Ok(crate::recovery::pending(&recovery_dir(&app, &root)?))
+}
+
+/// 退避を**別ファイルとして**書き出す。書いた場所を返す。
+///
+/// 元のファイルは上書きしない。書き出したら退避は捨てる（同じものを
+/// 次の起動でもう一度勧めない）。
+#[tauri::command]
+pub fn recovery_restore(
+    app: tauri::AppHandle,
+    state: tauri::State<WatchState>,
+    root: String,
+) -> Result<Vec<String>, String> {
+    let vault = Vault::new(&root);
+    let dir = recovery_dir(&app, &root)?;
+    let mut restored = Vec::new();
+    for stashed in crate::recovery::pending(&dir) {
+        let source = Path::new(&stashed.source);
+        let stamp = chrono::DateTime::from_timestamp_millis(stashed.stashed_at_ms)
+            .map(|at| {
+                at.with_timezone(&chrono::Local)
+                    .format("%Y-%m-%d")
+                    .to_string()
+            })
+            .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+        match vault.restore_stash(source, &stashed.text, &stamp) {
+            Ok(path) => {
+                state.suppressor.mark(&path);
+                index_one(&vault, &path);
+                restored.push(path.to_string_lossy().into_owned());
+            }
+            // 1 つ書けなくても残りは救う
+            Err(error) => eprintln!("退避を復元できなかった（{}）: {error}", stashed.source),
+        }
+    }
+    crate::recovery::clear_all(&dir);
+    Ok(restored)
+}
+
+/// 退避を全部捨てる（「復元しない」を選んだとき）。
+#[tauri::command]
+pub fn recovery_clear(app: tauri::AppHandle, root: String) -> Result<(), String> {
+    crate::recovery::clear_all(&recovery_dir(&app, &root)?);
+    Ok(())
+}
+
 /// サイドバーのフォルダツリーの素材（ADR-0024）。
 /// **存在はディスク、件数は索引**（索引にあってディスクに無いものは出さない）。
 /// 先頭は必ず直下（空文字）。

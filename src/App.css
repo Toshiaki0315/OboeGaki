@@ -545,6 +545,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ダイアログの説明文（復元の確認など） */
+.dialog-text {
+  margin: 0;
+  padding: 0.2rem 1rem 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
 .conflict-actions {
   display: flex;
   flex-direction: column;

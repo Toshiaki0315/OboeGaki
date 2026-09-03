@@ -227,6 +227,39 @@ export async function noteBacklinks(
   return invoke<Backlink[]>("note_backlinks", { root, title });
 }
 
+/// 前回の未保存内容（クラッシュ退避）。`stashedAtMs` は退避した時刻。
+export type Stashed = {
+  source: string;
+  text: string;
+  stashed_at_ms: number;
+};
+
+/// 未保存の内容を退避する（保存できないまま落ちたときの保険）。
+export async function stashNote(
+  root: string,
+  path: string,
+  text: string,
+): Promise<void> {
+  await invoke("recovery_stash", { root, path, text });
+}
+
+export async function discardStash(root: string, path: string): Promise<void> {
+  await invoke("recovery_discard", { root, path });
+}
+
+export async function pendingRecovery(root: string): Promise<Stashed[]> {
+  return invoke<Stashed[]>("recovery_pending", { root });
+}
+
+/// 退避を別ファイルとして書き出す。書いた場所が返る。
+export async function restoreRecovery(root: string): Promise<string[]> {
+  return invoke<string[]>("recovery_restore", { root });
+}
+
+export async function clearRecovery(root: string): Promise<void> {
+  await invoke("recovery_clear", { root });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

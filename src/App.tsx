@@ -36,6 +36,7 @@ import {
   deleteForever,
   emptyTrash,
   historyList,
+  clearRecovery,
   createFolder,
   createFromTemplate,
   dailyNote,
@@ -43,7 +44,11 @@ import {
   moveNote,
   noteBacklinks,
   notesInFolder,
+  pendingRecovery,
   renameFolder,
+  restoreRecovery,
+  stashNote,
+  discardStash,
   historyRestore,
   imageSource,
   notesWithTag,
@@ -68,6 +73,10 @@ import "./App.css";
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
 
 const AUTOSAVE_DELAY_MS = 800; // spec §7.4
+/// 退避の間隔（H-1）。打つたびに書くとディスクを叩きすぎるので間を空ける。
+/// 自動保存が 800ms で走るのでここまで来ることは少ないが、**打ち続けて
+/// いる間**（デバウンスが伸び続ける）と保存できない状態の保険になる
+const STASH_INTERVAL_MS = 2000;
 
 function noteLabel(root: string, path: string): string {
   const relative = path.startsWith(root) ? path.slice(root.length + 1) : path;
@@ -299,6 +308,34 @@ function App() {
     // 起動時に一度だけ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 前回の未保存内容があれば知らせる（H-1）。**勝手には復元しない** —
+  // 復元は別ファイルとして書き出すので、要らないものが増えては困る
+  useEffect(() => {
+    if (!vaultRoot) return;
+    let alive = true;
+    void pendingRecovery(vaultRoot)
+      .then((found) => {
+        if (alive) setRecovery(found.length);
+      })
+      .catch(() => {}); // 退避が読めないせいで起動を止めない
+    return () => {
+      alive = false;
+    };
+  }, [vaultRoot]);
+
+  async function handleRecovery(restore: boolean) {
+    if (!vaultRoot) return;
+    setRecovery(0);
+    if (!restore) {
+      await clearRecovery(vaultRoot);
+      return;
+    }
+    const written = await restoreRecovery(vaultRoot);
+    await refresh();
+    if (written[0]) await openNote(written[0]);
+    setStatus(`未保存の内容を ${written.length} 件、別ファイルに復元しました`);
+  }
 
   async function openNote(path: string, cursor: number | null = null) {
     if (!vaultRoot) return;
@@ -642,6 +679,20 @@ function App() {
     await refresh();
   }
 
+  // 退避してあるノート（保存できたら捨てに行くため覚えておく）
+  const stashed = useRef(new Set<string>());
+  const lastStash = useRef(0);
+
+  async function keepStash(root: string, path: string, text: string) {
+    try {
+      await stashNote(root, path, text);
+      stashed.current.add(path);
+    } catch (error) {
+      // 退避に失敗しても編集は続けられる。ここで止めない
+      console.warn("未保存内容の退避に失敗した", error);
+    }
+  }
+
   function handleDocChanged(getText: () => string) {
     if (!vaultRoot || !currentPath) return;
     const root = vaultRoot;
@@ -652,10 +703,22 @@ function App() {
       await writeNote(root, path, getText());
       dirtyRef.current = false;
       setStatus("保存済み");
+      // 書けたので保険は要らない。**退避したときだけ**捨てに行く
+      // （毎回の保存でディスクを余分に叩かない）
+      if (stashed.current.delete(path)) void discardStash(root, path);
     };
+    // 打ち続けている間はデバウンスが伸びて保存が走らない。その間も
+    // 一定の間隔で退避しておく（H-1）
+    const now = Date.now();
+    if (now - lastStash.current >= STASH_INTERVAL_MS) {
+      lastStash.current = now;
+      void keepStash(root, path, getText());
+    }
     autosave.schedule(() => {
       void pendingSave.current?.().catch((error) => {
         setStatus(`保存に失敗: ${String(error)}`);
+        // 保存できないまま落ちても書いたものを失わない（H-1）
+        void keepStash(root, path, getText());
       });
     });
     if (outlineOpenRef.current) {
@@ -812,6 +875,8 @@ function App() {
     // 競合。3 択（外部 / 自分 / 両方残す = spec §7.5）をアプリ内の
     // ダイアログで聞く（ネイティブの ask は 2 択しかできない）
     setConflict({ path: change.path, externalText: text });
+    // 競合の解決を待つ間は保存できない。**その間も保険は要る**（H-1）
+    void keepStash(root, change.path, editorRef.current?.getText() ?? "");
   }
 
   // 競合ダイアログ（spec §7.5）
@@ -819,6 +884,9 @@ function App() {
     path: string;
     externalText: string;
   } | null>(null);
+
+  // 前回の未保存内容（クラッシュ退避 / H-1）。0 件なら聞かない
+  const [recovery, setRecovery] = useState<number>(0);
 
   function adoptExternal(text: string) {
     autosave.cancel();
@@ -831,6 +899,10 @@ function App() {
     if (!conflict || !vaultRoot) return;
     const found = conflict;
     setConflict(null);
+    // どの道を選んでも「保存できない状態」は終わる。保険は捨てる
+    if (stashed.current.delete(found.path)) {
+      void discardStash(vaultRoot, found.path);
+    }
     if (choice === "external") {
       adoptExternal(found.externalText);
       setStatus("外部の変更を読み込みました");
@@ -1345,6 +1417,27 @@ function App() {
             <div className="conflict-actions">
               <button onClick={() => setTableDialog(false)}>やめる</button>
               <button onClick={confirmInsertTable}>挿入</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {recovery > 0 && (
+        <div className="palette-backdrop">
+          <div className="palette">
+            <header className="palette-title">
+              保存されていない変更が見つかりました
+            </header>
+            <p className="dialog-text">
+              前回終了したときに保存されていない変更が {recovery} 件あります。
+              別のファイルとして復元しますか？（今あるノートは書き換えません）
+            </p>
+            <div className="conflict-actions">
+              <button onClick={() => void handleRecovery(false)}>
+                復元しない
+              </button>
+              <button onClick={() => void handleRecovery(true)}>
+                復元する
+              </button>
             </div>
           </div>
         </div>

@@ -535,6 +535,36 @@ impl Vault {
         Ok(target)
     }
 
+    /// 退避（クラッシュリカバリ）を**別ファイルとして**書き出す。
+    ///
+    /// **元のファイルを上書きしない。** 復元は「見つかった内容を失わない」
+    /// ためのもので、ディスク上の内容を捨ててよいとは限らない。
+    /// **元のフォルダに戻す**（箱が消えていたら直下へ。無い箱は作らない）。
+    pub fn restore_stash(&self, source: &Path, text: &str, stamp: &str) -> io::Result<PathBuf> {
+        // 箱ごと消えていることがある（`contains` は実在する祖先で確かめるので
+        // 通らない）。その場合は文字の上で vault の下にあることを見る
+        let inside = contains(&self.root, source)
+            || (source.starts_with(&self.root)
+                && !source
+                    .components()
+                    .any(|part| matches!(part, std::path::Component::ParentDir)));
+        if !inside {
+            return Err(outside_error("保管フォルダの外は復元できない", source));
+        }
+        let folder = match source.parent() {
+            Some(parent) if parent.is_dir() => parent.to_path_buf(),
+            _ => self.root.clone(),
+        };
+        let stem = source
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(UNTITLED);
+        let name = sanitize_filename(&format!("{stem} (復元 {stamp})"));
+        let target = unique_path(&folder, &name, ".md", None);
+        crate::autosave::save_atomic(&target, text)?;
+        Ok(target)
+    }
+
     // --------------------------------------------------------------- 初回
 
     /// ノートが 1 つも無い vault か。
@@ -1932,6 +1962,72 @@ mod tests {
 
         assert_ne!(second, first);
         assert_eq!(fs::read_to_string(&first).unwrap(), "# 書き足したメモ\n");
+    }
+
+    // ------------------------------------------------------------ 退避の復元
+
+    #[test]
+    fn test_restore_stash_別ファイルとして元のフォルダに置く() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "仕事/会議.md");
+
+        let restored = vault
+            .restore_stash(&source, "# 会議\n\n書きかけ\n", "2026-09-03")
+            .unwrap();
+
+        assert_eq!(restored, root.path().join("仕事/会議 (復元 2026-09-03).md"));
+        assert_eq!(
+            fs::read_to_string(&restored).unwrap(),
+            "# 会議\n\n書きかけ\n"
+        );
+        // **元のファイルを上書きしない。** 復元は「見つかった内容を失わない」
+        // ためのもので、ディスク上の内容を捨ててよいとは限らない
+        assert_eq!(fs::read_to_string(&source).unwrap(), "# note\n");
+    }
+
+    #[test]
+    fn test_restore_stash_箱が消えていたら直下へ() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        // 無い箱は作らない（spec §7.1）
+        let gone = root.path().join("消えた/会議.md");
+
+        let restored = vault
+            .restore_stash(&gone, "書きかけ", "2026-09-03")
+            .unwrap();
+
+        assert_eq!(restored, root.path().join("会議 (復元 2026-09-03).md"));
+    }
+
+    #[test]
+    fn test_restore_stash_同じ名前があれば連番() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "会議.md");
+
+        let first = vault
+            .restore_stash(&source, "1 回目", "2026-09-03")
+            .unwrap();
+        let second = vault
+            .restore_stash(&source, "2 回目", "2026-09-03")
+            .unwrap();
+
+        assert_ne!(second, first);
+        assert_eq!(fs::read_to_string(&first).unwrap(), "1 回目");
+    }
+
+    #[test]
+    fn test_restore_stash_vaultの外は断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let outside = TempDir::new().unwrap().path().join("外.md");
+
+        assert!(vault.restore_stash(&outside, "本文", "2026-09-03").is_err());
     }
 
     // ------------------------------------------------------------ フォルダ（ADR-0024）

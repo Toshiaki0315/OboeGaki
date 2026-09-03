@@ -68,8 +68,11 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       `[[` 補完をセットで
 - [x] **3-5. 検索式**（core/searchquery.py）
       語の AND / OR・タグ条件。参照実装の構文をそのまま移植
-- [ ] **3-6. クラッシュ退避**（H-1, autosave.stash / recovery）
-      未保存の内容を管理フォルダへ退避し、起動時に復元を提案
+- [x] **3-6. クラッシュ退避**（H-1, autosave.stash / recovery）
+      未保存の内容を退避し、起動時に復元を提案。退避先は管理フォルダでは
+      なく**アプリのデータフォルダ**（vault ごとに分ける）— 保存できない
+      理由が vault 側にあることが多く、書けない場所の保険は保険にならない
+      （参照実装 autosave.recovery_root と同じ判断）
 - [ ] **3-7. 二重起動の安全化**（H-1, acquire_vault_lock）
       vault ロック（Tauri は single-instance プラグインが使える）
 - [ ] **3-8. ウィンドウ位置・サイズの保存**（config.window_geometry）

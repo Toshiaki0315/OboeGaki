@@ -8,6 +8,7 @@ pub mod commands;
 pub mod front_matter;
 mod history;
 pub mod index_db;
+pub mod recovery;
 pub mod search_query;
 pub mod tags;
 pub mod template;
@@ -160,6 +161,11 @@ pub fn run() {
             commands::folder_delete,
             commands::note_move,
             commands::note_backlinks,
+            commands::recovery_stash,
+            commands::recovery_discard,
+            commands::recovery_pending,
+            commands::recovery_restore,
+            commands::recovery_clear,
             commands::note_read,
             commands::note_write,
             commands::note_create,
