@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -9,6 +15,13 @@ import type { OutlineItem } from "./editor/outline";
 import { createDebouncer } from "./lib/debounce";
 import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
+import {
+  clampFontSize,
+  DEFAULT_FONT_PX,
+  FONT_STEP_PX,
+  loadFontSize,
+  saveFontSize,
+} from "./lib/font-size";
 import { restoreLastVault, saveLastVault } from "./lib/last-vault";
 import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
 import {
@@ -102,6 +115,16 @@ function App() {
       // 保存できなくても切り替え自体は生かす
     }
   }
+  // 本文の文字サイズ（Cmd+= / Cmd+-、TASKS 1-5）。変えたら覚える
+  const [fontSize, setFontSize] = useState(() => loadFontSize(localStorage));
+  function changeFontSize(px: number) {
+    const next = clampFontSize(px);
+    setFontSize(next);
+    saveFontSize(localStorage, next);
+  }
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
+
   // クイックオープン（Cmd+O、spec §5.4）
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -415,6 +438,9 @@ function App() {
     },
     "search-all": () => searchInputRef.current?.focus(),
     outline: toggleOutline,
+    "zoom-in": () => changeFontSize(fontSizeRef.current + FONT_STEP_PX),
+    "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
+    "zoom-reset": () => changeFontSize(DEFAULT_FONT_PX),
     "source-mode": () => editorRef.current?.toggleSourceMode(),
     "focus-mode": () => editorRef.current?.toggleFocusMode(),
     typewriter: () => editorRef.current?.toggleTypewriterMode(),
@@ -529,7 +555,10 @@ function App() {
   })();
 
   return (
-    <main className={`app app-split${outlineOpen ? " with-outline" : ""}`}>
+    <main
+      className={`app app-split${outlineOpen ? " with-outline" : ""}`}
+      style={{ "--editor-font-px": `${fontSize}px` } as CSSProperties}
+    >
       <aside className="note-list">
         <header>
           <button onClick={() => void handleCreate()}>＋ 新規</button>

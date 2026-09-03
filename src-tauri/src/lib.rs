@@ -79,6 +79,10 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+Shift+F"),
         )?)
         .separator()
+        .item(&item("zoom-in", "文字を大きく", Some("CmdOrCtrl+="))?)
+        .item(&item("zoom-out", "文字を小さく", Some("CmdOrCtrl+-"))?)
+        .item(&item("zoom-reset", "標準の大きさ", Some("CmdOrCtrl+0"))?)
+        .separator()
         .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
         .item(&item(

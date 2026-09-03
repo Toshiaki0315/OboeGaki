@@ -88,7 +88,8 @@ body {
 }
 
 .editor-host .cm-editor {
-  font-size: 16px;
+  /* 変数の実体は App.tsx が .app に載せる（Cmd+= / Cmd+- で増減） */
+  font-size: var(--editor-font-px, 16px);
 }
 
 .editor-host .cm-editor.cm-focused {
