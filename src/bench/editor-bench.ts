@@ -15,11 +15,21 @@ import { extendedInline } from "../editor/extended-inline";
 import { inputAssist } from "../editor/input-assist";
 import { livePreview } from "../editor/live-preview";
 import { syntaxHighlighting } from "@codemirror/language";
-import { autoPair } from "../editor/auto-pair";
+import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
+import { search, searchKeymap } from "@codemirror/search";
+import { autoPair, urlPasteLink } from "../editor/auto-pair";
 import { codeHighlight, resolveCodeLanguage } from "../editor/code-blocks";
 import { frontMatterHide } from "../editor/frontmatter";
 import { headingFolding } from "../editor/folding";
 import { tableAutoFormat } from "../editor/table-format";
+import { editorModes } from "../editor/modes";
+import { formatKeymap } from "../editor/format-commands";
+import { plainCopyKeymap } from "../editor/plain-copy";
+import { attachmentEvents } from "../editor/attachments";
+import { activationClicks, activationHandler } from "../editor/activation";
+import { imageResolver } from "../editor/live-preview";
+import { tagCompletion } from "../editor/tag-complete";
+import { noteLinkCompletion } from "../editor/note-link-complete";
 
 const KEYSTROKES = 300;
 const BUDGET_MS = 16;
@@ -80,13 +90,23 @@ async function run() {
     state: EditorState.create({
       doc,
       // 本番（Editor.tsx）と同じ拡張一式で測る。フェンスの入れ子パース
-      // （codeLanguages）や front matter の監視が抜けた計測は嘘になる
+      // （codeLanguages）や front matter の監視が抜けた計測は嘘になる。
+      // 抜いてよいのは Tauri 依存のコールバックの中身（保存・画像解決）
+      // だけで、拡張そのものは空実装で載せる（レビュー 2026-09-04）
       extensions: [
         frontMatterHide,
         history(),
         autoPair,
+        autocompletion({
+          override: [tagCompletion(() => []), noteLinkCompletion(() => [])],
+          icons: false,
+        }),
+        keymap.of([{ key: "Tab", run: acceptCompletion }]),
         inputAssist,
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        formatKeymap,
+        plainCopyKeymap,
+        search({ top: true }),
+        keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
         markdown({
           extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
           codeLanguages: resolveCodeLanguage,
@@ -95,6 +115,12 @@ async function run() {
         livePreview,
         tableAutoFormat,
         headingFolding,
+        editorModes,
+        imageResolver.of(async () => null),
+        activationClicks,
+        activationHandler.of(() => {}),
+        attachmentEvents(async () => null),
+        urlPasteLink,
         EditorView.lineWrapping,
       ],
     }),

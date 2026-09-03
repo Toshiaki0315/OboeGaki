@@ -325,7 +325,7 @@ function cellSegments(state: EditorState, cell: SyntaxNode): CellSegment[] {
     if (from >= to) return;
     const text = state.sliceDoc(from, to);
     const last = out[out.length - 1];
-    if (last && last.kinds.join(" ") === kinds.join(" ")) {
+    if (last && last.kinds.join("\u0000") === kinds.join("\u0000")) {
       last.text += text;
     } else {
       out.push({ text, kinds });

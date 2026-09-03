@@ -318,17 +318,34 @@ function App() {
     };
     const stop = () => {
       window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
       saveSettings(localStorage, settingsRef.current);
       document.body.classList.remove("resizing");
     };
     document.body.classList.add("resizing");
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop, { once: true });
+    // pointerup が来ない経路（capture の横取り・フォーカス喪失）でも
+    // move が生き残らないように（レビュー 2026-09-04）
+    window.addEventListener("pointercancel", stop, { once: true });
   }
 
   function changeSettings(next: Partial<Settings>) {
+    // 数値欄は空にすると 0 / NaN が入る（レビュー 2026-09-04）。読めない
+    // 値はその項目だけ捨てて、直前の値を保つ
+    const cleaned: Partial<Settings> = { ...next };
+    for (const key of Object.keys(cleaned) as (keyof Settings)[]) {
+      const value = cleaned[key];
+      if (
+        typeof value === "number" &&
+        (!Number.isFinite(value) || value <= 0)
+      ) {
+        delete cleaned[key];
+      }
+    }
     setSettings((current) => {
-      const merged = { ...current, ...next };
+      const merged = { ...current, ...cleaned };
       saveSettings(localStorage, merged);
       return merged;
     });
@@ -411,11 +428,15 @@ function App() {
         found.text,
         settingsRef.current.historyMinutes,
       );
-      // **元の場所にはリンクだけ残す**（書いた文は新しいノートへ移った）
-      editorRef.current?.replaceSelection(found.link);
+      // **元の場所にはリンクだけ残す**（書いた文は新しいノートへ移った）。
+      // リンクは**実際にできたファイル名**から組む — 題名の sanitize
+      //（/ や : の置換、衝突時の連番）で found.title とずれると、
+      // クリックのたびに 2 つ目のノートができる（レビュー 2026-09-04）
+      const created = noteStem(path);
+      editorRef.current?.replaceSelection(`[[${created}]]`);
       await autosave.flush();
       await refresh();
-      setStatus(`「${found.title}」に切り出しました`);
+      setStatus(`「${created}」に切り出しました`);
     } catch (error) {
       setStatus(`切り出せませんでした: ${String(error)}`);
     }
@@ -716,7 +737,11 @@ function App() {
   async function openHistory() {
     if (!vaultRoot || !currentPath) return;
     await autosave.flush(); // 未保存分を書き切ってから一覧を出す
-    setHistoryEntries(await historyList(vaultRoot, currentPath));
+    try {
+      setHistoryEntries(await historyList(vaultRoot, currentPath));
+    } catch (error) {
+      setStatus(`履歴を開けませんでした: ${String(error)}`);
+    }
   }
 
   async function restoreVersion(entry: HistoryEntry) {
@@ -730,7 +755,13 @@ function App() {
       { title: "覚書", kind: "warning" },
     );
     if (!ok) return;
-    const text = await historyRestore(vaultRoot, currentPath, entry.path);
+    let text: string;
+    try {
+      text = await historyRestore(vaultRoot, currentPath, entry.path);
+    } catch (error) {
+      setStatus(`版を戻せませんでした: ${String(error)}`);
+      return;
+    }
     pendingSave.current = null;
     dirtyRef.current = false;
     editorRef.current?.replaceText(text);
@@ -990,7 +1021,14 @@ function App() {
   async function openNote(path: string, cursor: number | null = null) {
     if (!vaultRoot) return;
     await autosave.flush(); // 前のノートの未保存分を書き切ってから切り替える
-    const text = await readNote(vaultRoot, path);
+    let text: string;
+    try {
+      text = await readNote(vaultRoot, path);
+    } catch (error) {
+      // 一覧と実体がずれている（外で消された等）。無反応に見せない
+      setStatus(`開けませんでした: ${String(error)}`);
+      return;
+    }
     selectNote(path);
     setInitialCursor(cursor);
     setDoc(text);
@@ -1176,7 +1214,13 @@ function App() {
     if (!vaultRoot || !path) return;
     const current = notes.find((entry) => entry.path === path);
     await autosave.flush(); // 未保存分を書き切ってから front matter を触る
-    const text = await pinNote(vaultRoot, path, !current?.pinned);
+    let text: string;
+    try {
+      text = await pinNote(vaultRoot, path, !current?.pinned);
+    } catch (error) {
+      setStatus(`ピン留めに失敗: ${String(error)}`);
+      return;
+    }
     // 開いているノートなら、書き換わった front matter を読み直す
     if (path === currentPath) {
       dirtyRef.current = false;
@@ -1201,16 +1245,25 @@ function App() {
     searchSoon.schedule(() => {
       const root = vaultRootRef.current;
       if (!root) return;
-      void searchNotes(root, next).then((outcome) => {
-        setHits(outcome.hits);
-        // 読めない日付を黙って絞りに使わない。0 件になった理由が
-        // 画面から読めないと、打ち間違いに気づけない
-        setStatus(
-          outcome.unreadable.length > 0
-            ? `日付として読めません: ${outcome.unreadable.join(" ")}（例: after:2026-09-03）`
-            : "",
-        );
-      });
+      searchNotes(root, next)
+        .then((outcome) => {
+          // 世代ガード: 遅いクエリの結果が、後から打った新しいクエリの
+          // 結果を上書きしない（レビュー 2026-09-04）。デバウンスは予約を
+          // 絞るだけで、発射済みの invoke は絞れない
+          if (queryRef.current !== next) return;
+          setHits(outcome.hits);
+          // 読めない日付を黙って絞りに使わない。0 件になった理由が
+          // 画面から読めないと、打ち間違いに気づけない
+          setStatus(
+            outcome.unreadable.length > 0
+              ? `日付として読めません: ${outcome.unreadable.join(" ")}（例: after:2026-09-03）`
+              : "",
+          );
+        })
+        .catch((error) => {
+          if (queryRef.current !== next) return;
+          setStatus(`検索に失敗: ${String(error)}`);
+        });
     });
   }
 
@@ -1593,7 +1646,12 @@ function App() {
             ? `${head}（${parts.join("、")}）`
             : `${head}（変わりはありません）`,
         );
-        void useAppStore.getState().refresh();
+        useAppStore
+          .getState()
+          .refresh()
+          .catch((error) =>
+            setStatus(`一覧を更新できませんでした: ${String(error)}`),
+          );
       }),
     );
     return unlisten;
@@ -1612,7 +1670,12 @@ function App() {
   useEffect(() => {
     const unlisten = safeSubscribe(() =>
       listen("index-updated", () => {
-        void useAppStore.getState().refresh();
+        useAppStore
+          .getState()
+          .refresh()
+          .catch((error) =>
+            setStatus(`一覧を更新できませんでした: ${String(error)}`),
+          );
       }),
     );
     return unlisten;
@@ -1643,7 +1706,14 @@ function App() {
 
   async function handleExternalChange(change: { path: string; kind: string }) {
     if (!vaultRootRef.current) return;
-    refreshSoon.schedule(() => void useAppStore.getState().refresh());
+    refreshSoon.schedule(() =>
+      useAppStore
+        .getState()
+        .refresh()
+        .catch((error) =>
+          setStatus(`一覧を更新できませんでした: ${String(error)}`),
+        ),
+    );
     if (change.path !== currentPathRef.current) return;
     if (change.kind === "removed") {
       // 改名・ゴミ箱移動の途中経過でも届くので、**本当に無いときだけ聞く**
@@ -1924,7 +1994,14 @@ function App() {
                       <button
                         className="saved-search-row"
                         title={entry.query}
-                        onClick={() => handleQueryChanged(entry.query)}
+                        onClick={() => {
+                          // 結果は一覧ペイン側に出る。閉じたままだと
+                          // 押しても無反応に見える（レビュー 2026-09-04）
+                          if (!settingsRef.current.notesVisible) {
+                            changeSettings({ notesVisible: true });
+                          }
+                          handleQueryChanged(entry.query);
+                        }}
                       >
                         <span className="saved-search-name">{entry.name}</span>
                       </button>
