@@ -118,11 +118,19 @@ const focusDim = ViewPlugin.fromClass(
 const typewriterScroll = EditorView.updateListener.of((update) => {
   if (!update.state.field(typewriterField, false)) return;
   if (!update.selectionSet && !update.docChanged) return;
-  const head = update.state.selection.main.head;
+  // IME 変換中は dispatch しない（T5。変換のたびにスクロールが入ると
+  // 候補ウィンドウがずれる — レビュー 2026-09-04）
+  if (update.view.composing) return;
+  const view = update.view;
   // updateListener の中から直接 dispatch しない（再入になる）
   queueMicrotask(() => {
-    update.view.dispatch({
-      effects: EditorView.scrollIntoView(head, { y: "center" }),
+    // 位置は dispatch する瞬間に取り直す（捕まえた head は、間に変更が
+    // 入ると古い場所を指す）。モードが切れていたら何もしない
+    if (!view.state.field(typewriterField, false)) return;
+    view.dispatch({
+      effects: EditorView.scrollIntoView(view.state.selection.main.head, {
+        y: "center",
+      }),
     });
   });
 });

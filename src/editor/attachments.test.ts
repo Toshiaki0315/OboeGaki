@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
+import { EditorState, Text } from "@codemirror/state";
 import {
+  insertionTarget,
   isImageFile,
   looksLikeAttachment,
   markdownFor,
@@ -51,5 +53,39 @@ describe("markdownFor", () => {
       "![](a.png)\n![](b.png)",
     );
     expect(markdownFor([null, null])).toBe("");
+  });
+});
+
+describe("insertionTarget（保存を待つ間に文書が変わったとき）", () => {
+  // レビュー 2026-09-04: 保存前に捕まえた位置へそのまま挿しており、
+  // 待っている間に打つと文字の途中へ割り込み、文書が縮むと
+  // RangeError で落ちていた
+
+  test("test_文書が変わっていなければ捕まえた位置", () => {
+    const state = EditorState.create({ doc: "水と油" });
+    expect(insertionTarget(state.doc, { from: 1, to: 2 }, state)).toEqual({
+      from: 1,
+      to: 2,
+    });
+  });
+
+  test("test_文書が変わっていたら今のカーソル位置", () => {
+    const before = Text.of(["古い文書"]);
+    const state = EditorState.create({
+      doc: "書き足した新しい文書",
+      selection: { anchor: 5 },
+    });
+    expect(insertionTarget(before, { from: 7, to: 8 }, state)).toEqual({
+      from: 5,
+      to: 5,
+    });
+  });
+
+  test("test_捕まえた位置が文書からはみ出す形は今のカーソルに落とす", () => {
+    const state = EditorState.create({ doc: "短い", selection: { anchor: 0 } });
+    expect(insertionTarget(state.doc, { from: 7, to: 9 }, state)).toEqual({
+      from: 0,
+      to: 0,
+    });
   });
 });

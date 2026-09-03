@@ -127,3 +127,24 @@ describe("隠蔽と編集ガード", () => {
     expect(next.field(frontMatterField)).toBeNull();
   });
 });
+
+describe("front matter に当たりを含む一括置換（レビュー 2026-09-04）", () => {
+  test("test_本文側の置換は生かしfront_matter側だけ落とす", () => {
+    // 「すべて置換」は 1 transaction に複数の変更が入る。全体を
+    // 破棄すると、本文側の置換まで黙って消える
+    const state = EditorState.create({
+      doc: DOC, // ---/id: 01ABC/pinned: true/--- + "# 本文"
+      extensions: [frontMatterHide],
+    });
+    const abcInMeta = DOC.indexOf("01ABC");
+    const target = DOC.indexOf("本文");
+    const next = state.update({
+      changes: [
+        { from: abcInMeta, to: abcInMeta + 5, insert: "書換" },
+        { from: target, to: target + 2, insert: "書換" },
+      ],
+      userEvent: "input.replace.all",
+    }).state;
+    expect(next.doc.toString()).toBe(DOC.replace("本文", "書換"));
+  });
+});

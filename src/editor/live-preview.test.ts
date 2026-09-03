@@ -685,3 +685,61 @@ function* iterWidgets(set: ReturnType<EditorState["field"]>) {
     cursor.next();
   }
 }
+
+describe("オートリンクの表示（レビュー 2026-09-04）", () => {
+  test("test_山括弧だけ隠れてURLは見える", () => {
+    const doc = "見よ <https://a.jp> を\n";
+    const decos = decorationsOf(doc, doc.length);
+    const url = [doc.indexOf("https"), doc.indexOf(">")];
+    // URL 本体を覆う隠しが無いこと
+    expect(
+      decos.some(
+        (d) => d.kind === "hide" && d.from <= url[0] && d.to >= url[1],
+      ),
+    ).toBe(false);
+    // 山括弧（< と >）は隠れること
+    expect(
+      decos.filter(
+        (d) =>
+          d.kind === "hide" &&
+          (d.from === doc.indexOf("<") || d.from === doc.indexOf(">")),
+      ),
+    ).toHaveLength(2);
+  });
+
+  test("test_ふつうのリンクのURLは今まで通り隠す", () => {
+    const doc = "[説明](https://a.jp)\n";
+    const decos = decorationsOf(doc, doc.length);
+    expect(
+      decos.some(
+        (d) =>
+          d.kind === "hide" &&
+          d.from <= doc.indexOf("https") &&
+          d.to >= doc.indexOf(")"),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe(":::note はコードフェンスの中では効かない（レビュー 2026-09-04）", () => {
+  test("test_フェンス内の囲み記法は装飾しない", () => {
+    const doc = "```markdown\n:::note\n中身\n:::\n```\n";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField],
+    });
+    const decos = blockWidgetDecorations(state);
+    expect(decos).toEqual([]);
+  });
+
+  test("test_フェンスの外の囲みは今まで通り効く", () => {
+    const doc = ":::note\n中身\n:::\n";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField],
+    });
+    expect(blockWidgetDecorations(state).length).toBeGreaterThan(0);
+  });
+});

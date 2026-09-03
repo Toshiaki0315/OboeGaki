@@ -84,3 +84,33 @@ test("test_ファイル名の無いフェンスは今まで通り行ごと隠す
 test("test_ブロックに触れている間はラベルではなくソースを見せる", () => {
   expect(fileNamesOf(decorationsOf(FENCE_WITH_NAME, 5))).toEqual([]);
 });
+
+test("test_閉じの無いフェンスはコードの最終行を隠さない", () => {
+  // レビュー 2026-09-04: 閉じフェンス前提で最終行を隠しており、
+  // 書きかけのフェンスで「書いた行が消えた」ように見えていた
+  const doc = "```python\nprint(1)\nprint(2)\n";
+  const ranges = decorationsOf(doc, doc.length);
+  const lastLine = [doc.indexOf("print(2)"), doc.indexOf("print(2)") + 8];
+  const hidden = ranges.some(
+    (r) =>
+      !(r.value.spec as { widget?: object; class?: string }).widget &&
+      !(r.value.spec as { class?: string }).class &&
+      r.from <= lastLine[0] &&
+      r.to >= lastLine[1],
+  );
+  expect(hidden).toBe(false);
+});
+
+test("test_markdownフェンスの中は入れ子の木ごと装飾しない", () => {
+  // フェンスの中はコード例。見出しや強調のマーカーを隠すと読めない
+  const doc = "```markdown\n# 見出し\n**強い**\n```\n";
+  const ranges = decorationsOf(doc, doc.length);
+  const inFence = ranges.filter(
+    (r) =>
+      r.from > doc.indexOf("\n") &&
+      r.to < doc.lastIndexOf("```") &&
+      // 背景の帯（line 装飾）は正当。隠し（replace）だけが対象
+      !(r.value.spec as { class?: string }).class,
+  );
+  expect(inFence).toEqual([]);
+});

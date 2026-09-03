@@ -7,7 +7,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
-import { plainTextOf } from "./plain-copy";
+import { copyRange, plainTextOf } from "./plain-copy";
 
 const LANG = markdown({
   extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
@@ -42,5 +42,24 @@ describe("plainTextOf", () => {
     const from = doc.indexOf("**");
     const to = doc.indexOf(" 後");
     expect(plain(doc, from, to)).toBe("強い");
+  });
+});
+
+describe("copyRange（選択が無いときの写す範囲）", () => {
+  test("test_選択なしはfront_matterを除いた全文", () => {
+    // id はアプリの管理情報。他所へ貼る文章に混ぜない（ADR-0013）
+    const doc = "---\nid: 01A\n---\n# 本文\n";
+    const state = EditorState.create({ doc, extensions: [LANG] });
+    expect(copyRange(state)).toEqual([doc.indexOf("# 本文"), doc.length]);
+  });
+
+  test("test_選択があればその範囲", () => {
+    const doc = "水と油";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: 1, head: 3 },
+      extensions: [LANG],
+    });
+    expect(copyRange(state)).toEqual([1, 3]);
   });
 });

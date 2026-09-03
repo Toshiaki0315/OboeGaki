@@ -5,7 +5,7 @@
 // 素通しすると `file:///...png` という文字列が本文へ落ちる。
 
 import { EditorView } from "@codemirror/view";
-import type { Extension } from "@codemirror/state";
+import type { EditorState, Extension, Text } from "@codemirror/state";
 
 // 落とされたファイルを画像として扱う拡張子（参照実装 IMAGE_SUFFIXES）
 const IMAGE_SUFFIXES = new Set([
@@ -49,6 +49,26 @@ export type SaveAttachment = (
   name: string,
 ) => Promise<string | null>;
 
+/// 保存が終わったあとの挿し込み先。保存を待っている間に文書が変わって
+/// いたら、捕まえた位置ではなく**今のカーソル位置**へ挿す — 古い位置は
+/// 打ち込んだ文字の途中を指し得るし、文書が縮んでいれば範囲外で落ちる
+///（レビュー 2026-09-04）。Text は不変なので同一性で「変わったか」が分かる。
+export function insertionTarget(
+  startDoc: Text,
+  captured: { from: number; to: number },
+  state: EditorState,
+): { from: number; to: number } {
+  if (
+    state.doc === startDoc &&
+    captured.from <= state.doc.length &&
+    captured.to <= state.doc.length
+  ) {
+    return captured;
+  }
+  const head = state.selection.main.head;
+  return { from: head, to: head };
+}
+
 async function saveAll(
   save: SaveAttachment,
   files: readonly File[],
@@ -81,10 +101,15 @@ export function attachmentEvents(save: SaveAttachment): Extension {
       const files = Array.from(event.clipboardData?.files ?? []);
       if (!looksLikeAttachment(files)) return false;
       event.preventDefault();
-      const { from, to } = view.state.selection.main;
-      void saveAll(save, pickImages(files)).then((text) =>
-        insertAt(view, from, to, text),
-      );
+      const startDoc = view.state.doc;
+      const captured = {
+        from: view.state.selection.main.from,
+        to: view.state.selection.main.to,
+      };
+      void saveAll(save, pickImages(files)).then((text) => {
+        const target = insertionTarget(startDoc, captured, view.state);
+        insertAt(view, target.from, target.to, text);
+      });
       return true;
     },
     drop: (event, view) => {
@@ -92,12 +117,18 @@ export function attachmentEvents(save: SaveAttachment): Extension {
       if (!looksLikeAttachment(files)) return false;
       event.preventDefault();
       // 落とした場所へ挿す。座標が本文の外なら今のカーソル位置
+      const startDoc = view.state.doc;
       const pos =
         view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
         view.state.selection.main.head;
-      void saveAll(save, pickImages(files)).then((text) =>
-        insertAt(view, pos, pos, text),
-      );
+      void saveAll(save, pickImages(files)).then((text) => {
+        const target = insertionTarget(
+          startDoc,
+          { from: pos, to: pos },
+          view.state,
+        );
+        insertAt(view, target.from, target.to, text);
+      });
       return true;
     },
   });

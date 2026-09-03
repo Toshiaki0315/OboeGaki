@@ -13,6 +13,7 @@ import {
   EditorSelection,
   EditorState,
   StateField,
+  Transaction,
   type Extension,
 } from "@codemirror/state";
 import { Decoration, EditorView } from "@codemirror/view";
@@ -87,10 +88,20 @@ const guard = EditorState.transactionFilter.of((tr) => {
   const isEdit = tr.isUserEvent("input") || tr.isUserEvent("delete");
   if (isEdit && tr.docChanged) {
     let touches = false;
-    tr.changes.iterChangedRanges((fromA) => {
+    const kept: { from: number; to: number; insert: string }[] = [];
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
       if (fromA < range.bodyStart) touches = true;
+      else kept.push({ from: fromA, to: toA, insert: inserted.toString() });
     });
-    if (touches) return [];
+    if (touches) {
+      // front matter に食い込む変更**だけ**を落とす。「すべて置換」は
+      // 1 transaction に複数の変更を積むので、全体を破棄すると本文側の
+      // 置換まで黙って消える（レビュー 2026-09-04）
+      if (kept.length === 0) return [];
+      return [
+        { changes: kept, userEvent: tr.annotation(Transaction.userEvent) },
+      ];
+    }
   }
 
   if (tr.selection && tr.selection.main.from < range.bodyStart) {

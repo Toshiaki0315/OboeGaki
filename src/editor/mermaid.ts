@@ -57,6 +57,12 @@ const cache = new Map<string, Promise<string | null>>();
 
 let loading: Promise<typeof import("mermaid").default> | null = null;
 
+// 描画は 1 本ずつ（レビュー 2026-09-04）。mermaid の initialize は
+// グローバル設定で、複数の図やテーマ切替が挟み合うと、light の鍵に
+// dark の SVG が入って**永久にキャッシュされる**。直列にすれば
+// initialize → render の組が崩れない
+let serialized: Promise<unknown> = Promise.resolve();
+
 async function library(theme: MermaidTheme) {
   if (!loading) {
     loading = import("mermaid").then((module) => module.default);
@@ -82,25 +88,27 @@ export function renderMermaid(
   const key = cacheKey(theme, code);
   const known = cache.get(key);
   if (known) return known;
-  const started = draw(code, theme);
+  const started = serialized.then(() => draw(code, theme));
+  serialized = started.catch(() => {});
   cache.set(key, started);
   return started;
 }
 
 async function draw(code: string, theme: MermaidTheme): Promise<string | null> {
+  // id は DOM に残る一時要素の名前。図ごとに変える
+  const id = `oboegaki-mermaid-${Math.random().toString(36).slice(2)}`;
   try {
     const mermaid = await library(theme);
-    // id は DOM に残る一時要素の名前。図ごとに変える
-    const id = `oboegaki-mermaid-${Math.random().toString(36).slice(2)}`;
     const { svg } = await mermaid.render(id, code);
     return svg;
   } catch {
     // mermaid は失敗した図の残骸を DOM に残すことがある。後始末して
-    // 「描けなかった」を覚える（同じ図を毎回試さない）
+    // 「描けなかった」を覚える（同じ図を毎回試さない）。
+    // **自分の id だけ**を掃除する — 全部消すと、同時に進む別の図の
+    // 作業要素まで巻き添えにする（レビュー 2026-09-04）。
     // mermaid は計測用の要素を `d` + id で残すことがある（両方掃除する）
-    document
-      .querySelectorAll('[id^="oboegaki-mermaid-"], [id^="doboegaki-mermaid-"]')
-      .forEach((node) => node.remove());
+    document.getElementById(id)?.remove();
+    document.getElementById(`d${id}`)?.remove();
     return null;
   }
 }

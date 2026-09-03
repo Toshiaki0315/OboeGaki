@@ -5,6 +5,7 @@
 // 書いた内容を失わないほうを優先する。
 
 import type { EditorState } from "@codemirror/state";
+import { Transaction } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import type { Replacement } from "./format-commands";
@@ -245,7 +246,14 @@ export const tableAutoFormat = ViewPlugin.fromClass(
       // update 処理の中では dispatch できないので次のタスクで置き換える
       queueMicrotask(() => {
         if (this.view.state !== expected) return; // もう別の状態（打ち消す）
-        this.view.dispatch({ changes: change, userEvent: "format.table" });
+        this.view.dispatch({
+          changes: change,
+          userEvent: "format.table",
+          // Undo を 1 段消費させない（レビュー 2026-09-04: 表を離れる
+          // たびに「桁揃えの取り消し」が履歴に積まれ、Cmd+Z の 1 回目が
+          // 直前の入力に戻らなくなっていた）
+          annotations: Transaction.addToHistory.of(false),
+        });
       });
     }
   },

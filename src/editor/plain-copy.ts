@@ -8,6 +8,7 @@
 import type { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
+import { frontMatterRange } from "./frontmatter";
 
 // 落とすマーカーのノード名。URL は残す（リンク先も文章の一部）
 const MARK_NODES = new Set([
@@ -55,10 +56,18 @@ export function plainTextOf(
   return text;
 }
 
-/// 選択（無ければ文書全体）をプレーンテキストとしてクリップボードへ。
+/// 写す範囲。選択が無ければ**本文**全体（front matter は含めない —
+/// id はアプリの管理情報で、他所へ貼る文章に混ぜない。ADR-0013）。
+export function copyRange(state: EditorState): [number, number] {
+  const { from, to } = state.selection.main;
+  if (from !== to) return [from, to];
+  const bodyStart = frontMatterRange(state.doc.toString())?.bodyStart ?? 0;
+  return [bodyStart, state.doc.length];
+}
+
+/// 選択（無ければ本文全体）をプレーンテキストとしてクリップボードへ。
 export const copyPlainText = (view: EditorView): boolean => {
-  const { from, to } = view.state.selection.main;
-  const [start, end] = from === to ? [0, view.state.doc.length] : [from, to];
+  const [start, end] = copyRange(view.state);
   const text = plainTextOf(view.state, start, end);
   void navigator.clipboard?.writeText(text).catch(() => {
     // クリップボードに書けない環境では黙って何もしない

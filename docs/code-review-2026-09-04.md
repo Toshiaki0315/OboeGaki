@@ -92,29 +92,29 @@
 
 ### エディタ層
 
-- 閉じの無いコードフェンスで**コードの最終行が隠れて見えなくなる**
+- ✅ 対応済み（同日） 閉じの無いコードフェンスで**コードの最終行が隠れて見えなくなる**
   （live-preview.ts:626 が閉じフェンス前提。input-assist.ts:64 は正しく
   CodeMark 数で判定しており、規則が食い違っている）
-- タイプライタモードの `typewriterScroll` が **IME ガード無しの updateListener から
+- ✅ 対応済み（同日） タイプライタモードの `typewriterScroll` が **IME ガード無しの updateListener から
   dispatch**（modes.ts:118、T5 違反。変換中の候補ウィンドウずれの恐れ）。
   microtask 前に捕まえた `head` が古い位置を指す問題も同居
-- 添付の貼り付け/ドロップが**保存前に捕まえた位置**へ挿入（attachments.ts:68）。
+- ✅ 対応済み（同日） 添付の貼り付け/ドロップが**保存前に捕まえた位置**へ挿入（attachments.ts:68）。
   保存待ちの間に打つと文字の途中に割り込み、文書が縮むと **RangeError**
-- Mermaid: `initialize({theme})` がグローバルなので複数図 + テーマ切替で
+- ✅ 対応済み（同日） Mermaid: `initialize({theme})` がグローバルなので複数図 + テーマ切替で
   **間違ったテーマの SVG が永久キャッシュ**。失敗時の掃除が `querySelectorAll` で
   **他の図の描画中要素まで消す**（mermaid.ts:60-106）
-- ` ```markdown ` フェンスの**中に**ライブプレビュー装飾が掛かる
+- ✅ 対応済み（同日） ` ```markdown ` フェンスの**中に**ライブプレビュー装飾が掛かる
   （live-preview.ts の iterate がフェンスへ潜り、入れ子言語の木も辿る。
   plain-copy.ts は正しく回避しており非対称）
-- オートリンク `<https://…>` が**丸ごと非表示**になる（MARK_NODES が LinkMark と
+- ✅ 対応済み（同日） オートリンク `<https://…>` が**丸ごと非表示**になる（MARK_NODES が LinkMark と
   URL の両方を隠す = Autolink の全構成要素）
-- 「すべて置換」が front matter に当たりを含むと**本文側の置換も全部無効**
+- ✅ 対応済み（同日） 「すべて置換」が front matter に当たりを含むと**本文側の置換も全部無効**
   （frontmatter.ts:83 のガードが transaction 全体を破棄。フィードバックも無し）
-- 選択なしの Cmd+Shift+C が **front matter（id 等）ごとコピー**する
+- ✅ 対応済み（同日） 選択なしの Cmd+Shift+C が **front matter（id 等）ごとコピー**する
   （plain-copy.ts:59。stats.ts は除外しており非対称）
-- 表の自動整形が **Undo を 1 段消費**する（table-format.ts:242。
+- ✅ 対応済み（同日） 表の自動整形が **Undo を 1 段消費**する（table-format.ts:242。
   addToHistory: false を検討）
-- `:::note` がコードフェンス内でも発火し、mermaid ブロックと装飾が重なる
+- ✅ 対応済み（同日） `:::note` がコードフェンス内でも発火し、mermaid ブロックと装飾が重なる
 
 ### アプリ層
 
