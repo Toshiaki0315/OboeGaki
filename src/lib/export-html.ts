@@ -142,14 +142,12 @@ const STYLE = `
   input[type="checkbox"] { margin-right: 0.4em; }
 `;
 
-/// 完結した HTML 文書を返す。
+/// 本文だけを HTML にする（印刷 = ADR-0038 が使う）。
 ///
-/// `diagrams` は描き終えた Mermaid 図（コード → SVG）。**描画は非同期**
-/// なので呼ぶ側が先に済ませて渡す（ここは純関数のまま保つ）。無い図は
-/// コードブロックのまま出す。
-export function renderHtml(
+/// 書き出しと**同じ文字列**を作る（経路を分けると片方だけ直す事故が起きる
+/// = ADR-0007 の判断）。
+export function renderBody(
   markdownText: string,
-  title: string,
   diagrams?: Map<string, string>,
 ): string {
   const md = renderer();
@@ -167,7 +165,20 @@ export function renderHtml(
         : self.renderToken(tokens, index, options);
     };
   }
-  const body = md.render(markdownText);
+  return md.render(markdownText);
+}
+
+/// 完結した HTML 文書を返す。
+///
+/// `diagrams` は描き終えた Mermaid 図（コード → SVG）。**描画は非同期**
+/// なので呼ぶ側が先に済ませて渡す（ここは純関数のまま保つ）。無い図は
+/// コードブロックのまま出す。
+export function renderHtml(
+  markdownText: string,
+  title: string,
+  diagrams?: Map<string, string>,
+): string {
+  const body = renderBody(markdownText, diagrams);
   return [
     "<!doctype html>",
     '<html lang="ja">',

@@ -19,7 +19,7 @@ import {
   type MermaidTheme,
 } from "./editor/mermaid";
 import { createDebouncer } from "./lib/debounce";
-import { renderHtml } from "./lib/export-html";
+import { renderBody, renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -387,25 +387,49 @@ function App() {
   const [paletteIndex, setPaletteIndex] = useState(0);
   // HTML 書き出し（ADR-0007 の CM6 版）。画像は data URL に埋め込んで
   // 1 ファイルで持ち運べる形にする
-  async function handleExport() {
-    if (!vaultRoot || !currentPath) return;
-    autosave.flush();
-    const text = await readNote(vaultRoot, currentPath);
-    const title = noteStem(currentPath);
-    // 図は先に描いてから渡す（描画は非同期。書き出しには SVG を埋める）
+  /// 図を先に描く（描画は非同期。書き出しにも印刷にも SVG を埋める）。
+  async function drawDiagrams(text: string): Promise<Map<string, string>> {
     const diagrams = new Map<string, string>();
     for (const code of collectMermaid(text)) {
       const svg = await renderMermaid(code, diagramTheme);
       if (svg) diagrams.set(code, svg);
     }
-    let html = renderHtml(text, title, diagrams);
+    return diagrams;
+  }
+
+  /// 画像を data URL にして埋める（**外部リソースを参照しない** = ADR-0007）。
+  async function embedImages(html: string, root: string): Promise<string> {
     const sources = new Set(
       [...html.matchAll(/<img src="([^"]+)"/g)].map((found) => found[1]),
     );
+    let embedded = html;
     for (const src of sources) {
-      const data = await imageSource(vaultRoot, src);
-      if (data) html = html.split(`src="${src}"`).join(`src="${data}"`);
+      const data = await imageSource(root, src);
+      if (data) embedded = embedded.split(`src="${src}"`).join(`src="${data}"`);
     }
+    return embedded;
+  }
+
+  /// 印刷（ADR-0038）。**書き出しと同じ本文**を隠しの領域に組み、
+  /// `@media print` でそこだけを紙に出す。エディタ（CM6）は見えている
+  /// 範囲しか DOM に無いので、そのまま刷ると本文が欠ける。
+  async function handlePrint() {
+    if (!vaultRoot || !currentPath) return;
+    autosave.flush();
+    const text = await readNote(vaultRoot, currentPath);
+    const body = renderBody(text, await drawDiagrams(text));
+    setPrintBody({ html: await embedImages(body, vaultRoot), at: Date.now() });
+  }
+
+  async function handleExport() {
+    if (!vaultRoot || !currentPath) return;
+    autosave.flush();
+    const text = await readNote(vaultRoot, currentPath);
+    const title = noteStem(currentPath);
+    const html = await embedImages(
+      renderHtml(text, title, await drawDiagrams(text)),
+      vaultRoot,
+    );
     const target = await save({
       defaultPath: `${title}.html`,
       filters: [{ name: "HTML", extensions: ["html"] }],
@@ -526,6 +550,26 @@ function App() {
     setDoc(null);
   }
 
+  // 印刷用に組んだ本文（ADR-0038）。null なら一度も刷っていない。
+  // **同じ本文をもう一度刷れるよう毎回別の値にする**（文字列だけだと
+  // 2 回目の `Cmd+P` で state が変わらず、印刷パネルが出ない）
+  const [printBody, setPrintBody] = useState<{
+    html: string;
+    at: number;
+  } | null>(null);
+
+  // 組み終わって**画面に出てから**印刷パネルを出す（先に呼ぶと、まだ
+  // DOM に無いものが刷られる）
+  useEffect(() => {
+    if (printBody === null) return;
+    const frame = requestAnimationFrame(() => {
+      void invoke("print_page").catch((error) =>
+        setStatus(`印刷できませんでした: ${String(error)}`),
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [printBody]);
+
   // 図の見た目（ADR-0021）。新しく開くノートにも渡す
   const [diagramTheme, setDiagramTheme] = useState<MermaidTheme>("light");
 
@@ -597,6 +641,7 @@ function App() {
     dirtyRef.current = false;
     setStatus("");
     setSavedAt(null);
+    setPrintBody(null); // 前のノートの印刷用の組みは捨てる（ADR-0038）
   }
 
   async function handleCreate() {
@@ -1082,6 +1127,7 @@ function App() {
     "cleanup-attachments": () => void handleCleanupAttachments(),
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
+    print: () => void handlePrint(),
     history: () => void openHistory(),
     trash: () => void handleTrash(),
     "quick-open": () => {
@@ -1360,1000 +1406,1035 @@ function App() {
   })();
 
   return (
-    <main
-      className={
-        `app app-split${outlineOpen ? " with-outline" : ""}` +
-        (leftVisible ? "" : " no-list")
-      }
-      style={
-        {
-          "--editor-font-px": `${fontSize}px`,
-          "--content-width": contentWidthCss(settings.contentWidth),
-          "--list-width": `${settings.listWidth}px`,
-          "--outline-width": `${settings.outlineWidth}px`,
-        } as CSSProperties
-      }
-    >
-      {leftVisible && (
-        <aside className="note-list">
-          <header>
-            <button onClick={() => void handleCreate()}>＋ 新規</button>
-            <button onClick={() => void chooseVault()}>フォルダ変更</button>
-          </header>
-          {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
-          {settings.notesVisible && (
-            <input
-              ref={searchInputRef}
-              className="search-input"
-              type="search"
-              placeholder="検索"
-              value={query}
-              onChange={(event) =>
-                handleQueryChanged(event.currentTarget.value)
-              }
-            />
-          )}
-          {!settings.notesVisible ? null : query.trim() ? (
-            <ul>
-              {hits.map((hit) => (
-                <li key={hit.path}>
-                  <button
-                    className="search-hit"
-                    onClick={() => void openNote(`${vaultRoot}/${hit.path}`)}
-                  >
-                    <span className="hit-title">{hit.title}</span>
-                    <span className="hit-snippet">{hit.snippet}</span>
-                  </button>
-                </li>
-              ))}
-              {hits.length === 0 && <li className="no-hits">見つかりません</li>}
-            </ul>
-          ) : (
-            <>
-              {tagFilter && (
-                <div className="tag-filter-row">
-                  <span className="tag-filter-name">#{tagFilter}</span>
-                  <button
-                    className="tag-filter-clear"
-                    onClick={() => filterByTag(null)}
-                    title="絞り込みを解除"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-              {folderFilter !== null && (
-                <div className="tag-filter-row">
-                  <span className="tag-filter-name">
-                    {folderFilter || "直下"}
-                  </span>
-                  <button
-                    className="tag-filter-clear"
-                    onClick={() => filterByFolder(null)}
-                    title="絞り込みを解除"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-              <div className="sort-row">
-                <select
-                  value={sortOrder}
-                  onChange={(event) =>
-                    changeSort(event.currentTarget.value as SortOrder)
-                  }
-                >
-                  <option value="modified">更新順</option>
-                  <option value="title">名前順</option>
-                </select>
-              </div>
+    <>
+      <main
+        className={
+          `app app-split${outlineOpen ? " with-outline" : ""}` +
+          (leftVisible ? "" : " no-list")
+        }
+        style={
+          {
+            "--editor-font-px": `${fontSize}px`,
+            "--content-width": contentWidthCss(settings.contentWidth),
+            "--list-width": `${settings.listWidth}px`,
+            "--outline-width": `${settings.outlineWidth}px`,
+          } as CSSProperties
+        }
+      >
+        {leftVisible && (
+          <aside className="note-list">
+            <header>
+              <button onClick={() => void handleCreate()}>＋ 新規</button>
+              <button onClick={() => void chooseVault()}>フォルダ変更</button>
+            </header>
+            {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
+            {settings.notesVisible && (
+              <input
+                ref={searchInputRef}
+                className="search-input"
+                type="search"
+                placeholder="検索"
+                value={query}
+                onChange={(event) =>
+                  handleQueryChanged(event.currentTarget.value)
+                }
+              />
+            )}
+            {!settings.notesVisible ? null : query.trim() ? (
               <ul>
-                {(tagFilter || folderFilter !== null) &&
-                  sortedNotes.length === 0 && (
-                    <li className="no-hits">
-                      {tagFilter
-                        ? "このタグのノートはありません"
-                        : "このフォルダにノートはありません"}
-                    </li>
-                  )}
-                {sortedNotes.map((entry) => (
-                  <li key={entry.path}>
+                {hits.map((hit) => (
+                  <li key={hit.path}>
                     <button
-                      className={`note-row${entry.path === currentPath ? " selected" : ""}`}
-                      onClick={() => void openNote(entry.path)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setNoteMenu({
-                          path: entry.path,
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
+                      className="search-hit"
+                      onClick={() => void openNote(`${vaultRoot}/${hit.path}`)}
                     >
-                      <span className="note-row-title">
-                        {entry.pinned && <span className="pin-mark">📌</span>}
-                        {entry.label}
-                      </span>
-                      {entry.preview && (
-                        <span className="note-row-preview">
-                          {entry.preview}
-                        </span>
-                      )}
-                      <span className="note-row-stamp">
-                        {formatStamp(entry.mtimeMs)}
-                      </span>
+                      <span className="hit-title">{hit.title}</span>
+                      <span className="hit-snippet">{hit.snippet}</span>
                     </button>
                   </li>
                 ))}
+                {hits.length === 0 && (
+                  <li className="no-hits">見つかりません</li>
+                )}
               </ul>
-            </>
-          )}
-          {settings.treesVisible && searches.length > 0 && (
-            <details className="search-section" open>
-              <summary>保存した検索（{searches.length}）</summary>
-              <ul>
-                {searches.map((entry) => (
-                  <li key={entry.name}>
+            ) : (
+              <>
+                {tagFilter && (
+                  <div className="tag-filter-row">
+                    <span className="tag-filter-name">#{tagFilter}</span>
                     <button
-                      className="saved-search-row"
-                      title={entry.query}
-                      onClick={() => handleQueryChanged(entry.query)}
-                    >
-                      <span className="saved-search-name">{entry.name}</span>
-                    </button>
-                    <button
-                      className="saved-search-remove"
-                      title="この検索を外す"
-                      onClick={() =>
-                        keepSearches(removeSearch(searches, entry.name))
-                      }
+                      className="tag-filter-clear"
+                      onClick={() => filterByTag(null)}
+                      title="絞り込みを解除"
                     >
                       ✕
                     </button>
+                  </div>
+                )}
+                {folderFilter !== null && (
+                  <div className="tag-filter-row">
+                    <span className="tag-filter-name">
+                      {folderFilter || "直下"}
+                    </span>
+                    <button
+                      className="tag-filter-clear"
+                      onClick={() => filterByFolder(null)}
+                      title="絞り込みを解除"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+                <div className="sort-row">
+                  <select
+                    value={sortOrder}
+                    onChange={(event) =>
+                      changeSort(event.currentTarget.value as SortOrder)
+                    }
+                  >
+                    <option value="modified">更新順</option>
+                    <option value="title">名前順</option>
+                  </select>
+                </div>
+                <ul>
+                  {(tagFilter || folderFilter !== null) &&
+                    sortedNotes.length === 0 && (
+                      <li className="no-hits">
+                        {tagFilter
+                          ? "このタグのノートはありません"
+                          : "このフォルダにノートはありません"}
+                      </li>
+                    )}
+                  {sortedNotes.map((entry) => (
+                    <li key={entry.path}>
+                      <button
+                        className={`note-row${entry.path === currentPath ? " selected" : ""}`}
+                        onClick={() => void openNote(entry.path)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setNoteMenu({
+                            path: entry.path,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
+                      >
+                        <span className="note-row-title">
+                          {entry.pinned && <span className="pin-mark">📌</span>}
+                          {entry.label}
+                        </span>
+                        {entry.preview && (
+                          <span className="note-row-preview">
+                            {entry.preview}
+                          </span>
+                        )}
+                        <span className="note-row-stamp">
+                          {formatStamp(entry.mtimeMs)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {settings.treesVisible && searches.length > 0 && (
+              <details className="search-section" open>
+                <summary>保存した検索（{searches.length}）</summary>
+                <ul>
+                  {searches.map((entry) => (
+                    <li key={entry.name}>
+                      <button
+                        className="saved-search-row"
+                        title={entry.query}
+                        onClick={() => handleQueryChanged(entry.query)}
+                      >
+                        <span className="saved-search-name">{entry.name}</span>
+                      </button>
+                      <button
+                        className="saved-search-remove"
+                        title="この検索を外す"
+                        onClick={() =>
+                          keepSearches(removeSearch(searches, entry.name))
+                        }
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {settings.treesVisible && (
+              <details className="folder-section" open>
+                <summary>
+                  フォルダ（{folders.length - 1}）
+                  <button
+                    className="folder-add"
+                    title={
+                      folderFilter
+                        ? `「${folderFilter}」の中に作る`
+                        : "保管フォルダの直下に作る"
+                    }
+                    onClick={(event) => {
+                      event.preventDefault(); // summary の開閉を巻き込まない
+                      setFolderDialog({
+                        kind: "create",
+                        folder: folderFilter ?? "",
+                      });
+                    }}
+                  >
+                    ＋
+                  </button>
+                </summary>
+                <ul>
+                  {folders.map(({ folder, count }) => (
+                    <li key={folder || "."}>
+                      <button
+                        className={`folder-row${folder === folderFilter ? " selected" : ""}`}
+                        style={{
+                          paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                        }}
+                        onClick={() =>
+                          filterByFolder(
+                            folder === folderFilter ? null : folder,
+                          )
+                        }
+                      >
+                        <span className="folder-name">
+                          {folderLabel(folder)}
+                        </span>
+                        <span className="folder-count">{count}</span>
+                      </button>
+                      {folder !== "" && folder === folderFilter && (
+                        <span className="folder-actions">
+                          <button
+                            onClick={() =>
+                              setFolderDialog({ kind: "rename", folder })
+                            }
+                          >
+                            名前を変更
+                          </button>
+                          <button
+                            onClick={() => void handleDeleteFolder(folder)}
+                          >
+                            削除
+                          </button>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {settings.treesVisible && tags.length > 0 && (
+              <details className="tag-section" open>
+                <summary>タグ（{tags.length}）</summary>
+                <ul>
+                  {tags.map(({ tag, count }) => (
+                    <li key={tag}>
+                      <button
+                        className={`tag-row${tag === tagFilter ? " selected" : ""}`}
+                        onClick={() =>
+                          filterByTag(tag === tagFilter ? null : tag)
+                        }
+                      >
+                        <span className="tag-name">#{tag}</span>
+                        <span className="tag-count">{count}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {settings.treesVisible && trashNotes.length > 0 && (
+              <details className="trash-section">
+                <summary>ゴミ箱（{trashNotes.length}）</summary>
+                <ul>
+                  {trashNotes.map((path) => (
+                    <li key={path} className="trash-item">
+                      <span>{trashLabel(vaultRoot, path)}</span>
+                      <button onClick={() => void handleRestore(path)}>
+                        戻す
+                      </button>
+                      <button
+                        className="danger"
+                        title="完全に削除"
+                        onClick={() => void handleDeleteForever(path)}
+                      >
+                        削除
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="danger trash-empty"
+                  onClick={() => void handleEmptyTrash()}
+                >
+                  ゴミ箱を空にする
+                </button>
+              </details>
+            )}
+          </aside>
+        )}
+        {/* 幅を掴む帯（spec §5.1）。**ペインの外に置く** — 中に入れると
+          一覧のスクロールに乗って、下までスクロールすると掴めなくなる */}
+        {leftVisible && (
+          <div
+            className="pane-resizer list"
+            title="幅を変える"
+            onPointerDown={(event) => startResize(event, "listWidth", 1)}
+          />
+        )}
+        {outlineOpen && (
+          <div
+            className="pane-resizer outline"
+            title="幅を変える"
+            onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
+          />
+        )}
+        {headings !== null &&
+          (() => {
+            // クイックオープンと同じ絞り方（入口が増えても操作を覚え直さない）
+            // 空の見出し（`##` だけの行）も選べるようにする
+            const labels = headings.map(
+              (item) => item.text || "（無題の見出し）",
+            );
+            const ranked = rankCandidates(headingQuery, labels).slice(0, 30);
+            return (
+              <div
+                className="palette-backdrop"
+                onMouseDown={() => setHeadings(null)}
+              >
+                <div
+                  className="palette"
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  <input
+                    autoFocus
+                    className="palette-input"
+                    placeholder="見出しへ飛ぶ"
+                    value={headingQuery}
+                    onChange={(event) => {
+                      setHeadingQuery(event.currentTarget.value);
+                      setHeadingIndex(0);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setHeadings(null);
+                      else if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setHeadingIndex((i) =>
+                          Math.min(i + 1, ranked.length - 1),
+                        );
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setHeadingIndex((i) => Math.max(i - 1, 0));
+                      } else if (event.key === "Enter") {
+                        event.preventDefault();
+                        jumpToHeading(headings[ranked[headingIndex] ?? -1]);
+                      }
+                    }}
+                  />
+                  <ul>
+                    {ranked.map((headingIdx, rankedIndex) => (
+                      <li key={`${headings[headingIdx].from}`}>
+                        <button
+                          className={
+                            rankedIndex === headingIndex ? "selected" : ""
+                          }
+                          // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
+                          style={{
+                            paddingLeft: `${0.5 + (headings[headingIdx].level - 1) * 0.9}rem`,
+                          }}
+                          onMouseEnter={() => setHeadingIndex(rankedIndex)}
+                          onClick={() => jumpToHeading(headings[headingIdx])}
+                        >
+                          {labels[headingIdx]}
+                        </button>
+                      </li>
+                    ))}
+                    {ranked.length === 0 && (
+                      <li className="no-hits">見つかりません</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            );
+          })()}
+        {quickOpen &&
+          (() => {
+            const labels = notes.map((entry) => entry.label);
+            const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
+            const choose = (rankedIndex: number) => {
+              const noteIndex = ranked[rankedIndex];
+              if (noteIndex === undefined) return;
+              setQuickOpen(false);
+              void openNote(notes[noteIndex].path);
+            };
+            return (
+              <div
+                className="palette-backdrop"
+                onMouseDown={() => setQuickOpen(false)}
+              >
+                <div
+                  className="palette"
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  <input
+                    autoFocus
+                    className="palette-input"
+                    placeholder="ノート名で開く"
+                    value={paletteQuery}
+                    onChange={(event) => {
+                      setPaletteQuery(event.currentTarget.value);
+                      setPaletteIndex(0);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setQuickOpen(false);
+                      else if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setPaletteIndex((i) =>
+                          Math.min(i + 1, ranked.length - 1),
+                        );
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setPaletteIndex((i) => Math.max(i - 1, 0));
+                      } else if (event.key === "Enter") {
+                        event.preventDefault();
+                        choose(paletteIndex);
+                      }
+                    }}
+                  />
+                  <ul>
+                    {ranked.map((noteIndex, rankedIndex) => (
+                      <li key={notes[noteIndex].path}>
+                        <button
+                          className={
+                            rankedIndex === paletteIndex ? "selected" : ""
+                          }
+                          onMouseEnter={() => setPaletteIndex(rankedIndex)}
+                          onClick={() => choose(rankedIndex)}
+                        >
+                          {labels[noteIndex]}
+                        </button>
+                      </li>
+                    ))}
+                    {ranked.length === 0 && (
+                      <li className="no-hits">見つかりません</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            );
+          })()}
+        <section className="editor-pane">
+          {doc !== null && currentPath !== null ? (
+            <>
+              <header className="note-header">
+                <input
+                  key={currentPath}
+                  className="title-input"
+                  defaultValue={noteStem(currentPath)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(event) =>
+                    void handleRename(event.currentTarget.value)
+                  }
+                />
+                <button
+                  onClick={() => void handlePin()}
+                  title="一覧の先頭に固定"
+                >
+                  {notes.find((entry) => entry.path === currentPath)?.pinned
+                    ? "ピンを外す"
+                    : "ピン留め"}
+                </button>
+                <button onClick={() => void handleExport()}>書き出し</button>
+                <button onClick={() => void openHistory()}>履歴</button>
+                <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
+              </header>
+              <Editor
+                key={currentPath}
+                ref={editorRef}
+                initialDoc={doc}
+                onDocChanged={handleDocChanged}
+                resolveImage={(url) => imageSource(vaultRoot, url)}
+                onActivate={(action) => void handleActivate(action)}
+                onCursorChanged={(pos) => {
+                  if (outlineOpenRef.current) setCursorPos(pos);
+                }}
+                saveAttachment={(data, name) =>
+                  saveAttachment(vaultRoot, data, name)
+                }
+                // 索引の持つタグを補完に出す。ストアから直に読む（tags を
+                // props で渡すと、タグが増えるたびにエディタが作り直される）
+                knownTags={() =>
+                  useAppStore.getState().tags.map((entry) => entry.tag)
+                }
+                // `[[` 補完の候補。題名はファイル名の幹（ADR-0005）なので
+                // 一覧から作れる（打鍵ごとに Rust を呼ばない）
+                knownNotes={() =>
+                  useAppStore
+                    .getState()
+                    .notes.map((entry) => noteStem(entry.path))
+                }
+                initialCursor={initialCursor}
+                diagramTheme={diagramTheme}
+              />
+            </>
+          ) : (
+            <p className="placeholder">ノートを選んでください</p>
+          )}
+          {backlinks.length > 0 && (
+            <details className="backlink-bar">
+              <summary>バックリンク（{backlinks.length}）</summary>
+              <ul>
+                {backlinks.map((entry) => (
+                  <li key={entry.path}>
+                    <button
+                      onClick={() =>
+                        void openNote(`${vaultRoot}/${entry.path}`)
+                      }
+                    >
+                      <span className="backlink-title">{entry.title}</span>
+                      <span className="backlink-context">{entry.context}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
             </details>
           )}
-          {settings.treesVisible && (
-            <details className="folder-section" open>
-              <summary>
-                フォルダ（{folders.length - 1}）
-                <button
-                  className="folder-add"
-                  title={
-                    folderFilter
-                      ? `「${folderFilter}」の中に作る`
-                      : "保管フォルダの直下に作る"
-                  }
-                  onClick={(event) => {
-                    event.preventDefault(); // summary の開閉を巻き込まない
-                    setFolderDialog({
-                      kind: "create",
-                      folder: folderFilter ?? "",
-                    });
-                  }}
-                >
-                  ＋
-                </button>
-              </summary>
+          <footer className="status-bar">
+            <span className="status-message">{status}</span>
+            <span className="status-stats">
+              {stats.characters} 文字 / {stats.lines} 行
+              {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
+            </span>
+          </footer>
+        </section>
+        {templates !== null && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setTemplates(null)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setTemplates(null);
+                else if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setTemplateIndex((i) =>
+                    Math.min(i + 1, templates.length - 1),
+                  );
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setTemplateIndex((i) => Math.max(i - 1, 0));
+                } else if (event.key === "Enter") {
+                  event.preventDefault();
+                  const chosen = templates[templateIndex];
+                  if (chosen) void handleCreateFromTemplate(chosen);
+                }
+              }}
+            >
+              <header className="palette-title">テンプレートを選ぶ</header>
               <ul>
-                {folders.map(({ folder, count }) => (
+                {templates.map((path, index) => (
+                  <li key={path}>
+                    <button
+                      autoFocus={index === 0}
+                      className={index === templateIndex ? "selected" : ""}
+                      onMouseEnter={() => setTemplateIndex(index)}
+                      onClick={() => void handleCreateFromTemplate(path)}
+                    >
+                      {noteStem(path)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+        {folderDialog !== null && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setFolderDialog(null)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">
+                {folderDialog.kind === "create"
+                  ? folderDialog.folder
+                    ? `「${folderDialog.folder}」の中に新しいフォルダ`
+                    : "新しいフォルダ"
+                  : `「${folderDialog.folder}」の名前を変更`}
+              </header>
+              <div className="table-dialog-fields">
+                <label>
+                  名前
+                  <input
+                    ref={folderName}
+                    autoFocus
+                    defaultValue={
+                      folderDialog.kind === "rename"
+                        ? folderLabel(folderDialog.folder)
+                        : ""
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void confirmFolderName();
+                      else if (event.key === "Escape") setFolderDialog(null);
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="conflict-actions">
+                <button onClick={() => setFolderDialog(null)}>やめる</button>
+                <button onClick={() => void confirmFolderName()}>決定</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {moveOpen && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setMoveOpen(false)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">フォルダへ移動</header>
+              <ul>
+                {folders.map(({ folder }) => (
                   <li key={folder || "."}>
                     <button
-                      className={`folder-row${folder === folderFilter ? " selected" : ""}`}
                       style={{
                         paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
                       }}
-                      onClick={() =>
-                        filterByFolder(folder === folderFilter ? null : folder)
-                      }
+                      onClick={() => void handleMoveNote(folder)}
                     >
-                      <span className="folder-name">{folderLabel(folder)}</span>
-                      <span className="folder-count">{count}</span>
+                      {folderLabel(folder)}
                     </button>
-                    {folder !== "" && folder === folderFilter && (
-                      <span className="folder-actions">
-                        <button
-                          onClick={() =>
-                            setFolderDialog({ kind: "rename", folder })
-                          }
-                        >
-                          名前を変更
-                        </button>
-                        <button onClick={() => void handleDeleteFolder(folder)}>
-                          削除
-                        </button>
-                      </span>
-                    )}
                   </li>
                 ))}
               </ul>
-            </details>
-          )}
-          {settings.treesVisible && tags.length > 0 && (
-            <details className="tag-section" open>
-              <summary>タグ（{tags.length}）</summary>
-              <ul>
-                {tags.map(({ tag, count }) => (
-                  <li key={tag}>
+            </div>
+          </div>
+        )}
+        {preferences && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setPreferences(false)}
+          >
+            <div
+              className="palette preferences"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">環境設定</header>
+              <div className="preferences-fields">
+                <label>
+                  <span>テーマ</span>
+                  <select
+                    value={settings.theme}
+                    onChange={(event) =>
+                      changeSettings({
+                        theme: event.currentTarget.value as Theme,
+                      })
+                    }
+                  >
+                    {THEMES.map((theme) => (
+                      <option key={theme} value={theme}>
+                        {THEME_LABELS[theme]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>文字サイズ</span>
+                  <input
+                    type="number"
+                    min={MIN_FONT_PX}
+                    max={MAX_FONT_PX}
+                    value={fontSize}
+                    onChange={(event) =>
+                      changeFontSize(Number(event.currentTarget.value))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>本文の幅</span>
+                  <select
+                    value={settings.contentWidth}
+                    onChange={(event) =>
+                      changeSettings({
+                        contentWidth: event.currentTarget.value as ContentWidth,
+                      })
+                    }
+                  >
+                    {CONTENT_WIDTHS.map((width) => (
+                      <option key={width} value={width}>
+                        {WIDTH_LABELS[width]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>履歴を残す間隔</span>
+                  <select
+                    value={settings.historyMinutes}
+                    onChange={(event) =>
+                      changeSettings({
+                        historyMinutes: Number(event.currentTarget.value),
+                      })
+                    }
+                  >
+                    {HISTORY_CHOICES.map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {minutes === 0 ? "なし" : `${minutes} 分`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>ゴミ箱の保持</span>
+                  <input
+                    type="number"
+                    min={MIN_TRASH_DAYS}
+                    max={MAX_TRASH_DAYS}
+                    value={settings.trashDays}
+                    onChange={(event) =>
+                      changeSettings({
+                        trashDays: Number(event.currentTarget.value),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              <p className="dialog-text">
+                「履歴を残す間隔」は「戻す」ために残す版の間隔です。本文の保存は
+                打ち終わって 0.8 秒後で、ここでは変わりません。「なし」は
+                自分で保存したときだけ残します。ゴミ箱の日数は次に保管フォルダを
+                開いたときから効きます。
+              </p>
+              <div className="conflict-actions">
+                <button onClick={() => setPreferences(false)}>閉じる</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {tableDialog && (
+          <div
+            className="palette-backdrop"
+            onClick={() => setTableDialog(false)}
+          >
+            <div
+              className="palette"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">表を挿入</header>
+              <div className="table-dialog-fields">
+                <label>
+                  行（見出しを除く）
+                  <input
+                    ref={tableRows}
+                    type="number"
+                    min={1}
+                    max={50}
+                    defaultValue={2}
+                  />
+                </label>
+                <label>
+                  列
+                  <input
+                    ref={tableColumns}
+                    type="number"
+                    min={1}
+                    max={20}
+                    defaultValue={2}
+                  />
+                </label>
+              </div>
+              <div className="conflict-actions">
+                <button onClick={() => setTableDialog(false)}>やめる</button>
+                <button onClick={confirmInsertTable}>挿入</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {recovery > 0 && (
+          <div className="palette-backdrop">
+            <div className="palette">
+              <header className="palette-title">
+                保存されていない変更が見つかりました
+              </header>
+              <p className="dialog-text">
+                前回終了したときに保存されていない変更が {recovery} 件あります。
+                別のファイルとして復元しますか？（今あるノートは書き換えません）
+              </p>
+              <div className="conflict-actions">
+                <button onClick={() => void handleRecovery(false)}>
+                  復元しない
+                </button>
+                <button onClick={() => void handleRecovery(true)}>
+                  復元する
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {noteMenu !== null &&
+          (() => {
+            const target = noteMenu.path;
+            const pinned = notes.find((entry) => entry.path === target)?.pinned;
+            const run = (action: () => void) => () => {
+              setNoteMenu(null);
+              action();
+            };
+            return (
+              <div
+                className="menu-backdrop"
+                onMouseDown={() => setNoteMenu(null)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setNoteMenu(null);
+                }}
+              >
+                <ul
+                  className="context-menu"
+                  // 窓の端で押されても外へはみ出さない（下の行が多い）
+                  style={{
+                    left: Math.min(noteMenu.x, window.innerWidth - 220),
+                    top: Math.min(noteMenu.y, window.innerHeight - 280),
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  <li>
+                    <button onClick={run(() => void handlePin(target))}>
+                      {pinned ? "ピンを外す" : "ピン留め"}
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={run(() => void handleDuplicate(target))}>
+                      複製
+                    </button>
+                  </li>
+                  <li>
                     <button
-                      className={`tag-row${tag === tagFilter ? " selected" : ""}`}
-                      onClick={() =>
-                        filterByTag(tag === tagFilter ? null : tag)
-                      }
+                      onClick={run(() => {
+                        setMoveTarget(target);
+                        setMoveOpen(true);
+                      })}
                     >
-                      <span className="tag-name">#{tag}</span>
-                      <span className="tag-count">{count}</span>
+                      フォルダへ移動…
                     </button>
                   </li>
-                ))}
-              </ul>
-            </details>
-          )}
-          {settings.treesVisible && trashNotes.length > 0 && (
-            <details className="trash-section">
-              <summary>ゴミ箱（{trashNotes.length}）</summary>
-              <ul>
-                {trashNotes.map((path) => (
-                  <li key={path} className="trash-item">
-                    <span>{trashLabel(vaultRoot, path)}</span>
-                    <button onClick={() => void handleRestore(path)}>
-                      戻す
+                  <li>
+                    <button onClick={run(() => setTemplateName(target))}>
+                      テンプレートに登録…
                     </button>
+                  </li>
+                  <li className="separator" />
+                  <li>
+                    <button onClick={run(() => void copyNoteLink(target))}>
+                      リンクをコピー
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={run(() => void revealItemInDir(target))}>
+                      Finder で表示
+                    </button>
+                  </li>
+                  <li className="separator" />
+                  <li>
+                    {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
                     <button
                       className="danger"
-                      title="完全に削除"
-                      onClick={() => void handleDeleteForever(path)}
+                      disabled={pinned}
+                      title={
+                        pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
+                      }
+                      onClick={run(() => void handleTrash(target))}
                     >
-                      削除
+                      ゴミ箱へ移動
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            );
+          })()}
+        {savingSearch !== null && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setSavingSearch(null)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">検索を保存</header>
+              <div className="table-dialog-fields">
+                <label>
+                  サイドバーに出す名前
+                  <input
+                    ref={searchName}
+                    autoFocus
+                    // 既定は式そのもの（短い式ならそのまま通せる）
+                    defaultValue={savingSearch}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") confirmSaveSearch();
+                      else if (event.key === "Escape") setSavingSearch(null);
+                    }}
+                  />
+                </label>
+              </div>
+              <p className="dialog-text">検索式: {savingSearch}</p>
+              <div className="conflict-actions">
+                <button onClick={() => setSavingSearch(null)}>やめる</button>
+                <button onClick={confirmSaveSearch}>保存</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {templateName !== null && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setTemplateName(null)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">テンプレートに登録</header>
+              <div className="table-dialog-fields">
+                <label>
+                  名前
+                  <input
+                    ref={templateInput}
+                    autoFocus
+                    defaultValue={noteStem(templateName)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void confirmRegisterTemplate();
+                      else if (event.key === "Escape") setTemplateName(null);
+                    }}
+                  />
+                </label>
+              </div>
+              <p className="dialog-text">
+                見出しは {"{{title}}"} に置き換わります（この雛形から作った
+                ノートには新しい題名が入ります）。
+              </p>
+              <div className="conflict-actions">
+                <button onClick={() => setTemplateName(null)}>やめる</button>
+                <button onClick={() => void confirmRegisterTemplate()}>
+                  登録
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {deleted !== null && (
+          <div className="palette-backdrop">
+            <div className="palette">
+              <header className="palette-title">
+                ファイルが削除されました
+              </header>
+              <p className="dialog-text">
+                「{noteStem(deleted)}」は外部で削除されました。
+                編集中の内容で作り直しますか？
+              </p>
+              <div className="conflict-actions">
+                <button onClick={closeDeleted}>閉じる</button>
+                <button onClick={() => void recreateDeleted()}>作り直す</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {conflict !== null && (
+          <div className="palette-backdrop">
+            <div className="palette">
+              <header className="palette-title">
+                このノートは外部でも変更されています。どうしますか？
+              </header>
+              <div className="conflict-actions">
+                <button onClick={() => void resolveConflict("external")}>
+                  外部の変更を採用（自分の編集を捨てる）
+                </button>
+                <button onClick={() => void resolveConflict("mine")}>
+                  自分の版で上書き（外部の変更を捨てる）
+                </button>
+                <button onClick={() => void resolveConflict("both")}>
+                  両方残す（自分の版を「名前 (競合 日付)」に保存）
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {historyEntries !== null && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setHistoryEntries(null)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">
+                版の履歴（新しい順・戻す前に今の内容も残ります）
+              </header>
+              <ul>
+                {historyEntries.map((entry) => (
+                  <li key={entry.path} className="history-row">
+                    <span>{entry.stamp}</span>
+                    <button onClick={() => void restoreVersion(entry)}>
+                      戻す
                     </button>
                   </li>
                 ))}
+                {historyEntries.length === 0 && (
+                  <li className="no-hits">
+                    まだ版がありません（保存から 60 分間隔で残ります）
+                  </li>
+                )}
               </ul>
-              <button
-                className="danger trash-empty"
-                onClick={() => void handleEmptyTrash()}
-              >
-                ゴミ箱を空にする
-              </button>
-            </details>
-          )}
-        </aside>
-      )}
-      {/* 幅を掴む帯（spec §5.1）。**ペインの外に置く** — 中に入れると
-          一覧のスクロールに乗って、下までスクロールすると掴めなくなる */}
-      {leftVisible && (
-        <div
-          className="pane-resizer list"
-          title="幅を変える"
-          onPointerDown={(event) => startResize(event, "listWidth", 1)}
-        />
-      )}
-      {outlineOpen && (
-        <div
-          className="pane-resizer outline"
-          title="幅を変える"
-          onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
-        />
-      )}
-      {headings !== null &&
-        (() => {
-          // クイックオープンと同じ絞り方（入口が増えても操作を覚え直さない）
-          // 空の見出し（`##` だけの行）も選べるようにする
-          const labels = headings.map(
-            (item) => item.text || "（無題の見出し）",
-          );
-          const ranked = rankCandidates(headingQuery, labels).slice(0, 30);
-          return (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setHeadings(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <input
-                  autoFocus
-                  className="palette-input"
-                  placeholder="見出しへ飛ぶ"
-                  value={headingQuery}
-                  onChange={(event) => {
-                    setHeadingQuery(event.currentTarget.value);
-                    setHeadingIndex(0);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setHeadings(null);
-                    else if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      setHeadingIndex((i) =>
-                        Math.min(i + 1, ranked.length - 1),
-                      );
-                    } else if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      setHeadingIndex((i) => Math.max(i - 1, 0));
-                    } else if (event.key === "Enter") {
-                      event.preventDefault();
-                      jumpToHeading(headings[ranked[headingIndex] ?? -1]);
-                    }
-                  }}
-                />
-                <ul>
-                  {ranked.map((headingIdx, rankedIndex) => (
-                    <li key={`${headings[headingIdx].from}`}>
-                      <button
-                        className={
-                          rankedIndex === headingIndex ? "selected" : ""
-                        }
-                        // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
-                        style={{
-                          paddingLeft: `${0.5 + (headings[headingIdx].level - 1) * 0.9}rem`,
-                        }}
-                        onMouseEnter={() => setHeadingIndex(rankedIndex)}
-                        onClick={() => jumpToHeading(headings[headingIdx])}
-                      >
-                        {labels[headingIdx]}
-                      </button>
-                    </li>
-                  ))}
-                  {ranked.length === 0 && (
-                    <li className="no-hits">見つかりません</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          );
-        })()}
-      {quickOpen &&
-        (() => {
-          const labels = notes.map((entry) => entry.label);
-          const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
-          const choose = (rankedIndex: number) => {
-            const noteIndex = ranked[rankedIndex];
-            if (noteIndex === undefined) return;
-            setQuickOpen(false);
-            void openNote(notes[noteIndex].path);
-          };
-          return (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setQuickOpen(false)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <input
-                  autoFocus
-                  className="palette-input"
-                  placeholder="ノート名で開く"
-                  value={paletteQuery}
-                  onChange={(event) => {
-                    setPaletteQuery(event.currentTarget.value);
-                    setPaletteIndex(0);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setQuickOpen(false);
-                    else if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      setPaletteIndex((i) =>
-                        Math.min(i + 1, ranked.length - 1),
-                      );
-                    } else if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      setPaletteIndex((i) => Math.max(i - 1, 0));
-                    } else if (event.key === "Enter") {
-                      event.preventDefault();
-                      choose(paletteIndex);
-                    }
-                  }}
-                />
-                <ul>
-                  {ranked.map((noteIndex, rankedIndex) => (
-                    <li key={notes[noteIndex].path}>
-                      <button
-                        className={
-                          rankedIndex === paletteIndex ? "selected" : ""
-                        }
-                        onMouseEnter={() => setPaletteIndex(rankedIndex)}
-                        onClick={() => choose(rankedIndex)}
-                      >
-                        {labels[noteIndex]}
-                      </button>
-                    </li>
-                  ))}
-                  {ranked.length === 0 && (
-                    <li className="no-hits">見つかりません</li>
-                  )}
-                </ul>
-              </div>
-            </div>
-          );
-        })()}
-      <section className="editor-pane">
-        {doc !== null && currentPath !== null ? (
-          <>
-            <header className="note-header">
-              <input
-                key={currentPath}
-                className="title-input"
-                defaultValue={noteStem(currentPath)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
-                    event.currentTarget.blur();
-                  }
-                }}
-                onBlur={(event) => void handleRename(event.currentTarget.value)}
-              />
-              <button onClick={() => void handlePin()} title="一覧の先頭に固定">
-                {notes.find((entry) => entry.path === currentPath)?.pinned
-                  ? "ピンを外す"
-                  : "ピン留め"}
-              </button>
-              <button onClick={() => void handleExport()}>書き出し</button>
-              <button onClick={() => void openHistory()}>履歴</button>
-              <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
-            </header>
-            <Editor
-              key={currentPath}
-              ref={editorRef}
-              initialDoc={doc}
-              onDocChanged={handleDocChanged}
-              resolveImage={(url) => imageSource(vaultRoot, url)}
-              onActivate={(action) => void handleActivate(action)}
-              onCursorChanged={(pos) => {
-                if (outlineOpenRef.current) setCursorPos(pos);
-              }}
-              saveAttachment={(data, name) =>
-                saveAttachment(vaultRoot, data, name)
-              }
-              // 索引の持つタグを補完に出す。ストアから直に読む（tags を
-              // props で渡すと、タグが増えるたびにエディタが作り直される）
-              knownTags={() =>
-                useAppStore.getState().tags.map((entry) => entry.tag)
-              }
-              // `[[` 補完の候補。題名はファイル名の幹（ADR-0005）なので
-              // 一覧から作れる（打鍵ごとに Rust を呼ばない）
-              knownNotes={() =>
-                useAppStore
-                  .getState()
-                  .notes.map((entry) => noteStem(entry.path))
-              }
-              initialCursor={initialCursor}
-              diagramTheme={diagramTheme}
-            />
-          </>
-        ) : (
-          <p className="placeholder">ノートを選んでください</p>
-        )}
-        {backlinks.length > 0 && (
-          <details className="backlink-bar">
-            <summary>バックリンク（{backlinks.length}）</summary>
-            <ul>
-              {backlinks.map((entry) => (
-                <li key={entry.path}>
-                  <button
-                    onClick={() => void openNote(`${vaultRoot}/${entry.path}`)}
-                  >
-                    <span className="backlink-title">{entry.title}</span>
-                    <span className="backlink-context">{entry.context}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        <footer className="status-bar">
-          <span className="status-message">{status}</span>
-          <span className="status-stats">
-            {stats.characters} 文字 / {stats.lines} 行
-            {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
-          </span>
-        </footer>
-      </section>
-      {templates !== null && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setTemplates(null)}
-        >
-          <div
-            className="palette"
-            onMouseDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setTemplates(null);
-              else if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setTemplateIndex((i) => Math.min(i + 1, templates.length - 1));
-              } else if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setTemplateIndex((i) => Math.max(i - 1, 0));
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                const chosen = templates[templateIndex];
-                if (chosen) void handleCreateFromTemplate(chosen);
-              }
-            }}
-          >
-            <header className="palette-title">テンプレートを選ぶ</header>
-            <ul>
-              {templates.map((path, index) => (
-                <li key={path}>
-                  <button
-                    autoFocus={index === 0}
-                    className={index === templateIndex ? "selected" : ""}
-                    onMouseEnter={() => setTemplateIndex(index)}
-                    onClick={() => void handleCreateFromTemplate(path)}
-                  >
-                    {noteStem(path)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-      {folderDialog !== null && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setFolderDialog(null)}
-        >
-          <div
-            className="palette"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="palette-title">
-              {folderDialog.kind === "create"
-                ? folderDialog.folder
-                  ? `「${folderDialog.folder}」の中に新しいフォルダ`
-                  : "新しいフォルダ"
-                : `「${folderDialog.folder}」の名前を変更`}
-            </header>
-            <div className="table-dialog-fields">
-              <label>
-                名前
-                <input
-                  ref={folderName}
-                  autoFocus
-                  defaultValue={
-                    folderDialog.kind === "rename"
-                      ? folderLabel(folderDialog.folder)
-                      : ""
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void confirmFolderName();
-                    else if (event.key === "Escape") setFolderDialog(null);
-                  }}
-                />
-              </label>
-            </div>
-            <div className="conflict-actions">
-              <button onClick={() => setFolderDialog(null)}>やめる</button>
-              <button onClick={() => void confirmFolderName()}>決定</button>
             </div>
           </div>
-        </div>
-      )}
-      {moveOpen && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setMoveOpen(false)}
-        >
-          <div
-            className="palette"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="palette-title">フォルダへ移動</header>
+        )}
+        {outlineOpen && (
+          <aside className="outline-pane">
+            <header>目次</header>
             <ul>
-              {folders.map(({ folder }) => (
-                <li key={folder || "."}>
+              {outlineItems.map((item, index) => (
+                <li key={`${item.from}-${item.text}`}>
                   <button
+                    className={index === currentOutlineIndex ? "current" : ""}
                     style={{
-                      paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                      paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem`,
                     }}
-                    onClick={() => void handleMoveNote(folder)}
+                    onClick={() => editorRef.current?.revealPos(item.from)}
                   >
-                    {folderLabel(folder)}
+                    {item.text}
                   </button>
                 </li>
               ))}
-            </ul>
-          </div>
-        </div>
-      )}
-      {preferences && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setPreferences(false)}
-        >
-          <div
-            className="palette preferences"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="palette-title">環境設定</header>
-            <div className="preferences-fields">
-              <label>
-                <span>テーマ</span>
-                <select
-                  value={settings.theme}
-                  onChange={(event) =>
-                    changeSettings({
-                      theme: event.currentTarget.value as Theme,
-                    })
-                  }
-                >
-                  {THEMES.map((theme) => (
-                    <option key={theme} value={theme}>
-                      {THEME_LABELS[theme]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>文字サイズ</span>
-                <input
-                  type="number"
-                  min={MIN_FONT_PX}
-                  max={MAX_FONT_PX}
-                  value={fontSize}
-                  onChange={(event) =>
-                    changeFontSize(Number(event.currentTarget.value))
-                  }
-                />
-              </label>
-              <label>
-                <span>本文の幅</span>
-                <select
-                  value={settings.contentWidth}
-                  onChange={(event) =>
-                    changeSettings({
-                      contentWidth: event.currentTarget.value as ContentWidth,
-                    })
-                  }
-                >
-                  {CONTENT_WIDTHS.map((width) => (
-                    <option key={width} value={width}>
-                      {WIDTH_LABELS[width]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>履歴を残す間隔</span>
-                <select
-                  value={settings.historyMinutes}
-                  onChange={(event) =>
-                    changeSettings({
-                      historyMinutes: Number(event.currentTarget.value),
-                    })
-                  }
-                >
-                  {HISTORY_CHOICES.map((minutes) => (
-                    <option key={minutes} value={minutes}>
-                      {minutes === 0 ? "なし" : `${minutes} 分`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>ゴミ箱の保持</span>
-                <input
-                  type="number"
-                  min={MIN_TRASH_DAYS}
-                  max={MAX_TRASH_DAYS}
-                  value={settings.trashDays}
-                  onChange={(event) =>
-                    changeSettings({
-                      trashDays: Number(event.currentTarget.value),
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <p className="dialog-text">
-              「履歴を残す間隔」は「戻す」ために残す版の間隔です。本文の保存は
-              打ち終わって 0.8 秒後で、ここでは変わりません。「なし」は
-              自分で保存したときだけ残します。ゴミ箱の日数は次に保管フォルダを
-              開いたときから効きます。
-            </p>
-            <div className="conflict-actions">
-              <button onClick={() => setPreferences(false)}>閉じる</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {tableDialog && (
-        <div className="palette-backdrop" onClick={() => setTableDialog(false)}>
-          <div className="palette" onClick={(event) => event.stopPropagation()}>
-            <header className="palette-title">表を挿入</header>
-            <div className="table-dialog-fields">
-              <label>
-                行（見出しを除く）
-                <input
-                  ref={tableRows}
-                  type="number"
-                  min={1}
-                  max={50}
-                  defaultValue={2}
-                />
-              </label>
-              <label>
-                列
-                <input
-                  ref={tableColumns}
-                  type="number"
-                  min={1}
-                  max={20}
-                  defaultValue={2}
-                />
-              </label>
-            </div>
-            <div className="conflict-actions">
-              <button onClick={() => setTableDialog(false)}>やめる</button>
-              <button onClick={confirmInsertTable}>挿入</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {recovery > 0 && (
-        <div className="palette-backdrop">
-          <div className="palette">
-            <header className="palette-title">
-              保存されていない変更が見つかりました
-            </header>
-            <p className="dialog-text">
-              前回終了したときに保存されていない変更が {recovery} 件あります。
-              別のファイルとして復元しますか？（今あるノートは書き換えません）
-            </p>
-            <div className="conflict-actions">
-              <button onClick={() => void handleRecovery(false)}>
-                復元しない
-              </button>
-              <button onClick={() => void handleRecovery(true)}>
-                復元する
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {noteMenu !== null &&
-        (() => {
-          const target = noteMenu.path;
-          const pinned = notes.find((entry) => entry.path === target)?.pinned;
-          const run = (action: () => void) => () => {
-            setNoteMenu(null);
-            action();
-          };
-          return (
-            <div
-              className="menu-backdrop"
-              onMouseDown={() => setNoteMenu(null)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setNoteMenu(null);
-              }}
-            >
-              <ul
-                className="context-menu"
-                // 窓の端で押されても外へはみ出さない（下の行が多い）
-                style={{
-                  left: Math.min(noteMenu.x, window.innerWidth - 220),
-                  top: Math.min(noteMenu.y, window.innerHeight - 280),
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <li>
-                  <button onClick={run(() => void handlePin(target))}>
-                    {pinned ? "ピンを外す" : "ピン留め"}
-                  </button>
-                </li>
-                <li>
-                  <button onClick={run(() => void handleDuplicate(target))}>
-                    複製
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={run(() => {
-                      setMoveTarget(target);
-                      setMoveOpen(true);
-                    })}
-                  >
-                    フォルダへ移動…
-                  </button>
-                </li>
-                <li>
-                  <button onClick={run(() => setTemplateName(target))}>
-                    テンプレートに登録…
-                  </button>
-                </li>
-                <li className="separator" />
-                <li>
-                  <button onClick={run(() => void copyNoteLink(target))}>
-                    リンクをコピー
-                  </button>
-                </li>
-                <li>
-                  <button onClick={run(() => void revealItemInDir(target))}>
-                    Finder で表示
-                  </button>
-                </li>
-                <li className="separator" />
-                <li>
-                  {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
-                  <button
-                    className="danger"
-                    disabled={pinned}
-                    title={
-                      pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
-                    }
-                    onClick={run(() => void handleTrash(target))}
-                  >
-                    ゴミ箱へ移動
-                  </button>
-                </li>
-              </ul>
-            </div>
-          );
-        })()}
-      {savingSearch !== null && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setSavingSearch(null)}
-        >
-          <div
-            className="palette"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="palette-title">検索を保存</header>
-            <div className="table-dialog-fields">
-              <label>
-                サイドバーに出す名前
-                <input
-                  ref={searchName}
-                  autoFocus
-                  // 既定は式そのもの（短い式ならそのまま通せる）
-                  defaultValue={savingSearch}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") confirmSaveSearch();
-                    else if (event.key === "Escape") setSavingSearch(null);
-                  }}
-                />
-              </label>
-            </div>
-            <p className="dialog-text">検索式: {savingSearch}</p>
-            <div className="conflict-actions">
-              <button onClick={() => setSavingSearch(null)}>やめる</button>
-              <button onClick={confirmSaveSearch}>保存</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {templateName !== null && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setTemplateName(null)}
-        >
-          <div
-            className="palette"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="palette-title">テンプレートに登録</header>
-            <div className="table-dialog-fields">
-              <label>
-                名前
-                <input
-                  ref={templateInput}
-                  autoFocus
-                  defaultValue={noteStem(templateName)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void confirmRegisterTemplate();
-                    else if (event.key === "Escape") setTemplateName(null);
-                  }}
-                />
-              </label>
-            </div>
-            <p className="dialog-text">
-              見出しは {"{{title}}"} に置き換わります（この雛形から作った
-              ノートには新しい題名が入ります）。
-            </p>
-            <div className="conflict-actions">
-              <button onClick={() => setTemplateName(null)}>やめる</button>
-              <button onClick={() => void confirmRegisterTemplate()}>
-                登録
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {deleted !== null && (
-        <div className="palette-backdrop">
-          <div className="palette">
-            <header className="palette-title">ファイルが削除されました</header>
-            <p className="dialog-text">
-              「{noteStem(deleted)}」は外部で削除されました。
-              編集中の内容で作り直しますか？
-            </p>
-            <div className="conflict-actions">
-              <button onClick={closeDeleted}>閉じる</button>
-              <button onClick={() => void recreateDeleted()}>作り直す</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {conflict !== null && (
-        <div className="palette-backdrop">
-          <div className="palette">
-            <header className="palette-title">
-              このノートは外部でも変更されています。どうしますか？
-            </header>
-            <div className="conflict-actions">
-              <button onClick={() => void resolveConflict("external")}>
-                外部の変更を採用（自分の編集を捨てる）
-              </button>
-              <button onClick={() => void resolveConflict("mine")}>
-                自分の版で上書き（外部の変更を捨てる）
-              </button>
-              <button onClick={() => void resolveConflict("both")}>
-                両方残す（自分の版を「名前 (競合 日付)」に保存）
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {historyEntries !== null && (
-        <div
-          className="palette-backdrop"
-          onMouseDown={() => setHistoryEntries(null)}
-        >
-          <div
-            className="palette"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <header className="palette-title">
-              版の履歴（新しい順・戻す前に今の内容も残ります）
-            </header>
-            <ul>
-              {historyEntries.map((entry) => (
-                <li key={entry.path} className="history-row">
-                  <span>{entry.stamp}</span>
-                  <button onClick={() => void restoreVersion(entry)}>
-                    戻す
-                  </button>
-                </li>
-              ))}
-              {historyEntries.length === 0 && (
-                <li className="no-hits">
-                  まだ版がありません（保存から 60 分間隔で残ります）
-                </li>
+              {outlineItems.length === 0 && (
+                <li className="no-hits">見出しがありません</li>
               )}
             </ul>
-          </div>
-        </div>
-      )}
-      {outlineOpen && (
-        <aside className="outline-pane">
-          <header>目次</header>
-          <ul>
-            {outlineItems.map((item, index) => (
-              <li key={`${item.from}-${item.text}`}>
-                <button
-                  className={index === currentOutlineIndex ? "current" : ""}
-                  style={{ paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem` }}
-                  onClick={() => editorRef.current?.revealPos(item.from)}
-                >
-                  {item.text}
-                </button>
-              </li>
-            ))}
-            {outlineItems.length === 0 && (
-              <li className="no-hits">見出しがありません</li>
-            )}
-          </ul>
-        </aside>
-      )}
-    </main>
+          </aside>
+        )}
+      </main>
+      {/* 印刷用（ADR-0038）。画面では隠れていて、紙にはここだけが出る。
+          中身は書き出しと同じ本文（markdown-it が組んだもの） */}
+      <div
+        className="print-root"
+        dangerouslySetInnerHTML={{ __html: printBody?.html ?? "" }}
+      />
+    </>
   );
 }
 

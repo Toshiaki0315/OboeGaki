@@ -511,6 +511,80 @@ body.resizing {
   font-variant-numeric: tabular-nums;
 }
 
+/* 印刷（ADR-0038）。画面では隠し、紙にはここだけを出す。
+   エディタ（CM6）は見えている範囲しか DOM に無いので、そのまま刷ると
+   本文が欠ける — 書き出しと同じ本文をここに組んでから刷る。
+   見た目は書き出しの STYLE（lib/export-html.ts）と対で保つ */
+.print-root {
+  display: none;
+}
+
+@media print {
+  .app {
+    display: none !important;
+  }
+
+  .print-root {
+    display: block;
+    font-family: -apple-system, "Hiragino Sans", sans-serif;
+    line-height: 1.8;
+    color: #000;
+  }
+
+  .print-root h1,
+  .print-root h2,
+  .print-root h3 {
+    line-height: 1.4;
+    /* 見出しだけが紙の最後に残らない */
+    break-after: avoid;
+  }
+
+  .print-root pre,
+  .print-root blockquote,
+  .print-root table,
+  .print-root figure {
+    break-inside: avoid;
+  }
+
+  .print-root code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.9em;
+  }
+
+  .print-root pre {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 6px;
+    padding: 0.8em 1em;
+    white-space: pre-wrap; /* 紙は横に逃げられない */
+  }
+
+  .print-root blockquote {
+    border-left: 3px solid rgba(0, 0, 0, 0.25);
+    margin-left: 0;
+    padding-left: 1em;
+  }
+
+  .print-root table {
+    border-collapse: collapse;
+  }
+
+  .print-root th,
+  .print-root td {
+    border: 1px solid rgba(0, 0, 0, 0.4);
+    padding: 0.3em 0.8em;
+    text-align: left;
+  }
+
+  .print-root img,
+  .print-root svg {
+    max-width: 100%;
+  }
+
+  @page {
+    margin: 18mm 16mm;
+  }
+}
+
 /* Mermaid 図（ADR-0021）。描けるまではコードのまま見せる */
 .editor-host .cm-mermaid {
   display: block;

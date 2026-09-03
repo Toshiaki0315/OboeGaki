@@ -541,6 +541,15 @@ pub fn index_sync(
     Ok(true)
 }
 
+/// 印刷（TASKS 4-3）。macOS の印刷パネルを出す（「PDF として保存」もここ）。
+///
+/// 印刷されるのは**この WebView に今出ているもの**なので、何を出すかは
+/// フロント側の `@media print` が決める（ADR-0038）。
+#[tauri::command]
+pub fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
 /// 退避の置き場（vault ごと）。アプリのデータフォルダの下に作る。
 ///
 /// vault の中に置かないのは、**保存できない理由が vault 側にあることが多い**
