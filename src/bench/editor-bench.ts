@@ -46,6 +46,14 @@ function buildDocument(): string {
 const a = 1; // コード
 \`\`\`
 
+$$
+E = mc^2
+$$
+
+:::note
+囲みの中身もひとつ。
+:::
+
 `;
   // 参照実装の large.md（68KB・2,085 行）を上回る規模まで繰り返す
   let text = "# 性能計測ノート\n\n";

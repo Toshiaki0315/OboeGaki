@@ -40,7 +40,11 @@ import {
   wikiLinkTag,
 } from "./extended-inline";
 import { mathSpanAt, renderMath } from "./math";
-import { noteContainers, UNKNOWN_NOTE_KIND } from "./note-container";
+import {
+  type NoteContainer,
+  noteContainers,
+  UNKNOWN_NOTE_KIND,
+} from "./note-container";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
@@ -720,7 +724,12 @@ export function tableDecorations(state: EditorState): Range<Decoration>[] {
 /// 表の範囲とリビール状態。DecorationSet は不変オブジェクトなので、
 /// 付帯情報は WeakMap でぶら下げる（field の値を DecorationSet のまま
 /// 保ち、provide とテストを単純にするため）
-type TableMeta = { zones: { from: number; to: number }[]; revealKey: string };
+type TableMeta = {
+  zones: { from: number; to: number }[];
+  revealKey: string;
+  /// 計算した時点で構文解析が届いていた位置（blockWidgetMeta と同じ理由）
+  parsedTo: number;
+};
 const tableMeta = new WeakMap<DecorationSet, TableMeta>();
 
 function tableZones(state: EditorState): { from: number; to: number }[] {
@@ -754,30 +763,41 @@ function revealKeyOf(
 function computeTableSet(state: EditorState): DecorationSet {
   const set = RangeSet.of(tableDecorations(state), true);
   const zones = tableZones(state);
-  tableMeta.set(set, { zones, revealKey: revealKeyOf(state, zones) });
+  tableMeta.set(set, {
+    zones,
+    revealKey: revealKeyOf(state, zones),
+    parsedTo: syntaxTree(state).length,
+  });
   return set;
 }
 
-/// この編集は表に関わり得るか。変更行の前後 1 行（旧文書側も）に `|` が
-/// あるか、挿入テキストが `|` を含むときだけ真。表の生成・破壊は
-/// 必ず `|` の近くで起きる、という近似
-function editNearTables(tr: {
-  startState: EditorState;
-  newDoc: EditorState["doc"];
-  changes: {
-    iterChanges: (
-      f: (
-        fromA: number,
-        toA: number,
-        fromB: number,
-        toB: number,
-        inserted: { toString: () => string },
-      ) => void,
-    ) => void;
-  };
-}): boolean {
+/// この編集は対象ブロックに関わり得るか。変更行の前後 1 行（旧文書側も）
+/// または挿入テキストが `marker` に当たるときだけ真。ブロックの生成・破壊は
+/// 必ずその記号の近くで起きる、という近似
+function editNearMarker(
+  marker: RegExp,
+  tr: {
+    startState: EditorState;
+    newDoc: EditorState["doc"];
+    changes: {
+      iterChanges: (
+        f: (
+          fromA: number,
+          toA: number,
+          fromB: number,
+          toB: number,
+          inserted: { toString: () => string },
+        ) => void,
+      ) => void;
+    };
+  },
+): boolean {
   let near = false;
-  const hasPipeAround = (doc: EditorState["doc"], from: number, to: number) => {
+  const hasMarkerAround = (
+    doc: EditorState["doc"],
+    from: number,
+    to: number,
+  ) => {
     const start = doc.lineAt(Math.min(from, doc.length)).number;
     const end = doc.lineAt(Math.min(to, doc.length)).number;
     for (
@@ -785,25 +805,32 @@ function editNearTables(tr: {
       n <= Math.min(doc.lines, end + 1);
       n++
     ) {
-      if (doc.line(n).text.includes("|")) return true;
+      if (marker.test(doc.line(n).text)) return true;
     }
     return false;
   };
   tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
     if (near) return;
-    if (inserted.toString().includes("|")) {
+    if (marker.test(inserted.toString())) {
       near = true;
       return;
     }
     if (
-      hasPipeAround(tr.newDoc, fromB, toB) ||
-      hasPipeAround(tr.startState.doc, fromA, toA)
+      hasMarkerAround(tr.newDoc, fromB, toB) ||
+      hasMarkerAround(tr.startState.doc, fromA, toA)
     ) {
       near = true;
     }
   });
   return near;
 }
+
+type NearTr = Parameters<typeof editNearMarker>[1];
+
+const editNearTables = (tr: NearTr) => editNearMarker(/\|/, tr);
+// 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる
+const editNearBlockWidgets = (tr: NearTr) =>
+  editNearMarker(/\$\$|```|~~~|:::/, tr);
 
 /// ```mermaid のフェンスなら中身。違えば null。
 function mermaidCode(state: EditorState, node: SyntaxNode): string | null {
@@ -827,11 +854,12 @@ function mermaidCode(state: EditorState, node: SyntaxNode): string | null {
 /// 踏んだ罠を、数式と図でもう一度踏んだ = 実機で発覚 2026-09-04）。
 export function blockWidgetDecorations(
   state: EditorState,
+  notes: NoteContainer[] = noteContainers(state.doc),
 ): Range<Decoration>[] {
   if (state.field(sourceModeField, false)) return [];
   const out: Range<Decoration>[] = [];
   // `:::note` の囲み（B-3）。行の装飾なので木のノードは要らない
-  for (const note of noteContainers(state.doc)) {
+  for (const note of notes) {
     // **色を付けるのは中身の行だけ。** 区切り（`:::note …` と `:::`）は
     // 書き方であって中身ではないので、帯に含めない（実機報告 2026-09-04:
     // 「設定の文も色がついている」）
@@ -899,25 +927,91 @@ export function blockWidgetDecorations(
   return out;
 }
 
-/// 数式ブロックと図。**表と分けてある** — 表は編集の近さで間引く仕組みを
-/// 持つが、こちらは素直に数え直すほうが確かで、数も少ない。
+/// 数式・図・囲みの「ゾーン」（リビール判定と再計算の間引きに使う）。
+function blockWidgetZones(
+  state: EditorState,
+  notes: NoteContainer[],
+): { from: number; to: number }[] {
+  const zones: { from: number; to: number }[] = [];
+  for (const note of notes) {
+    zones.push({ from: note.from, to: note.to });
+  }
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name === "MathBlock") {
+        zones.push({ from: node.from, to: node.to });
+        return false;
+      }
+      if (node.name === "FencedCode") {
+        if (mermaidCode(state, node.node) !== null) {
+          zones.push({ from: node.from, to: node.to });
+        }
+        return false;
+      }
+      return node.node.parent === null || node.name === "Document"
+        ? undefined
+        : false;
+    },
+  });
+  return zones;
+}
+
+type BlockWidgetMeta = {
+  zones: { from: number; to: number }[];
+  revealKey: string;
+  /// 計算した時点で構文解析が届いていた位置。ここより先へ解析が進んだら
+  /// 数え直す（オブジェクト同一性で見ると打鍵のたびに全再計算になる —
+  /// レビュー 2026-09-04 で実測 p95 17〜25ms の退行として発覚）
+  parsedTo: number;
+};
+const blockWidgetMeta = new WeakMap<DecorationSet, BlockWidgetMeta>();
+
+function computeBlockWidgetSet(state: EditorState): DecorationSet {
+  // 全行走査（noteContainers）は 1 回だけ。装飾とゾーンで共有する
+  const notes = noteContainers(state.doc);
+  const set = RangeSet.of(blockWidgetDecorations(state, notes), true);
+  const zones = blockWidgetZones(state, notes);
+  blockWidgetMeta.set(set, {
+    zones,
+    revealKey: revealKeyOf(state, zones),
+    parsedTo: syntaxTree(state).length,
+  });
+  return set;
+}
+
+/// 数式ブロック・図・:::note の囲み。表（tableField）と同じ間引き:
+/// ゾーンに関わらない編集は位置写像だけ、カーソル移動はリビール鍵が
+/// 変わったときだけ、解析の進みは「届いた位置が伸びたとき」だけ数え直す。
 export const blockWidgetField = StateField.define<DecorationSet>({
-  create: (state) => RangeSet.of(blockWidgetDecorations(state), true),
+  create: computeBlockWidgetSet,
   update(value, tr) {
     const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
     const themeChanged = tr.effects.some((e) => e.is(setDiagramTheme));
-    // 解析の進みも見る（表と同じ理由）
-    const treeGrew = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-    if (
-      !tr.docChanged &&
-      !tr.selection &&
-      !modeChanged &&
-      !themeChanged &&
-      !treeGrew
-    ) {
-      return value;
+    if (modeChanged || themeChanged) return computeBlockWidgetSet(tr.state);
+    const meta = blockWidgetMeta.get(value);
+    if (!meta) return computeBlockWidgetSet(tr.state);
+
+    const parsed = syntaxTree(tr.state).length;
+    if (tr.docChanged) {
+      if (editNearBlockWidgets(tr)) return computeBlockWidgetSet(tr.state);
+      const parsedTo = tr.changes.mapPos(meta.parsedTo, 1);
+      if (parsed > parsedTo) return computeBlockWidgetSet(tr.state);
+      const zones = meta.zones.map((zone) => ({
+        from: tr.changes.mapPos(zone.from, 1),
+        to: tr.changes.mapPos(zone.to, -1),
+      }));
+      const revealKey = revealKeyOf(tr.state, zones);
+      if (revealKey !== meta.revealKey) return computeBlockWidgetSet(tr.state);
+      const mapped = value.map(tr.changes);
+      blockWidgetMeta.set(mapped, { zones, revealKey, parsedTo });
+      return mapped;
     }
-    return RangeSet.of(blockWidgetDecorations(tr.state), true);
+    if (parsed > meta.parsedTo) return computeBlockWidgetSet(tr.state); // 解析が進んだ
+    if (!tr.selection) return value;
+    // カーソル移動のみ: リビール状態が変わったときだけ再計算
+    const revealKey = revealKeyOf(tr.state, meta.zones);
+    if (revealKey !== meta.revealKey) return computeBlockWidgetSet(tr.state);
+    return value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
@@ -926,21 +1020,21 @@ export const tableField = StateField.define<DecorationSet>({
   create: computeTableSet,
   update(value, tr) {
     const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
-    // **解析が進んだら数え直す。** 長いノートは開いた時点では途中までしか
-    // 解析されておらず、下のほうの表は**まだ木に無い**。スクロールで
-    // 解析が進んだことは docChanged にも selection にも出ないので、
-    // これを見ないと表が生のまま残る（実機で発覚 2026-09-04）
-    const treeGrew = syntaxTree(tr.state) !== syntaxTree(tr.startState);
-    if (!tr.docChanged && !tr.selection && !modeChanged && !treeGrew) {
-      return value;
-    }
     if (modeChanged) return computeTableSet(tr.state);
-    if (treeGrew && !tr.docChanged) return computeTableSet(tr.state);
     const meta = tableMeta.get(value);
     if (!meta) return computeTableSet(tr.state);
 
+    // **解析が「先へ」進んだら数え直す。** 長いノートは開いた時点では
+    // 途中までしか解析されておらず、下のほうの表はまだ木に無い（実機で
+    // 発覚 2026-09-04）。判定は「届いた位置が伸びたか」で行う — 木の
+    // オブジェクト同一性で見ると、打鍵のたびに全再計算になって打鍵
+    // p95 が 16ms を割る（レビュー 2026-09-04 で実測）
+    const parsed = syntaxTree(tr.state).length;
+
     if (tr.docChanged) {
       if (editNearTables(tr)) return computeTableSet(tr.state);
+      const parsedTo = tr.changes.mapPos(meta.parsedTo, 1);
+      if (parsed > parsedTo) return computeTableSet(tr.state);
       // 表に関わらない編集: 位置だけ写像して使い回す
       const zones = meta.zones.map((zone) => ({
         from: tr.changes.mapPos(zone.from, 1),
@@ -949,9 +1043,11 @@ export const tableField = StateField.define<DecorationSet>({
       const revealKey = revealKeyOf(tr.state, zones);
       if (revealKey !== meta.revealKey) return computeTableSet(tr.state);
       const mapped = value.map(tr.changes);
-      tableMeta.set(mapped, { zones, revealKey });
+      tableMeta.set(mapped, { zones, revealKey, parsedTo });
       return mapped;
     }
+    if (parsed > meta.parsedTo) return computeTableSet(tr.state); // 解析が進んだ
+    if (!tr.selection) return value;
     // カーソル移動のみ: リビール状態が変わったときだけ再計算
     const revealKey = revealKeyOf(tr.state, meta.zones);
     if (revealKey !== meta.revealKey) return computeTableSet(tr.state);
@@ -963,6 +1059,8 @@ export const tableField = StateField.define<DecorationSet>({
 const hideMarkers = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    /// 直近の構築時点で構文解析が届いていた位置
+    parsedTo = 0;
 
     constructor(view: EditorView) {
       this.decorations = this.build(view);
@@ -973,21 +1071,22 @@ const hideMarkers = ViewPlugin.fromClass(
         tr.effects.some((e) => e.is(setSourceMode)),
       );
       // 表と同じ理由で**解析の進みも見る**（画面を動かさないまま解析が
-      // 追いついたとき、装飾が掛からないまま残る）
-      const treeGrew =
-        syntaxTree(update.state) !== syntaxTree(update.startState);
+      // 追いついたとき、装飾が掛からないまま残る）。判定は「届いた位置が
+      // 伸びたか」— オブジェクト同一性だと打鍵のたびに再構築になる
+      const parsed = syntaxTree(update.state).length;
       if (
         update.docChanged ||
         update.selectionSet ||
         update.viewportChanged ||
         modeChanged ||
-        treeGrew
+        parsed > this.parsedTo
       ) {
         this.decorations = this.build(update.view);
       }
     }
 
     build(view: EditorView): DecorationSet {
+      this.parsedTo = syntaxTree(view.state).length;
       const ranges: Range<Decoration>[] = [];
       for (const { from, to } of view.visibleRanges) {
         ranges.push(...previewDecorations(view.state, from, to));

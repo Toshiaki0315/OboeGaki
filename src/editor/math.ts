@@ -48,11 +48,21 @@ export function mathSpanAt(text: string, start: number): MathSpan | null {
   return { end: close + marker.length, latex, display };
 }
 
+// 組んだ結果の覚え。装飾の再計算は同じ式を何度も見るので、組み直すと
+// 数式の多いノートで打鍵 p95 が 16ms を割る（レビュー 2026-09-04 で実測）。
+// 組めなかった式（null）も覚える — 壊れた式ほど何度も見るため
+const rendered = new Map<string, string | null>();
+const CACHE_LIMIT = 500;
+
 /// LaTeX を MathML にする。**組めなければ null**（生の LaTeX のまま
 /// 見せる。赤いエラーを本文に埋めると「直せない何か」が出る）。
 export function renderMath(latex: string, display: boolean): string | null {
+  const key = `${display ? "D" : "i"}:${latex}`;
+  const known = rendered.get(key);
+  if (known !== undefined) return known;
+  let mathml: string | null;
   try {
-    return temml.renderToString(latex, {
+    mathml = temml.renderToString(latex, {
       displayMode: display,
       throwOnError: true,
       // 画面と書き出しで同じ文字列を使うので、注釈は付けない
@@ -60,6 +70,13 @@ export function renderMath(latex: string, display: boolean): string | null {
       annotate: false,
     });
   } catch {
-    return null;
+    mathml = null;
   }
+  if (rendered.size >= CACHE_LIMIT) {
+    // いちばん古い鍵から捨てる（Map は挿入順を保つ）
+    const oldest = rendered.keys().next().value;
+    if (oldest !== undefined) rendered.delete(oldest);
+  }
+  rendered.set(key, mathml);
+  return mathml;
 }

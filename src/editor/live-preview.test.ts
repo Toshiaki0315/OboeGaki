@@ -13,6 +13,7 @@ import { extendedInline } from "./extended-inline";
 import {
   bulletGlyph,
   blockWidgetDecorations,
+  blockWidgetField,
   previewDecorations,
   setSourceMode,
   sourceModeField,
@@ -605,3 +606,82 @@ describe("`:::note` の囲み（B-3）", () => {
     expect(marks.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("blockWidgetField の再計算の間引き（性能）", () => {
+  // レビューで発覚: 毎打鍵・毎カーソル移動で全行走査 + 全数式の組み直しが
+  // 走り、打鍵 p95 が 16ms を割った（実測 17〜25ms）。表と同じ
+  // 「ゾーン + 位置写像 + リビール鍵」で間引く
+  const doc = "$$\nx = 1\n$$\n\n:::note\n中身\n:::\n\n本文の段落。\nもう一つ。";
+
+  function fieldStates() {
+    return EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+  }
+
+  test("test_数式にも囲みにも関わらない編集では装飾セットを写像で使い回す", () => {
+    const state = fieldStates();
+    const before = state.field(blockWidgetField);
+    expect(before.size).toBeGreaterThan(0);
+    const typed = state.update({
+      changes: { from: doc.length, insert: "あ" },
+      selection: { anchor: doc.length + 1 },
+    }).state;
+    // 写像はするが再抽出はしない（中身のインスタンスが保たれる）
+    const widgetsBefore = [...iterWidgets(before)];
+    const widgetsAfter = [...iterWidgets(typed.field(blockWidgetField))];
+    expect(widgetsAfter.length).toBe(widgetsBefore.length);
+    expect(widgetsAfter[0]).toBe(widgetsBefore[0]);
+  });
+
+  test("test_ゾーンの外どうしのカーソル移動では再計算しない", () => {
+    const state = fieldStates();
+    const moved = state.update({
+      selection: { anchor: doc.indexOf("本文") },
+    }).state;
+    expect(moved.field(blockWidgetField)).toBe(state.field(blockWidgetField));
+  });
+
+  test("test_数式へ入るとリビールし出ると戻る", () => {
+    const state = fieldStates();
+    const before = state.field(blockWidgetField).size;
+    const inside = state.update({ selection: { anchor: 1 } }).state;
+    expect(inside.field(blockWidgetField).size).toBeLessThan(before);
+    const outside = inside.update({
+      selection: { anchor: doc.indexOf("本文") },
+    }).state;
+    expect(outside.field(blockWidgetField).size).toBe(before);
+  });
+
+  test("test_数式の中身の編集では再抽出される", () => {
+    const state = fieldStates();
+    const edited = state.update({
+      changes: {
+        from: doc.indexOf("1"),
+        to: doc.indexOf("1") + 1,
+        insert: "2",
+      },
+    }).state;
+    const widgets = [...iterWidgets(edited.field(blockWidgetField))];
+    expect(
+      widgets.some((w) => (w as { mathml?: string }).mathml?.includes("2")),
+    ).toBe(true);
+  });
+});
+
+function* iterWidgets(set: ReturnType<EditorState["field"]>) {
+  const cursor = (
+    set as {
+      iter: () => {
+        value: { spec: { widget?: object } } | null;
+        next: () => void;
+      };
+    }
+  ).iter();
+  while (cursor.value) {
+    if (cursor.value.spec.widget) yield cursor.value.spec.widget;
+    cursor.next();
+  }
+}
