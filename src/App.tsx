@@ -18,6 +18,7 @@ import {
   historyRestore,
   imageSource,
   readNote,
+  saveAttachment,
   renameNote,
   restoreNote,
   searchNotes,
@@ -693,6 +694,9 @@ function App() {
               onCursorChanged={(pos) => {
                 if (outlineOpenRef.current) setCursorPos(pos);
               }}
+              saveAttachment={(data, name) =>
+                saveAttachment(vaultRoot, data, name)
+              }
             />
           </>
         ) : (

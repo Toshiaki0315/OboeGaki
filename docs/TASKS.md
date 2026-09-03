@@ -22,7 +22,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **1-1. 前回の vault を記憶して次回起動で自動的に開く**（Q-6）
       保存先はフロント側の設定置き場（localStorage か tauri-plugin-store）。
       開けなかったら黙ってフォルダ選択に落ちる（Q-6 と同じ挙動）
-- [ ] **1-2. 画像の貼り付け / ドロップ取り込み**（A-2, editor/attachments.py）
+- [x] **1-2. 画像の貼り付け / ドロップ取り込み**（A-2, editor/attachments.py）
       クリップボード画像・ドロップされたファイルを `attachments/` へ保存して
       カーソル位置に `![]()` を挿入。ファイル名は日時 + 一意化
 - [ ] **1-3. ゴミ箱の後始末**（§7.6, purge_trash / note_actions）

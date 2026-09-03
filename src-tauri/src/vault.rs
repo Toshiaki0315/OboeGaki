@@ -198,6 +198,40 @@ impl Vault {
         Ok(target)
     }
 
+    /// 画像などを `attachments/` へ置き、その場所を返す（spec §7.1）。
+    ///
+    /// 名前は時刻から作る。並べたときに貼った順になるほうが、後から
+    /// 探すときに手がかりになる。同名があれば連番を付けて上書きしない。
+    pub fn add_attachment(&self, data: &[u8], suffix: &str) -> io::Result<PathBuf> {
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        self.add_attachment_stamped(data, suffix, &stamp)
+    }
+
+    /// `add_attachment` の時刻注入版（テスト用に分離）。
+    pub fn add_attachment_stamped(
+        &self,
+        data: &[u8],
+        suffix: &str,
+        stem: &str,
+    ) -> io::Result<PathBuf> {
+        fs::create_dir_all(self.attachments_dir())?;
+        let path = unique_path(
+            &self.attachments_dir(),
+            stem,
+            &attachment_suffix(suffix),
+            None,
+        );
+        crate::autosave::save_bytes_atomic(&path, data)?;
+        Ok(path)
+    }
+
+    /// 本文へ挿す Markdown。**vault からの相対パス**で書く。
+    /// 絶対パスで書くと、保管フォルダごと移したときに全部切れる。
+    pub fn attachment_link(&self, path: &Path) -> String {
+        let relative = path.strip_prefix(&self.root).unwrap_or(path);
+        format!("![]({})", relative.to_string_lossy().replace('\\', "/"))
+    }
+
     /// `.trash` へ移す（spec §7.6）。
     ///
     /// 階層を保って入れる（参照実装 K-5: ファイル自身が場所を覚えているので
@@ -440,6 +474,24 @@ pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<
     candidate
 }
 
+/// 貼り付け元から来た拡張子を、ファイル名に使える形へ直す。
+///
+/// クリップボードやドロップ元の文字列をそのまま繋ぐと、`../` や空白で
+/// attachments の外へ書ける。英数字だけ残す（参照実装 attachment_suffix）。
+pub fn attachment_suffix(raw: &str) -> String {
+    let tail = raw.rsplit('.').next().unwrap_or("");
+    let cleaned: String = tail
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if cleaned.is_empty() {
+        ".png".to_string()
+    } else {
+        format!(".{cleaned}")
+    }
+}
+
 /// 競合コピーの置き場を決める（spec §7.5 の「両方残す」）。
 /// `名前 (競合 YYYY-MM-DD).md` の形。同名があれば連番で逃がす。
 pub fn conflict_copy_path(path: &Path, date: &str) -> PathBuf {
@@ -598,6 +650,61 @@ mod tests {
         assert!(vault.managed_dir().is_dir());
         assert!(vault.attachments_dir().is_dir());
         assert!(!root.path().join(LEGACY_MANAGED_DIR).exists());
+    }
+
+    #[test]
+    fn test_attachment_suffix_英数字だけ残して小文字にする() {
+        assert_eq!(attachment_suffix("PNG"), ".png");
+        assert_eq!(attachment_suffix(".JPEG"), ".jpeg");
+        assert_eq!(attachment_suffix("photo.HEIC"), ".heic");
+    }
+
+    #[test]
+    fn test_attachment_suffix_危険な文字は取り除く() {
+        // パス区切りや空白で attachments の外へ書けてはいけない
+        assert_eq!(attachment_suffix("p n/g"), ".png");
+        assert_eq!(attachment_suffix("../../etc"), ".etc");
+    }
+
+    #[test]
+    fn test_attachment_suffix_空なら既定のpng() {
+        assert_eq!(attachment_suffix(""), ".png");
+        assert_eq!(attachment_suffix("！？"), ".png");
+    }
+
+    #[test]
+    fn test_add_attachment_attachmentsへ書いて中身が一致する() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let saved = vault.add_attachment(b"\x89PNG data", "png").unwrap();
+        assert_eq!(saved.parent().unwrap(), vault.attachments_dir());
+        assert_eq!(std::fs::read(&saved).unwrap(), b"\x89PNG data");
+    }
+
+    #[test]
+    fn test_add_attachment_同名でも上書きせず連番で逃がす() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let first = vault
+            .add_attachment_stamped(b"a", "png", "20260903-120000")
+            .unwrap();
+        let second = vault
+            .add_attachment_stamped(b"b", "png", "20260903-120000")
+            .unwrap();
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read(&first).unwrap(), b"a");
+        assert_eq!(std::fs::read(&second).unwrap(), b"b");
+    }
+
+    #[test]
+    fn test_attachment_link_vaultからの相対パスで書く() {
+        // 絶対パスで書くと保管フォルダごと移したときに全部切れる
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let saved = vault.add_attachment(b"x", "png").unwrap();
+        let link = vault.attachment_link(&saved);
+        let name = saved.file_name().unwrap().to_str().unwrap();
+        assert_eq!(link, format!("![]({ATTACHMENTS_DIR}/{name})"));
     }
 
     #[test]

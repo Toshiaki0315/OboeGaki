@@ -112,6 +112,27 @@ export async function searchNotes(
   return invoke<SearchHit[]>("note_search", { root, query });
 }
 
+/// 貼り付け・ドロップの画像を attachments/ へ保存し、本文へ挿す
+/// Markdown（`![](attachments/…)`）を返す。
+export async function saveAttachment(
+  root: string,
+  data: Uint8Array,
+  name: string,
+): Promise<string> {
+  // Tauri の JSON 経路で運ぶため base64 にする（チャンクで組んで
+  // スタック溢れを避ける — spread で一気に渡すと大きい画像で落ちる）
+  let binary = "";
+  const step = 0x8000;
+  for (let i = 0; i < data.length; i += step) {
+    binary += String.fromCharCode(...data.subarray(i, i + step));
+  }
+  return invoke<string>("attachment_save", {
+    root,
+    data: btoa(binary),
+    suffix: name,
+  });
+}
+
 /// 競合の「両方残す」: 自分の版を競合コピーに保存し、その場所を返す。
 export async function conflictCopy(
   root: string,

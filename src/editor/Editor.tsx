@@ -22,6 +22,7 @@ import {
   activationHandler,
   type Activation,
 } from "./activation";
+import { attachmentEvents, type SaveAttachment } from "./attachments";
 import {
   imageResolver,
   livePreview,
@@ -61,10 +62,20 @@ type Props = {
   onActivate?: (action: Activation) => void;
   /** キャレット位置が変わるたびに呼ぶ（アウトラインの現在地表示用） */
   onCursorChanged?: (pos: number) => void;
+  /** 貼り付け・ドロップの画像を保存して Markdown を返す（保存先は
+      アプリ側の持ち物）。無ければ取り込みは無効 */
+  saveAttachment?: SaveAttachment;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { initialDoc, onDocChanged, resolveImage, onActivate, onCursorChanged },
+  {
+    initialDoc,
+    onDocChanged,
+    resolveImage,
+    onActivate,
+    onCursorChanged,
+    saveAttachment,
+  },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
@@ -76,6 +87,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   activate.current = onActivate;
   const cursorChanged = useRef(onCursorChanged);
   cursorChanged.current = onCursorChanged;
+  const attachmentSaver = useRef(saveAttachment);
+  attachmentSaver.current = saveAttachment;
 
   useImperativeHandle(
     ref,
@@ -153,6 +166,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           imageResolver.of(resolveImage ?? (async () => null)),
           activationClicks,
           activationHandler.of((action) => activate.current?.(action)),
+          attachmentEvents((data, name) =>
+            attachmentSaver.current
+              ? attachmentSaver.current(data, name)
+              : Promise.resolve(null),
+          ),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.selectionSet) {

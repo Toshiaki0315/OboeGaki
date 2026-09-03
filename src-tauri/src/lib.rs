@@ -127,6 +127,7 @@ pub fn run() {
             commands::note_restore,
             commands::note_search,
             commands::image_read,
+            commands::attachment_save,
             commands::history_list,
             commands::history_restore,
             commands::export_write,

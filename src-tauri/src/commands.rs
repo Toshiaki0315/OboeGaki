@@ -236,6 +236,21 @@ pub fn image_read(root: String, path: String) -> Result<String, String> {
     crate::assets::read_data_url(Path::new(&root), Path::new(&path)).map_err(|e| e.to_string())
 }
 
+/// 画像などの添付を `attachments/` へ保存し、本文へ挿す Markdown を返す
+/// （TASKS 1-2）。中身は base64 で受ける（Tauri の JSON 経路で運ぶため）。
+#[tauri::command]
+pub fn attachment_save(root: String, data: String, suffix: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| e.to_string())?;
+    let vault = Vault::new(&root);
+    let saved = vault
+        .add_attachment(&bytes, &suffix)
+        .map_err(|e| e.to_string())?;
+    Ok(vault.attachment_link(&saved))
+}
+
 /// タグと件数（サイドバーのタグ一覧）。
 #[tauri::command]
 pub fn tag_list(root: String) -> Result<Vec<(String, i64)>, String> {
