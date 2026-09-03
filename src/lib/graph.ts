@@ -41,24 +41,29 @@ export function buildGraph(
 ): Graph {
   const depth = options.depth ?? DEFAULT_DEPTH;
   const limit = options.maxNodes ?? MAX_NODES;
-  const known = new Set(
-    (options.known ?? []).map((title) => title.toLowerCase()),
-  );
+  // links.target は Rust 側で NFC + 空白畳み込み済み。known（一覧の題名 =
+  // ファイル名）は NFD で来ることがあるので、同じ形に寄せて突き合わせる
+  //（レビュー 2026-09-04）
+  const key = (title: string) =>
+    title.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+  const known = new Set((options.known ?? []).map(key));
   const seen = new Map<string, GraphNode>();
+  const droppedTitles = new Set<string>();
   const edges: Link[] = [];
-  let dropped = 0;
 
-  const key = (title: string) => title.toLowerCase();
   const add = (title: string, level: number): boolean => {
     const found = key(title);
     if (seen.has(found)) return true;
     if (seen.size >= limit) {
-      dropped += 1;
+      // 同じ題名を二重に数えない（「N 件を省いています」を過大にしない）
+      droppedTitles.add(found);
       return false;
     }
     seen.set(found, {
       title,
-      exists: known.size === 0 ? false : known.has(found),
+      // known が空 = 索引がまだ用意できていない。分からないときに全点を
+      // 「まだ無い」で描くのは嘘なので、実在扱いに倒す
+      exists: known.size === 0 ? true : known.has(found),
       depth: level,
     });
     return true;
@@ -87,7 +92,11 @@ export function buildGraph(
   const kept = edges.filter(
     (edge) => seen.has(key(edge.from)) && seen.has(key(edge.to)),
   );
-  return { nodes: [...seen.values()], edges: kept, dropped };
+  return {
+    nodes: [...seen.values()],
+    edges: kept,
+    dropped: droppedTitles.size,
+  };
 }
 
 function sameEdge(one: Link, other: Link): boolean {

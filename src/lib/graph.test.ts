@@ -38,9 +38,17 @@ describe("buildGraph", () => {
   });
 
   test("まだ無いノートも点にする（中抜きで描く）", () => {
-    const graph = buildGraph("会議メモ", links, { depth: 1 });
+    // known に無い題名だけが「まだ無い」。known 自体が空のときは
+    // 索引が用意できていないだけなので中抜きにしない（2026-09-04）
+    const graph = buildGraph("会議メモ", links, {
+      depth: 1,
+      known: ["会議メモ", "予算"],
+    });
     expect(graph.nodes.find((node) => node.title === "日報")?.exists).toBe(
       false,
+    );
+    expect(graph.nodes.find((node) => node.title === "会議メモ")?.exists).toBe(
+      true,
     );
   });
 
@@ -80,5 +88,41 @@ describe("graphToMermaid", () => {
   test("起点は目立たせる", () => {
     const graph = buildGraph("会議メモ", links, { depth: 1 });
     expect(graphToMermaid(graph, ["会議メモ"])).toContain("classDef start");
+  });
+});
+
+describe("レビュー 2026-09-04 の修正", () => {
+  test("test_上限で落とした点は同じ題名を二重に数えない", () => {
+    // 別々の frontier ノードから同じ未追加ノートへ届くと、dropped が
+    // 実際より大きく出て「N 件を省いています」が信用できなかった
+    const links = [
+      { from: "起点", to: "あ", relation: "" },
+      { from: "起点", to: "い", relation: "" },
+      { from: "あ", to: "多い", relation: "" },
+      { from: "い", to: "多い", relation: "" },
+    ];
+    const graph = buildGraph("起点", links, { maxNodes: 3, depth: 2 });
+    expect(graph.dropped).toBe(1); // 「多い」1 点だけ
+  });
+
+  test("test_knownが空のときは中抜きにしない", () => {
+    // 索引の初回同期中は known が空になり得る。全点を「まだ無い」で
+    // 描くのは嘘なので、分からないときは実在扱いに倒す
+    const graph = buildGraph("起点", [
+      { from: "起点", to: "隣", relation: "" },
+    ]);
+    expect(graph.nodes.every((n) => n.exists)).toBe(true);
+  });
+
+  test("test_knownはNFCと空白畳み込みで突き合わせる", () => {
+    // links.target は Rust 側で正規化済み。known（一覧の題名 = ファイル名）
+    // が NFD だと、実在するのに中抜きで描かれる
+    const graph = buildGraph(
+      "起点",
+      [{ from: "起点", to: "会議がメモ", relation: "" }],
+      { known: ["起点", "会議か\u3099メモ"] },
+    );
+    const node = graph.nodes.find((n) => n.title === "会議がメモ");
+    expect(node?.exists).toBe(true);
   });
 });

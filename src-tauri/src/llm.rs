@@ -11,7 +11,7 @@
 // WebView 非依存（T3）。Tauri のことは知らず、流れてきた答えは
 // コールバックで呼び出し側へ渡す。
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
@@ -134,6 +134,15 @@ pub fn unload(port: u16, model: &str) -> Result<(), LlmError> {
     Ok(())
 }
 
+/// 1 回の応答で受け取る上限。壊れたサービスが改行なしのバイト列や
+/// 無限のチャンクを流し続けても、メモリと時間を食い尽くさない
+///（レビュー 2026-09-04）。
+const MAX_LINE_BYTES: u64 = 1024 * 1024; // 1 行 1MB
+const MAX_BODY_BYTES: usize = 8 * 1024 * 1024; // 全体 8MB
+/// 全体の締切。read_timeout は「無通信の猶予」なので、細切れに届き
+/// 続ける限りループは終わらない。応答全体はこの時間で打ち切る
+const MAX_TOTAL: Duration = Duration::from_secs(30 * 60);
+
 /// HTTP の 1 往復。行が届くたびに `on_line` を呼び、本文全体も返す。
 fn request(
     port: u16,
@@ -168,9 +177,14 @@ fn request(
     }
 
     let mut collected = String::new();
+    let started = std::time::Instant::now();
     loop {
+        if started.elapsed() > MAX_TOTAL {
+            return Err(LlmError::Failed("応答が長すぎるため打ち切った".into()));
+        }
         let mut line = String::new();
-        match reader.read_line(&mut line) {
+        // take で 1 行の長さを抑える（read_line は改行が来るまで無制限に読む）
+        match reader.by_ref().take(MAX_LINE_BYTES).read_line(&mut line) {
             Ok(0) => break,
             Ok(_) => {}
             Err(error) => return Err(failed(error)),
@@ -181,8 +195,10 @@ fn request(
             continue;
         }
         on_line(trimmed);
-        collected.push_str(trimmed);
-        collected.push('\n');
+        if collected.len() + trimmed.len() < MAX_BODY_BYTES {
+            collected.push_str(trimmed);
+            collected.push('\n');
+        }
     }
     Ok(collected)
 }

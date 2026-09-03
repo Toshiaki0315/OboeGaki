@@ -37,13 +37,16 @@ impl Suppressor {
     pub fn mark(&self, path: &Path) {
         self.entries
             .lock()
-            .expect("suppressor lock")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(path.to_path_buf(), Instant::now());
     }
 
     /// 抑制中か。窓を過ぎた記録はこの機会に捨てる。
     pub fn is_suppressed(&self, path: &Path) -> bool {
-        let mut entries = self.entries.lock().expect("suppressor lock");
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         entries.retain(|_, marked| now.duration_since(*marked) < self.window);
         entries.contains_key(path)
@@ -101,6 +104,11 @@ pub fn start(
     suppressor: Arc<Suppressor>,
 ) -> notify::Result<RecommendedWatcher> {
     let watch_root = root.clone();
+    // 接続は使い回す（コールバックは単一スレッド）。イベントごとに開き直すと
+    // PRAGMA + CREATE TABLE 一式が毎回走り、git checkout や同期クライアントの
+    // 一括変更で詰まって FSEvents の取りこぼしにつながる（レビュー 2026-09-04）。
+    // 失敗したら捨てて、次のイベントで開き直す
+    let mut connection: Option<crate::index_db::IndexDb> = None;
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
         let Ok(event) = result else { return };
         for path in event.paths {
@@ -113,16 +121,22 @@ pub fn start(
             // 索引はここで直接追従させる（vault_open の全体同期を
             // 待たない）。失敗しても通知は流す — 表示の更新が先
             let vault = crate::vault::Vault::new(&root);
-            let updated =
-                crate::index_db::IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+            if connection.is_none() {
+                connection = crate::index_db::IndexDb::open(&vault.managed_dir()).ok();
+            }
+            let updated = match connection.as_mut() {
+                Some(db) => {
                     if kind == "changed" {
                         db.upsert(&vault, &path)
                     } else {
                         db.remove(&vault, &path)
                     }
-                });
+                }
+                None => Err(rusqlite::Error::InvalidQuery),
+            };
             if let Err(error) = updated {
                 eprintln!("外部変更を索引へ反映できなかった: {error}");
+                connection = None; // 壊れた接続を握り続けない
             }
             let _ = app.emit(
                 "vault-changed",

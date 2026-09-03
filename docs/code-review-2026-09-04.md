@@ -67,28 +67,28 @@
 - ✅ 対応済み（同日） 索引の二重実行ガード `syncing` が `index_sync` にしか掛かっておらず、`vault_open` の
   背景 sync・`folder_rename` の sync と競合すると**改名直後のノートが一覧・検索から
   消える**（commands.rs:132/894。手動同期まで直らない）
-- **全 53 コマンドが非 async** = 逐次実行。OCR（実測 0.85s/枚）・Ollama プローブ
+- ✅ 対応済み（同日） **全 53 コマンドが非 async** = 逐次実行。OCR（実測 0.85s/枚）・Ollama プローブ
   （未導入環境で毎回 3 秒）・PDF 取り込み（ページ数 × OCR）・全 md 走査系で
   **UI が固まる**。`#[tauri::command(async)]` 化の検討を
-- `folder_relative` が既存フォルダ名にも sanitize を掛けるため、空白 2 つや `:` を
+- ✅ 対応済み（同日） `folder_relative` が既存フォルダ名にも sanitize を掛けるため、空白 2 つや `:` を
   含むフォルダは**画面に見えているのに改名・削除できない**／`move_note` は
   **そっくりな別フォルダを作ってそちらへ入れる**。`folder_rename` の履歴鍵の
   付け替えも生の引数を使うため、sanitize で変わる名前だと**配下全ノートの履歴が
   辿れなくなる**（vault.rs:533 + commands.rs:872）
-- NFC/NFD の非対称: `links.target` は正規化済み、`notes.title` は生のファイル名。
+- ✅ 対応済み（同日） NFC/NFD の非対称: `links.target` は正規化済み、`notes.title` は生のファイル名。
   `related_signals` / `link_map` だけ直接比較しており、NFD ファイル名のノートが
   **関連ノートとリンクの図からだけ落ちる**（index_db.rs:489/538）
-- LLM: 総時間の締切なし（read_timeout は無通信時間のみ）・`read_line` の長さ
+- ✅ 対応済み（同日） LLM: 総時間の締切なし（read_timeout は無通信時間のみ）・`read_line` の長さ
   無制限・生成の中断手段なし・**パニックすると `generating` が立ちっぱなしで
   再起動まで LLM 機能が死ぬ**（`syncing` にも同型）・`timeout_minutes * 60` が
   debug でパニックし得る（llm.rs:138, commands.rs:616）
 - `import_read` はファイル全体を base64 でメモリへ（500MB の PDF で約 2GB）。
   上限なし。`export_write_binary` だけ非アトミック（壊れた .pptx が残り得る）
-- watcher が**イベント 1 件ごとに SQLite を開き直す**（PRAGMA + CREATE TABLE 一式）。
+- ✅ 対応済み（同日） watcher が**イベント 1 件ごとに SQLite を開き直す**（PRAGMA + CREATE TABLE 一式）。
   git checkout / 同期の一括変更で詰まり、FSEvents の合体で索引に穴が開く
-- `note_related` が 8 件のために `list_notes()` 全件（preview 込み）を読む。
+- ✅ 対応済み（同日） `note_related` が 8 件のために `list_notes()` 全件（preview 込み）を読む。
   2 文字題名は LIKE の全表走査（commands.rs:787）
-- `vault_open` が vault を 2 回全走査（背景 sync + 戻り値用 scan）
+- ✅ 対応済み（同日） `vault_open` が vault を 2 回全走査（背景 sync + 戻り値用 scan）
 
 ### エディタ層
 
@@ -135,15 +135,15 @@
 
 - **live-preview.ts:324 に生の NUL バイト**が 2 つ埋まっており、`grep`/`git grep` が
   このファイルを**丸ごとスキップ**する（レビュー中に実害を確認。`"�"` 表記へ）
-- `guarded()` が検査後に**生のパス**を返す TOCTOU / `move_note` の行き先フォルダに
+- ✅ 対応済み（同日） `guarded()` が検査後に**生のパス**を返す TOCTOU / `move_note` の行き先フォルダに
   実体ベースの封じ込め検査なし / `history_restore` の `version` が vault 内なら素通し
-- Mutex の `.expect()` がコマンド実行経路に 5 箇所 — どこかでパニックすると毒されて
+- ✅ 対応済み（同日） Mutex の `.expect()` がコマンド実行経路に 5 箇所 — どこかでパニックすると毒されて
   **以降の vault_open / watcher が全部落ち続ける**
 - ✅ 対応済み（同日） `trash_days` が無検証で `SystemTime - Duration` のパニックに届く（checked_sub 化）
 - vault 内シンボリックリンクでノートが**二重に索引**される（一覧に 2 つ並ぶ）
 - `tauri.conf.json` の `csp: null` + 封じ込めの無い import/export コマンド
   （多層防御の観点。dangerouslySetInnerHTML は 2 箇所とも現状は安全側）
-- リンクの図: `dropped` の二重計上で「N 件を省いています」が過大 /
+- ✅ 対応済み（同日） リンクの図: `dropped` の二重計上で「N 件を省いています」が過大 /
   索引同期中は `known` が空で全ノードが「まだ無い」表示
 - 環境設定の数値入力が無検証（空欄 → 0 / NaN がその場だけ効く）
 - ペイン幅ドラッグが `pointercancel` でリスナー残留

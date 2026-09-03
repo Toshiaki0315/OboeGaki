@@ -530,7 +530,12 @@ impl Vault {
     ///
     /// **生の名前で先に弾く。** `sanitize_filename` は先頭のドットを剥ぐので、
     /// 後で調べると `.trash` が `trash` に化けてすり抜ける。
-    fn folder_relative(&self, folder: &str) -> io::Result<String> {
+    /// 成分の検証だけ行い、**名前はそのまま**返す（既存フォルダの参照用）。
+    ///
+    /// 既存フォルダにサニタイズを掛けると、空白 2 つや `:` を含む
+    /// フォルダが「画面に見えているのに操作できない」／移動が畳んだ
+    /// 名前の別フォルダを作る、という食い違いになる（レビュー 2026-09-04）。
+    fn existing_folder_relative(&self, folder: &str) -> io::Result<String> {
         let raw: Vec<&str> = folder
             .split('/')
             .map(|part| part.trim())
@@ -539,13 +544,20 @@ impl Vault {
         if raw.contains(&"..") {
             return Err(outside_error("vault の外には出られない", Path::new(folder)));
         }
-        if let Some(first) = raw.first() {
-            if SKIP_DIRS.contains(first) || first.starts_with('.') {
+        for part in &raw {
+            if SKIP_DIRS.contains(part) || part.starts_with('.') {
                 return Err(outside_error("予約フォルダは使えない", Path::new(folder)));
             }
         }
+        Ok(raw.join("/"))
+    }
+
+    /// **新しく作る名前**用。検証に加えて各成分をサニタイズする。
+    fn folder_relative(&self, folder: &str) -> io::Result<String> {
+        let raw = self.existing_folder_relative(folder)?;
         Ok(raw
-            .into_iter()
+            .split('/')
+            .filter(|part| !part.is_empty())
             .map(sanitize_filename)
             .collect::<Vec<String>>()
             .join("/"))
@@ -578,7 +590,7 @@ impl Vault {
     /// 既に同じ名前があれば失敗する — 黙って中身が合流すると、どちらの
     /// ノートだったのか分からなくなる。
     pub fn rename_folder(&self, folder: &str, name: &str) -> io::Result<String> {
-        let cleaned = self.folder_relative(folder)?;
+        let cleaned = self.existing_folder_relative(folder)?;
         if cleaned.is_empty() {
             return Err(invalid("フォルダの名前が空"));
         }
@@ -599,8 +611,13 @@ impl Vault {
             None => String::new(),
         };
         let renamed = format!("{parent}{new_name}");
-        // 予約フォルダの名前は使わせない（`.trash` へ化けさせない）
-        if self.folder_relative(&renamed)? != renamed {
+        // 予約フォルダの名前は使わせない（`.trash` へ化けさせない）。
+        // 検査するのは**新しい成分だけ** — 親は既存の名前で、サニタイズと
+        // 一致するとは限らない
+        if SKIP_DIRS.contains(&new_name.as_str())
+            || new_name.starts_with('.')
+            || sanitize_filename(&new_name) != new_name
+        {
             return Err(invalid(&format!("その名前は使えません: {typed}")));
         }
         let target = self.root.join(&renamed);
@@ -623,7 +640,7 @@ impl Vault {
     /// 無いので、中身ごと消える操作は用意しない。空のフォルダ（中が空
     /// フォルダだけ、も含む）だけを消す。macOS が置く `.DS_Store` は無視する。
     pub fn delete_folder(&self, folder: &str) -> io::Result<()> {
-        let cleaned = self.folder_relative(folder)?;
+        let cleaned = self.existing_folder_relative(folder)?;
         if cleaned.is_empty() {
             return Err(invalid("フォルダの名前が空"));
         }
@@ -650,7 +667,14 @@ impl Vault {
         if !self.inside(path) {
             return Err(outside_error("保管フォルダの外は移せない", path));
         }
-        let cleaned = self.folder_relative(folder)?;
+        // 行き先は**実在すればその名前のまま**使う。無ければ新規作成なので
+        // サニタイズした名前で作る
+        let raw = self.existing_folder_relative(folder)?;
+        let cleaned = if raw.is_empty() || self.root.join(&raw).is_dir() {
+            raw
+        } else {
+            self.folder_relative(folder)?
+        };
         let destination = if cleaned.is_empty() {
             self.root.clone()
         } else {
@@ -660,6 +684,12 @@ impl Vault {
             return Ok(path.to_path_buf()); // 同じ場所。動かす意味が無い
         }
         fs::create_dir_all(&destination)?;
+        // 行き先も**実体**で封じ込めを確かめる。字句検査だけだと、
+        // シンボリックリンク経由で vault の外へノートが出る
+        //（レビュー 2026-09-04）
+        if !self.inside(&destination) {
+            return Err(outside_error("保管フォルダの外へは移せない", &destination));
+        }
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -1343,6 +1373,47 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, "# note\n").unwrap();
         path
+    }
+
+    #[test]
+    fn test_folder_既存フォルダは名前をサニタイズせずに引ける() {
+        // レビュー 2026-09-04: 既存フォルダ名にも sanitize を掛けていて、
+        // 空白 2 つや `:` を含むフォルダが「画面に見えているのに
+        // 改名・削除できない」／move_note は畳んだ名前の**別フォルダ**を
+        // 作ってそちらへ入れていた
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        fs::create_dir_all(root.path().join("仕事  資料")).unwrap();
+        let note_path = note(root.path(), "メモ.md");
+
+        // 移動: 畳んだ「仕事 資料」を作らず、実在のフォルダへ入る
+        let moved = vault.move_note(&note_path, "仕事  資料").unwrap();
+        assert_eq!(moved, root.path().join("仕事  資料/メモ.md"));
+        assert!(
+            !root.path().join("仕事 資料").exists(),
+            "別フォルダを作らない"
+        );
+
+        // 改名: 実在のフォルダを見つけて改名できる
+        let renamed = vault.rename_folder("仕事  資料", "整理済み").unwrap();
+        assert_eq!(renamed, "整理済み");
+        assert!(root.path().join("整理済み/メモ.md").exists());
+
+        // 削除: 実在の名前で消せる
+        fs::create_dir_all(root.path().join("消す  対象")).unwrap();
+        vault.delete_folder("消す  対象").unwrap();
+        assert!(!root.path().join("消す  対象").exists());
+    }
+
+    #[test]
+    fn test_folder_既存参照でも予約フォルダとドット始まりは弾く() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        assert!(vault.delete_folder(".trash").is_err());
+        assert!(vault.rename_folder(".OboeGaki", "x").is_err());
+        let note_path = note(root.path(), "メモ.md");
+        assert!(vault.move_note(&note_path, "../外").is_err());
     }
 
     #[test]

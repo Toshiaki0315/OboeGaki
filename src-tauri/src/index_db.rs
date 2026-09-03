@@ -139,18 +139,24 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
         .to_string();
     let preview = note_preview(&text);
     let pinned = crate::front_matter::pinned(&text);
+    // 題名の突き合わせ鍵。macOS のファイル名は NFD で来ることがあり、
+    // 生の title と NFC 正規化済みの links.target を直接比べると
+    // 繋がらない（レビュー 2026-09-04）。表示は title、結合は title_key
+    let title_key = crate::wikilink::normalize(&title);
     tx.execute(
-        "INSERT INTO notes(path, title, preview, mtime_ns, size_bytes, pinned)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO notes(path, title, preview, mtime_ns, size_bytes, pinned, title_key)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(path) DO UPDATE
-         SET title = ?2, preview = ?3, mtime_ns = ?4, size_bytes = ?5, pinned = ?6",
+         SET title = ?2, preview = ?3, mtime_ns = ?4, size_bytes = ?5, pinned = ?6,
+             title_key = ?7",
         rusqlite::params![
             relative,
             title,
             preview,
             mtime_ns(&meta),
             meta.len() as i64,
-            pinned
+            pinned,
+            title_key
         ],
     )?;
     tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
@@ -209,8 +215,10 @@ impl IndexDb {
                 preview    TEXT NOT NULL,
                 mtime_ns   INTEGER NOT NULL,
                 size_bytes INTEGER NOT NULL,
-                pinned     INTEGER NOT NULL DEFAULT 0
+                pinned     INTEGER NOT NULL DEFAULT 0,
+                title_key  TEXT NOT NULL DEFAULT ''
             );
+            CREATE INDEX IF NOT EXISTS idx_notes_title_key ON notes(title_key);
             CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
                 title,
                 path,
@@ -488,7 +496,7 @@ impl IndexDb {
         // 指している（題名で引き当てる。まだ無いノートは相手が居ない）
         let mut statement = self.conn.prepare(
             "SELECT other.path, links.target FROM links
-             JOIN notes AS other ON other.title = links.target COLLATE NOCASE
+             JOIN notes AS other ON other.title_key = links.target COLLATE NOCASE
              WHERE links.path = ?1",
         )?;
         let rows = statement.query_map([path], |row| {
@@ -537,11 +545,36 @@ impl IndexDb {
     /// **図は索引から作る。** 本文を全部読み直すと 5,000 ノートで待たされる。
     pub fn link_map(&self) -> rusqlite::Result<Vec<(String, String, String)>> {
         let mut statement = self.conn.prepare(
-            "SELECT notes.title, links.target, links.relation
+            "SELECT notes.title_key, links.target, links.relation
              FROM notes JOIN links ON links.path = notes.path",
         )?;
         let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
         rows.collect()
+    }
+
+    /// 指定パスの題名だけを引く（related の表示用）。
+    /// `list_notes` は preview 込みの全件読みで、8 件のために 5,000 行を
+    /// 読むのは無駄が大きい（レビュー 2026-09-04）。
+    pub fn titles_for(
+        &self,
+        paths: &[String],
+    ) -> rusqlite::Result<std::collections::HashMap<String, String>> {
+        let mut out = std::collections::HashMap::new();
+        if paths.is_empty() {
+            return Ok(out);
+        }
+        let holes = vec!["?"; paths.len()].join(",");
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT path, title FROM notes WHERE path IN ({holes})"
+        ))?;
+        let rows = statement.query_map(rusqlite::params_from_iter(paths.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (path, title) = row?;
+            out.insert(path, title);
+        }
+        Ok(out)
     }
 
     /// 1 ファイルだけ索引を更新する（自動保存の後追い用）。
@@ -693,6 +726,51 @@ mod tests {
 
     fn paths(hits: &[SearchHit]) -> Vec<&str> {
         hits.iter().map(|h| h.path.as_str()).collect()
+    }
+
+    #[test]
+    fn test_titles_for_指定パスの題名だけを引く() {
+        let (_root, vault) = vault_with(&[("a.md", "# A\n"), ("b.md", "# B\n")]);
+        let db = synced(&vault);
+        let titles = db.titles_for(&["a.md".to_string()]).unwrap();
+        assert_eq!(titles.len(), 1);
+        assert_eq!(titles.get("a.md").map(String::as_str), Some("a"));
+        assert!(db.titles_for(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_related_signals_NFDのファイル名でも題名の突き合わせが通る() {
+        // レビュー 2026-09-04: links.target は NFC 正規化済み、notes.title は
+        // 生のファイル名で、macOS の NFD ファイル名だと「指している」
+        // 根拠とリンクの図だけが繋がらなかった
+        let nfd = "会議か\u{3099}メモ"; // 「が」を分解した形（NFD）
+        let (_root, vault) = vault_with(&[
+            (&format!("{nfd}.md"), "# 会議\n"),
+            ("入口.md", "[[会議がメモ]] を見よ\n"),
+        ]);
+        let db = synced(&vault);
+        let signals = db.related_signals("入口.md", "入口").unwrap();
+        assert!(
+            signals.iter().any(|s| s.key == format!("{nfd}.md")),
+            "{signals:?}"
+        );
+    }
+
+    #[test]
+    fn test_link_map_NFDのファイル名でも辺が実在扱いになる() {
+        let nfd = "会議か\u{3099}メモ";
+        let (_root, vault) = vault_with(&[
+            (&format!("{nfd}.md"), "# 会議\n"),
+            ("入口.md", "[[会議がメモ]]\n"),
+        ]);
+        let db = synced(&vault);
+        let map = db.link_map().unwrap();
+        // 図の側は title を鍵に繋ぐので、正規化した鍵で返ること
+        assert!(
+            map.iter()
+                .any(|(from, to, _)| from == "入口" && to == "会議がメモ"),
+            "{map:?}"
+        );
     }
 
     #[test]

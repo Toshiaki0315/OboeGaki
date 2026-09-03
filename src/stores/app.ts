@@ -66,7 +66,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async openVault(root, trashDays) {
     // レイアウト作成・監視開始・背景の索引同期を起動してから一覧を引く
-    await invoke<string[]>("vault_open", { root, trashDays });
+    await invoke<void>("vault_open", { root, trashDays });
     const lists = await fetchLists(root);
     set({ vaultRoot: root, ...lists, currentPath: null });
   },

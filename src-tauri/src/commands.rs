@@ -68,10 +68,29 @@ const VAULT_BUSY: &str = "vault-busy";
 /// （フロントの lib/settings.ts と同じ値）。
 const DEFAULT_TRASH_DAYS: u64 = 30;
 
+// 重いコマンド（OCR・LLM のプローブ・取り込み・全 md 走査・毎打鍵の保存）
+// は `async fn` にしてメインスレッドから逃がす（レビュー 2026-09-04）。
+// Tauri は同期コマンドをメインスレッドで実行するため、Ollama 未導入の
+// 環境では 3 秒のプローブのたびに UI が固まっていた。body は同期のままで
+// よい（同時に走る重いコマンドは高々数本で、tokio のワーカーを枯らさない）。
+
+/// AtomicBool を「スレッドが終わったら必ず戻す」ための番人。
+/// クロージャの末尾で store すると、途中のパニックで立ちっぱなしになり、
+/// 以降その機能（LLM・手動同期）が再起動まで死ぬ（レビュー 2026-09-04）。
+struct FlagGuard(Arc<std::sync::atomic::AtomicBool>);
+impl Drop for FlagGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
     let candidate = Path::new(path).to_path_buf();
     if contains(Path::new(root), &candidate) {
-        Ok(candidate)
+        // 検査したのと同じ実体を使う（生のパスを返すと、検査と使用の間に
+        // シンボリックリンクへ差し替えられる余地が残る — レビュー 2026-09-04）。
+        // まだ無いファイル（これから書く）は正規化できないので生のまま
+        Ok(candidate.canonicalize().unwrap_or(candidate))
     } else {
         Err(format!("vault の外を指しています: {path}"))
     }
@@ -79,12 +98,12 @@ fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
 
 /// vault を開く: 改名引き継ぎ + レイアウト作成 + 監視開始 + 走査。
 #[tauri::command]
-pub fn vault_open(
+pub async fn vault_open(
     app: tauri::AppHandle,
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     trash_days: Option<u64>,
-) -> Result<Vec<String>, String> {
+) -> Result<(), String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
     // 同じ vault の二重起動を止める（H-1 層 2 / spec §6.1）。2 窓で開くと
@@ -92,7 +111,12 @@ pub fn vault_open(
     // **先に手放してから取る** — 同じ vault を開き直すとき、自分の持って
     // いるロックに自分でぶつかる
     {
-        let mut held = state.lock.lock().expect("vault lock");
+        // 毒化していても回復する（どこかのパニックで vault が永久に開けなく
+        // ならないように — レビュー 2026-09-04）
+        let mut held = state
+            .lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *held = None;
         match crate::vault_lock::acquire(&vault.managed_dir()) {
             crate::vault_lock::LockOutcome::Acquired(lock) => *held = Some(lock),
@@ -126,7 +150,12 @@ pub fn vault_open(
         vault.root().to_path_buf(),
         state.suppressor.clone(),
     ) {
-        Ok(active) => *state.watcher.lock().expect("watcher lock") = Some(active),
+        Ok(active) => {
+            *state
+                .watcher
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(active)
+        }
         Err(error) => eprintln!("外部変更の監視を開始できなかった: {error}"),
     }
     // 索引の全体同期と履歴の掃除は背景で行う（5,000 ノートで 2.2 秒 —
@@ -143,7 +172,9 @@ pub fn vault_open(
             // 手動同期が重なると、古いスナップショットの「消えた」が
             // 新しい行を消す（レビュー 2026-09-04）
             let sync_outcome = {
-                let _serialized = gate.lock().expect("sync gate");
+                let _serialized = gate
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
             };
             if let Err(error) = sync_outcome {
@@ -157,11 +188,10 @@ pub fn vault_open(
             let _ = app.emit("index-updated", ());
         });
     }
-    Ok(vault
-        .scan()
-        .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect())
+    // 戻り値の一覧はフロントが使っていない（note_list が索引から引く）。
+    // ここで scan すると背景同期と合わせて**全走査を 2 回**払う
+    //（レビュー 2026-09-04）
+    Ok(())
 }
 
 /// そのノートが今もあるか（spec §7.5）。
@@ -179,14 +209,14 @@ pub fn note_exists(root: String, path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn note_read(root: String, path: String) -> Result<String, String> {
+pub async fn note_read(root: String, path: String) -> Result<String, String> {
     let path = guarded(&root, &path)?;
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn note_write(
-    state: tauri::State<WatchState>,
+pub async fn note_write(
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
     text: String,
@@ -241,7 +271,7 @@ pub fn history_list(root: String, path: String) -> Result<Vec<HistoryEntry>, Str
 /// 返り値は書き戻したあとの本文（フロントがエディタへ流し込む）。
 #[tauri::command]
 pub fn history_restore(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
     version: String,
@@ -250,6 +280,20 @@ pub fn history_restore(
     let version = guarded(&root, &version)?;
     let store = history_root(&root);
     let key = history_key(&root, &note);
+    // version は**このノートの履歴フォルダの中**だけを受ける。vault 内なら
+    // 何でも通すと、任意のノートの中身をここへ書き戻せてしまう
+    //（レビュー 2026-09-04。フロントは history_list の戻りしか渡さないが、
+    // 境界の層として閉じる）
+    let expected = store.join(history::folder_name(&key));
+    let inside_history = version
+        .parent()
+        .and_then(|parent| parent.canonicalize().ok())
+        .zip(expected.canonicalize().ok())
+        .map(|(parent, expected)| parent == expected)
+        .unwrap_or(false);
+    if !inside_history {
+        return Err("このノートの版ではありません".to_string());
+    }
     let now = chrono::Local::now().naive_local();
     if let Ok(current) = fs::read_to_string(&note) {
         if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
@@ -273,7 +317,7 @@ pub fn history_restore(
 /// 元のファイルは触らない（外部の版がそのまま残る）。
 #[tauri::command]
 pub fn conflict_copy(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
     text: String,
@@ -296,7 +340,7 @@ pub fn conflict_copy(
 /// ユーザーが選んだパスなので、vault の封じ込め検査は掛けない
 /// （掛けると書き出し先を vault の中に縛ってしまう）。
 #[tauri::command]
-pub fn export_write(path: String, text: String) -> Result<(), String> {
+pub async fn export_write(path: String, text: String) -> Result<(), String> {
     crate::autosave::save_bytes_atomic(Path::new(&path), text.as_bytes()).map_err(|e| e.to_string())
 }
 
@@ -348,7 +392,7 @@ pub fn tag_list(root: String) -> Result<Vec<(String, i64)>, String> {
 
 /// 一覧の素材（題名・プレビュー・更新時刻）。並び順はフロント側の持ち物。
 #[tauri::command]
-pub fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String> {
+pub async fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.list_notes())
@@ -358,7 +402,7 @@ pub fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String>
 /// ノートを複製する（一覧の右クリック）。作った先を返す。
 #[tauri::command]
 pub fn note_duplicate(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
 ) -> Result<String, String> {
@@ -382,7 +426,7 @@ pub fn template_register(root: String, path: String, name: String) -> Result<Str
 
 /// どのノートからも指されていない添付（E-5）。絶対パスを名前順で返す。
 #[tauri::command]
-pub fn attachments_unused(root: String) -> Result<Vec<String>, String> {
+pub async fn attachments_unused(root: String) -> Result<Vec<String>, String> {
     Ok(Vault::new(&root)
         .unused_attachments()
         .into_iter()
@@ -392,8 +436,8 @@ pub fn attachments_unused(root: String) -> Result<Vec<String>, String> {
 
 /// 添付をゴミ箱へ移す（E-5）。移した数を返す。
 #[tauri::command]
-pub fn attachments_trash(
-    state: tauri::State<WatchState>,
+pub async fn attachments_trash(
+    state: tauri::State<'_, WatchState>,
     root: String,
     paths: Vec<String>,
 ) -> Result<usize, String> {
@@ -428,7 +472,7 @@ pub struct SearchOutcome {
 }
 
 #[tauri::command]
-pub fn note_search(root: String, query: String) -> Result<SearchOutcome, String> {
+pub async fn note_search(root: String, query: String) -> Result<SearchOutcome, String> {
     let vault = Vault::new(&root);
     let hits = IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.search(&query))
@@ -441,7 +485,7 @@ pub fn note_search(root: String, query: String) -> Result<SearchOutcome, String>
 
 #[tauri::command]
 pub fn note_create(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     title: String,
 ) -> Result<String, String> {
@@ -469,7 +513,7 @@ pub fn template_list(root: String) -> Result<Vec<String>, String> {
 /// 雛形から新しいノートを作る（E-4）。題名が空なら雛形の名前を使う。
 #[tauri::command]
 pub fn note_create_from_template(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     template: String,
     title: String,
@@ -485,7 +529,7 @@ pub fn note_create_from_template(
 
 /// 今日のノート（E-4）。無ければ日次の雛形から作る。
 #[tauri::command]
-pub fn note_daily(state: tauri::State<WatchState>, root: String) -> Result<NewNote, String> {
+pub fn note_daily(state: tauri::State<'_, WatchState>, root: String) -> Result<NewNote, String> {
     let vault = Vault::new(&root);
     let made = vault
         .daily_note(&chrono::Local::now())
@@ -497,7 +541,7 @@ pub fn note_daily(state: tauri::State<WatchState>, root: String) -> Result<NewNo
 
 /// 使い方のノートを今の内容で置き直す（ヘルプメニュー）。
 #[tauri::command]
-pub fn manual_place(state: tauri::State<WatchState>, root: String) -> Result<String, String> {
+pub fn manual_place(state: tauri::State<'_, WatchState>, root: String) -> Result<String, String> {
     let vault = Vault::new(&root);
     let placed = vault.place_manual().map_err(|e| e.to_string())?;
     state.suppressor.mark(&placed);
@@ -507,7 +551,7 @@ pub fn manual_place(state: tauri::State<WatchState>, root: String) -> Result<Str
 
 /// このノートを `[[…]]` で指しているノート（E-6）。
 #[tauri::command]
-pub fn note_backlinks(
+pub async fn note_backlinks(
     root: String,
     title: String,
 ) -> Result<Vec<crate::index_db::Backlink>, String> {
@@ -528,7 +572,7 @@ pub fn note_backlinks(
 #[tauri::command]
 pub fn index_sync(
     app: tauri::AppHandle,
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     full: bool,
 ) -> Result<bool, String> {
@@ -540,9 +584,12 @@ pub fn index_sync(
     let gate = state.sync_gate.clone();
     std::thread::spawn(move || {
         use tauri::Emitter;
+        let _flag = FlagGuard(syncing); // パニックしても必ず降ろす
         let vault = Vault::new(&root);
         let outcome = {
-            let _serialized = gate.lock().expect("sync gate");
+            let _serialized = gate
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
                 if full {
                     db.rebuild(&vault)
@@ -551,7 +598,6 @@ pub fn index_sync(
                 }
             })
         };
-        syncing.store(false, Ordering::SeqCst);
         match outcome {
             Ok(result) => {
                 let _ = app.emit("index-synced", (full, result));
@@ -570,7 +616,7 @@ pub fn index_sync(
 /// PowerPoint（TASKS 4-5）のように**中身がバイト列**のものに使う。
 /// 置き場はユーザーが選んだ場所なので vault の外でよい。
 #[tauri::command]
-pub fn export_write_binary(path: String, data: String) -> Result<(), String> {
+pub async fn export_write_binary(path: String, data: String) -> Result<(), String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
@@ -583,7 +629,7 @@ pub fn export_write_binary(path: String, data: String) -> Result<(), String> {
 /// **vault の外を読む。** 取り込みは外から持ってくる操作で、置き場を
 /// 選ぶのはユーザー。書き込みはしないので、封じ込めの対象にしない。
 #[tauri::command]
-pub fn import_read(path: String) -> Result<String, String> {
+pub async fn import_read(path: String) -> Result<String, String> {
     use base64::Engine;
     let bytes = fs::read(&path).map_err(|e| e.to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
@@ -595,28 +641,28 @@ pub fn import_read(path: String) -> Result<String, String> {
 ///
 /// **押してから断らない**ための確認。動いていなければ機能ごと畳む。
 #[tauri::command]
-pub fn llm_available(port: u16) -> bool {
+pub async fn llm_available(port: u16) -> bool {
     crate::llm::available(port)
 }
 
 /// 入っているモデルの名前（設定の候補に出す）。
 #[tauri::command]
-pub fn llm_models(port: u16) -> Vec<String> {
+pub async fn llm_models(port: u16) -> Vec<String> {
     crate::llm::models(port)
 }
 
 /// そのモデルが今メモリに載っているか（載っていなければ「読み込んで
 /// います…」と言えるようにする）。
 #[tauri::command]
-pub fn llm_loaded(port: u16, model: String) -> bool {
+pub async fn llm_loaded(port: u16, model: String) -> bool {
     crate::llm::is_loaded(port, &model)
 }
 
 /// モデルをメモリから降ろす。**答えの途中では降ろさない**（走っている
 /// 生成を壊す）ので、走っている間は断る。
 #[tauri::command]
-pub fn llm_unload(
-    state: tauri::State<WatchState>,
+pub async fn llm_unload(
+    state: tauri::State<'_, WatchState>,
     port: u16,
     model: String,
 ) -> Result<bool, String> {
@@ -637,7 +683,7 @@ pub fn llm_unload(
 #[tauri::command]
 pub fn llm_generate(
     app: tauri::AppHandle,
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     port: u16,
     model: String,
     task: String,
@@ -654,19 +700,21 @@ pub fn llm_generate(
     let generating = state.generating.clone();
     std::thread::spawn(move || {
         use tauri::Emitter;
+        let _flag = FlagGuard(generating); // パニックしても必ず降ろす
         let prompt = crate::llm::prompt_for(&task, &title, &body);
+        // 分は 1〜120 に丸める（極端な値の乗算パニックと「実質無限」を防ぐ）
+        let minutes = timeout_minutes.clamp(1, 120);
         let outcome = crate::llm::generate(
             port,
             &model,
             &prompt,
             context,
-            std::time::Duration::from_secs(timeout_minutes * 60),
+            std::time::Duration::from_secs(minutes * 60),
             &keep_alive,
             |piece| {
                 let _ = app.emit("llm-chunk", piece);
             },
         );
-        generating.store(false, Ordering::SeqCst);
         match outcome {
             Ok(answer) => {
                 let _ = app.emit("llm-done", answer);
@@ -684,7 +732,7 @@ pub fn llm_generate(
 /// 受け取るのは base64 の画像。**元のファイルは触らない** — 読み取った
 /// 文字を返すだけで、ノートにするのは呼び出し側の仕事。
 #[tauri::command]
-pub fn ocr_image(data: String) -> Result<String, String> {
+pub async fn ocr_image(data: String) -> Result<String, String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&data)
@@ -750,7 +798,7 @@ pub fn recovery_pending(
 #[tauri::command]
 pub fn recovery_restore(
     app: tauri::AppHandle,
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
 ) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
@@ -798,7 +846,11 @@ pub struct RelatedNote {
 }
 
 #[tauri::command]
-pub fn note_related(root: String, path: String, title: String) -> Result<Vec<RelatedNote>, String> {
+pub async fn note_related(
+    root: String,
+    path: String,
+    title: String,
+) -> Result<Vec<RelatedNote>, String> {
     let vault = Vault::new(&root);
     let relative = Path::new(&path)
         .strip_prefix(&root)
@@ -809,12 +861,8 @@ pub fn note_related(root: String, path: String, title: String) -> Result<Vec<Rel
         .related_signals(&relative, &title)
         .map_err(|e| e.to_string())?;
     let ranked = crate::related::rank(&signals, &relative, crate::related::DEFAULT_LIMIT);
-    let titles: std::collections::HashMap<String, String> = db
-        .list_notes()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|note| (note.path, note.title))
-        .collect();
+    let keys: Vec<String> = ranked.iter().map(|item| item.key.clone()).collect();
+    let titles = db.titles_for(&keys).map_err(|e| e.to_string())?;
     Ok(ranked
         .into_iter()
         .map(|item| RelatedNote {
@@ -843,7 +891,7 @@ pub fn link_map(root: String) -> Result<Vec<(String, String, String)>, String> {
 /// **存在はディスク、件数は索引**（索引にあってディスクに無いものは出さない）。
 /// 先頭は必ず直下（空文字）。
 #[tauri::command]
-pub fn folder_list(root: String) -> Result<Vec<(String, i64)>, String> {
+pub async fn folder_list(root: String) -> Result<Vec<(String, i64)>, String> {
     let vault = Vault::new(&root);
     let counts = IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.folder_counts())
@@ -883,7 +931,7 @@ pub fn folder_create(root: String, folder: String) -> Result<String, String> {
 /// 付け替える（鍵がパスなので、そのままだと履歴が見えなくなる）。
 #[tauri::command]
 pub fn folder_rename(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     folder: String,
     name: String,
@@ -912,7 +960,10 @@ pub fn folder_rename(
         }
     }
     let sync_outcome = {
-        let _serialized = state.sync_gate.lock().expect("sync gate");
+        let _serialized = state
+            .sync_gate
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
     };
     if let Err(error) = sync_outcome {
@@ -931,7 +982,7 @@ pub fn folder_delete(root: String, folder: String) -> Result<(), String> {
 /// ノートをフォルダへ移す（ADR-0024）。移した先の絶対パスを返す。
 #[tauri::command]
 pub fn note_move(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
     folder: String,
@@ -973,7 +1024,7 @@ fn index_one(vault: &Vault, path: &Path) {
 
 #[tauri::command]
 pub fn note_rename(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
     title: String,
@@ -1005,7 +1056,7 @@ pub fn note_rename(
 
 #[tauri::command]
 pub fn note_trash(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
 ) -> Result<String, String> {
@@ -1053,7 +1104,7 @@ pub fn trash_list(root: String) -> Result<Vec<String>, String> {
 /// 永続化し、書き換え後の本文を返す（開いているエディタが差し替えるため）。
 #[tauri::command]
 pub fn note_pin(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
     pinned: bool,
@@ -1093,7 +1144,7 @@ pub fn trash_empty(root: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn note_restore(
-    state: tauri::State<WatchState>,
+    state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
 ) -> Result<String, String> {
