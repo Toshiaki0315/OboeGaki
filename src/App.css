@@ -508,3 +508,8 @@ button.danger {
     --code-prop: #7ee787;
   }
 }
+
+.pin-mark {
+  font-size: 0.75em;
+  margin-right: 0.25em;
+}

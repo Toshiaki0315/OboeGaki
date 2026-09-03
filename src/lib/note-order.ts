@@ -7,6 +7,8 @@ export type NoteEntry = {
   label: string;
   preview: string;
   mtimeMs: number;
+  /// ピン留め（spec §7.3）。どの並び順でも先頭に固定する
+  pinned: boolean;
 };
 
 export type SortOrder = "modified" | "title";
@@ -16,11 +18,12 @@ const byTitle = (a: NoteEntry, b: NoteEntry) =>
 
 export function sortNotes(entries: NoteEntry[], order: SortOrder): NoteEntry[] {
   const sorted = [...entries];
-  if (order === "title") {
-    sorted.sort(byTitle);
-  } else {
-    sorted.sort((a, b) => b.mtimeMs - a.mtimeMs || byTitle(a, b));
-  }
+  const byOrder =
+    order === "title"
+      ? byTitle
+      : (a: NoteEntry, b: NoteEntry) => b.mtimeMs - a.mtimeMs || byTitle(a, b);
+  // ピン留めが先。ピン同士・普通同士は選んだ並び順に従う
+  sorted.sort((a, b) => Number(b.pinned) - Number(a.pinned) || byOrder(a, b));
   return sorted;
 }
 

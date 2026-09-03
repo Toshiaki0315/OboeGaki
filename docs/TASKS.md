@@ -41,7 +41,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **2-2. front matter の隠蔽と解釈**（ADR-0013, core/frontmatter.py）
       `---` ブロックの装飾（隠蔽 or 淡色）と、id / pinned / tags の読み取り。
       2-3 ピン留めの前提
-- [ ] **2-3. ピン留め**（§7.3。2-2 に依存）
+- [x] **2-3. ピン留め**（§7.3。2-2 に依存）
       front matter `pinned: true` に永続化、一覧の先頭固定、ピン中は削除ガード
 - [ ] **2-4. 見出しの折りたたみ**（ADR-0019, core/folding.py）
       CM6 の foldService に見出し区間を返すだけで乗る見込み

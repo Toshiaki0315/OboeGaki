@@ -8,6 +8,7 @@ const entry = (label: string, mtimeMs: number): NoteEntry => ({
   label,
   preview: "",
   mtimeMs,
+  pinned: false,
 });
 
 describe("sortNotes", () => {
@@ -53,5 +54,55 @@ describe("formatStamp", () => {
     expect(formatStamp(Date.UTC(2026, 8, 4, 3, 5))).toMatch(
       /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
     );
+  });
+});
+
+describe("ピン留めの先頭固定", () => {
+  const entry = (
+    label: string,
+    mtimeMs: number,
+    pinned: boolean,
+  ): NoteEntry => ({
+    path: `/v/${label}.md`,
+    label,
+    preview: "",
+    mtimeMs,
+    pinned,
+  });
+
+  test("test_ピン留めはどの並び順でも先頭に来る", () => {
+    const notes = [
+      entry("新しい", 300, false),
+      entry("留めた古い", 100, true),
+      entry("あ", 200, false),
+    ];
+    expect(sortNotes(notes, "modified").map((n) => n.label)).toEqual([
+      "留めた古い",
+      "新しい",
+      "あ",
+    ]);
+    expect(sortNotes(notes, "title").map((n) => n.label)).toEqual([
+      "留めた古い",
+      "あ",
+      "新しい",
+    ]);
+  });
+
+  test("test_ピン留め同士は選んだ並び順に従う", () => {
+    const notes = [
+      entry("bピン", 100, true),
+      entry("aピン", 200, true),
+      entry("普通", 300, false),
+    ];
+    expect(sortNotes(notes, "modified").map((n) => n.label)).toEqual([
+      "aピン",
+      "bピン",
+      "普通",
+    ]);
+    expect(sortNotes(notes, "title").map((n) => n.label)).toEqual([
+      "aピン",
+      "bピン",
+      "普通",
+    ]);
   });
 });

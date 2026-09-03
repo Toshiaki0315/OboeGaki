@@ -337,6 +337,14 @@ pub fn note_trash(
     path: String,
 ) -> Result<String, String> {
     let path = guarded(&root, &path)?;
+    // ピン留め中は捨てない（spec §7.3 の削除ガード）。
+    // 消してよいなら先にピンを外す、という一拍を挟む
+    if std::fs::read_to_string(&path)
+        .map(|text| crate::front_matter::pinned(&text))
+        .unwrap_or(false)
+    {
+        return Err("ピン留め中のノートはゴミ箱へ移せない（先にピンを外す）".into());
+    }
     state.suppressor.mark(&path);
     let vault = Vault::new(&root);
     let moved = vault.trash(&path).map_err(|e| e.to_string())?;
@@ -357,6 +365,31 @@ pub fn trash_list(root: String) -> Result<Vec<String>, String> {
         .into_iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect())
+}
+
+/// ピン留めを付け外しする（spec §7.3）。front matter の `pinned: true` に
+/// 永続化し、書き換え後の本文を返す（開いているエディタが差し替えるため）。
+#[tauri::command]
+pub fn note_pin(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+    pinned: bool,
+) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let updated = crate::front_matter::with_pinned(&text, pinned);
+    if updated != text {
+        state.suppressor.mark(&path);
+        autosave::save_atomic(&path, &updated).map_err(|e| e.to_string())?;
+        let vault = Vault::new(&root);
+        if let Err(error) =
+            IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+        {
+            eprintln!("索引の更新に失敗した: {error}");
+        }
+    }
+    Ok(updated)
 }
 
 /// ゴミ箱の 1 件を完全に消す（G-3）。ゴミ箱の外は消さない。

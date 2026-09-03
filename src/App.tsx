@@ -33,6 +33,7 @@ import {
   historyList,
   historyRestore,
   imageSource,
+  pinNote,
   readNote,
   saveAttachment,
   renameNote,
@@ -276,6 +277,12 @@ function App() {
 
   async function handleTrash() {
     if (!vaultRoot || !currentPath) return;
+    // ピン留め中は削除ガード（spec §7.3）。Rust 側も拒むが、確認を
+    // 出す前にここで止めるほうが親切
+    if (notes.find((entry) => entry.path === currentPath)?.pinned) {
+      setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
+      return;
+    }
     const ok = await confirm(
       `「${noteLabel(vaultRoot, currentPath)}」をゴミ箱へ移しますか？`,
       { title: "覚書", kind: "warning" },
@@ -283,11 +290,29 @@ function App() {
     if (!ok) return;
     autosave.cancel(); // 捨てるノートの保存予約は破棄する
     pendingSave.current = null;
-    await trashNote(vaultRoot, currentPath);
+    try {
+      await trashNote(vaultRoot, currentPath);
+    } catch (error) {
+      setStatus(String(error));
+      return;
+    }
     await refresh();
     selectNote(null);
     setDoc(null);
     setStatus("");
+  }
+
+  // ピン留めの付け外し（spec §7.3）。front matter が書き換わるので、
+  // 開いているエディタの内容も返ってきた本文で差し替える
+  async function handlePin() {
+    if (!vaultRoot || !currentPath) return;
+    const current = notes.find((entry) => entry.path === currentPath);
+    autosave.flush(); // 未保存分を書き切ってから front matter を触る
+    const text = await pinNote(vaultRoot, currentPath, !current?.pinned);
+    dirtyRef.current = false;
+    editorRef.current?.replaceText(text);
+    await refresh();
+    setStatus(current?.pinned ? "ピンを外しました" : "ピン留めしました");
   }
 
   function handleQueryChanged(next: string) {
@@ -624,7 +649,10 @@ function App() {
                     className={`note-row${entry.path === currentPath ? " selected" : ""}`}
                     onClick={() => void openNote(entry.path)}
                   >
-                    <span className="note-row-title">{entry.label}</span>
+                    <span className="note-row-title">
+                      {entry.pinned && <span className="pin-mark">📌</span>}
+                      {entry.label}
+                    </span>
                     {entry.preview && (
                       <span className="note-row-preview">{entry.preview}</span>
                     )}
@@ -764,6 +792,11 @@ function App() {
                 }}
                 onBlur={(event) => void handleRename(event.currentTarget.value)}
               />
+              <button onClick={() => void handlePin()} title="一覧の先頭に固定">
+                {notes.find((entry) => entry.path === currentPath)?.pinned
+                  ? "ピンを外す"
+                  : "ピン留め"}
+              </button>
               <button onClick={() => void handleExport()}>書き出し</button>
               <button onClick={() => void openHistory()}>履歴</button>
               <button onClick={() => void handleTrash()}>ゴミ箱へ</button>

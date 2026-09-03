@@ -10,6 +10,7 @@ type NoteMeta = {
   title: string;
   preview: string;
   mtime_ms: number;
+  pinned: boolean;
 };
 
 export type TagCount = { tag: string; count: number };
@@ -34,6 +35,7 @@ async function fetchLists(root: string) {
     label: meta.path.replace(/\.(md|markdown)$/i, ""),
     preview: meta.preview,
     mtimeMs: meta.mtime_ms,
+    pinned: meta.pinned,
   }));
   const tagPairs = await invoke<[string, number][]>("tag_list", { root });
   const tags: TagCount[] = tagPairs.map(([tag, count]) => ({ tag, count }));
@@ -96,6 +98,15 @@ export async function trashNote(root: string, path: string): Promise<string> {
 
 export async function restoreNote(root: string, path: string): Promise<string> {
   return invoke<string>("note_restore", { root, path });
+}
+
+/// ピン留めの付け外し。書き換え後の本文が返る（エディタが差し替える）。
+export async function pinNote(
+  root: string,
+  path: string,
+  pinned: boolean,
+): Promise<string> {
+  return invoke<string>("note_pin", { root, path, pinned });
 }
 
 /// ゴミ箱の 1 件を完全に消す。消してよいかの確認は呼び出し側の仕事。

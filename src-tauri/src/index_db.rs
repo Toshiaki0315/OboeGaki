@@ -27,7 +27,7 @@ pub const INDEX_FILE: &str = "index.sqlite";
 /// 捨ててよいキャッシュなので、移行コードを書くより作り直しが正しい）。
 /// 2: notes_fts の path を索引対象にし、LIKE フォールバックにも path を足した
 /// 3: tags テーブルを追加（サイドバーのタグ一覧）
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 /// この文字数以上なら trigram FTS、未満なら LIKE フォールバック。
 const FTS_MIN_CHARS: usize = 3;
 const SEARCH_LIMIT: usize = 50;
@@ -43,6 +43,8 @@ pub struct NoteMeta {
     pub preview: String,
     /// ミリ秒（JS の Date と突き合わせやすい単位）
     pub mtime_ms: i64,
+    /// front matter の `pinned: true`（spec §7.3。一覧の先頭固定）
+    pub pinned: bool,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -104,12 +106,20 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
         .unwrap_or(crate::vault::UNTITLED)
         .to_string();
     let preview = note_preview(&text);
+    let pinned = crate::front_matter::pinned(&text);
     tx.execute(
-        "INSERT INTO notes(path, title, preview, mtime_ns, size_bytes)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO notes(path, title, preview, mtime_ns, size_bytes, pinned)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(path) DO UPDATE
-         SET title = ?2, preview = ?3, mtime_ns = ?4, size_bytes = ?5",
-        rusqlite::params![relative, title, preview, mtime_ns(&meta), meta.len() as i64],
+         SET title = ?2, preview = ?3, mtime_ns = ?4, size_bytes = ?5, pinned = ?6",
+        rusqlite::params![
+            relative,
+            title,
+            preview,
+            mtime_ns(&meta),
+            meta.len() as i64,
+            pinned
+        ],
     )?;
     tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
     tx.execute(
@@ -154,7 +164,8 @@ impl IndexDb {
                 title      TEXT NOT NULL,
                 preview    TEXT NOT NULL,
                 mtime_ns   INTEGER NOT NULL,
-                size_bytes INTEGER NOT NULL
+                size_bytes INTEGER NOT NULL,
+                pinned     INTEGER NOT NULL DEFAULT 0
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
                 title,
@@ -219,13 +230,14 @@ impl IndexDb {
     pub fn list_notes(&self) -> rusqlite::Result<Vec<NoteMeta>> {
         let mut statement = self
             .conn
-            .prepare("SELECT path, title, preview, mtime_ns FROM notes")?;
+            .prepare("SELECT path, title, preview, mtime_ns, pinned FROM notes")?;
         let rows = statement.query_map([], |row| {
             Ok(NoteMeta {
                 path: row.get(0)?,
                 title: row.get(1)?,
                 preview: row.get(2)?,
                 mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
+                pinned: row.get(4)?,
             })
         })?;
         rows.collect()
@@ -339,6 +351,19 @@ mod tests {
 
     fn paths(hits: &[SearchHit]) -> Vec<&str> {
         hits.iter().map(|h| h.path.as_str()).collect()
+    }
+
+    #[test]
+    fn test_list_notes_pinnedがfront_matterから一覧に載る() {
+        let (_root, vault) = vault_with(&[
+            ("留めた.md", "---\npinned: true\n---\n# 留めた\n"),
+            ("普通.md", "# 普通\n"),
+        ]);
+        let db = synced(&vault);
+        let notes = db.list_notes().unwrap();
+        let pinned: Vec<(&str, bool)> = notes.iter().map(|n| (n.path.as_str(), n.pinned)).collect();
+        assert!(pinned.contains(&("留めた.md", true)));
+        assert!(pinned.contains(&("普通.md", false)));
     }
 
     #[test]

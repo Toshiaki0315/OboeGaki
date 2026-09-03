@@ -5,7 +5,8 @@
 pub mod assets;
 pub mod autosave;
 pub mod commands;
-pub mod history;
+pub mod front_matter;
+mod history;
 pub mod index_db;
 pub mod tags;
 pub mod vault;
@@ -132,6 +133,7 @@ pub fn run() {
             commands::note_trash,
             commands::trash_list,
             commands::note_restore,
+            commands::note_pin,
             commands::trash_delete,
             commands::trash_empty,
             commands::note_search,
