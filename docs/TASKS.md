@@ -59,7 +59,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **3-1. タグの厳密絞り込みとタグ補完**（C-4 / H-3, index の tags 結合）
       サイドバーのタグクリックを全文検索代用から tags テーブル結合に替える。
       `#` 入力中の補完（↑↓ / Enter / Tab）も一緒に
-- [ ] **3-2. テンプレートと同梱マニュアル**（E-4, resources/templates / MANUAL）
+- [x] **3-2. テンプレートと同梱マニュアル**（E-4, resources/templates / MANUAL）
       `templates/` の雛形から新規作成・日次テンプレート・初回シード。
       「覚書の使い方」ノートのシードも同じ仕組みに乗せる
 - [ ] **3-3. フォルダの作成・改名とフォルダツリー**（ADR-0024, ui/sidebar.py）
