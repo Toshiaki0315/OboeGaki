@@ -40,6 +40,7 @@ pub fn run() {
             commands::image_read,
             commands::history_list,
             commands::history_restore,
+            commands::export_write,
             commands::startup_elapsed_ms,
         ])
         .run(tauri::generate_context!())

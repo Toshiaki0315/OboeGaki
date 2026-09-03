@@ -166,6 +166,14 @@ pub fn history_restore(
     Ok(text)
 }
 
+/// 書き出しの保存（HTML など）。保存先はネイティブの保存ダイアログで
+/// ユーザーが選んだパスなので、vault の封じ込め検査は掛けない
+/// （掛けると書き出し先を vault の中に縛ってしまう）。
+#[tauri::command]
+pub fn export_write(path: String, text: String) -> Result<(), String> {
+    crate::autosave::save_bytes_atomic(Path::new(&path), text.as_bytes()).map_err(|e| e.to_string())
+}
+
 /// プロセス開始から UI マウントまでの時間（spec §6.6: 起動 < 1.5 秒の実測）。
 /// フロントが最初のマウントで呼ぶ。OBOEGAKI_BENCH_STARTUP=1 のときは
 /// 値を印字してから終了する（make bench-startup 用）。

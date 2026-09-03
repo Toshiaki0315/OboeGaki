@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ask, confirm, open } from "@tauri-apps/plugin-dialog";
+import { ask, confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -7,6 +7,7 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import { createDebouncer } from "./lib/debounce";
+import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   createNote,
@@ -76,6 +77,30 @@ function App() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteIndex, setPaletteIndex] = useState(0);
+  // HTML 書き出し（ADR-0007 の CM6 版）。画像は data URL に埋め込んで
+  // 1 ファイルで持ち運べる形にする
+  async function handleExport() {
+    if (!vaultRoot || !currentPath) return;
+    autosave.flush();
+    const text = await readNote(vaultRoot, currentPath);
+    const title = noteStem(currentPath);
+    let html = renderHtml(text, title);
+    const sources = new Set(
+      [...html.matchAll(/<img src="([^"]+)"/g)].map((found) => found[1]),
+    );
+    for (const src of sources) {
+      const data = await imageSource(vaultRoot, src);
+      if (data) html = html.split(`src="${src}"`).join(`src="${data}"`);
+    }
+    const target = await save({
+      defaultPath: `${title}.html`,
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    });
+    if (!target) return;
+    await invoke("export_write", { path: target, text: html });
+    setStatus(`書き出しました: ${target}`);
+  }
+
   // 版の履歴（ADR-0023）
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(
     null,
@@ -523,6 +548,7 @@ function App() {
                 }}
                 onBlur={(event) => void handleRename(event.currentTarget.value)}
               />
+              <button onClick={() => void handleExport()}>書き出し</button>
               <button onClick={() => void openHistory()}>履歴</button>
               <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
             </header>
