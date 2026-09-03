@@ -95,21 +95,31 @@ export const extendedInline: MarkdownConfig = {
   parseBlock: [
     {
       // 行をまたぐ数式ブロック（ADR-0036）。`$$` だけの行で開き、
-      // 次の `$$` だけの行で閉じる。**閉じが無ければブロックにしない**
-      // （書きかけの `$$` で以降の本文が全部数式になると読めない）
+      // 次の `$$` だけの行で閉じる。**閉じが無ければ文書末まで**
+      // （コードフェンスと同じ。ADR-0036 追記 2026-09-04）。
+      //
+      // かつては「閉じが無ければブロックにしない」だったが、BlockParser の
+      // 契約では false を返すとき nextLine で進んではいけない — 進んでから
+      // false を返すと、以降の本文がどのパーサにも渡らず**木から丸ごと
+      // 消える**（レビューで実証）。巻き戻す手段は無いので、フェンスと
+      // 同じ「末まで消費」に揃える。閉じの無いブロックを絵にしない判断は
+      // 描画側（blockWidgetDecorations）が持つ
       name: "MathBlock",
       before: "FencedCode",
       parse(cx, line) {
         if (line.text.slice(line.pos).trim() !== "$$") return false;
         const start = cx.lineStart;
+        let end = cx.lineStart + line.text.length;
         while (cx.nextLine()) {
-          if (line.text.trim() !== "$$") continue;
-          const end = cx.lineStart + line.text.length;
-          cx.nextLine();
-          cx.addElement(cx.elt("MathBlock", start, end));
-          return true;
+          end = cx.lineStart + line.text.length;
+          // 開きと同じく line.pos から見る（引用の中の `> $$` でも閉じる）
+          if (line.text.slice(line.pos).trim() === "$$") {
+            cx.nextLine();
+            break;
+          }
         }
-        return false; // 閉じが無い
+        cx.addElement(cx.elt("MathBlock", start, end));
+        return true;
       },
     },
   ],

@@ -19,13 +19,13 @@
     数式は**文書全体の全ブロックを毎回 Temml で組み直す**（T6 の意図に反する）
   - 対処案: 「解析の進み」は `syntaxTree(state).length` の伸びで判定する。
     blockWidgetField にも tableField 同等の間引き（ゾーン + 位置写像）を入れる
-- **[実証済み] 閉じの無い `$$` が後続文書の構文解析を丸ごと捨てる**
+- ✅ 対応済み（同日） **[実証済み] 閉じの無い `$$` が後続文書の構文解析を丸ごと捨てる**
   （`extended-inline.ts:100` MathBlock）。`@lezer/markdown` の BlockParser 契約では
   `false` を返すとき `nextLine()` で進んではいけないが、文書末まで進めてから
   `false` を返している。`$$` を打った瞬間、それ以降の見出し・装飾・折りたたみ・
   アウトラインが全部消える（数式を書いている間は常時この状態）。
   開き判定 `slice(line.pos)` と閉じ判定 `line.text` の基準ずれ（引用内で不一致）も同居
-- **[実証済み] `percent_decode` がマルチバイト境界でパニック**（`references.rs:49`）。
+- ✅ 対応済み（同日） **[実証済み] `percent_decode` がマルチバイト境界でパニック**（`references.rs:49`）。
   `%` の直後に日本語が来る本文（`![](attachments/%あ.png)` 等）が vault の
   どこかに 1 つあるだけで「使っていない添付を片づける」が必ず落ちる。
   境界チェックはバイト長なのにスライスは `&str` のバイト添字
@@ -45,7 +45,7 @@
 - ✅ 対応済み（同日） **`pendingSave` の完了処理がノートを取り違える**（App.tsx:1364）。ノート A の保存が
   B を開いた後に完了すると共有の `dirtyRef` を false にし、その隙に B への外部変更が
   「未編集」と判定されて**静かにリロード = B の編集が消える**
-- **ゴミ箱移動時の mtime 打ち直しが黙って失敗し得る**（`vault.rs:864` — `if let Ok` +
+- ✅ 対応済み（同日） **ゴミ箱移動時の mtime 打ち直しが黙って失敗し得る**（`vault.rs:864` — `if let Ok` +
   `let _ =` で完全に無音）。失敗すると mtime が古いまま → 次回起動の
   `purge_trash(30)` が**30 日待たずに恒久削除**。失敗時はログ + 削除対象から
   外す形が要る
@@ -139,7 +139,7 @@
   実体ベースの封じ込め検査なし / `history_restore` の `version` が vault 内なら素通し
 - Mutex の `.expect()` がコマンド実行経路に 5 箇所 — どこかでパニックすると毒されて
   **以降の vault_open / watcher が全部落ち続ける**
-- `trash_days` が無検証で `SystemTime - Duration` のパニックに届く（u64::MAX 秒）
+- ✅ 対応済み（同日） `trash_days` が無検証で `SystemTime - Duration` のパニックに届く（checked_sub 化）
 - vault 内シンボリックリンクでノートが**二重に索引**される（一覧に 2 つ並ぶ）
 - `tauri.conf.json` の `csp: null` + 封じ込めの無い import/export コマンド
   （多層防御の観点。dangerouslySetInnerHTML は 2 箇所とも現状は安全側）

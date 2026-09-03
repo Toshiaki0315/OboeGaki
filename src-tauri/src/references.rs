@@ -46,10 +46,13 @@ fn percent_decode(text: &str) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
+        // **バイトのまま**読む。&str をバイト添字で切ると `%あ` のような
+        // 並びで文字境界パニックになる（レビュー 2026-09-04 で実証）
         if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let hex = &text[index + 1..index + 3];
-            if let Ok(byte) = u8::from_str_radix(hex, 16) {
-                out.push(byte);
+            let hex = [bytes[index + 1], bytes[index + 2]];
+            if hex.iter().all(u8::is_ascii_hexdigit) {
+                let digit = |b: u8| (b as char).to_digit(16).expect("hexdigit 検査済み") as u8;
+                out.push(digit(hex[0]) * 16 + digit(hex[1]));
                 index += 3;
                 continue;
             }
@@ -68,6 +71,17 @@ mod tests {
         let mut found: Vec<String> = attachment_names(text).into_iter().collect();
         found.sort();
         found
+    }
+
+    #[test]
+    fn test_percent_の直後にマルチバイト文字が来ても落ちない() {
+        // レビュー 2026-09-04: バイト添字で &str を切っていて、
+        // `%あ` で char boundary パニックしていた（実証済み）
+        assert_eq!(percent_decode("%あ.png"), "%あ.png");
+        assert_eq!(percent_decode("図%E5%9B%B3と%あ"), "図図と%あ");
+        assert_eq!(percent_decode("%e3%81%82"), "あ"); // 小文字の hex も可
+        assert_eq!(percent_decode("%"), "%");
+        assert_eq!(percent_decode("%2"), "%2");
     }
 
     #[test]

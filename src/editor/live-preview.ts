@@ -895,7 +895,12 @@ export function blockWidgetDecorations(
         // 同時に見えて読めない）
         if (touchesSelection(state, node.from, node.to)) return false;
         const source = state.sliceDoc(node.from, node.to);
-        const latex = source.split("\n").slice(1, -1).join("\n").trim();
+        const rows = source.split("\n");
+        // 閉じの無いブロック（書きかけ）は絵にしない — 生のまま見せる。
+        // パーサは「文書末まで」を返すので、閉じの判定はここが持つ
+        const closed =
+          rows.length >= 2 && /^(?:>\s*)*\$\$\s*$/.test(rows[rows.length - 1]);
+        const latex = closed ? rows.slice(1, -1).join("\n").trim() : "";
         const mathml = latex ? renderMath(latex, true) : null;
         if (!mathml) return false;
         out.push(

@@ -860,9 +860,18 @@ impl Vault {
         };
         fs::rename(path, &target)?;
         // purge_trash の期限は「捨ててから」数える。rename は mtime を
-        // 変えないので、ここで刻み直さないと古いノートが即座に消える
-        if let Ok(file) = fs::File::options().write(true).open(&target) {
-            let _ = file.set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now()));
+        // 変えないので、ここで刻み直さないと古いノートが即座に消える。
+        // 失敗は黙らせない（読み取り専用・同期フォルダ等で普通に起きる）—
+        // その場合も purge_trash が ctime を併用して守る
+        match fs::File::options().write(true).open(&target) {
+            Ok(file) => {
+                if let Err(error) =
+                    file.set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now()))
+                {
+                    eprintln!("ゴミ箱の時刻を刻み直せなかった: {error}");
+                }
+            }
+            Err(error) => eprintln!("ゴミ箱の時刻を刻み直せなかった: {error}"),
         }
         Ok(target)
     }
@@ -872,12 +881,25 @@ impl Vault {
     /// 1 件の不調で掃除ごと投げ出さない — 同期の下では走査と stat の間に
     /// ファイルが消える（iCloud / Dropbox / 別マシンが同じ vault を触る）。
     pub fn purge_trash(&self, days: u64) -> io::Result<Vec<PathBuf>> {
+        self.purge_trash_at(days, std::time::SystemTime::now())
+    }
+
+    /// `purge_trash` の時刻注入版（テスト用に分離。history と同じ作法）。
+    pub fn purge_trash_at(
+        &self,
+        days: u64,
+        now: std::time::SystemTime,
+    ) -> io::Result<Vec<PathBuf>> {
         let trash = self.trash_dir();
         if !trash.is_dir() {
             return Ok(vec![]);
         }
-        let deadline = std::time::SystemTime::now()
-            - std::time::Duration::from_secs(days.saturating_mul(24 * 3600));
+        // days が極端でも引き算でパニックしない（checked_sub。レビュー指摘 #17）
+        let Some(deadline) = now.checked_sub(std::time::Duration::from_secs(
+            days.saturating_mul(24 * 3600),
+        )) else {
+            return Ok(vec![]); // 期限が時間の始まりより前 = 何も期限切れでない
+        };
         let mut removed = Vec::new();
         let mut stack = vec![trash.clone()];
         while let Some(dir) = stack.pop() {
@@ -890,9 +912,18 @@ impl Vault {
                     stack.push(path);
                     continue;
                 }
+                // mtime と ctime の**新しいほう**で数える。rename は
+                // mtime を保つが ctime は必ず更新するので、trash() の
+                // 刻み直しが失敗していても「捨ててから 30 日」が守られる
+                //（レビュー 2026-09-04）
                 let expired = fs::metadata(&path)
-                    .and_then(|m| m.modified())
-                    .map(|m| m < deadline)
+                    .map(|m| {
+                        use std::os::unix::fs::MetadataExt;
+                        let changed = std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(m.ctime().max(0) as u64);
+                        let newest = m.modified().map_or(changed, |mo| mo.max(changed));
+                        newest < deadline
+                    })
                     .unwrap_or(false);
                 if expired && fs::remove_file(&path).is_ok() {
                     if let Some(parent) = path.parent() {
@@ -1361,12 +1392,19 @@ mod tests {
         assert!(!root.path().join(LEGACY_MANAGED_DIR).exists());
     }
 
+    /// テスト用: ファイルの mtime を任意の時刻にする。
+    fn set_mtime(path: &Path, at: std::time::SystemTime) {
+        let file = std::fs::File::options().write(true).open(path).unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(at))
+            .unwrap();
+    }
+
     /// テスト用: ファイルの mtime を「日数」だけ過去にずらす。
     fn age_file(path: &Path, days: u64) {
-        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 24 * 3600);
-        let file = std::fs::File::options().write(true).open(path).unwrap();
-        file.set_times(std::fs::FileTimes::new().set_modified(past))
-            .unwrap();
+        set_mtime(
+            path,
+            std::time::SystemTime::now() - std::time::Duration::from_secs(days * 24 * 3600),
+        );
     }
 
     fn mtime(path: &Path) -> std::time::SystemTime {
@@ -1388,6 +1426,26 @@ mod tests {
     }
 
     #[test]
+    fn test_purge_trash_mtimeを刻めなくても捨てた直後のものは消さない() {
+        // レビュー 2026-09-04: rename は mtime を保ち、刻み直しの失敗は
+        // 無音だった。古いノートを捨てた直後に vault を開くと 30 日の
+        // 猶予なしで恒久削除されていた。unix の ctime（rename で必ず
+        // 更新される）も見ることで、刻み直せなくても守られることを固定する
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let path = note(root.path(), "古い.md");
+        age_file(&path, 90);
+
+        let target = vault.trash(&path).unwrap();
+        // mtime の刻み直しが失敗した状況を再現する（過去へ戻す）
+        age_file(&target, 90);
+
+        let removed = vault.purge_trash(30).unwrap();
+        assert_eq!(removed, Vec::<PathBuf>::new());
+        assert!(target.exists(), "捨てた直後のものは期限内");
+    }
+
+    #[test]
     fn test_purge_trash_期限を過ぎたものだけ消して空の殻も残さない() {
         let root = TempDir::new().unwrap();
         let vault = Vault::new(root.path());
@@ -1395,7 +1453,11 @@ mod tests {
         let fresh = note(root.path(), &format!("{TRASH_DIR}/新しい.md"));
         age_file(&old, 31);
 
-        let removed = vault.purge_trash(30).unwrap();
+        // ctime（作られた今）も見るようになったので、時計を進めて判定し、
+        // 「新しい」はその時計から見て新しい mtime を持たせる
+        let future = std::time::SystemTime::now() + std::time::Duration::from_secs(40 * 24 * 3600);
+        set_mtime(&fresh, future);
+        let removed = vault.purge_trash_at(30, future).unwrap();
         assert_eq!(removed, vec![old.clone()]);
         assert!(!old.exists());
         assert!(!old.parent().unwrap().exists(), "空の殻を残さない");
