@@ -23,6 +23,7 @@ import {
   type Activation,
 } from "./activation";
 import { attachmentEvents, type SaveAttachment } from "./attachments";
+import { autoPair, urlPasteLink } from "./auto-pair";
 import {
   imageResolver,
   livePreview,
@@ -140,6 +141,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         doc: initialDoc,
         extensions: [
           history(),
+          autoPair, // 選択を * や [ で囲む（spec §5.5-4）
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
           formatKeymap,
           search({ top: true }),
@@ -171,6 +173,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               ? attachmentSaver.current(data, name)
               : Promise.resolve(null),
           ),
+          urlPasteLink, // 画像の取り込みが先、URL のリンク化が後
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.selectionSet) {
