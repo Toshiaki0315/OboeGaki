@@ -169,6 +169,11 @@ impl Vault {
     /// 自分自身は衝突相手にしない（APFS は大文字小文字を区別しない）。
     /// 同じ名前なら何もしない。旧名は `.trash` に残さない（改名は削除ではない）。
     pub fn rename(&self, path: &Path, title: &str) -> io::Result<PathBuf> {
+        // 無いパスは inside() でも弾かれるが、「外」と報告すると紛らわしい
+        // （UI の二重発火で実際に踏んだ。2026-09-04）
+        if !path.exists() {
+            return Err(outside_error("改名するノートが見つからない", path));
+        }
         if !self.inside(path) {
             return Err(outside_error("保管フォルダの外は改名できない", path));
         }
@@ -722,6 +727,17 @@ mod tests {
         let old = note(root.path(), "旧名.md");
         let renamed = vault.rename(&old, "先客").unwrap();
         assert_eq!(renamed, root.path().join("先客-2.md"));
+    }
+
+    #[test]
+    fn test_rename_無いファイルは見つからないと報告する() {
+        // 実機の回帰: UI の二重発火で 2 回目の改名が「保管フォルダの外」
+        // という紛らわしいエラーになっていた（2026-09-04）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let gone = root.path().join("もう無い.md");
+        let error = vault.rename(&gone, "新名").unwrap_err();
+        assert!(error.to_string().contains("見つからない"), "{error}");
     }
 
     #[test]

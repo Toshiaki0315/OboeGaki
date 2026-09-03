@@ -164,10 +164,15 @@ function App() {
     await openNote(path);
   }
 
+  // Enter とフォーカス外しの両方から呼ばれるので、二重発火を弾く
+  // （1 回目の改名で旧パスが消え、2 回目が「見つからない」で落ちる）
+  const renaming = useRef(false);
+
   async function handleRename(title: string) {
-    if (!vaultRoot || !currentPath) return;
+    if (!vaultRoot || !currentPath || renaming.current) return;
     const trimmed = title.trim();
     if (!trimmed || trimmed === noteStem(currentPath)) return;
+    renaming.current = true;
     autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const renamed = await renameNote(vaultRoot, currentPath, trimmed);
@@ -177,6 +182,8 @@ function App() {
       setDoc(text);
     } catch (error) {
       setStatus(`改名に失敗: ${String(error)}`);
+    } finally {
+      renaming.current = false;
     }
   }
 
@@ -510,7 +517,7 @@ function App() {
                 defaultValue={noteStem(currentPath)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
-                    void handleRename(event.currentTarget.value);
+                    // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
                     event.currentTarget.blur();
                   }
                 }}
