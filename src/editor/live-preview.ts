@@ -864,8 +864,10 @@ const blockTheme = EditorView.baseTheme({
     fontSize: "0.75em",
     padding: "0.1em 0.7em",
     borderRadius: "4px",
-    backgroundColor: "color-mix(in srgb, currentColor 55%, transparent)",
-    color: "var(--app-bg, #fff)",
+    // 参照実装 code_name_background / foreground（ADR-0008）。
+    // 実色は App.css の変数（ライト #63636B / ダーク #5A5A63 に白系文字）
+    backgroundColor: "var(--code-name-bg, #63636b)",
+    color: "var(--code-name-fg, #ffffff)",
   },
   ".cm-hr-widget": {
     display: "inline-block",

@@ -486,6 +486,8 @@ button.danger {
    ダークは github-dark 系。参照実装 core/html.py と同じ組*/
 :root {
   --app-bg: #ffffff;
+  --code-name-bg: #63636b; /* フェンスのファイル名ラベル（ADR-0008） */
+  --code-name-fg: #ffffff;
   --code-keyword: #007020;
   --code-string: #4070a0;
   --code-comment: #60a0b0;
@@ -498,6 +500,8 @@ button.danger {
 @media (prefers-color-scheme: dark) {
   :root {
     --app-bg: #1e1e1e;
+    --code-name-bg: #5a5a63;
+    --code-name-fg: #f5f5f7;
     --code-keyword: #ff7b72;
     --code-string: #a5d6ff;
     --code-comment: #8b949e;

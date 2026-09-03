@@ -92,6 +92,9 @@ async function run() {
     }),
   });
 
+  // 手元検証用（ブラウザのコンソールから触れるように）
+  (window as unknown as { benchView: EditorView }).benchView = view;
+
   // パーサのウォームアップ（起動直後の遅延解析を待つ）
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
