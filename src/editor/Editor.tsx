@@ -13,6 +13,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
+import { inputAssist } from "./input-assist";
 import { livePreview } from "./live-preview";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -68,6 +69,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         doc: initialDoc,
         extensions: [
           history(),
+          inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
           keymap.of([...defaultKeymap, ...historyKeymap]),
           markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
           livePreview,
