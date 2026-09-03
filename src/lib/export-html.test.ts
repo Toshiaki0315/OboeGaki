@@ -35,6 +35,14 @@ describe("renderHtml", () => {
     expect(html).toContain("<mark>目立つ</mark>");
   });
 
+  test("識別子の :: はハイライトにしない（書き出しの実機回帰）", () => {
+    // エディタ側と同じ ASCII 単語ガード。std::vector::size の vector が
+    // <mark> になっていた（2026-09-04 の書き出し確認で発覚）
+    const html = renderHtml("std::vector::size は識別子\n", "t");
+    expect(html).not.toContain("<mark>");
+    expect(html).toContain("std::vector::size");
+  });
+
   test("コードフェンスは言語クラス付きで、生の HTML は無効", () => {
     const html = renderHtml(
       "```js\nconst a = 1;\n```\n\n<script>alert(1)</script>\n",

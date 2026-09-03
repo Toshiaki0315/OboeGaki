@@ -15,11 +15,25 @@ import taskLists from "markdown-it-task-lists";
 type Md = InstanceType<typeof MarkdownIt>;
 type InlineRule = Parameters<Md["inline"]["ruler"]["before"]>[2];
 
+const ASCII_WORD = /[A-Za-z0-9_]/;
+
 /// `::目立つ::` を <mark> にする独自インライン規則（エディタの Highlight と同じ記法）。
 const highlightRule: InlineRule = (state, silent) => {
   const source = state.src;
   const start = state.pos;
   if (!source.startsWith("::", start)) return false;
+  // `::` が ASCII の単語に食い込んでいるときはマーカーにしない
+  // （std::vector::size を守る。エディタ側 extended-inline.ts と同じ規則）
+  const before = source[start - 1];
+  const afterPair = source[start + 2];
+  if (
+    before !== undefined &&
+    ASCII_WORD.test(before) &&
+    afterPair !== undefined &&
+    ASCII_WORD.test(afterPair)
+  ) {
+    return false;
+  }
   // 開き = 直後が空白でない（エディタ側の緩和 flanking と同じ向き）
   const head = source[start + 2];
   if (head === undefined || /[\s:]/.test(head)) return false;
