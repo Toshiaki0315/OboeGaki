@@ -551,6 +551,44 @@ body.resizing {
     font-size: 0.9em;
   }
 
+  /* コードの色（TASKS 4-4）。**紙は白地なのでライトの組で刷る**
+     （画面がダークでも紙が黒くならない） */
+  .print-root .tok-keyword {
+    color: #007020;
+  }
+  .print-root .tok-string {
+    color: #4070a0;
+  }
+  .print-root .tok-comment {
+    color: #60a0b0;
+    font-style: italic;
+  }
+  .print-root .tok-number {
+    color: #40a070;
+  }
+  .print-root .tok-type {
+    color: #0e84b5;
+  }
+  .print-root .tok-func,
+  .print-root .tok-def {
+    color: #06287e;
+  }
+  .print-root .tok-prop {
+    color: #517918;
+  }
+  .print-root .code-name {
+    display: inline-block;
+    font-size: 0.8em;
+    padding: 0.1em 0.6em;
+    border-radius: 6px 6px 0 0;
+    background: #63636b;
+    color: #fff;
+  }
+  .print-root .code-block pre {
+    margin-top: 0;
+    border-top-left-radius: 0;
+  }
+
   .print-root pre {
     background: rgba(0, 0, 0, 0.05);
     border-radius: 6px;

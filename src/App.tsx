@@ -19,7 +19,13 @@ import {
   type MermaidTheme,
 } from "./editor/mermaid";
 import { createDebouncer } from "./lib/debounce";
-import { renderBody, renderHtml } from "./lib/export-html";
+import {
+  codeKey,
+  collectCodeBlocks,
+  renderBody,
+  renderHtml,
+} from "./lib/export-html";
+import { highlightCodeHtml } from "./lib/export-code";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -397,6 +403,16 @@ function App() {
     return diagrams;
   }
 
+  /// コードを先に色分けする（パーサの読み込みが非同期。TASKS 4-4）。
+  async function colorCode(text: string): Promise<Map<string, string>> {
+    const colored = new Map<string, string>();
+    for (const block of collectCodeBlocks(text)) {
+      const html = await highlightCodeHtml(block.code, block.info);
+      if (html) colored.set(codeKey(block.info, block.code), html);
+    }
+    return colored;
+  }
+
   /// 画像を data URL にして埋める（**外部リソースを参照しない** = ADR-0007）。
   async function embedImages(html: string, root: string): Promise<string> {
     const sources = new Set(
@@ -417,7 +433,11 @@ function App() {
     if (!vaultRoot || !currentPath) return;
     autosave.flush();
     const text = await readNote(vaultRoot, currentPath);
-    const body = renderBody(text, await drawDiagrams(text));
+    const body = renderBody(
+      text,
+      await drawDiagrams(text),
+      await colorCode(text),
+    );
     setPrintBody({ html: await embedImages(body, vaultRoot), at: Date.now() });
   }
 
@@ -427,7 +447,7 @@ function App() {
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
     const html = await embedImages(
-      renderHtml(text, title, await drawDiagrams(text)),
+      renderHtml(text, title, await drawDiagrams(text), await colorCode(text)),
       vaultRoot,
     );
     const target = await save({

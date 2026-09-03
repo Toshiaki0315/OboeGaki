@@ -10,6 +10,7 @@
 
 import MarkdownIt from "markdown-it";
 import { mathSpanAt, renderMath } from "../editor/math";
+import { splitFenceInfo } from "../editor/code-blocks";
 import footnote from "markdown-it-footnote";
 import taskLists from "markdown-it-task-lists";
 
@@ -140,7 +141,49 @@ const STYLE = `
   mark { background: rgba(255, 214, 10, 0.5); border-radius: 2px; }
   hr { border: none; border-top: 2px solid rgba(0,0,0,0.2); }
   input[type="checkbox"] { margin-right: 0.4em; }
+  /* コードの配色（TASKS 4-4 / ADR-0008）。App.css と同じ組を持たせる。
+     **スタイルシートも JS も外から読まない**ので、1 枚で完結したまま
+     読む人の明暗に合う */
+  :root { --code-name-bg: #63636b; --code-name-fg: #ffffff;
+          --code-keyword: #007020; --code-string: #4070a0; --code-comment: #60a0b0;
+          --code-number: #40a070; --code-type: #0e84b5; --code-func: #06287e;
+          --code-def: #06287e; --code-prop: #517918; }
+  @media (prefers-color-scheme: dark) {
+    :root { --code-name-bg: #5a5a63; --code-name-fg: #f5f5f7;
+            --code-keyword: #ff7b72; --code-string: #a5d6ff; --code-comment: #8b949e;
+            --code-number: #79c0ff; --code-type: #ffa657; --code-func: #d2a8ff;
+            --code-def: #d2a8ff; --code-prop: #7ee787; }
+  }
+  .tok-keyword { color: var(--code-keyword); }
+  .tok-string { color: var(--code-string); }
+  .tok-comment { color: var(--code-comment); font-style: italic; }
+  .tok-number { color: var(--code-number); }
+  .tok-type { color: var(--code-type); }
+  .tok-func { color: var(--code-func); }
+  .tok-def { color: var(--code-def); }
+  .tok-prop { color: var(--code-prop); }
+  .code-block { margin: 1em 0; }
+  .code-name { display: inline-block; font-size: 0.8em; padding: 0.1em 0.6em;
+               border-radius: 6px 6px 0 0; background: var(--code-name-bg);
+               color: var(--code-name-fg); font-family: ui-monospace, Menlo, monospace; }
+  .code-block pre { margin-top: 0; border-top-left-radius: 0; }
 `;
+
+/// 本文に出てくるコードブロック（言語と中身）。**色分けは非同期**
+/// （パーサを読み込む）なので、書き出しの前に集めて済ませておく。
+export function collectCodeBlocks(
+  markdownText: string,
+): { info: string; code: string }[] {
+  return renderer()
+    .parse(markdownText, {})
+    .filter((token) => token.type === "fence" && token.info.trim())
+    .map((token) => ({ info: token.info.trim(), code: token.content }));
+}
+
+/// 色分け済みコードの鍵（言語 + 中身）。
+export function codeKey(info: string, code: string): string {
+  return `${info}\n${code}`;
+}
 
 /// 本文だけを HTML にする（印刷 = ADR-0038 が使う）。
 ///
@@ -149,22 +192,35 @@ const STYLE = `
 export function renderBody(
   markdownText: string,
   diagrams?: Map<string, string>,
+  code?: Map<string, string>,
 ): string {
   const md = renderer();
-  if (diagrams && diagrams.size > 0) {
-    const fence = md.renderer.rules.fence;
-    md.renderer.rules.fence = (tokens, index, options, env, self) => {
-      const token = tokens[index];
-      if (token.info.trim() === "mermaid") {
-        const svg = diagrams.get(token.content.trim());
-        // **SVG をそのまま埋める**（外部リソースを参照しない = ADR-0007）
-        if (svg) return `<figure class="mermaid">${svg}</figure>\n`;
-      }
-      return fence
-        ? fence(tokens, index, options, env, self)
+  const fallback = md.renderer.rules.fence;
+  md.renderer.rules.fence = (tokens, index, options, env, self) => {
+    const token = tokens[index];
+    const info = token.info.trim();
+    if (info === "mermaid") {
+      const svg = diagrams?.get(token.content.trim());
+      // **SVG をそのまま埋める**（外部リソースを参照しない = ADR-0007）
+      if (svg) return `<figure class="mermaid">${svg}</figure>\n`;
+    }
+    if (!info) {
+      return fallback
+        ? fallback(tokens, index, options, env, self)
         : self.renderToken(tokens, index, options);
-    };
-  }
+    }
+    // **言語のクラスは言語だけにする**（`language-js:index.js` のままだと
+    // 受け取った側の色分けが言語を見つけられない。ADR-0008）
+    const { lang, fileName } = splitFenceInfo(info);
+    const colored = code?.get(codeKey(info, token.content));
+    const body =
+      `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ""}>` +
+      `${colored ?? escapeHtml(token.content)}</code></pre>\n`;
+    // ファイル名は画面にも書き出しにも出す（ADR-0008。片方だけは片手落ち）
+    return fileName
+      ? `<div class="code-block"><div class="code-name">${escapeHtml(fileName)}</div>${body}</div>\n`
+      : body;
+  };
   return md.render(markdownText);
 }
 
@@ -177,8 +233,9 @@ export function renderHtml(
   markdownText: string,
   title: string,
   diagrams?: Map<string, string>,
+  code?: Map<string, string>,
 ): string {
-  const body = renderBody(markdownText, diagrams);
+  const body = renderBody(markdownText, diagrams, code);
   return [
     "<!doctype html>",
     '<html lang="ja">',

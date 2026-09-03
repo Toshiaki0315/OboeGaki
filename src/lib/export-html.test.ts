@@ -1,7 +1,7 @@
 // HTML 書き出し（ADR-0007 の CM6 版）の検証。
 
 import { describe, expect, test } from "vitest";
-import { renderHtml } from "./export-html";
+import { codeKey, collectCodeBlocks, renderHtml } from "./export-html";
 
 describe("renderHtml", () => {
   test("完結した HTML 文書になり、題名はエスケープされる", () => {
@@ -96,5 +96,45 @@ describe("renderHtml", () => {
     const html = renderHtml(md, "図", new Map());
     expect(html).toContain("<code");
     expect(html).toContain("graph TD;");
+  });
+
+  test("コードは色分けを埋め、言語のクラスは言語だけにする（ADR-0008）", () => {
+    const md = "```js:index.js\nlet a = 1;\n```\n";
+    const colored = '<span class="tok-keyword">let</span> a = 1;';
+    const html = renderHtml(
+      md,
+      "コード",
+      undefined,
+      new Map([[codeKey("js:index.js", "let a = 1;\n"), colored]]),
+    );
+    expect(html).toContain(colored);
+    // `language-js:index.js` のままだと受け取った側が言語を見つけられない
+    expect(html).toContain('class="language-js"');
+    expect(html).not.toContain("language-js:index.js");
+    // ファイル名は画面にも書き出しにも出す
+    expect(html).toContain('<div class="code-name">index.js</div>');
+  });
+
+  test("色分けが無ければ素のコードで出す", () => {
+    const html = renderHtml("```unknownlang\nfoo bar\n```\n", "コード");
+    expect(html).toContain("foo bar");
+    expect(html).toContain('class="language-unknownlang"');
+    // 色は付かない（スタイル表に .tok-* があるだけで、本文には出ない）
+    expect(html).not.toContain('<span class="tok-');
+  });
+
+  test("コードの中の HTML はエスケープされる", () => {
+    const html = renderHtml("```\n<script>alert(1)</script>\n```\n", "危険");
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("collectCodeBlocks", () => {
+  test("言語の付いたフェンスを集める", () => {
+    const md = "```js\nlet a = 1;\n```\n\n```\n言語なし\n```\n";
+    expect(collectCodeBlocks(md)).toEqual([
+      { info: "js", code: "let a = 1;\n" },
+    ]);
   });
 });
