@@ -25,6 +25,7 @@ import {
 } from "./activation";
 import { attachmentEvents, type SaveAttachment } from "./attachments";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
+import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import {
   imageResolver,
@@ -141,7 +142,13 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       parent: host.current,
       state: EditorState.create({
         doc: initialDoc,
+        // front matter があればキャレットを本文の先頭に置く（隠れた
+        // 領域の中で見えないまま打ち始めない）
+        selection: {
+          anchor: frontMatterRange(initialDoc)?.bodyStart ?? 0,
+        },
         extensions: [
+          frontMatterHide,
           history(),
           autoPair, // 選択を * や [ で囲む（spec §5.5-4）
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）

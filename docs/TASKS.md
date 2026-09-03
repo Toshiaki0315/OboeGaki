@@ -38,7 +38,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **2-1. コードブロックのシンタックスハイライト**（core/code_tokens.py, ADR-0008）
       CM6 は `@codemirror/language-data` の遅延ロードで言語別ハイライトが
       標準機能。アクセント色・ファイル名ラベルも参照実装に合わせる
-- [ ] **2-2. front matter の隠蔽と解釈**（ADR-0013, core/frontmatter.py）
+- [x] **2-2. front matter の隠蔽と解釈**（ADR-0013, core/frontmatter.py）
       `---` ブロックの装飾（隠蔽 or 淡色）と、id / pinned / tags の読み取り。
       2-3 ピン留めの前提
 - [ ] **2-3. ピン留め**（§7.3。2-2 に依存）
