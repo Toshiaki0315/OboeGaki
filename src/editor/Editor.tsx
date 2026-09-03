@@ -35,6 +35,7 @@ import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
 import { insertTableAt, tableAutoFormat } from "./table-format";
+import { plainCopyKeymap } from "./plain-copy";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import {
   imageResolver,
@@ -207,6 +208,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           autoPair, // 選択を * や [ で囲む（spec §5.5-4）
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
           formatKeymap,
+          plainCopyKeymap, // Cmd+Shift+C（spec §5.4）
           search({ top: true }),
           keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
           // ノート内検索（Cmd+F）のパネルを日本語にする
