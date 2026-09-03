@@ -11,11 +11,18 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
-import { type EditorState, type Range, RangeSet } from "@codemirror/state";
+import {
+  type EditorState,
+  type Range,
+  RangeSet,
+  StateEffect,
+  StateField,
+} from "@codemirror/state";
 import {
   HighlightStyle,
   syntaxHighlighting,
@@ -36,6 +43,28 @@ const MARK_NODES = new Set([
   "LinkMark",
   "URL",
 ]);
+
+/// ソースモード（Cmd+/）。ON の間はすべてのライブプレビュー装飾を止めて
+/// 生の Markdown を見せる（§6.4「全マーカー: ソースモード ON で常に全表示」）。
+export const setSourceMode = StateEffect.define<boolean>();
+
+export const sourceModeField = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    let next = value;
+    for (const effect of tr.effects) {
+      if (effect.is(setSourceMode)) next = effect.value;
+    }
+    return next;
+  },
+});
+
+export function toggleSourceMode(view: EditorView): boolean {
+  view.dispatch({
+    effects: setSourceMode.of(!view.state.field(sourceModeField)),
+  });
+  return true;
+}
 
 /// 箇条書きの点。深さで描き分ける（ADR-0026 の ● ○ ■）。
 export function bulletGlyph(depth: number): string {
@@ -164,6 +193,12 @@ export function previewDecorations(
   from: number,
   to: number,
 ): Range<Decoration>[] {
+  // ソースモード中は装飾ゼロ = 生の Markdown（構文の色付けだけ残る）
+  if (state.field(sourceModeField, false)) return [];
+  // 選択範囲があるとき、交差するブロック（行）は全表示にする（§6.4）。
+  // 選択 → コピーの直前に、何をコピーするか見えるようにするため
+  const hasSelection = state.selection.ranges.some((range) => !range.empty);
+  const lineSelected = (pos: number) => hasSelection && touchesLine(state, pos);
   const out: Range<Decoration>[] = [];
   syntaxTree(state).iterate({
     from,
@@ -171,6 +206,7 @@ export function previewDecorations(
     enter: (node) => {
       // --- インラインマーカー: 親の範囲にカーソルが触れている間は見せる
       if (MARK_NODES.has(node.name)) {
+        if (lineSelected(node.from)) return;
         const parent = node.node.parent;
         if (parent && touchesSelection(state, parent.from, parent.to)) return;
         let end = node.to;
@@ -258,7 +294,15 @@ const hideMarkers = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.selectionSet || update.viewportChanged) {
+      const modeChanged = update.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(setSourceMode)),
+      );
+      if (
+        update.docChanged ||
+        update.selectionSet ||
+        update.viewportChanged ||
+        modeChanged
+      ) {
         this.decorations = this.build(update.view);
       }
     }
@@ -327,4 +371,10 @@ const blockTheme = EditorView.baseTheme({
   },
 });
 
-export const livePreview = [hideMarkers, syntaxHighlighting(style), blockTheme];
+export const livePreview = [
+  sourceModeField,
+  keymap.of([{ key: "Mod-/", run: toggleSourceMode }]),
+  hideMarkers,
+  syntaxHighlighting(style),
+  blockTheme,
+];

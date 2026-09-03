@@ -3,13 +3,18 @@
 // テストできる（widget の描画は除く — それは実機で見る）。
 
 import { describe, expect, test } from "vitest";
-import { EditorState, type Range } from "@codemirror/state";
+import { EditorSelection, EditorState, type Range } from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
-import { bulletGlyph, previewDecorations } from "./live-preview";
+import {
+  bulletGlyph,
+  previewDecorations,
+  setSourceMode,
+  sourceModeField,
+} from "./live-preview";
 
 type Deco = {
   from: number;
@@ -155,6 +160,43 @@ describe("previewDecorations（ブロック系）", () => {
     expect(
       has(decos, { from: done, to: done + 6, kind: "checkbox:true" }),
     ).toBe(true);
+  });
+
+  test("ソースモード中はすべての装飾を止めて全表示にする", () => {
+    const doc = "# 見出し\n\n**強調**と > 引用\n\n- 項目";
+    const base = EditorState.create({
+      doc,
+      extensions: [
+        markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
+        sourceModeField,
+      ],
+    });
+    expect(previewDecorations(base, 0, doc.length).length).toBeGreaterThan(0);
+    const raw = base.update({ effects: setSourceMode.of(true) }).state;
+    expect(previewDecorations(raw, 0, doc.length)).toEqual([]);
+    const back = raw.update({ effects: setSourceMode.of(false) }).state;
+    expect(previewDecorations(back, 0, doc.length).length).toBeGreaterThan(0);
+  });
+
+  test("選択範囲が交差する行は、選択の外のマーカーも全表示する", () => {
+    const doc = "これは**強調**と*斜体*の行\n\nよそは**太字**のまま";
+    const state = EditorState.create({
+      doc,
+      // 行頭の「これ」だけを選択（強調のマーカーにも端にも触れていない）
+      selection: EditorSelection.single(0, 2),
+      extensions: [
+        markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
+      ],
+    });
+    const decos = previewDecorations(state, 0, doc.length).map(simplify);
+    const strong = doc.indexOf("**強調**");
+    const other = doc.indexOf("**太字**");
+    // 選択と同じ行のマーカーは隠さない
+    expect(has(decos, { from: strong, to: strong + 2, kind: "hide" })).toBe(
+      false,
+    );
+    // 選択の無い行のマーカーは隠したまま
+    expect(has(decos, { from: other, to: other + 2, kind: "hide" })).toBe(true);
   });
 
   test("チェックボックスへのイベントは CM6 に渡さない（実機の回帰）", () => {
