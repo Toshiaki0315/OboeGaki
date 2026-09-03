@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ask, confirm, open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import type { Activation } from "./editor/activation";
 import { createDebouncer } from "./lib/debounce";
 import {
   createNote,
@@ -135,6 +137,31 @@ function App() {
       if (!root) return;
       void searchNotes(root, next).then(setHits);
     });
+  }
+
+  // Cmd+クリック（ADR-0010/0011）。ノートは無ければ作る
+  async function handleActivate(action: Activation) {
+    const root = vaultRootRef.current;
+    if (!root) return;
+    if (action.kind === "link") {
+      void openUrl(action.payload);
+      return;
+    }
+    if (action.kind === "tag") {
+      handleQueryChanged(`#${action.payload}`);
+      return;
+    }
+    const wanted = action.payload.toLowerCase();
+    const target = useAppStore
+      .getState()
+      .notes.find((path) => noteStem(path).toLowerCase() === wanted);
+    if (target) {
+      await openNote(target);
+      return;
+    }
+    const created = await createNote(root, action.payload);
+    await refresh();
+    await openNote(created);
   }
 
   async function handleRestore(path: string) {
@@ -308,6 +335,7 @@ function App() {
               initialDoc={doc}
               onDocChanged={handleDocChanged}
               resolveImage={(url) => imageSource(vaultRoot, url)}
+              onActivate={(action) => void handleActivate(action)}
             />
           </>
         ) : (

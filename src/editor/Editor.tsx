@@ -14,6 +14,11 @@ import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
+import {
+  activationClicks,
+  activationHandler,
+  type Activation,
+} from "./activation";
 import { imageResolver, livePreview, type ImageResolver } from "./live-preview";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -33,17 +38,21 @@ type Props = {
   onDocChanged?: (getText: () => string) => void;
   /** 画像参照を表示可能な src へ解決する（vault のルートを知るのはアプリ側） */
   resolveImage?: ImageResolver;
+  /** Cmd+クリック時の動作（ノートを開く・タグで絞る・URL を開く） */
+  onActivate?: (action: Activation) => void;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { initialDoc, onDocChanged, resolveImage },
+  { initialDoc, onDocChanged, resolveImage, onActivate },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  // onDocChanged の同一性で EditorView を作り直さないよう ref 経由で読む
+  // コールバックの同一性で EditorView を作り直さないよう ref 経由で読む
   const notify = useRef(onDocChanged);
   notify.current = onDocChanged;
+  const activate = useRef(onActivate);
+  activate.current = onActivate;
 
   useImperativeHandle(
     ref,
@@ -78,6 +87,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           }),
           livePreview,
           imageResolver.of(resolveImage ?? (async () => null)),
+          activationClicks,
+          activationHandler.of((action) => activate.current?.(action)),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
