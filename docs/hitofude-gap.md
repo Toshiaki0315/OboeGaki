@@ -68,6 +68,7 @@
 | バックリンク（このノートを指すノートの帯）          | E-6, ui/backlink_bar.py, index の links テーブル | 未実装                                                                       |
 | 関連ノートの提示                                    | core/related.py                                  | 未実装                                                                       |
 | 見出しパレット（Cmd+R。飛んだら閉じる道具）         | C-2                                              | 未実装（アウトラインペインで代替可）                                         |
+| `:::note` の囲み（Qiita 記法 / info・warn・alert）  | B-3, core/block_parser / html.py                 | 実装済み（移行の一覧から漏れていた。実機報告 2026-09-04 で判明）             |
 | ペイン開閉（Cmd+1 / Cmd+2）と幅のドラッグ調整・保存 | §5.4, ui/panes.py                                | 未実装（固定幅。アウトラインの Cmd+5 のみ）                                  |
 
 ## 5. アプリ・設定

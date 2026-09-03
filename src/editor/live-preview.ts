@@ -40,6 +40,7 @@ import {
   wikiLinkTag,
 } from "./extended-inline";
 import { mathSpanAt, renderMath } from "./math";
+import { noteContainers, UNKNOWN_NOTE_KIND } from "./note-container";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
@@ -808,6 +809,29 @@ export function blockWidgetDecorations(
 ): Range<Decoration>[] {
   if (state.field(sourceModeField, false)) return [];
   const out: Range<Decoration>[] = [];
+  // `:::note` の囲み（B-3）。行の装飾なので木のノードは要らない
+  for (const note of noteContainers(state.doc)) {
+    const first = state.doc.lineAt(note.from).number;
+    const last = state.doc.lineAt(note.to).number;
+    for (let number = first; number <= last; number++) {
+      const line = state.doc.line(number);
+      out.push(
+        Decoration.line({ class: `cm-note-line cm-note-${note.kind}` }).range(
+          line.from,
+        ),
+      );
+    }
+    // **知らない綴りは区切り行も隠さない**（間違いに気づく手掛かりを残す）。
+    // キャレットが触れている間も生のまま（他のブロックと同じ作法）
+    if (
+      note.kind === UNKNOWN_NOTE_KIND ||
+      touchesSelection(state, note.from, note.to)
+    ) {
+      continue;
+    }
+    out.push(Decoration.replace({}).range(note.open.from, note.open.to));
+    out.push(Decoration.replace({}).range(note.close.from, note.close.to));
+  }
   const theme = state.field(diagramThemeField, false) ?? "light";
   syntaxTree(state).iterate({
     enter: (node) => {
@@ -988,6 +1012,29 @@ const style = HighlightStyle.define([
 /// ブロック装飾の見た目。旧実装の painter_overlay（paintEvent 描画）に相当する
 /// ものが、CM6 では行クラスと widget + CSS で済む。
 const blockTheme = EditorView.baseTheme({
+  // `:::note` の囲み（B-3）。実色は App.css の CSS 変数が持つ
+  // （ライト / ダークを 1 か所で切り替えるため）
+  ".cm-note-line": {
+    paddingLeft: "10px",
+    borderLeft: "3px solid var(--note-line, currentColor)",
+    backgroundColor: "var(--note-bg, transparent)",
+  },
+  ".cm-note-info": {
+    "--note-line": "var(--note-info)",
+    "--note-bg": "var(--note-info-bg)",
+  },
+  ".cm-note-warn": {
+    "--note-line": "var(--note-warn)",
+    "--note-bg": "var(--note-warn-bg)",
+  },
+  ".cm-note-alert": {
+    "--note-line": "var(--note-alert)",
+    "--note-bg": "var(--note-alert-bg)",
+  },
+  ".cm-note-unknown": {
+    "--note-line": "color-mix(in srgb, currentColor 40%, transparent)",
+    "--note-bg": "color-mix(in srgb, currentColor 6%, transparent)",
+  },
   // 数式（ADR-0036）。ディスプレイ数式は行として中央に置く
   ".cm-math-block": {
     display: "block",

@@ -1073,6 +1073,25 @@ button.danger {
   white-space: nowrap;
 }
 
+/* `:::note` の囲み（B-3）。色は参照実装のテーマから持ち込んだ組 */
+:root {
+  --note-info: #2e9e5b;
+  --note-warn: #b26b00;
+  --note-alert: #c0392b;
+  --note-info-bg: #e8f5e9;
+  --note-warn-bg: #fff8e1;
+  --note-alert-bg: #fdecec;
+}
+
+:root[data-theme="dark"] {
+  --note-info: #7cc47f;
+  --note-warn: #e0a100;
+  --note-alert: #ff6b5e;
+  --note-info-bg: #1e2b21;
+  --note-warn-bg: #2e2913;
+  --note-alert-bg: #2e1d1b;
+}
+
 .pin-mark {
   font-size: 0.75em;
   margin-right: 0.25em;

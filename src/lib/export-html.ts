@@ -9,8 +9,14 @@
 // 知っている呼び出し側の仕事。
 
 import MarkdownIt from "markdown-it";
+import container from "markdown-it-container";
 import { mathSpanAt, renderMath } from "../editor/math";
 import { splitFenceInfo } from "../editor/code-blocks";
+import {
+  DEFAULT_NOTE_KIND,
+  NOTE_KINDS,
+  UNKNOWN_NOTE_KIND,
+} from "../editor/note-container";
 import footnote from "markdown-it-footnote";
 import taskLists from "markdown-it-task-lists";
 
@@ -105,11 +111,34 @@ const mathBlockRule = (
   return true;
 };
 
+/// `:::note warn` の `warn`。省略は `info`、知らない綴りは別扱い
+/// （**画面と同じ規則**。片方だけ寄せ方を変えると、画面は灰色なのに
+/// 書き出しは青、という食い違いが起きる）。
+function noteKind(info: string): string {
+  const parts = info.trim().split(/\s+/);
+  if (parts.length <= 1) return DEFAULT_NOTE_KIND;
+  return (NOTE_KINDS as readonly string[]).includes(parts[1])
+    ? parts[1]
+    : UNKNOWN_NOTE_KIND;
+}
+
 function renderer() {
   const md = new MarkdownIt("commonmark", { html: false })
     .enable(["table", "strikethrough"])
     .use(footnote)
-    .use(taskLists);
+    .use(taskLists)
+    // `:::note info` の囲み（B-3 / Qiita 記法）
+    .use(container, "note", {
+      // `note` と種類で 2 語まで（`:::note warn extra` は囲みにしない）
+      validate: (params: string) => {
+        const parts = params.trim().split(/\s+/);
+        return parts[0] === "note" && parts.length <= 2;
+      },
+      render: (tokens: { nesting: number; info: string }[], index: number) =>
+        tokens[index].nesting === 1
+          ? `<div class="note note-${noteKind(tokens[index].info)}">\n`
+          : "</div>\n",
+    });
   md.inline.ruler.before("emphasis", "oboegaki_highlight", highlightRule);
   // 数式はコードより後、強調より先（`$a_b$` の `_` を強調に取られない）
   md.inline.ruler.before("emphasis", "oboegaki_math", mathRule);
@@ -167,6 +196,21 @@ const STYLE = `
                border-radius: 6px 6px 0 0; background: var(--code-name-bg);
                color: var(--code-name-fg); font-family: ui-monospace, Menlo, monospace; }
   .code-block pre { margin-top: 0; border-top-left-radius: 0; }
+  /* :::note の囲み（B-3）。画面と同じ組を持たせる */
+  :root { --note-info: #2E9E5B; --note-warn: #B26B00; --note-alert: #C0392B;
+          --note-info-bg: #E8F5E9; --note-warn-bg: #FFF8E1; --note-alert-bg: #FDECEC; }
+  @media (prefers-color-scheme: dark) {
+    :root { --note-info: #7CC47F; --note-warn: #E0A100; --note-alert: #FF6B5E;
+            --note-info-bg: #1E2B21; --note-warn-bg: #2E2913; --note-alert-bg: #2E1D1B; }
+  }
+  .note { border-left: 3px solid currentColor; padding: 0.6em 1em;
+          margin: 1em 0; border-radius: 0 6px 6px 0; }
+  .note-info { border-color: var(--note-info); background: var(--note-info-bg); }
+  .note-warn { border-color: var(--note-warn); background: var(--note-warn-bg); }
+  .note-alert { border-color: var(--note-alert); background: var(--note-alert-bg); }
+  .note-unknown { border-color: rgba(128,128,128,0.6); background: rgba(128,128,128,0.08); }
+  .note > :first-child { margin-top: 0; }
+  .note > :last-child { margin-bottom: 0; }
 `;
 
 /// 本文に出てくるコードブロック（言語と中身）。**色分けは非同期**

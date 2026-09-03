@@ -550,3 +550,38 @@ describe("plugin 由来の装飾は行をまたがない（実機で発覚 2026-
     }
   });
 });
+
+describe("`:::note` の囲み（B-3）", () => {
+  const doc = "前\n\n:::note warn\n注意です。\n:::\n\n後";
+
+  test("囲みの行に色を付け、区切り行を隠す", () => {
+    const found = blocksOf(doc, 0);
+    const lines = found.filter((deco) => deco.kind.startsWith("line:"));
+    expect(lines).toHaveLength(3); // 開き + 本文 + 閉じ
+    expect(lines[0].kind).toContain("cm-note-warn");
+    const hidden = found.filter((deco) => deco.kind === "hide");
+    expect(hidden).toHaveLength(2); // 開きと閉じの行
+  });
+
+  test("キャレットが触れている間は区切り行を見せる", () => {
+    const inside = doc.indexOf("注意");
+    const hidden = blocksOf(doc, inside).filter((d) => d.kind === "hide");
+    expect(hidden).toHaveLength(0);
+  });
+
+  test("**知らない綴りは区切り行も隠さない**（間違いに気づける）", () => {
+    const warm = "​:::note warm\n本文\n:::\n".replace("​", "");
+    const found = blocksOf(warm, 0);
+    expect(found.some((deco) => deco.kind.includes("cm-note-unknown"))).toBe(
+      true,
+    );
+    expect(found.filter((deco) => deco.kind === "hide")).toHaveLength(0);
+  });
+
+  test("囲みの中の強調はふつうに効く（木を触っていない）", () => {
+    const bold = ":::note info\n**強調**です\n:::\n";
+    const marks = decorationsOf(bold, 0).filter((deco) => deco.kind === "hide");
+    // `**` の開きと閉じが隠れている
+    expect(marks.length).toBeGreaterThanOrEqual(2);
+  });
+});

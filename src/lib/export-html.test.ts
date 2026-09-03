@@ -137,4 +137,26 @@ describe("collectCodeBlocks", () => {
       { info: "js", code: "let a = 1;\n" },
     ]);
   });
+
+  test(":::note の囲みが本物の HTML になる（B-3）", () => {
+    const md = ":::note warn\n注意です。**強調**も効きます。\n:::\n";
+    const html = renderHtml(md, "囲み");
+    expect(html).toContain('<div class="note note-warn">');
+    // 中身はふつうの Markdown として組む
+    expect(html).toContain("<strong>強調</strong>");
+  });
+
+  test("種類を省いたら info、知らない綴りは別扱い", () => {
+    expect(renderHtml(":::note\n本文\n:::\n", "x")).toContain("note-info");
+    // **info に寄せない**（間違いに気づけなくなる）
+    expect(renderHtml(":::note warm\n本文\n:::\n", "x")).toContain(
+      "note-unknown",
+    );
+  });
+
+  test("`:::note warn extra` は囲みにしない（2 語まで）", () => {
+    expect(renderHtml(":::note warn extra\n本文\n:::\n", "x")).not.toContain(
+      '<div class="note',
+    );
+  });
 });
