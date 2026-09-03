@@ -38,9 +38,9 @@ export function matchTags(prefix: string, known: string[]): string[] {
   return found;
 }
 
-/// コードの中か（フェンスもインラインコードも）。索引の tags.rs はコードを
-/// 走査しないので、そこで候補を出しても選んだ先にタグは生まれない。
-function insideCode(context: CompletionContext, pos: number): boolean {
+/// コードの中か（フェンスもインラインコードも）。索引の tags.rs / wikilink.rs
+/// はコードを走査しないので、そこで候補を出しても選んだ先に何も生まれない。
+export function insideCode(context: CompletionContext, pos: number): boolean {
   for (
     let node = syntaxTree(context.state).resolveInner(pos, -1);
     node;

@@ -216,6 +216,17 @@ export async function moveNote(
   return invoke<string>("note_move", { root, path, folder });
 }
 
+/// このノートを `[[…]]` で指しているノート（E-6）。
+/// `context` は指している**行そのもの**。
+export type Backlink = { path: string; title: string; context: string };
+
+export async function noteBacklinks(
+  root: string,
+  title: string,
+): Promise<Backlink[]> {
+  return invoke<Backlink[]>("note_backlinks", { root, title });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

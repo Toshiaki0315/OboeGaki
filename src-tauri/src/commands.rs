@@ -379,15 +379,6 @@ pub fn note_backlinks(
         .map_err(|e| e.to_string())
 }
 
-/// `[[` 補完の素材（題名だけ。打鍵ごとに呼ばれるので軽く保つ）。
-#[tauri::command]
-pub fn note_titles(root: String) -> Result<Vec<String>, String> {
-    let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.note_titles())
-        .map_err(|e| e.to_string())
-}
-
 /// サイドバーのフォルダツリーの素材（ADR-0024）。
 /// **存在はディスク、件数は索引**（索引にあってディスクに無いものは出さない）。
 /// 先頭は必ず直下（空文字）。

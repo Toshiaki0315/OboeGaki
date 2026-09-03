@@ -159,7 +159,6 @@ pub fn run() {
             commands::folder_delete,
             commands::note_move,
             commands::note_backlinks,
-            commands::note_titles,
             commands::note_read,
             commands::note_write,
             commands::note_create,

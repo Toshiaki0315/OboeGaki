@@ -412,16 +412,6 @@ impl IndexDb {
         rows.collect()
     }
 
-    /// ノートの題名だけ（`[[` 補完の素材）。
-    ///
-    /// 一覧（`list_notes`）は preview まで運ぶので、打鍵ごとに呼ぶには重い
-    /// （参照実装のコードレビュー指摘）。
-    pub fn note_titles(&self) -> rusqlite::Result<Vec<String>> {
-        let mut statement = self.conn.prepare("SELECT title FROM notes")?;
-        let rows = statement.query_map([], |row| row.get(0))?;
-        rows.collect()
-    }
-
     /// 1 ファイルだけ索引を更新する（自動保存の後追い用）。
     /// 全体の整合は vault_open 時の sync が取り直すので、ここは速さ優先。
     pub fn upsert(&mut self, vault: &Vault, absolute: &Path) -> rusqlite::Result<()> {
@@ -781,17 +771,6 @@ mod tests {
         db.sync(&vault).unwrap();
 
         assert!(db.backlinks("会議メモ").unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_note_titles_補完の素材を題名だけ返す() {
-        let (_root, vault) = vault_with(&[("a.md", "# a\n"), ("仕事/b.md", "# b\n")]);
-        let db = synced(&vault);
-
-        let mut found = db.note_titles().unwrap();
-        found.sort();
-
-        assert_eq!(found, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]

@@ -39,6 +39,7 @@ import { insertTableAt, tableAutoFormat } from "./table-format";
 import { plainCopyKeymap } from "./plain-copy";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import { tagCompletion } from "./tag-complete";
+import { noteLinkCompletion } from "./note-link-complete";
 import {
   imageResolver,
   livePreview,
@@ -87,6 +88,8 @@ type Props = {
   saveAttachment?: SaveAttachment;
   /** `#` 補完に出す既知のタグ（索引が持つ。呼ぶたびに取り直す） */
   knownTags?: () => string[];
+  /** `[[` 補完に出すノートの題名（索引が持つ。呼ぶたびに取り直す） */
+  knownNotes?: () => string[];
   /** 開いた直後のキャレット位置（雛形の `{{cursor}}`。UTF-16 単位）。
       省くと front matter の後ろ = 本文の先頭 */
   initialCursor?: number | null;
@@ -101,6 +104,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     onCursorChanged,
     saveAttachment,
     knownTags,
+    knownNotes,
     initialCursor,
   },
   ref,
@@ -118,6 +122,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   attachmentSaver.current = saveAttachment;
   const tagSource = useRef(knownTags);
   tagSource.current = knownTags;
+  const noteSource = useRef(knownNotes);
+  noteSource.current = knownNotes;
 
   useImperativeHandle(
     ref,
@@ -224,7 +230,10 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           // Tab は inputAssist（リストの字下げ）より**先**に置く —
           // 候補が出ていないときは false を返して字下げへ落ちる
           autocompletion({
-            override: [tagCompletion(() => tagSource.current?.() ?? [])],
+            override: [
+              tagCompletion(() => tagSource.current?.() ?? []),
+              noteLinkCompletion(() => noteSource.current?.() ?? []),
+            ],
             icons: false,
           }),
           keymap.of([{ key: "Tab", run: acceptCompletion }]),

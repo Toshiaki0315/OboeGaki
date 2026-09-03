@@ -633,6 +633,62 @@ button.danger {
   color: #fff;
 }
 
+/* バックリンクの帯（E-6 / ADR-0011）。**本文の下**に置き、**畳んだ状態を
+   既定にする** — 帯は画面の下に居続けるので、開きっぱなしは場所を取る。
+   1 行の見出しに件数を出せば「繋がりがある」ことは伝わる */
+.backlink-bar {
+  flex: none;
+  max-height: 40%;
+  overflow-y: auto;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  font-size: 0.85rem;
+}
+
+.backlink-bar summary {
+  cursor: pointer;
+  padding: 0.35rem 1rem;
+  opacity: 0.7;
+}
+
+.backlink-bar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.5rem 0.4rem;
+}
+
+.backlink-bar li button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+}
+
+.backlink-bar li button:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.backlink-title {
+  font-weight: 600;
+}
+
+.backlink-context {
+  max-width: 100%;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pin-mark {
   font-size: 0.75em;
   margin-right: 0.25em;

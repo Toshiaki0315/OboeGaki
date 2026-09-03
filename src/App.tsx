@@ -41,6 +41,7 @@ import {
   dailyNote,
   deleteFolder,
   moveNote,
+  noteBacklinks,
   notesInFolder,
   renameFolder,
   historyRestore,
@@ -57,6 +58,7 @@ import {
   trashNote,
   useAppStore,
   writeNote,
+  type Backlink,
   type HistoryEntry,
   type SearchHit,
 } from "./stores/app";
@@ -204,6 +206,8 @@ function App() {
   const [moveOpen, setMoveOpen] = useState(false);
   // 雛形の `{{cursor}}`。開いた直後のキャレット位置としてエディタへ渡す
   const [initialCursor, setInitialCursor] = useState<number | null>(null);
+  // このノートを指しているノート（E-6）。本文の下に畳んで出す
+  const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const tableRows = useRef<HTMLInputElement>(null);
   const tableColumns = useRef<HTMLInputElement>(null);
   function confirmInsertTable() {
@@ -552,6 +556,27 @@ function App() {
       alive = false;
     };
   }, [vaultRoot, folderFilter, notes]);
+
+  // このノートを指しているノートを引き直す（索引が更新されたときも）
+  useEffect(() => {
+    if (!vaultRoot || !currentPath) {
+      setBacklinks([]);
+      return;
+    }
+    let alive = true;
+    const self = currentPath.slice(vaultRoot.length + 1);
+    void noteBacklinks(vaultRoot, noteStem(currentPath))
+      .then((found) => {
+        // 自分自身は出さない（本文に `[[自分の題名]]` と書ける）
+        if (alive) setBacklinks(found.filter((entry) => entry.path !== self));
+      })
+      .catch(() => {
+        if (alive) setBacklinks([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [vaultRoot, currentPath, notes]);
 
   // Cmd+クリック（ADR-0010/0011）。ノートは無ければ作る
   async function handleActivate(action: Activation) {
@@ -1141,11 +1166,35 @@ function App() {
               knownTags={() =>
                 useAppStore.getState().tags.map((entry) => entry.tag)
               }
+              // `[[` 補完の候補。題名はファイル名の幹（ADR-0005）なので
+              // 一覧から作れる（打鍵ごとに Rust を呼ばない）
+              knownNotes={() =>
+                useAppStore
+                  .getState()
+                  .notes.map((entry) => noteStem(entry.path))
+              }
               initialCursor={initialCursor}
             />
           </>
         ) : (
           <p className="placeholder">ノートを選んでください</p>
+        )}
+        {backlinks.length > 0 && (
+          <details className="backlink-bar">
+            <summary>バックリンク（{backlinks.length}）</summary>
+            <ul>
+              {backlinks.map((entry) => (
+                <li key={entry.path}>
+                  <button
+                    onClick={() => void openNote(`${vaultRoot}/${entry.path}`)}
+                  >
+                    <span className="backlink-title">{entry.title}</span>
+                    <span className="backlink-context">{entry.context}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         <footer className="status-bar">{status}</footer>
       </section>
