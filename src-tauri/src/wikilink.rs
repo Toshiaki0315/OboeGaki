@@ -113,6 +113,73 @@ fn links_in_line(line: &str) -> Vec<String> {
     found
 }
 
+/// 続柄の長さの上限（M-3）。**関係の名前は短い**（参考文献・元ネタ・前提）。
+/// 長い一文は、たまたまコロンが入った地の文なので拾わない。
+const MAX_RELATION: usize = 12;
+
+/// 指している先と、そこに付いた続柄の組（M-3）。続柄が無ければ空文字。
+///
+/// **新しい記法は作らない。** 箇条書きの行の `:` より前を読むだけで、
+/// これはただの Markdown — 他のエディタで開いても意味が通る。
+///
+/// **同じ相手を別の続柄で指せる**ので、組で重複を除く。
+pub fn relations(text: &str) -> Vec<(String, String)> {
+    let mut found: Vec<(String, String)> = Vec::new();
+    for line in body_lines(text) {
+        let relation = relation_of(&line);
+        for name in links_in_line(&line) {
+            let pair = (name, relation.clone());
+            if !found.contains(&pair) {
+                found.push(pair);
+            }
+        }
+    }
+    found
+}
+
+/// その行が付けている続柄。無ければ空。
+fn relation_of(line: &str) -> String {
+    // **地の文は見ない**（「今日は: [[…]]」を続柄にしないため）。
+    // チェックボックス（`- [ ] `）もここで一緒に落とす
+    let trimmed = line.trim_start();
+    let rest = match trimmed.find([' ', '\t']) {
+        Some(at) if is_bullet(&trimmed[..at]) => trimmed[at..].trim_start(),
+        _ => return String::new(),
+    };
+    let rest = rest.strip_prefix("[ ] ").unwrap_or(rest);
+    let rest = rest.strip_prefix("[x] ").unwrap_or(rest);
+    let rest = rest.strip_prefix("[X] ").unwrap_or(rest);
+
+    // **半角のコロンは後ろに空白が要る** — 無いと `10:30` の「10」や
+    // `https://…` の「https」を続柄にしてしまう（日本語のノートでは
+    // 時刻がよく出る）。全角は日本語で使われる形なので空白を求めない
+    let (name, _) = match rest.find('：') {
+        Some(at) => (&rest[..at], at),
+        None => match rest.find(": ") {
+            Some(at) => (&rest[..at], at),
+            None => return String::new(),
+        },
+    };
+    if name.contains('[') || name.contains(']') || name.contains('\n') {
+        return String::new();
+    }
+    let cleaned = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() || cleaned.chars().count() > MAX_RELATION {
+        return String::new();
+    }
+    cleaned
+}
+
+fn is_bullet(mark: &str) -> bool {
+    // **文字の境目で切る。** バイト位置で切ると `#タグ` のような多バイトの
+    // 語で落ちる（実際に踏んだ）
+    matches!(mark, "-" | "*" | "+")
+        || mark
+            .strip_suffix('.')
+            .or_else(|| mark.strip_suffix(')'))
+            .is_some_and(|digits| !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +218,65 @@ mod tests {
         );
         // 別名の記法は未対応。中途半端に拾うと名前が壊れる
         assert_eq!(links("[[名前|表示]]\n"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_relations_箇条書きのコロンより前が続柄() {
+        let text = "- 参考文献: [[会議メモ]]\n- 元ネタ：[[日報]]\n";
+        assert_eq!(
+            relations(text),
+            vec![
+                ("会議メモ".to_string(), "参考文献".to_string()),
+                ("日報".to_string(), "元ネタ".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_relations_地の文は見ない() {
+        // 「今日は: [[…]]」を続柄にしない
+        assert_eq!(
+            relations("今日は: [[会議メモ]] を見た\n"),
+            vec![("会議メモ".to_string(), String::new())]
+        );
+    }
+
+    #[test]
+    fn test_relations_半角コロンは後ろに空白が要る() {
+        // `10:30` の「10」や `https://…` の「https」を続柄にしない
+        assert_eq!(
+            relations("- 10:30 [[会議メモ]]\n"),
+            vec![("会議メモ".to_string(), String::new())]
+        );
+    }
+
+    #[test]
+    fn test_relations_長い一文は続柄にしない() {
+        let text = "- これはたまたまコロンが入った長い地の文です: [[会議メモ]]\n";
+        assert_eq!(
+            relations(text),
+            vec![("会議メモ".to_string(), String::new())]
+        );
+    }
+
+    #[test]
+    fn test_relations_多バイトの語で落ちない() {
+        // `#タグ` のような語をバイト位置で切って落ちた（回帰）
+        assert_eq!(relations("#タグ 付きの本文 [[会議メモ]]\n").len(), 1);
+    }
+
+    #[test]
+    fn test_relations_チェックボックスも続柄を読む() {
+        assert_eq!(
+            relations("- [ ] 前提: [[会議メモ]]\n"),
+            vec![("会議メモ".to_string(), "前提".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_relations_同じ相手を別の続柄で指せる() {
+        let text = "- 参考文献: [[会議メモ]]\n- 元ネタ: [[会議メモ]]\n";
+        assert_eq!(relations(text).len(), 2);
     }
 
     #[test]

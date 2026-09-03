@@ -66,6 +66,10 @@ export type EditorHandle = {
   getStats: () => TextStats;
   /// 今の本文（競合の「両方残す」で使う）
   getText: () => string;
+  /// 選んでいる文字（無ければ空）。仮身化（M-1）で使う
+  getSelection: () => string;
+  /// 選んでいる範囲を差し替える（仮身化が `[[題名]]` を残す）
+  replaceSelection: (text: string) => void;
   /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
   revealPos: (pos: number) => void;
   /// 図の見た目をテーマに合わせる（ADR-0021。変えると図を描き直す）
@@ -160,6 +164,24 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       getText() {
         return view.current?.state.doc.toString() ?? "";
+      },
+      getSelection() {
+        const current = view.current;
+        if (!current) return "";
+        const { from, to } = current.state.selection.main;
+        return current.state.sliceDoc(from, to);
+      },
+      replaceSelection(text) {
+        const current = view.current;
+        if (!current) return;
+        const { from, to } = current.state.selection.main;
+        if (from === to) return; // 選んでいなければ何もしない
+        current.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length },
+          userEvent: "input",
+        });
+        current.focus();
       },
       setDiagramTheme(theme) {
         const current = view.current;

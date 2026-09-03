@@ -27,6 +27,8 @@ import {
 } from "./lib/export-html";
 import { highlightCodeHtml } from "./lib/export-code";
 import { splitDeck } from "./lib/slides";
+import { extractNote } from "./lib/extract";
+import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { buildPptx } from "./lib/pptx";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
@@ -89,6 +91,7 @@ import {
   createFromTemplate,
   dailyNote,
   deleteFolder,
+  linkMap,
   moveNote,
   noteBacklinks,
   noteExists,
@@ -342,6 +345,71 @@ function App() {
   const templateInput = useRef<HTMLInputElement>(null);
   // 「フォルダへ移動…」の対象（右クリックからは開いていないノートも動かす）
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
+
+  // リンクの図（M-2）。null は閉じている
+  const [graph, setGraph] = useState<{ svg: string; dropped: number } | null>(
+    null,
+  );
+  const [graphDepth, setGraphDepth] = useState(DEFAULT_DEPTH);
+
+  /// 開いているノートを起点に、リンクの図を出す。
+  /// **絞らないと開けない**ので、深さで区切る（M-2）。
+  async function showLinkGraph(depth: number) {
+    if (!vaultRoot || !currentPath) return;
+    setGraphDepth(depth);
+    setStatus("リンクの図を組んでいます…");
+    const links = (await linkMap(vaultRoot)).map(([from, to, relation]) => ({
+      from,
+      to,
+      relation,
+    }));
+    const known = useAppStore
+      .getState()
+      .notes.map((entry) => noteStem(entry.path));
+    const start = noteStem(currentPath);
+    const built = buildGraph(start, links, { depth, known });
+    const svg = await renderMermaid(
+      graphToMermaid(built, [start]),
+      diagramTheme,
+    );
+    if (!svg) {
+      setStatus("図を組めませんでした");
+      return;
+    }
+    setGraph({ svg, dropped: built.dropped });
+    setStatus("");
+  }
+
+  /// 選んだところを別のノートに切り出し、元の場所に `[[題名]]` を残す
+  /// （M-1 = 仮身化）。**題名は本文から決まる**ので、リンクの先は必ず解決する。
+  async function handleExtract() {
+    if (!vaultRoot || !currentPath) return;
+    const selection = editorRef.current?.getSelection() ?? "";
+    const taken = useAppStore
+      .getState()
+      .notes.map((entry) => noteStem(entry.path));
+    const found = extractNote(selection, taken);
+    if (!found) {
+      setStatus("切り出す範囲を選んでください");
+      return;
+    }
+    try {
+      const path = await createNote(vaultRoot, found.title);
+      await writeNote(
+        vaultRoot,
+        path,
+        found.text,
+        settingsRef.current.historyMinutes,
+      );
+      // **元の場所にはリンクだけ残す**（書いた文は新しいノートへ移った）
+      editorRef.current?.replaceSelection(found.link);
+      autosave.flush();
+      await refresh();
+      setStatus(`「${found.title}」に切り出しました`);
+    } catch (error) {
+      setStatus(`切り出せませんでした: ${String(error)}`);
+    }
+  }
 
   async function handleDuplicate(path: string) {
     if (!vaultRoot) return;
@@ -1387,6 +1455,8 @@ function App() {
     "format-bullet": () => editorRef.current?.applyLineFormat("bullet"),
     "format-ordered": () => editorRef.current?.applyLineFormat("ordered"),
     "format-quote": () => editorRef.current?.applyLineFormat("quote"),
+    extract: () => void handleExtract(),
+    "link-graph": () => void showLinkGraph(DEFAULT_DEPTH),
     "insert-table": () => {
       if (currentPathRef.current) setTableDialog(true);
     },
@@ -2132,7 +2202,15 @@ function App() {
                         void openNote(`${vaultRoot}/${entry.path}`)
                       }
                     >
-                      <span className="backlink-title">{entry.title}</span>
+                      <span className="backlink-title">
+                        {entry.title}
+                        {/* 続柄（M-3）。付いているものだけ出す */}
+                        {entry.relation && (
+                          <span className="backlink-relation">
+                            {entry.relation}
+                          </span>
+                        )}
+                      </span>
                       <span className="backlink-context">{entry.context}</span>
                     </button>
                   </li>
@@ -2559,6 +2637,41 @@ function App() {
               </div>
             );
           })()}
+        {graph !== null && (
+          <div className="palette-backdrop" onMouseDown={() => setGraph(null)}>
+            <div
+              className="palette graph-dialog"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">リンクの図</header>
+              <div
+                className="graph-canvas"
+                dangerouslySetInnerHTML={{ __html: graph.svg }}
+              />
+              <p className="dialog-text">
+                {/* **黙って減らさない**（上限で落ちたぶんを言う） */}
+                {graph.dropped > 0
+                  ? `多いので ${graph.dropped} 件を省いています。`
+                  : "開いているノートから辿れる範囲です。"}
+              </p>
+              <div className="conflict-actions">
+                <button
+                  disabled={graphDepth <= 1}
+                  onClick={() => void showLinkGraph(graphDepth - 1)}
+                >
+                  狭く
+                </button>
+                <button
+                  disabled={graphDepth >= 4}
+                  onClick={() => void showLinkGraph(graphDepth + 1)}
+                >
+                  広く（{graphDepth} 段）
+                </button>
+                <button onClick={() => setGraph(null)}>閉じる</button>
+              </div>
+            </div>
+          </div>
+        )}
         {savingSearch !== null && (
           <div
             className="palette-backdrop"

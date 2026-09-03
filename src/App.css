@@ -511,6 +511,23 @@ body.resizing {
   font-variant-numeric: tabular-nums;
 }
 
+/* リンクの図（M-2）。Mermaid が描いた SVG をそのまま置く */
+.graph-dialog {
+  min-width: min(44rem, 90vw);
+}
+
+.graph-canvas {
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.5rem 1rem;
+  text-align: center;
+}
+
+.graph-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* 印刷（ADR-0038）。画面では隠し、紙にはここだけを出す。
    エディタ（CM6）は見えている範囲しか DOM に無いので、そのまま刷ると
    本文が欠ける — 書き出しと同じ本文をここに組んでから刷る。
@@ -1019,6 +1036,17 @@ button.danger {
 
 .backlink-title {
   font-weight: 600;
+}
+
+/* 続柄（M-3）。題名の隣に小さく添える */
+.backlink-relation {
+  margin-left: 0.4em;
+  font-size: 0.75em;
+  font-weight: 400;
+  padding: 0.05em 0.4em;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 0.8;
 }
 
 .backlink-context {

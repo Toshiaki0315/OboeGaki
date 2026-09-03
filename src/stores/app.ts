@@ -226,7 +226,13 @@ export async function moveNote(
 
 /// このノートを `[[…]]` で指しているノート（E-6）。
 /// `context` は指している**行そのもの**。
-export type Backlink = { path: string; title: string; context: string };
+export type Backlink = {
+  path: string;
+  title: string;
+  context: string;
+  /// 続柄（M-3）。付いていなければ空。
+  relation: string;
+};
 
 export async function noteBacklinks(
   root: string,
@@ -306,6 +312,13 @@ export async function trashAttachments(
   paths: string[],
 ): Promise<number> {
   return invoke<number>("attachments_trash", { root, paths });
+}
+
+/// リンクの図の素材（M-2）。`[指すノートの題名, 指し先, 続柄]`。
+export async function linkMap(
+  root: string,
+): Promise<[string, string, string][]> {
+  return invoke<[string, string, string][]>("link_map", { root });
 }
 
 export type SearchHit = {

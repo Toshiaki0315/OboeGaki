@@ -111,6 +111,9 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("format-quote", "引用", None)?)
         .separator()
         .item(&item("insert-table", "表を挿入…", None)?)
+        .separator()
+        // 仮身化（M-1）。選んだところを別のノートにして、跡にリンクを残す
+        .item(&item("extract", "選択範囲をノートに切り出す", None)?)
         .build()?;
     let view = SubmenuBuilder::new(handle, "表示")
         .item(&item(
@@ -146,6 +149,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         )?)
         .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
         .item(&item("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
+        // リンクの図（M-2）。起点は開いているノート
+        .item(&item("link-graph", "リンクの図…", None)?)
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
         .item(&item(
             "focus-mode",
@@ -235,6 +240,7 @@ pub fn run() {
             commands::folder_delete,
             commands::note_move,
             commands::note_backlinks,
+            commands::link_map,
             commands::index_sync,
             commands::recovery_stash,
             commands::recovery_discard,

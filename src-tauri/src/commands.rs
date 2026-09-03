@@ -766,6 +766,17 @@ pub fn recovery_clear(app: tauri::AppHandle, root: String) -> Result<(), String>
     Ok(())
 }
 
+/// リンクの図の素材（M-2）。`(指すノートの題名, 指し先, 続柄)`。
+///
+/// **図は索引から作る。** 本文を全部読み直すと大きな vault で待たされる。
+#[tauri::command]
+pub fn link_map(root: String) -> Result<Vec<(String, String, String)>, String> {
+    let vault = Vault::new(&root);
+    IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.link_map())
+        .map_err(|e| e.to_string())
+}
+
 /// サイドバーのフォルダツリーの素材（ADR-0024）。
 /// **存在はディスク、件数は索引**（索引にあってディスクに無いものは出さない）。
 /// 先頭は必ず直下（空文字）。

@@ -28,7 +28,8 @@ pub const INDEX_FILE: &str = "index.sqlite";
 /// 2: notes_fts の path を索引対象にし、LIKE フォールバックにも path を足した
 /// 3: tags テーブルを追加（サイドバーのタグ一覧）
 /// 5: links テーブルを追加（バックリンク。E-6）
-const SCHEMA_VERSION: i64 = 5;
+/// 6: links に relation を足した（続柄。M-3）
+const SCHEMA_VERSION: i64 = 6;
 /// この文字数以上なら trigram FTS、未満なら LIKE フォールバック。
 const FTS_MIN_CHARS: usize = 3;
 const SEARCH_LIMIT: usize = 50;
@@ -63,6 +64,8 @@ pub struct Backlink {
     pub path: String,
     pub title: String,
     pub context: String,
+    /// 続柄（M-3）。付いていなければ空。
+    pub relation: String,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -165,11 +168,12 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
     // 指しているノート（E-6）。**行き先の有無は問わない** — まだ無いノートへの
     // リンクも、作られた瞬間に繋がるべきもの（ADR-0011）
     tx.execute("DELETE FROM links WHERE path = ?1", [&relative])?;
-    for target in crate::wikilink::links(&text) {
+    for (target, relation) in crate::wikilink::relations(&text) {
         let context = crate::wikilink::context_line(&text, &target);
         tx.execute(
-            "INSERT OR IGNORE INTO links(path, target, context) VALUES (?1, ?2, ?3)",
-            rusqlite::params![relative, target, context],
+            "INSERT OR IGNORE INTO links(path, target, context, relation)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![relative, target, context, relation],
         )?;
     }
     Ok(())
@@ -220,10 +224,12 @@ impl IndexDb {
             );
             CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
             CREATE TABLE IF NOT EXISTS links (
-                path    TEXT NOT NULL,
-                target  TEXT NOT NULL,
-                context TEXT NOT NULL,
-                PRIMARY KEY (path, target)
+                path     TEXT NOT NULL,
+                target   TEXT NOT NULL,
+                context  TEXT NOT NULL,
+                -- 続柄（M-3）。**同じ相手を別の続柄で指せる**ので主キーに入れる
+                relation TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (path, target, relation)
             );
             CREATE INDEX IF NOT EXISTS idx_links_target ON links(target COLLATE NOCASE);",
         )?;
@@ -444,7 +450,7 @@ impl IndexDb {
             return Ok(Vec::new());
         }
         let mut statement = self.conn.prepare(
-            "SELECT notes.path, notes.title, links.context
+            "SELECT notes.path, notes.title, links.context, links.relation
              FROM notes JOIN links ON links.path = notes.path
              WHERE links.target = ?1 COLLATE NOCASE",
         )?;
@@ -453,8 +459,21 @@ impl IndexDb {
                 path: row.get(0)?,
                 title: row.get(1)?,
                 context: row.get(2)?,
+                relation: row.get(3)?,
             })
         })?;
+        rows.collect()
+    }
+
+    /// 題名 → 指している先（と続柄）の対応（M-2 のリンクの図）。
+    ///
+    /// **図は索引から作る。** 本文を全部読み直すと 5,000 ノートで待たされる。
+    pub fn link_map(&self) -> rusqlite::Result<Vec<(String, String, String)>> {
+        let mut statement = self.conn.prepare(
+            "SELECT notes.title, links.target, links.relation
+             FROM notes JOIN links ON links.path = notes.path",
+        )?;
+        let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
         rows.collect()
     }
 
