@@ -18,6 +18,7 @@ import {
 } from "@codemirror/view";
 import {
   type EditorState,
+  Facet,
   type Range,
   RangeSet,
   StateEffect,
@@ -152,6 +153,48 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
+/// 画像参照を表示可能な src（data URL 等）へ解決する関数。アプリ側が
+/// vault のルートを知っているので、Facet 経由で注入する。
+export type ImageResolver = (url: string) => Promise<string | null>;
+
+export const imageResolver = Facet.define<ImageResolver, ImageResolver>({
+  combine: (values) => values[0] ?? (async () => null),
+});
+
+// 遠隔参照は絵にしない（参照実装 core/paths.py の REMOTE_SCHEMES と同じ）
+const REMOTE_RE = /^(https?:|data:)/i;
+
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly url: string,
+    readonly alt: string,
+  ) {
+    super();
+  }
+  eq(other: ImageWidget): boolean {
+    return other.url === this.url && other.alt === this.alt;
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const holder = document.createElement("span");
+    holder.className = "cm-image-widget";
+    holder.textContent = this.alt || this.url; // 読み込めるまでの代役
+    const resolve = view.state.facet(imageResolver);
+    void resolve(this.url).then((src) => {
+      if (!src) return; // 読めなければ代役の文字のまま
+      const image = document.createElement("img");
+      image.src = src;
+      image.alt = this.alt;
+      holder.replaceChildren(image);
+      // 画像の高さが後から確定するので、行レイアウトを測り直させる
+      view.requestMeasure();
+    });
+    return holder;
+  }
+  ignoreEvent(): boolean {
+    return false; // クリックでカーソルが行へ入り、ソースが現れる
+  }
+}
+
 class HrWidget extends WidgetType {
   eq(): boolean {
     return true;
@@ -205,6 +248,28 @@ export function previewDecorations(
     from,
     to,
     enter: (node) => {
+      // --- 画像: 行まるごとが画像 1 つのときだけ絵に置き換える（ADR-0004）。
+      //     文中の画像はリンク扱い（マーカー隠しに任せる）
+      if (node.name === "Image") {
+        const line = state.doc.lineAt(node.from);
+        const wholeLine =
+          state.sliceDoc(node.from, node.to) === line.text.trim();
+        if (!wholeLine || touchesLine(state, node.from)) return;
+        const urlNode = node.node.getChild("URL");
+        if (!urlNode) return;
+        const url = state.sliceDoc(urlNode.from, urlNode.to);
+        if (REMOTE_RE.test(url)) return; // 遠隔は絵にしない
+        const marks = node.node.getChildren("LinkMark");
+        const alt =
+          marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : "";
+        out.push(
+          Decoration.replace({ widget: new ImageWidget(url, alt) }).range(
+            node.from,
+            node.to,
+          ),
+        );
+        return false; // 中のマーカー隠しは重ねない
+      }
       // --- インラインマーカー: 親の範囲にカーソルが触れている間は見せる
       if (MARK_NODES.has(node.name)) {
         if (lineSelected(node.from)) return;
@@ -370,6 +435,15 @@ const blockTheme = EditorView.baseTheme({
   },
   ".cm-task-checkbox": {
     marginRight: "0.4em",
+    verticalAlign: "middle",
+  },
+  ".cm-image-widget": {
+    display: "inline-block",
+    maxWidth: "100%",
+  },
+  ".cm-image-widget img": {
+    maxWidth: "100%",
+    borderRadius: "4px",
     verticalAlign: "middle",
   },
   ".cm-hr-widget": {

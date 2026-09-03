@@ -87,3 +87,21 @@ export async function searchNotes(
 ): Promise<SearchHit[]> {
   return invoke<SearchHit[]>("note_search", { root, query });
 }
+
+// 画像の data URL キャッシュ。装飾は再計算のたびに widget を作り直すので、
+// invoke の往復を毎回払わない（参照実装 image_cache の役目）
+const imageCache = new Map<string, Promise<string | null>>();
+
+export function imageSource(root: string, url: string): Promise<string | null> {
+  if (/^(https?:|data:)/i.test(url)) return Promise.resolve(null); // 遠隔は描かない
+  const cleaned = decodeURIComponent(url.replace(/^file:\/\//, ""));
+  const key = `${root}\n${cleaned}`;
+  let entry = imageCache.get(key);
+  if (!entry) {
+    entry = invoke<string>("image_read", { root, path: cleaned }).catch(
+      () => null,
+    );
+    imageCache.set(key, entry);
+  }
+  return entry;
+}

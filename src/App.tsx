@@ -5,6 +5,7 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import { createDebouncer } from "./lib/debounce";
 import {
   createNote,
+  imageSource,
   readNote,
   renameNote,
   restoreNote,
@@ -298,6 +299,7 @@ function App() {
               ref={editorRef}
               initialDoc={doc}
               onDocChanged={handleDocChanged}
+              resolveImage={(url) => imageSource(vaultRoot, url)}
             />
           </>
         ) : (

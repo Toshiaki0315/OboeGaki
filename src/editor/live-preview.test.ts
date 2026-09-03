@@ -36,7 +36,7 @@ function decorationsOf(doc: string, anchor: number): Deco[] {
 function simplify(range: Range<Decoration>): Deco {
   const spec = range.value.spec as {
     class?: string;
-    widget?: { glyph?: string; checked?: boolean };
+    widget?: { glyph?: string; checked?: boolean; url?: string };
   };
   let kind = "hide";
   if (spec.class) kind = `line:${spec.class}`;
@@ -44,6 +44,7 @@ function simplify(range: Range<Decoration>): Deco {
     kind = `bullet:${spec.widget.glyph}`;
   else if (spec.widget?.checked !== undefined)
     kind = `checkbox:${spec.widget.checked}`;
+  else if (spec.widget?.url !== undefined) kind = `image:${spec.widget.url}`;
   else if (spec.widget) kind = "hr";
   return { from: range.from, to: range.to, kind };
 }
@@ -197,6 +198,33 @@ describe("previewDecorations（ブロック系）", () => {
     );
     // 選択の無い行のマーカーは隠したまま
     expect(has(decos, { from: other, to: other + 2, kind: "hide" })).toBe(true);
+  });
+
+  test("行まるごと画像の行は絵に置き換え、カーソルが乗るとソースを見せる", () => {
+    const doc = "前\n\n![図](attachments/a.png)\n\n後";
+    const from = doc.indexOf("![");
+    const to = from + "![図](attachments/a.png)".length;
+    const away = decorationsOf(doc, 0);
+    expect(has(away, { from, to, kind: "image:attachments/a.png" })).toBe(true);
+    // 置き換えた行では、内側のマーカー隠しを重ねない
+    expect(
+      away.some((d) => d.kind === "hide" && d.from >= from && d.to <= to),
+    ).toBe(false);
+    const onLine = decorationsOf(doc, from + 2);
+    expect(onLine.some((d) => d.kind.startsWith("image:"))).toBe(false);
+  });
+
+  test("文中の画像とリモート画像は絵にしない（参照実装 ADR-0004 と同じ）", () => {
+    const mid = "文中の ![図](attachments/a.png) は絵にしない\n\n他";
+    expect(
+      decorationsOf(mid, mid.length).some((d) => d.kind.startsWith("image:")),
+    ).toBe(false);
+    const remote = "![外](https://example.com/a.png)\n\n他";
+    expect(
+      decorationsOf(remote, remote.length).some((d) =>
+        d.kind.startsWith("image:"),
+      ),
+    ).toBe(false);
   });
 
   test("チェックボックスへのイベントは CM6 に渡さない（実機の回帰）", () => {

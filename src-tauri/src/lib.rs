@@ -2,6 +2,7 @@
 // vault・保存・監視などの永続化コマンドはここに載せていく
 // （hitofude の core/ + storage/ に相当する層。GUI 非依存でテストする）。
 
+pub mod assets;
 pub mod autosave;
 pub mod commands;
 pub mod index_db;
@@ -24,6 +25,7 @@ pub fn run() {
             commands::trash_list,
             commands::note_restore,
             commands::note_search,
+            commands::image_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

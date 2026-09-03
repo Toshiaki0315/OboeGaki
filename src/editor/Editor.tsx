@@ -14,7 +14,7 @@ import { TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
-import { livePreview } from "./live-preview";
+import { imageResolver, livePreview, type ImageResolver } from "./live-preview";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
 // onDocChanged（= 自動保存の予約）を発火させないために使う
@@ -31,10 +31,12 @@ type Props = {
   /** 文書が変わるたびに呼ぶ。text の取り出しは呼び出し側の判断で行う
       （毎打鍵で全文を作らないため、関数を渡す） */
   onDocChanged?: (getText: () => string) => void;
+  /** 画像参照を表示可能な src へ解決する（vault のルートを知るのはアプリ側） */
+  resolveImage?: ImageResolver;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { initialDoc, onDocChanged },
+  { initialDoc, onDocChanged, resolveImage },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
@@ -73,6 +75,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           keymap.of([...defaultKeymap, ...historyKeymap]),
           markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
           livePreview,
+          imageResolver.of(resolveImage ?? (async () => null)),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;

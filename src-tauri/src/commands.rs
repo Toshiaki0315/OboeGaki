@@ -87,6 +87,12 @@ pub fn note_write(
     Ok(())
 }
 
+/// 本文の画像参照を data URL で返す（ADR-0004）。解決の起点は vault ルート。
+#[tauri::command]
+pub fn image_read(root: String, path: String) -> Result<String, String> {
+    crate::assets::read_data_url(Path::new(&root), Path::new(&path)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn note_search(root: String, query: String) -> Result<Vec<SearchHit>, String> {
     let vault = Vault::new(&root);
