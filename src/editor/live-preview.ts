@@ -811,8 +811,11 @@ export function blockWidgetDecorations(
   const out: Range<Decoration>[] = [];
   // `:::note` の囲み（B-3）。行の装飾なので木のノードは要らない
   for (const note of noteContainers(state.doc)) {
-    const first = state.doc.lineAt(note.from).number;
-    const last = state.doc.lineAt(note.to).number;
+    // **色を付けるのは中身の行だけ。** 区切り（`:::note …` と `:::`）は
+    // 書き方であって中身ではないので、帯に含めない（実機報告 2026-09-04:
+    // 「設定の文も色がついている」）
+    const first = state.doc.lineAt(note.open.to).number + 1;
+    const last = state.doc.lineAt(note.close.from).number - 1;
     for (let number = first; number <= last; number++) {
       const line = state.doc.line(number);
       out.push(

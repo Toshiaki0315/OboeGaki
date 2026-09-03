@@ -554,13 +554,33 @@ describe("plugin 由来の装飾は行をまたがない（実機で発覚 2026-
 describe("`:::note` の囲み（B-3）", () => {
   const doc = "前\n\n:::note warn\n注意です。\n:::\n\n後";
 
-  test("囲みの行に色を付け、区切り行を隠す", () => {
+  test("**中身の行にだけ**色を付け、区切り行を隠す", () => {
+    // 区切り（`:::note …` と `:::`）は書き方であって中身ではない
     const found = blocksOf(doc, 0);
     const lines = found.filter((deco) => deco.kind.startsWith("line:"));
-    expect(lines).toHaveLength(3); // 開き + 本文 + 閉じ
+    expect(lines).toHaveLength(1); // 本文の 1 行だけ
     expect(lines[0].kind).toContain("cm-note-warn");
+    expect(lines[0].from).toBe(doc.indexOf("注意です。"));
     const hidden = found.filter((deco) => deco.kind === "hide");
     expect(hidden).toHaveLength(2); // 開きと閉じの行
+  });
+
+  test("区切り行が見えているときも、その行には色を付けない", () => {
+    // 綴り違いは区切り行を隠さないが、帯は中身だけに掛かる
+    const warm = ":::note warm\n本文\nもう 1 行\n:::\n";
+    const lines = blocksOf(warm, 0).filter((deco) =>
+      deco.kind.startsWith("line:"),
+    );
+    expect(lines).toHaveLength(2); // 本文の 2 行だけ
+    expect(lines[0].from).toBe(warm.indexOf("本文"));
+  });
+
+  test("中身の無い囲みでも壊れない", () => {
+    const empty = ":::note info\n:::\n";
+    expect(() => blocksOf(empty, 0)).not.toThrow();
+    expect(
+      blocksOf(empty, 0).filter((deco) => deco.kind.startsWith("line:")),
+    ).toHaveLength(0);
   });
 
   test("キャレットが触れている間は区切り行を見せる", () => {
