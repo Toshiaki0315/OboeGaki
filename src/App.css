@@ -549,6 +549,26 @@ button.danger {
   }
 }
 
+/* タグ補完のポップアップ（C-4）。CM6 の既定配色はライト固定で、ダークだと
+   文字が背景に埋もれる。アプリの配色に合わせて上書きする */
+.editor-host .cm-tooltip.cm-tooltip-autocomplete {
+  background: var(--app-bg);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 18%);
+  font-size: 0.9rem;
+}
+
+.editor-host .cm-tooltip-autocomplete > ul > li {
+  color: inherit;
+  padding: 0.15rem 0.5rem;
+}
+
+.editor-host .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: #0a84ff;
+  color: #fff;
+}
+
 .pin-mark {
   font-size: 0.75em;
   margin-right: 0.25em;

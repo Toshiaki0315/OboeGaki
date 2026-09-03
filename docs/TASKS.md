@@ -56,7 +56,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 
 ## 第 3 群 — ノート管理・検索・設定
 
-- [ ] **3-1. タグの厳密絞り込みとタグ補完**（C-4 / H-3, index の tags 結合）
+- [x] **3-1. タグの厳密絞り込みとタグ補完**（C-4 / H-3, index の tags 結合）
       サイドバーのタグクリックを全文検索代用から tags テーブル結合に替える。
       `#` 入力中の補完（↑↓ / Enter / Tab）も一緒に
 - [ ] **3-2. テンプレートと同梱マニュアル**（E-4, resources/templates / MANUAL）

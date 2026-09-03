@@ -7,6 +7,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorView, keymap } from "@codemirror/view";
+import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
 import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
@@ -37,6 +38,7 @@ import { headingFolding } from "./folding";
 import { insertTableAt, tableAutoFormat } from "./table-format";
 import { plainCopyKeymap } from "./plain-copy";
 import { autoPair, urlPasteLink } from "./auto-pair";
+import { tagCompletion } from "./tag-complete";
 import {
   imageResolver,
   livePreview,
@@ -83,6 +85,8 @@ type Props = {
   /** 貼り付け・ドロップの画像を保存して Markdown を返す（保存先は
       アプリ側の持ち物）。無ければ取り込みは無効 */
   saveAttachment?: SaveAttachment;
+  /** `#` 補完に出す既知のタグ（索引が持つ。呼ぶたびに取り直す） */
+  knownTags?: () => string[];
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
@@ -93,6 +97,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     onActivate,
     onCursorChanged,
     saveAttachment,
+    knownTags,
   },
   ref,
 ) {
@@ -107,6 +112,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   cursorChanged.current = onCursorChanged;
   const attachmentSaver = useRef(saveAttachment);
   attachmentSaver.current = saveAttachment;
+  const tagSource = useRef(knownTags);
+  tagSource.current = knownTags;
 
   useImperativeHandle(
     ref,
@@ -206,6 +213,14 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           frontMatterHide,
           history(),
           autoPair, // 選択を * や [ で囲む（spec §5.5-4）
+          // タグ補完（C-4）。↑↓ / Enter は completionKeymap が持つ。
+          // Tab は inputAssist（リストの字下げ）より**先**に置く —
+          // 候補が出ていないときは false を返して字下げへ落ちる
+          autocompletion({
+            override: [tagCompletion(() => tagSource.current?.() ?? [])],
+            icons: false,
+          }),
+          keymap.of([{ key: "Tab", run: acceptCompletion }]),
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
           formatKeymap,
           plainCopyKeymap, // Cmd+Shift+C（spec §5.4）

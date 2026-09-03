@@ -886,6 +886,11 @@ function App() {
               saveAttachment={(data, name) =>
                 saveAttachment(vaultRoot, data, name)
               }
+              // 索引の持つタグを補完に出す。ストアから直に読む（tags を
+              // props で渡すと、タグが増えるたびにエディタが作り直される）
+              knownTags={() =>
+                useAppStore.getState().tags.map((entry) => entry.tag)
+              }
             />
           </>
         ) : (
