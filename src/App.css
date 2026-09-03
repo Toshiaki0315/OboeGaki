@@ -21,11 +21,23 @@ body {
 .app-split {
   display: grid;
   grid-template-columns: 240px 1fr;
+  /* ペインごとに独立してスクロールさせる。grid の子は既定で内容より
+     縮めない（min-height: auto）ので、明示しないと窓全体が 1 本の
+     スクロールになる */
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-split > * {
+  min-height: 0;
+  min-width: 0;
 }
 
 .note-list {
   border-right: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
   padding: 0.5rem;
 }
 
@@ -60,10 +72,13 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden; /* スクロールは中の editor-host が持つ */
 }
 
 .editor-host {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   max-width: 46rem;
   width: 100%;
