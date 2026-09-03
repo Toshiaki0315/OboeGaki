@@ -10,6 +10,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { livePreview } from "./live-preview";
@@ -68,7 +69,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         extensions: [
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown({ extensions: [relaxedAsterisk, extendedInline] }),
+          markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
           livePreview,
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
