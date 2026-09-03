@@ -9,11 +9,13 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorView, keymap } from "@codemirror/view";
 import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { search, searchKeymap } from "@codemirror/search";
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
+import { formatKeymap } from "./format-commands";
 import {
   activationClicks,
   activationHandler,
@@ -81,7 +83,23 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         extensions: [
           history(),
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
-          keymap.of([...defaultKeymap, ...historyKeymap]),
+          formatKeymap,
+          search({ top: true }),
+          keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
+          // ノート内検索（Cmd+F）のパネルを日本語にする
+          EditorState.phrases.of({
+            Find: "検索",
+            Replace: "置換",
+            next: "次へ",
+            previous: "前へ",
+            all: "すべて",
+            "match case": "大文字小文字を区別",
+            "by word": "単語単位",
+            regexp: "正規表現",
+            replace: "置換",
+            "replace all": "すべて置換",
+            close: "閉じる",
+          }),
           markdown({
             extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
           }),
