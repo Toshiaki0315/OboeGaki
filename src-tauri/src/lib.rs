@@ -103,6 +103,14 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+Shift+F"),
         )?)
         .separator()
+        // ペインの開閉（spec §5.1 / §5.4）
+        .item(&item(
+            "toggle-trees",
+            "サイドバー（フォルダ・タグ）",
+            Some("CmdOrCtrl+1"),
+        )?)
+        .item(&item("toggle-notes", "ノート一覧", Some("CmdOrCtrl+2"))?)
+        .separator()
         // アクセラレータを付けない: メニューのそれは US 配列の物理キーで
         // 解釈され、JIS では Cmd+= が別のキーに化けた（実機報告）。
         // ショートカットは WebView 側の keydown（event.key）が担う

@@ -24,6 +24,14 @@ export type Settings = {
   historyMinutes: number;
   /// ゴミ箱に置いておく日数（spec §7.6）。
   trashDays: number;
+  /// ノート一覧のペイン幅（px）。ドラッグで変えられる（spec §5.1）。
+  listWidth: number;
+  /// アウトラインのペイン幅（px）。
+  outlineWidth: number;
+  /// ノート一覧を出すか（Cmd+2）。
+  notesVisible: boolean;
+  /// フォルダ・タグ・ゴミ箱の並び（サイドバー相当）を出すか（Cmd+1）。
+  treesVisible: boolean;
 };
 
 export const THEMES: Theme[] = ["system", "light", "dark"];
@@ -31,12 +39,21 @@ export const CONTENT_WIDTHS: ContentWidth[] = ["standard", "wide", "full"];
 export const HISTORY_CHOICES = [0, 15, 30, 60, 120];
 export const MIN_TRASH_DAYS = 1;
 export const MAX_TRASH_DAYS = 365;
+export const MIN_PANE_WIDTH = 160;
+export const MAX_PANE_WIDTH = 520;
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   contentWidth: "standard",
   historyMinutes: 60, // Rust 側 history::DEFAULT_INTERVAL_MINUTES と同じ
   trashDays: 30, // spec §7.6
+  listWidth: 240, // App.css の従来値
+  outlineWidth: 220,
+  // **開閉は明示的に持つ。** 参照実装は「見えているか」を DOM に尋ねて
+  // いたため、`Cmd+H` で隠してから終了すると全ペインが「隠す」で保存され、
+  // 次の起動が真っ白な窓になった（実測）
+  notesVisible: true,
+  treesVisible: true,
 };
 
 const WIDTHS: Record<ContentWidth, string> = {
@@ -88,6 +105,13 @@ export function loadSettings(storage: StorageLike): Settings {
       DEFAULT_SETTINGS.historyMinutes,
     ),
     trashDays: readDays(stored.trashDays),
+    listWidth: clampPaneWidth(stored.listWidth),
+    outlineWidth: clampPaneWidth(
+      stored.outlineWidth,
+      DEFAULT_SETTINGS.outlineWidth,
+    ),
+    notesVisible: readFlag(stored.notesVisible, DEFAULT_SETTINGS.notesVisible),
+    treesVisible: readFlag(stored.treesVisible, DEFAULT_SETTINGS.treesVisible),
   };
 }
 
@@ -95,7 +119,15 @@ export function saveSettings(storage: StorageLike, settings: Settings): void {
   try {
     storage.setItem(
       SETTINGS_KEY,
-      JSON.stringify({ ...settings, trashDays: readDays(settings.trashDays) }),
+      JSON.stringify({
+        ...settings,
+        trashDays: readDays(settings.trashDays),
+        listWidth: clampPaneWidth(settings.listWidth),
+        outlineWidth: clampPaneWidth(
+          settings.outlineWidth,
+          DEFAULT_SETTINGS.outlineWidth,
+        ),
+      }),
     );
   } catch {
     // 記憶できなくても今の表示は生きている
@@ -111,6 +143,22 @@ function pick<T>(value: unknown, allowed: T[], fallback: T): T {
 ///
 /// 小さい側へ丸めると、壊れた値（`-3`）が「1 日で消す」という**取り返しの
 /// つかない設定**に化ける。読めない値は「設定していない」と同じ扱いが安全。
+/// ペインの幅。**範囲の外は丸める** — 狭すぎ・広すぎは見た目の問題で、
+/// 日数（readDays）と違って丸めても失うものが無い。
+export function clampPaneWidth(
+  value: unknown,
+  fallback: number = DEFAULT_SETTINGS.listWidth,
+): number {
+  const width = Math.round(Number(value));
+  if (!Number.isFinite(width)) return fallback;
+  return Math.min(MAX_PANE_WIDTH, Math.max(MIN_PANE_WIDTH, width));
+}
+
+/// 真偽値だけを採る（`"はい"` のような手書きは既定へ）。
+function readFlag(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function readDays(value: unknown): number {
   const days = Math.round(Number(value));
   if (

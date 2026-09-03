@@ -32,6 +32,7 @@ import {
   vaultErrorText,
 } from "./lib/last-vault";
 import {
+  clampPaneWidth,
   contentWidthCss,
   CONTENT_WIDTHS,
   HISTORY_CHOICES,
@@ -210,6 +211,37 @@ function App() {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [preferences, setPreferences] = useState(false);
+
+  /// 左のペインは、中身が 1 つも無ければ畳む（空の帯を残さない）
+  const leftVisible = settings.notesVisible || settings.treesVisible;
+
+  /// ペインの幅をドラッグで変える（spec §5.1）。`direction` は掴んだ帯が
+  /// 右へ動いたときに広がるなら 1、狭まるなら -1。
+  function startResize(
+    event: React.PointerEvent<HTMLDivElement>,
+    key: "listWidth" | "outlineWidth",
+    direction: 1 | -1,
+  ) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = settingsRef.current[key];
+    const move = (moved: PointerEvent) => {
+      const width = clampPaneWidth(
+        startWidth + (moved.clientX - startX) * direction,
+        startWidth,
+      );
+      // 引きずっている間は覚えない（放したときに 1 回だけ書く）
+      setSettings((current) => ({ ...current, [key]: width }));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      saveSettings(localStorage, settingsRef.current);
+      document.body.classList.remove("resizing");
+    };
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  }
 
   function changeSettings(next: Partial<Settings>) {
     setSettings((current) => {
@@ -911,6 +943,10 @@ function App() {
     },
     "search-all": () => searchInputRef.current?.focus(),
     outline: toggleOutline,
+    "toggle-trees": () =>
+      changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
+    "toggle-notes": () =>
+      changeSettings({ notesVisible: !settingsRef.current.notesVisible }),
     "format-heading": () => editorRef.current?.applyLineFormat("heading"),
     "format-bullet": () => editorRef.current?.applyLineFormat("bullet"),
     "format-ordered": () => editorRef.current?.applyLineFormat("ordered"),
@@ -1047,208 +1083,247 @@ function App() {
 
   return (
     <main
-      className={`app app-split${outlineOpen ? " with-outline" : ""}`}
+      className={
+        `app app-split${outlineOpen ? " with-outline" : ""}` +
+        (leftVisible ? "" : " no-list")
+      }
       style={
         {
           "--editor-font-px": `${fontSize}px`,
           "--content-width": contentWidthCss(settings.contentWidth),
+          "--list-width": `${settings.listWidth}px`,
+          "--outline-width": `${settings.outlineWidth}px`,
         } as CSSProperties
       }
     >
-      <aside className="note-list">
-        <header>
-          <button onClick={() => void handleCreate()}>＋ 新規</button>
-          <button onClick={() => void chooseVault()}>フォルダ変更</button>
-        </header>
-        <input
-          ref={searchInputRef}
-          className="search-input"
-          type="search"
-          placeholder="検索"
-          value={query}
-          onChange={(event) => handleQueryChanged(event.currentTarget.value)}
-        />
-        {query.trim() ? (
-          <ul>
-            {hits.map((hit) => (
-              <li key={hit.path}>
-                <button
-                  className="search-hit"
-                  onClick={() => void openNote(`${vaultRoot}/${hit.path}`)}
-                >
-                  <span className="hit-title">{hit.title}</span>
-                  <span className="hit-snippet">{hit.snippet}</span>
-                </button>
-              </li>
-            ))}
-            {hits.length === 0 && <li className="no-hits">見つかりません</li>}
-          </ul>
-        ) : (
-          <>
-            {tagFilter && (
-              <div className="tag-filter-row">
-                <span className="tag-filter-name">#{tagFilter}</span>
-                <button
-                  className="tag-filter-clear"
-                  onClick={() => filterByTag(null)}
-                  title="絞り込みを解除"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            {folderFilter !== null && (
-              <div className="tag-filter-row">
-                <span className="tag-filter-name">
-                  {folderFilter || "直下"}
-                </span>
-                <button
-                  className="tag-filter-clear"
-                  onClick={() => filterByFolder(null)}
-                  title="絞り込みを解除"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            <div className="sort-row">
-              <select
-                value={sortOrder}
-                onChange={(event) =>
-                  changeSort(event.currentTarget.value as SortOrder)
-                }
-              >
-                <option value="modified">更新順</option>
-                <option value="title">名前順</option>
-              </select>
-            </div>
+      {leftVisible && (
+        <aside className="note-list">
+          <header>
+            <button onClick={() => void handleCreate()}>＋ 新規</button>
+            <button onClick={() => void chooseVault()}>フォルダ変更</button>
+          </header>
+          {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
+          {settings.notesVisible && (
+            <input
+              ref={searchInputRef}
+              className="search-input"
+              type="search"
+              placeholder="検索"
+              value={query}
+              onChange={(event) =>
+                handleQueryChanged(event.currentTarget.value)
+              }
+            />
+          )}
+          {!settings.notesVisible ? null : query.trim() ? (
             <ul>
-              {(tagFilter || folderFilter !== null) &&
-                sortedNotes.length === 0 && (
-                  <li className="no-hits">
-                    {tagFilter
-                      ? "このタグのノートはありません"
-                      : "このフォルダにノートはありません"}
-                  </li>
-                )}
-              {sortedNotes.map((entry) => (
-                <li key={entry.path}>
+              {hits.map((hit) => (
+                <li key={hit.path}>
                   <button
-                    className={`note-row${entry.path === currentPath ? " selected" : ""}`}
-                    onClick={() => void openNote(entry.path)}
+                    className="search-hit"
+                    onClick={() => void openNote(`${vaultRoot}/${hit.path}`)}
                   >
-                    <span className="note-row-title">
-                      {entry.pinned && <span className="pin-mark">📌</span>}
-                      {entry.label}
-                    </span>
-                    {entry.preview && (
-                      <span className="note-row-preview">{entry.preview}</span>
-                    )}
-                    <span className="note-row-stamp">
-                      {formatStamp(entry.mtimeMs)}
-                    </span>
+                    <span className="hit-title">{hit.title}</span>
+                    <span className="hit-snippet">{hit.snippet}</span>
                   </button>
                 </li>
               ))}
+              {hits.length === 0 && <li className="no-hits">見つかりません</li>}
             </ul>
-          </>
-        )}
-        <details className="folder-section" open>
-          <summary>
-            フォルダ（{folders.length - 1}）
-            <button
-              className="folder-add"
-              title={
-                folderFilter
-                  ? `「${folderFilter}」の中に作る`
-                  : "保管フォルダの直下に作る"
-              }
-              onClick={(event) => {
-                event.preventDefault(); // summary の開閉を巻き込まない
-                setFolderDialog({ kind: "create", folder: folderFilter ?? "" });
-              }}
-            >
-              ＋
-            </button>
-          </summary>
-          <ul>
-            {folders.map(({ folder, count }) => (
-              <li key={folder || "."}>
-                <button
-                  className={`folder-row${folder === folderFilter ? " selected" : ""}`}
-                  style={{
-                    paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
-                  }}
-                  onClick={() =>
-                    filterByFolder(folder === folderFilter ? null : folder)
+          ) : (
+            <>
+              {tagFilter && (
+                <div className="tag-filter-row">
+                  <span className="tag-filter-name">#{tagFilter}</span>
+                  <button
+                    className="tag-filter-clear"
+                    onClick={() => filterByTag(null)}
+                    title="絞り込みを解除"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              {folderFilter !== null && (
+                <div className="tag-filter-row">
+                  <span className="tag-filter-name">
+                    {folderFilter || "直下"}
+                  </span>
+                  <button
+                    className="tag-filter-clear"
+                    onClick={() => filterByFolder(null)}
+                    title="絞り込みを解除"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <div className="sort-row">
+                <select
+                  value={sortOrder}
+                  onChange={(event) =>
+                    changeSort(event.currentTarget.value as SortOrder)
                   }
                 >
-                  <span className="folder-name">{folderLabel(folder)}</span>
-                  <span className="folder-count">{count}</span>
-                </button>
-                {folder !== "" && folder === folderFilter && (
-                  <span className="folder-actions">
+                  <option value="modified">更新順</option>
+                  <option value="title">名前順</option>
+                </select>
+              </div>
+              <ul>
+                {(tagFilter || folderFilter !== null) &&
+                  sortedNotes.length === 0 && (
+                    <li className="no-hits">
+                      {tagFilter
+                        ? "このタグのノートはありません"
+                        : "このフォルダにノートはありません"}
+                    </li>
+                  )}
+                {sortedNotes.map((entry) => (
+                  <li key={entry.path}>
                     <button
+                      className={`note-row${entry.path === currentPath ? " selected" : ""}`}
+                      onClick={() => void openNote(entry.path)}
+                    >
+                      <span className="note-row-title">
+                        {entry.pinned && <span className="pin-mark">📌</span>}
+                        {entry.label}
+                      </span>
+                      {entry.preview && (
+                        <span className="note-row-preview">
+                          {entry.preview}
+                        </span>
+                      )}
+                      <span className="note-row-stamp">
+                        {formatStamp(entry.mtimeMs)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {settings.treesVisible && (
+            <details className="folder-section" open>
+              <summary>
+                フォルダ（{folders.length - 1}）
+                <button
+                  className="folder-add"
+                  title={
+                    folderFilter
+                      ? `「${folderFilter}」の中に作る`
+                      : "保管フォルダの直下に作る"
+                  }
+                  onClick={(event) => {
+                    event.preventDefault(); // summary の開閉を巻き込まない
+                    setFolderDialog({
+                      kind: "create",
+                      folder: folderFilter ?? "",
+                    });
+                  }}
+                >
+                  ＋
+                </button>
+              </summary>
+              <ul>
+                {folders.map(({ folder, count }) => (
+                  <li key={folder || "."}>
+                    <button
+                      className={`folder-row${folder === folderFilter ? " selected" : ""}`}
+                      style={{
+                        paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                      }}
                       onClick={() =>
-                        setFolderDialog({ kind: "rename", folder })
+                        filterByFolder(folder === folderFilter ? null : folder)
                       }
                     >
-                      名前を変更
+                      <span className="folder-name">{folderLabel(folder)}</span>
+                      <span className="folder-count">{count}</span>
                     </button>
-                    <button onClick={() => void handleDeleteFolder(folder)}>
+                    {folder !== "" && folder === folderFilter && (
+                      <span className="folder-actions">
+                        <button
+                          onClick={() =>
+                            setFolderDialog({ kind: "rename", folder })
+                          }
+                        >
+                          名前を変更
+                        </button>
+                        <button onClick={() => void handleDeleteFolder(folder)}>
+                          削除
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {settings.treesVisible && tags.length > 0 && (
+            <details className="tag-section" open>
+              <summary>タグ（{tags.length}）</summary>
+              <ul>
+                {tags.map(({ tag, count }) => (
+                  <li key={tag}>
+                    <button
+                      className={`tag-row${tag === tagFilter ? " selected" : ""}`}
+                      onClick={() =>
+                        filterByTag(tag === tagFilter ? null : tag)
+                      }
+                    >
+                      <span className="tag-name">#{tag}</span>
+                      <span className="tag-count">{count}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {settings.treesVisible && trashNotes.length > 0 && (
+            <details className="trash-section">
+              <summary>ゴミ箱（{trashNotes.length}）</summary>
+              <ul>
+                {trashNotes.map((path) => (
+                  <li key={path} className="trash-item">
+                    <span>{trashLabel(vaultRoot, path)}</span>
+                    <button onClick={() => void handleRestore(path)}>
+                      戻す
+                    </button>
+                    <button
+                      className="danger"
+                      title="完全に削除"
+                      onClick={() => void handleDeleteForever(path)}
+                    >
                       削除
                     </button>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-        {tags.length > 0 && (
-          <details className="tag-section" open>
-            <summary>タグ（{tags.length}）</summary>
-            <ul>
-              {tags.map(({ tag, count }) => (
-                <li key={tag}>
-                  <button
-                    className={`tag-row${tag === tagFilter ? " selected" : ""}`}
-                    onClick={() => filterByTag(tag === tagFilter ? null : tag)}
-                  >
-                    <span className="tag-name">#{tag}</span>
-                    <span className="tag-count">{count}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        {trashNotes.length > 0 && (
-          <details className="trash-section">
-            <summary>ゴミ箱（{trashNotes.length}）</summary>
-            <ul>
-              {trashNotes.map((path) => (
-                <li key={path} className="trash-item">
-                  <span>{trashLabel(vaultRoot, path)}</span>
-                  <button onClick={() => void handleRestore(path)}>戻す</button>
-                  <button
-                    className="danger"
-                    title="完全に削除"
-                    onClick={() => void handleDeleteForever(path)}
-                  >
-                    削除
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              className="danger trash-empty"
-              onClick={() => void handleEmptyTrash()}
-            >
-              ゴミ箱を空にする
-            </button>
-          </details>
-        )}
-      </aside>
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="danger trash-empty"
+                onClick={() => void handleEmptyTrash()}
+              >
+                ゴミ箱を空にする
+              </button>
+            </details>
+          )}
+        </aside>
+      )}
+      {/* 幅を掴む帯（spec §5.1）。**ペインの外に置く** — 中に入れると
+          一覧のスクロールに乗って、下までスクロールすると掴めなくなる */}
+      {leftVisible && (
+        <div
+          className="pane-resizer list"
+          title="幅を変える"
+          onPointerDown={(event) => startResize(event, "listWidth", 1)}
+        />
+      )}
+      {outlineOpen && (
+        <div
+          className="pane-resizer outline"
+          title="幅を変える"
+          onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
+        />
+      )}
       {quickOpen &&
         (() => {
           const labels = notes.map((entry) => entry.label);

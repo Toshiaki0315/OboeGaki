@@ -19,8 +19,10 @@ body {
 }
 
 .app-split {
+  position: relative; /* 幅を掴む帯の基準 */
   display: grid;
-  grid-template-columns: 240px 1fr;
+  /* 幅は環境設定に覚える（ドラッグで変える。spec §5.1） */
+  grid-template-columns: var(--list-width, 240px) 1fr;
   /* ペインごとに独立してスクロールさせる。grid の子は既定で内容より
      縮めない（min-height: auto）ので、明示しないと窓全体が 1 本の
      スクロールになる */
@@ -316,7 +318,48 @@ body {
 }
 
 .app-split.with-outline {
-  grid-template-columns: 240px 1fr 220px;
+  grid-template-columns: var(--list-width, 240px) 1fr var(
+      --outline-width,
+      220px
+    );
+}
+
+/* 左のペインを畳んだとき（Cmd+1 と Cmd+2 の両方を閉じた状態） */
+.app-split.no-list {
+  grid-template-columns: 1fr;
+}
+
+.app-split.no-list.with-outline {
+  grid-template-columns: 1fr var(--outline-width, 220px);
+}
+
+/* 幅を掴む帯。**細いが掴める**幅にして、当たり判定を広げすぎない。
+   ペインの中ではなく窓に対して置く（中に入れるとスクロールに乗る） */
+.pane-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.pane-resizer.list {
+  left: calc(var(--list-width, 240px) - 3px);
+}
+
+.pane-resizer.outline {
+  right: calc(var(--outline-width, 220px) - 3px);
+}
+
+.pane-resizer:hover {
+  background: color-mix(in srgb, #0a84ff 35%, transparent);
+}
+
+/* ドラッグ中に本文が選択されるのを止める */
+body.resizing {
+  user-select: none;
+  cursor: col-resize;
 }
 
 .outline-pane {

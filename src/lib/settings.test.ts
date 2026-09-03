@@ -2,10 +2,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  clampPaneWidth,
   contentWidthCss,
   DEFAULT_SETTINGS,
   HISTORY_CHOICES,
   loadSettings,
+  MAX_PANE_WIDTH,
+  MIN_PANE_WIDTH,
   resolveTheme,
   saveSettings,
   SETTINGS_KEY,
@@ -28,18 +31,36 @@ describe("loadSettings", () => {
 
   it("test_保存した値を読み戻す", () => {
     const storage = fakeStorage();
-    saveSettings(storage, {
-      theme: "dark",
-      contentWidth: "wide",
+    const mine = {
+      ...DEFAULT_SETTINGS,
+      theme: "dark" as const,
+      contentWidth: "wide" as const,
       historyMinutes: 15,
       trashDays: 7,
+      listWidth: 300,
+      notesVisible: false,
+    };
+    saveSettings(storage, mine);
+    expect(loadSettings(storage)).toEqual(mine);
+  });
+
+  it("test_ペインの幅は範囲に丸める", () => {
+    // 幅は丸めてよい（狭すぎ・広すぎは見た目の問題で、失うものが無い）
+    const storage = fakeStorage();
+    saveSettings(storage, { ...DEFAULT_SETTINGS, listWidth: 10 });
+    expect(loadSettings(storage).listWidth).toBe(MIN_PANE_WIDTH);
+    saveSettings(storage, { ...DEFAULT_SETTINGS, listWidth: 9999 });
+    expect(loadSettings(storage).listWidth).toBe(MAX_PANE_WIDTH);
+    expect(clampPaneWidth(Number.NaN)).toBe(DEFAULT_SETTINGS.listWidth);
+  });
+
+  it("test_ペインの開閉は真偽値として読む", () => {
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: '{"notesVisible":"はい","treesVisible":false}',
     });
-    expect(loadSettings(storage)).toEqual({
-      theme: "dark",
-      contentWidth: "wide",
-      historyMinutes: 15,
-      trashDays: 7,
-    });
+    const found = loadSettings(storage);
+    expect(found.notesVisible).toBe(DEFAULT_SETTINGS.notesVisible);
+    expect(found.treesVisible).toBe(false);
   });
 
   it("test_壊れた値は既定へ落とす", () => {
