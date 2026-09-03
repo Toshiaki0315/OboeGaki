@@ -203,6 +203,8 @@ pub fn run() {
             commands::tag_list,
             commands::notes_with_tag,
             commands::template_list,
+            commands::template_register,
+            commands::note_duplicate,
             commands::note_create_from_template,
             commands::note_daily,
             commands::manual_place,

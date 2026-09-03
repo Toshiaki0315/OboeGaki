@@ -278,6 +278,23 @@ export async function syncIndex(root: string, full: boolean): Promise<boolean> {
   return invoke<boolean>("index_sync", { root, full });
 }
 
+/// ノートを複製する。作った先の絶対パスが返る。
+export async function duplicateNote(
+  root: string,
+  path: string,
+): Promise<string> {
+  return invoke<string>("note_duplicate", { root, path });
+}
+
+/// ノートを雛形として登録する。置いた場所が返る。
+export async function registerTemplate(
+  root: string,
+  path: string,
+  name: string,
+): Promise<string> {
+  return invoke<string>("template_register", { root, path, name });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

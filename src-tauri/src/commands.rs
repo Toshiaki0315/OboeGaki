@@ -335,6 +335,31 @@ pub fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String>
         .map_err(|e| e.to_string())
 }
 
+/// ノートを複製する（一覧の右クリック）。作った先を返す。
+#[tauri::command]
+pub fn note_duplicate(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    let vault = Vault::new(&root);
+    let copy = vault.duplicate(&path).map_err(|e| e.to_string())?;
+    state.suppressor.mark(&copy);
+    index_one(&vault, &copy);
+    Ok(copy.to_string_lossy().into_owned())
+}
+
+/// ノートを雛形として登録する（一覧の右クリック）。置いた場所を返す。
+#[tauri::command]
+pub fn template_register(root: String, path: String, name: String) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    Vault::new(&root)
+        .register_template(&path, &name)
+        .map(|placed| placed.to_string_lossy().into_owned())
+        .map_err(|e| e.to_string())
+}
+
 /// そのタグ（と配下のタグ）が付いたノートだけの一覧（C-4）。
 /// サイドバーのタグクリックはこれで絞る。
 #[tauri::command]

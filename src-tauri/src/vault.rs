@@ -210,6 +210,63 @@ impl Vault {
         Ok(path)
     }
 
+    /// ノートを複製する。作った先を返す。
+    ///
+    /// **元と同じフォルダに作る。** 分類して置いたノートの複製が vault 直下に
+    /// 出ると、片方だけ箱から外れる。**見出しも新しい名前に揃える** — 題名は
+    /// 本文の見出し（ADR-0005）なので、写しただけだと一覧に同じ名前が
+    /// 2 つ並んで見分けが付かない。
+    pub fn duplicate(&self, path: &Path) -> io::Result<PathBuf> {
+        if !self.inside(path) {
+            return Err(outside_error("保管フォルダの外は複製できない", path));
+        }
+        let text = fs::read_to_string(path)?;
+        let folder = path.parent().unwrap_or(&self.root).to_path_buf();
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(UNTITLED);
+        // **先に sanitize してから空きを探す**（参照実装のコードレビュー指摘）。
+        // 生の名前から探すと `-2-2` の二重接尾や見出しとの食い違いが起きる
+        let target = unique_path(&folder, &sanitize_filename(stem), ".md", None);
+        let title = target
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(UNTITLED);
+        crate::autosave::save_atomic(&target, &with_title(&text, title))?;
+        Ok(target)
+    }
+
+    /// ノートを雛形として登録する。置いた場所を返す。
+    ///
+    /// **front matter は持ち込まない。** ピン留めのような管理情報は雛形の
+    /// 持ち物ではない。見出しは `{{title}}` に差し替える（元の題名のままだと、
+    /// この雛形から作るノートが全部その題名になる）。
+    ///
+    /// 同名の雛形があるときは断る — 黙って上書きすると、手で直した雛形が消える。
+    pub fn register_template(&self, path: &Path, name: &str) -> io::Result<PathBuf> {
+        if !self.inside(path) {
+            return Err(outside_error("保管フォルダの外は登録できない", path));
+        }
+        let typed = name.trim();
+        if typed.is_empty() {
+            return Err(invalid("雛形の名前が空"));
+        }
+        let body = template_body(&fs::read_to_string(path)?);
+        fs::create_dir_all(self.templates_dir())?;
+        let target = self
+            .templates_dir()
+            .join(format!("{}.md", sanitize_filename(typed)));
+        if target.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("同じ名前の雛形があります: {typed}"),
+            ));
+        }
+        crate::autosave::save_atomic(&target, &with_title(&body, "{{title}}"))?;
+        Ok(target)
+    }
+
     // --------------------------------------------------------- テンプレート（E-4）
 
     /// `templates/` にある雛形。名前順。
@@ -1962,6 +2019,67 @@ mod tests {
 
         assert_ne!(second, first);
         assert_eq!(fs::read_to_string(&first).unwrap(), "# 書き足したメモ\n");
+    }
+
+    // ------------------------------------------------------------ 複製と登録
+
+    #[test]
+    fn test_duplicate_元と同じフォルダに作り見出しも揃える() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = root.path().join("仕事/会議.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "# 会議\n\n本文。\n").unwrap();
+
+        let copy = vault.duplicate(&source).unwrap();
+
+        // 分類して置いたノートの複製が直下に出ると、片方だけ箱から外れる
+        assert_eq!(copy, root.path().join("仕事/会議-2.md"));
+        // **見出しも新しい名前に揃える**（一覧に同じ名前が 2 つ並ばない）
+        assert_eq!(fs::read_to_string(&copy).unwrap(), "# 会議-2\n\n本文。\n");
+    }
+
+    #[test]
+    fn test_duplicate_vaultの外は断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let outside = TempDir::new().unwrap();
+        let path = outside.path().join("外.md");
+        fs::write(&path, "# 外\n").unwrap();
+
+        assert!(vault.duplicate(&path).is_err());
+    }
+
+    #[test]
+    fn test_register_template_front_matterを持ち込まず見出しを印にする() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "議事の型.md");
+        fs::write(&source, "---\npinned: true\n---\n# 議事の型\n\n## 議題\n").unwrap();
+
+        let placed = vault.register_template(&source, "議事録").unwrap();
+
+        assert_eq!(placed, vault.templates_dir().join("議事録.md"));
+        // 管理情報は雛形の持ち物ではない。見出しは {{title}} に差し替える
+        assert_eq!(
+            fs::read_to_string(&placed).unwrap(),
+            "# {{title}}\n\n## 議題\n"
+        );
+    }
+
+    #[test]
+    fn test_register_template_同じ名前は断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "型.md");
+        vault.register_template(&source, "議事録").unwrap();
+
+        // 黙って上書きすると、手で直した雛形が消える
+        assert!(vault.register_template(&source, "議事録").is_err());
     }
 
     // ------------------------------------------------------------ 退避の復元

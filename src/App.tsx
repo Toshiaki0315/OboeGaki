@@ -8,7 +8,7 @@ import {
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
@@ -60,6 +60,8 @@ import {
   historyList,
   clearRecovery,
   createFolder,
+  duplicateNote,
+  registerTemplate,
   createFromTemplate,
   dailyNote,
   deleteFolder,
@@ -263,6 +265,56 @@ function App() {
   }
   const fontSizeRef = useRef(fontSize);
   fontSizeRef.current = fontSize;
+
+  // 一覧の右クリックメニュー（ui/note_actions.py の役目）
+  const [noteMenu, setNoteMenu] = useState<{
+    path: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  // 「テンプレートに登録…」の名前入力。null は閉じている
+  const [templateName, setTemplateName] = useState<string | null>(null);
+  const templateInput = useRef<HTMLInputElement>(null);
+  // 「フォルダへ移動…」の対象（右クリックからは開いていないノートも動かす）
+  const [moveTarget, setMoveTarget] = useState<string | null>(null);
+
+  async function handleDuplicate(path: string) {
+    if (!vaultRoot) return;
+    autosave.flush(); // 打ちかけを書き切ってから写す
+    try {
+      const copy = await duplicateNote(vaultRoot, path);
+      await refresh();
+      await openNote(copy);
+      setStatus("複製しました");
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  async function confirmRegisterTemplate() {
+    const typed = templateInput.current?.value.trim() ?? "";
+    const path = templateName;
+    if (!vaultRoot || !path || !typed) return;
+    setTemplateName(null);
+    try {
+      await registerTemplate(vaultRoot, path, typed);
+      setStatus(`「${typed}」として登録しました（Cmd+Shift+N で使えます）`);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  /// `[[名前]]` の形でクリップボードへ（別のノートから指すときに打ち直さない）。
+  /// **知らせを出す** — クリップボードは目に見えないので、入ったか分からない。
+  async function copyNoteLink(path: string) {
+    const link = `[[${noteStem(path)}]]`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setStatus(`${link} をコピーしました`);
+    } catch (error) {
+      setStatus(`コピーできませんでした: ${String(error)}`);
+    }
+  }
 
   // 見出しパレット（Cmd+R、C-2）。**飛んだら閉じる道具**なので、
   // 出しっぱなしのアウトライン（Cmd+5）とは別に持つ
@@ -592,11 +644,14 @@ function App() {
 
   /// 開いているノートをフォルダへ移す（ADR-0024）。本文は書き換えない。
   async function handleMoveNote(folder: string) {
-    if (!vaultRoot || !currentPath) return;
+    // 右クリックからは開いていないノートも動かす
+    const path = moveTarget ?? currentPath;
+    if (!vaultRoot || !path) return;
     setMoveOpen(false);
+    setMoveTarget(null);
     autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
-      const moved = await moveNote(vaultRoot, currentPath, folder);
+      const moved = await moveNote(vaultRoot, path, folder);
       await refresh();
       await openNote(moved);
       setStatus(folder ? `「${folder}」へ移しました` : "直下へ移しました");
@@ -628,42 +683,52 @@ function App() {
     }
   }
 
-  async function handleTrash() {
-    if (!vaultRoot || !currentPath) return;
+  async function handleTrash(target?: string) {
+    const path = target ?? currentPath;
+    if (!vaultRoot || !path) return;
     // ピン留め中は削除ガード（spec §7.3）。Rust 側も拒むが、確認を
     // 出す前にここで止めるほうが親切
-    if (notes.find((entry) => entry.path === currentPath)?.pinned) {
+    if (notes.find((entry) => entry.path === path)?.pinned) {
       setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
       return;
     }
     const ok = await confirm(
-      `「${noteLabel(vaultRoot, currentPath)}」をゴミ箱へ移しますか？`,
+      `「${noteLabel(vaultRoot, path)}」をゴミ箱へ移しますか？`,
       { title: "覚書", kind: "warning" },
     );
     if (!ok) return;
-    autosave.cancel(); // 捨てるノートの保存予約は破棄する
-    pendingSave.current = null;
+    // 捨てるのが開いているノートなら、保存予約も破棄する
+    if (path === currentPath) {
+      autosave.cancel();
+      pendingSave.current = null;
+    }
     try {
-      await trashNote(vaultRoot, currentPath);
+      await trashNote(vaultRoot, path);
     } catch (error) {
       setStatus(String(error));
       return;
     }
     await refresh();
-    selectNote(null);
-    setDoc(null);
+    if (path === currentPath) {
+      selectNote(null);
+      setDoc(null);
+    }
     setStatus("");
   }
 
   // ピン留めの付け外し（spec §7.3）。front matter が書き換わるので、
   // 開いているエディタの内容も返ってきた本文で差し替える
-  async function handlePin() {
-    if (!vaultRoot || !currentPath) return;
-    const current = notes.find((entry) => entry.path === currentPath);
+  async function handlePin(target?: string) {
+    const path = target ?? currentPath;
+    if (!vaultRoot || !path) return;
+    const current = notes.find((entry) => entry.path === path);
     autosave.flush(); // 未保存分を書き切ってから front matter を触る
-    const text = await pinNote(vaultRoot, currentPath, !current?.pinned);
-    dirtyRef.current = false;
-    editorRef.current?.replaceText(text);
+    const text = await pinNote(vaultRoot, path, !current?.pinned);
+    // 開いているノートなら、書き換わった front matter を読み直す
+    if (path === currentPath) {
+      dirtyRef.current = false;
+      editorRef.current?.replaceText(text);
+    }
     await refresh();
     setStatus(current?.pinned ? "ピンを外しました" : "ピン留めしました");
   }
@@ -1304,6 +1369,14 @@ function App() {
                     <button
                       className={`note-row${entry.path === currentPath ? " selected" : ""}`}
                       onClick={() => void openNote(entry.path)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setNoteMenu({
+                          path: entry.path,
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
                     >
                       <span className="note-row-title">
                         {entry.pinned && <span className="pin-mark">📌</span>}
@@ -1919,6 +1992,123 @@ function App() {
               </button>
               <button onClick={() => void handleRecovery(true)}>
                 復元する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {noteMenu !== null &&
+        (() => {
+          const target = noteMenu.path;
+          const pinned = notes.find((entry) => entry.path === target)?.pinned;
+          const run = (action: () => void) => () => {
+            setNoteMenu(null);
+            action();
+          };
+          return (
+            <div
+              className="menu-backdrop"
+              onMouseDown={() => setNoteMenu(null)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setNoteMenu(null);
+              }}
+            >
+              <ul
+                className="context-menu"
+                // 窓の端で押されても外へはみ出さない（下の行が多い）
+                style={{
+                  left: Math.min(noteMenu.x, window.innerWidth - 220),
+                  top: Math.min(noteMenu.y, window.innerHeight - 280),
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <li>
+                  <button onClick={run(() => void handlePin(target))}>
+                    {pinned ? "ピンを外す" : "ピン留め"}
+                  </button>
+                </li>
+                <li>
+                  <button onClick={run(() => void handleDuplicate(target))}>
+                    複製
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={run(() => {
+                      setMoveTarget(target);
+                      setMoveOpen(true);
+                    })}
+                  >
+                    フォルダへ移動…
+                  </button>
+                </li>
+                <li>
+                  <button onClick={run(() => setTemplateName(target))}>
+                    テンプレートに登録…
+                  </button>
+                </li>
+                <li className="separator" />
+                <li>
+                  <button onClick={run(() => void copyNoteLink(target))}>
+                    リンクをコピー
+                  </button>
+                </li>
+                <li>
+                  <button onClick={run(() => void revealItemInDir(target))}>
+                    Finder で表示
+                  </button>
+                </li>
+                <li className="separator" />
+                <li>
+                  {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
+                  <button
+                    className="danger"
+                    disabled={pinned}
+                    title={
+                      pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
+                    }
+                    onClick={run(() => void handleTrash(target))}
+                  >
+                    ゴミ箱へ移動
+                  </button>
+                </li>
+              </ul>
+            </div>
+          );
+        })()}
+      {templateName !== null && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setTemplateName(null)}
+        >
+          <div
+            className="palette"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="palette-title">テンプレートに登録</header>
+            <div className="table-dialog-fields">
+              <label>
+                名前
+                <input
+                  ref={templateInput}
+                  autoFocus
+                  defaultValue={noteStem(templateName)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void confirmRegisterTemplate();
+                    else if (event.key === "Escape") setTemplateName(null);
+                  }}
+                />
+              </label>
+            </div>
+            <p className="dialog-text">
+              見出しは {"{{title}}"} に置き換わります（この雛形から作った
+              ノートには新しい題名が入ります）。
+            </p>
+            <div className="conflict-actions">
+              <button onClick={() => setTemplateName(null)}>やめる</button>
+              <button onClick={() => void confirmRegisterTemplate()}>
+                登録
               </button>
             </div>
           </div>

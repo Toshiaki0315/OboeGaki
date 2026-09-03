@@ -637,6 +637,56 @@ body.resizing {
   padding: 0.15rem 0.4rem;
 }
 
+/* 一覧の右クリックメニュー（ui/note_actions.py の役目）。
+   外側は透明の当たり判定だけ（背景を暗くするとメニューが浮きすぎる） */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.context-menu {
+  position: fixed;
+  min-width: 12rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--app-bg);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+  font-size: 0.85rem;
+}
+
+.context-menu li.separator {
+  height: 1px;
+  margin: 0.25rem 0.3rem;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+}
+
+.context-menu button:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+/* 押せない項目は消さずに見せる（消すと理由が分からない） */
+.context-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ダイアログの説明文（復元の確認など） */
 /* 保管フォルダを開く前の画面に出す知らせ（開けなかった理由） */
 .empty-note {
