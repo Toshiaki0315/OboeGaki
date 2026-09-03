@@ -155,6 +155,20 @@ function App() {
     setStatus(`書き出しました: ${target}`);
   }
 
+  // 表の挿入（TASKS 2-6）。行 × 列を聞いてから差し込む
+  const [tableDialog, setTableDialog] = useState(false);
+  const tableRows = useRef<HTMLInputElement>(null);
+  const tableColumns = useRef<HTMLInputElement>(null);
+  function confirmInsertTable() {
+    const rows = Number(tableRows.current?.value ?? 2);
+    const columns = Number(tableColumns.current?.value ?? 2);
+    setTableDialog(false);
+    editorRef.current?.insertTable(
+      Number.isFinite(rows) ? rows : 2,
+      Number.isFinite(columns) ? columns : 2,
+    );
+  }
+
   // 版の履歴（ADR-0023）
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(
     null,
@@ -480,6 +494,9 @@ function App() {
     },
     "search-all": () => searchInputRef.current?.focus(),
     outline: toggleOutline,
+    "insert-table": () => {
+      if (currentPathRef.current) setTableDialog(true);
+    },
     "zoom-in": () => changeFontSize(fontSizeRef.current + FONT_STEP_PX),
     "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
     "zoom-reset": () => changeFontSize(DEFAULT_FONT_PX),
@@ -821,6 +838,39 @@ function App() {
         )}
         <footer className="status-bar">{status}</footer>
       </section>
+      {tableDialog && (
+        <div className="palette-backdrop" onClick={() => setTableDialog(false)}>
+          <div className="palette" onClick={(event) => event.stopPropagation()}>
+            <header className="palette-title">表を挿入</header>
+            <div className="table-dialog-fields">
+              <label>
+                行（見出しを除く）
+                <input
+                  ref={tableRows}
+                  type="number"
+                  min={1}
+                  max={50}
+                  defaultValue={2}
+                />
+              </label>
+              <label>
+                列
+                <input
+                  ref={tableColumns}
+                  type="number"
+                  min={1}
+                  max={20}
+                  defaultValue={2}
+                />
+              </label>
+            </div>
+            <div className="conflict-actions">
+              <button onClick={() => setTableDialog(false)}>やめる</button>
+              <button onClick={confirmInsertTable}>挿入</button>
+            </div>
+          </div>
+        </div>
+      )}
       {conflict !== null && (
         <div className="palette-backdrop">
           <div className="palette">

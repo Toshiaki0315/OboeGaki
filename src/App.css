@@ -513,3 +513,18 @@ button.danger {
   font-size: 0.75em;
   margin-right: 0.25em;
 }
+
+.table-dialog-fields {
+  display: flex;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+}
+.table-dialog-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+.table-dialog-fields input {
+  width: 6rem;
+}

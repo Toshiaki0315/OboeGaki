@@ -9,7 +9,7 @@
 ユーザーから「半角 4 文字を字下げした時にコードブロックのようになるのは
 仕様ですか？」と問われた。**仕様である**——仕様書 §1.3 が
 
-> *記法* は **CommonMark + GFM 拡張**を基準とし、**保存形式も素の Markdown とする**
+> _記法_ は **CommonMark + GFM 拡張**を基準とし、**保存形式も素の Markdown とする**
 
 と定めており、字下げのコードブロック（indented code block）は CommonMark の
 中核記法だからだ。実装も意図的で、文脈の条件まで作り込まれている
@@ -47,13 +47,13 @@ on に置くのはそのため——CommonMark 準拠のままで、困った人
 
 `core/` は設定を知らない（R3）ので、**旗は呼ぶ側が渡す**。
 
-| 層 | 口 |
-| --- | --- |
-| `core/block_parser` | `parse(text, indented_code=)` / `classify_line(..., indented_code=)` |
-| `core/html` | `render(text, indented_code=)` |
+| 層                   | 口                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `core/block_parser`  | `parse(text, indented_code=)` / `classify_line(..., indented_code=)`                    |
+| `core/html`          | `render(text, indented_code=)`                                                          |
 | `editor/highlighter` | `set_indented_code()`。**全体を掛け直す**（表示の決まりごと自体が変わるので R7 の例外） |
-| `editor/exporter` | 6 つの入口に旗を通す |
-| `ui/main_window` | 設定を部品へ流す（起動時と設定変更時） |
+| `editor/exporter`    | 6 つの入口に旗を通す                                                                    |
+| `ui/main_window`     | 設定を部品へ流す（起動時と設定変更時）                                                  |
 
 markdown-it 側は `disable("code")` で止まる（`code` が**インデント
 コードの規則**の名前。フェンスは別の規則なので止まらない）。解析器は

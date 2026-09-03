@@ -27,6 +27,7 @@ import { attachmentEvents, type SaveAttachment } from "./attachments";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
+import { insertTableAt, tableAutoFormat } from "./table-format";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import {
   imageResolver,
@@ -54,6 +55,8 @@ export type EditorHandle = {
   toggleSourceMode: () => void;
   toggleFocusMode: () => void;
   toggleTypewriterMode: () => void;
+  /** キャレット位置に空の表を差し込む（rows は見出しを除いた行数） */
+  insertTable: (rows: number, columns: number) => void;
 };
 
 type Props = {
@@ -124,6 +127,33 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       toggleTypewriterMode() {
         if (view.current) toggleTypewriter(view.current);
       },
+      insertTable(rows: number, columns: number) {
+        const current = view.current;
+        if (!current) return;
+        const { from, to } = current.state.selection.main;
+        const replacement = insertTableAt(
+          current.state.doc.toString(),
+          from,
+          to,
+          {
+            rows,
+            columns,
+          },
+        );
+        current.dispatch({
+          changes: {
+            from: replacement.start,
+            to: replacement.end,
+            insert: replacement.text,
+          },
+          selection: {
+            anchor: replacement.selectStart,
+            head: replacement.selectEnd,
+          },
+          userEvent: "input",
+        });
+        current.focus();
+      },
       revealPos(pos) {
         const current = view.current;
         if (!current) return;
@@ -178,6 +208,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           }),
           syntaxHighlighting(codeHighlight),
           livePreview,
+          tableAutoFormat, // 表を離れたら桁揃え（ADR-0003 決定 4）
           headingFolding, // 見出しの折りたたみ（ADR-0019）
           editorModes,
           imageResolver.of(resolveImage ?? (async () => null)),

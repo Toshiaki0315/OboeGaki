@@ -54,4 +54,4 @@ spec §6.5 は確定順を次のように定めている。
 - 不可侵ルール（CLAUDE.md §3）への影響はない。R8（インラインは自作スキャナ、
   ブロックは markdown-it-py）の分担は変わらない。
 - 回帰テスト `tests/core/test_inline_scanner.py::TestLink::
-  test_リンク内のURLを裸のURLとして重複検出しない` がこの決定を固定している。
+test_リンク内のURLを裸のURLとして重複検出しない` がこの決定を固定している。

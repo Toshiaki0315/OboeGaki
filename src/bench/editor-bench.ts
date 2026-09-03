@@ -19,6 +19,7 @@ import { autoPair } from "../editor/auto-pair";
 import { codeHighlight, resolveCodeLanguage } from "../editor/code-blocks";
 import { frontMatterHide } from "../editor/frontmatter";
 import { headingFolding } from "../editor/folding";
+import { tableAutoFormat } from "../editor/table-format";
 
 const KEYSTROKES = 300;
 const BUDGET_MS = 16;
@@ -84,6 +85,7 @@ async function run() {
         }),
         syntaxHighlighting(codeHighlight),
         livePreview,
+        tableAutoFormat,
         headingFolding,
         EditorView.lineWrapping,
       ],

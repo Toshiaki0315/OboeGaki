@@ -18,11 +18,11 @@ ModuleNotFoundError: No module named 'PySide6.QtWebEngineWidgets'
 
 直すと次が出て、それも直すと次が出た。**3 つ重なっていた**。
 
-| # | 症状 | 原因 |
-|---|---|---|
-| 1 | `PySide6.QtWebEngineWidgets` が無い | Mermaid（ADR-0021）で使い始めたのに、`setup.py` が**除外したまま**だった |
-| 2 | `ziamath.fonts` が無い | 数式（ADR-0020）のフォントは実行時に `importlib.resources` で読む。`packages` に入れないと py2app は `.py` だけ拾う |
-| 3 | `SIGKILL (Code Signature Invalid)` | `lipo` で CPU を削ると署名が合わなくなる。`codesign --deep` は `Contents/Resources/` の下まで届かない |
+| #   | 症状                                | 原因                                                                                                                |
+| --- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 1   | `PySide6.QtWebEngineWidgets` が無い | Mermaid（ADR-0021）で使い始めたのに、`setup.py` が**除外したまま**だった                                            |
+| 2   | `ziamath.fonts` が無い              | 数式（ADR-0020）のフォントは実行時に `importlib.resources` で読む。`packages` に入れないと py2app は `.py` だけ拾う |
+| 3   | `SIGKILL (Code Signature Invalid)`  | `lipo` で CPU を削ると署名が合わなくなる。`codesign --deep` は `Contents/Resources/` の下まで届かない               |
 
 いずれも**普段のテストでは動かない道**だったので、誰も気づけなかった。
 ビルドは 2026-08-19 の Mermaid 導入から一度も通していなかったことになる。
@@ -44,10 +44,10 @@ wheel の Qt は universal（x86_64 + arm64）。`lipo -thin arm64` で全体が
 **ほぼ半分**になる。仕様書 §4 と ADR-0012 が既に **Intel を対象外**と
 決めているので、両方を持ち歩く理由が無い。
 
-| | 大きさ |
-|---|---|
-| 削る前（WebEngine 込み） | 1,294 MB |
-| 削った後 | **557 MB** |
+|                          | 大きさ     |
+| ------------------------ | ---------- |
+| 削る前（WebEngine 込み） | 1,294 MB   |
+| 削った後                 | **557 MB** |
 
 内訳の工夫: Chromium の翻訳は 100 言語で 38MB あるので `ja` と `en-US`
 だけ残す。開発者ツールの資源（10MB）は絵にするだけなら要らない。
@@ -90,12 +90,12 @@ wheel の Qt は universal（x86_64 + arm64）。`lipo -thin arm64` で全体が
 Apple Silicon のみ。ADR-0012 の再確認）。バンドルの中身を実測して、
 **実行時に読まれないもの**を 4 種類見つけた。
 
-| 削ったもの | 大きさ | なぜ要らないか |
-|---|---|---|
-| PySide6 の開発道具（lupdate 39MB ほか 17 個） | 53MB | アプリの実行に無関係。lupdate だけで Chromium 以外のどの部品より大きい |
-| ffmpeg（libav* / libsw*） | 36MB | QtMultimedia（削除済み）の付属。WebEngine は自前のコーデックを静的に持つ。symlink の組が py2app で実体の複製になり 2 倍になっていた |
-| Qt/qml と Qt/metatypes | 38MB | QWebEngineView（Widgets）は qml のモジュール置き場を読まない——**消しても図が描けることをバンドルの中で実測**（ADR-0030 本文の「QtQuick 一式が要る」は誤りだった） |
-| import しない Python 束縛（QtOpenGL 10MB ほか） | 15MB | フレームワーク（C++ 側）は dyld が要るが、束縛はただの重り。残すものは実測の import 一覧から決めた（KEEP_BINDINGS） |
+| 削ったもの                                      | 大きさ | なぜ要らないか                                                                                                                                                    |
+| ----------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PySide6 の開発道具（lupdate 39MB ほか 17 個）   | 53MB   | アプリの実行に無関係。lupdate だけで Chromium 以外のどの部品より大きい                                                                                            |
+| ffmpeg（libav* / libsw*）                       | 36MB   | QtMultimedia（削除済み）の付属。WebEngine は自前のコーデックを静的に持つ。symlink の組が py2app で実体の複製になり 2 倍になっていた                               |
+| Qt/qml と Qt/metatypes                          | 38MB   | QWebEngineView（Widgets）は qml のモジュール置き場を読まない——**消しても図が描けることをバンドルの中で実測**（ADR-0030 本文の「QtQuick 一式が要る」は誤りだった） |
+| import しない Python 束縛（QtOpenGL 10MB ほか） | 15MB   | フレームワーク（C++ 側）は dyld が要るが、束縛はただの重り。残すものは実測の import 一覧から決めた（KEEP_BINDINGS）                                               |
 
     557 MB → 435 MB（元の universal 比 66% 削減）
 
@@ -122,15 +122,15 @@ prune_bundle の KEEP_FRAMEWORKS / KEEP_BINDINGS に入っている」検査を
 `app-lite` は先頭で `dist` ごと消すので、並べて呼ぶだけでは先に作ったほうが
 消える——`all` は最初に 1 回だけ消し、以後は `build` だけ消して積む。
 
-| | `make app` | `make app-lite` |
-|---|---|---|
-| できるもの | `dist/OboeGaki.app` | `dist/OboeGakiLite.app` |
-| Finder に出る名前 | 覚書 | 覚書Lite |
-| アイコン | `OboeGaki.icns` | `OboeGakiLite.icns`（右下に小さく `Lite`） |
-| 大きさ | 435 MB | **132 MB** |
-| Mermaid の図 | 出る | コードのまま出る（落ちない） |
-| 数式（$$） | 出る | **出る**（ziamath + QtSvg。WebEngine と無関係） |
-| PDF 取り込み・書き出し・他の機能 | すべて同じ | すべて同じ |
+|                                  | `make app`          | `make app-lite`                                 |
+| -------------------------------- | ------------------- | ----------------------------------------------- |
+| できるもの                       | `dist/OboeGaki.app` | `dist/OboeGakiLite.app`                         |
+| Finder に出る名前                | 覚書                | 覚書Lite                                        |
+| アイコン                         | `OboeGaki.icns`     | `OboeGakiLite.icns`（右下に小さく `Lite`）      |
+| 大きさ                           | 435 MB              | **132 MB**                                      |
+| Mermaid の図                     | 出る                | コードのまま出る（落ちない）                    |
+| 数式（$$）                       | 出る                | **出る**（ziamath + QtSvg。WebEngine と無関係） |
+| PDF 取り込み・書き出し・他の機能 | すべて同じ          | すべて同じ                                      |
 
 **名前を分ける**（ユーザー要望 2026-08-28）。同じ `dist/` に置いたとき
 どちらか分からないと、軽いほうを配ってしまったり、Mermaid が出ない

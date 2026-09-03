@@ -67,6 +67,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .copy()
         .paste()
         .select_all()
+        .separator()
+        .item(&item("insert-table", "表を挿入…", None)?)
         .build()?;
     let view = SubmenuBuilder::new(handle, "表示")
         .item(&item(

@@ -11,10 +11,10 @@
 調べたところ、**ビルドした `.app` はもともと Apple Silicon でしか動かなかった**。
 文書が実態と食い違っていた。
 
-| 部品 | 対応 CPU |
-|---|---|
-| `Hitofude`（本体） | arm64 |
-| 同梱の `Python.framework` | arm64 |
+| 部品                        | 対応 CPU                             |
+| --------------------------- | ------------------------------------ |
+| `Hitofude`（本体）          | arm64                                |
+| 同梱の `Python.framework`   | arm64                                |
 | PySide6 の `QtCore.abi3.so` | x86_64 / arm64（wheel が universal） |
 
 PySide6 だけが両対応で、**それを載せる Python が arm64 のみ**。つまり

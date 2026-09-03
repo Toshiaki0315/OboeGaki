@@ -396,3 +396,30 @@ describe("previewDecorations（ブロック系）", () => {
     expect(checkbox!.ignoreEvent!(new Event("mousedown"))).toBe(true);
   });
 });
+
+describe("セル内の <br>（ADR-0028）", () => {
+  test("test_brで断片が分かれ改行として描かれる", () => {
+    const doc = "| 列A |\n| --- |\n| 一行目<br>二行目 |\n";
+    const data = tableWidgetOf(doc, doc.length);
+    expect(data).not.toBeNull();
+    expect(data!.rows[0][0]).toEqual([
+      { text: "一行目", kinds: [] },
+      { text: "\n", kinds: ["br"] },
+      { text: "二行目", kinds: [] },
+    ]);
+  });
+
+  test("test_変種のbrも同義", () => {
+    const doc = "| 列A |\n| --- |\n| a<br/>b<BR />c |\n";
+    const data = tableWidgetOf(doc, doc.length);
+    const kinds = data!.rows[0][0].map((s) => s.kinds.join(","));
+    expect(kinds).toEqual(["", "br", "", "br", ""]);
+  });
+
+  test("test_本文のbrは文字のまま", () => {
+    // <br> が意味を持つのは表のセルの中だけ（ADR-0028）
+    const doc = "本文の<br>はそのまま\n";
+    const decos = decorationsOf(doc, doc.length);
+    expect(decos.every((d) => d.kind !== "hide")).toBe(true);
+  });
+});

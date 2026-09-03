@@ -21,19 +21,19 @@ spec.md の設計判断のうち、Qt の欠陥への防御として置かれて
 
 技術選定を次のとおり置き換える（spec §4 の表に対応）:
 
-| 領域 | 旧（hitofude） | 新（OboeGaki） |
-|---|---|---|
-| 言語 | Python 3.12+ | TypeScript（フロント）+ Rust（永続化） |
-| GUI 基盤 | PySide6 / `QPlainTextEdit` | Tauri v2（WKWebView）+ React 19 + Vite |
-| 編集コア | `QSyntaxHighlighter` 自作 | **CodeMirror 6** |
-| ブロック解析 | markdown-it-py | **@lezer/markdown**（インラインと統合） |
-| インライン解析 | 自作 `re` スキャナ | 同上 + `relaxed-emphasis.ts` 拡張 |
-| アプリ状態 | 自作 + QSettings | Zustand（文書はミラーしない = T2） |
-| 検索インデックス | sqlite3 + FTS5 trigram | rusqlite + FTS5 trigram〔予定〕 |
-| ファイル監視 | watchdog | notify crate〔予定〕 |
-| パッケージング | py2app | Tauri bundler |
-| テスト | pytest + pytest-qt | vitest + cargo test |
-| Lint / Format | ruff | prettier + tsc + clippy + rustfmt |
+| 領域             | 旧（hitofude）             | 新（OboeGaki）                          |
+| ---------------- | -------------------------- | --------------------------------------- |
+| 言語             | Python 3.12+               | TypeScript（フロント）+ Rust（永続化）  |
+| GUI 基盤         | PySide6 / `QPlainTextEdit` | Tauri v2（WKWebView）+ React 19 + Vite  |
+| 編集コア         | `QSyntaxHighlighter` 自作  | **CodeMirror 6**                        |
+| ブロック解析     | markdown-it-py             | **@lezer/markdown**（インラインと統合） |
+| インライン解析   | 自作 `re` スキャナ         | 同上 + `relaxed-emphasis.ts` 拡張       |
+| アプリ状態       | 自作 + QSettings           | Zustand（文書はミラーしない = T2）      |
+| 検索インデックス | sqlite3 + FTS5 trigram     | rusqlite + FTS5 trigram〔予定〕         |
+| ファイル監視     | watchdog                   | notify crate〔予定〕                    |
+| パッケージング   | py2app                     | Tauri bundler                           |
+| テスト           | pytest + pytest-qt         | vitest + cargo test                     |
+| Lint / Format    | ruff                       | prettier + tsc + clippy + rustfmt       |
 
 不可侵ルールは CLAUDE.md の T1〜T7 に再編した（旧 R1〜R9 との対応も
 そこに記載）。旧 R2/R4/R5/R7 は CM6 では構造的に成立するため規約として消滅。
