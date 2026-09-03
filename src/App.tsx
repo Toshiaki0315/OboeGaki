@@ -29,6 +29,7 @@ import { highlightCodeHtml } from "./lib/export-code";
 import { splitDeck } from "./lib/slides";
 import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
+import { checkStyle, type Finding } from "./lib/style-check";
 import { buildPptx } from "./lib/pptx";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
@@ -449,6 +450,22 @@ function App() {
     } catch (error) {
       setStatus(`コピーできませんでした: ${String(error)}`);
     }
+  }
+
+  // 文体の指摘（U-4）。null は閉じている
+  const [styleFindings, setStyleFindings] = useState<Finding[] | null>(null);
+
+  /// 文体を見る。**まずパレットで出す** — 本文に波線を引くのは打鍵ごとの
+  /// 経路に入る（spec §6.6 の 16ms）ので、「見たいときに見る」形から始める。
+  /// **空のパレットは出さない**（何も無いことが分かればよい）。
+  function checkStyleNow() {
+    const text = editorRef.current?.getText() ?? "";
+    const found = checkStyle(text);
+    if (found.length === 0) {
+      setStatus("気になるところはありませんでした");
+      return;
+    }
+    setStyleFindings(found);
   }
 
   // 見出しパレット（Cmd+R、C-2）。**飛んだら閉じる道具**なので、
@@ -1471,6 +1488,7 @@ function App() {
     assistant: () => setAssistantOpen((open) => !open),
     "llm-unload": () => void handleUnloadModel(),
     "heading-palette": openHeadingPalette,
+    "style-check": checkStyleNow,
     "toggle-trees": () =>
       changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
     "toggle-notes": () =>
@@ -2661,6 +2679,46 @@ function App() {
               </div>
             );
           })()}
+        {styleFindings !== null && (
+          <div
+            className="palette-backdrop"
+            onMouseDown={() => setStyleFindings(null)}
+          >
+            <div
+              className="palette"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="palette-title">
+                文体を見る（{styleFindings.length} 件）
+              </header>
+              <ul>
+                {styleFindings.map((found) => (
+                  <li key={`${found.start}-${found.kind}`}>
+                    <button
+                      onClick={() => {
+                        setStyleFindings(null);
+                        editorRef.current?.revealPos(found.start);
+                      }}
+                    >
+                      <span className="style-text">
+                        {(editorRef.current?.getText() ?? "").slice(
+                          found.start,
+                          found.start + found.length,
+                        ) || "（空白）"}
+                      </span>
+                      {/* **どう書けるか**を出す（何が悪いかだけでは動けない） */}
+                      <span className="style-message">{found.message}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="dialog-text">
+                指摘するだけで、直しはしません。書き換えるかどうかは
+                書いた人が決めます。
+              </p>
+            </div>
+          </div>
+        )}
         {graph !== null && (
           <div className="palette-backdrop" onMouseDown={() => setGraph(null)}>
             <div

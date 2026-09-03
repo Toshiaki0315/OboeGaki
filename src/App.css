@@ -511,6 +511,22 @@ body.resizing {
   font-variant-numeric: tabular-nums;
 }
 
+/* 文体の指摘（U-4）。指摘した文字と、どう書けるかを並べる */
+.palette li button .style-text {
+  display: block;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette li button .style-message {
+  display: block;
+  font-size: 0.78rem;
+  opacity: 0.65;
+}
+
 /* リンクの図（M-2）。Mermaid が描いた SVG をそのまま置く */
 .graph-dialog {
   min-width: min(44rem, 90vw);

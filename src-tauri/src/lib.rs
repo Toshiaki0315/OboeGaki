@@ -152,6 +152,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
         // リンクの図（M-2）。起点は開いているノート
         .item(&item("link-graph", "リンクの図…", None)?)
+        // 文体を見る（U-4）。**指摘するだけで直さない**
+        .item(&item("style-check", "文体を見る…", None)?)
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
         .item(&item(
             "focus-mode",
