@@ -80,8 +80,11 @@ pub fn keep(
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
-    // 同じ秒に 2 回来たら上書きでよい（中身は同じか、直後の打ち直し）
-    fs::write(&target, text)?;
+    // 同じ秒に 2 回来たら上書きでよい（中身は同じか、直後の打ち直し）。
+    // 履歴は唯一「作り直せない」資産（T7）なので、本文と同じく
+    // アトミックに書く — 途中で落ちて切り詰められた版が正常な顔で
+    // 並ぶと、それを選んだときノートまで壊れる（レビュー 2026-09-04）
+    crate::autosave::save_atomic(&target, text)?;
     Ok(Some(target))
 }
 
@@ -130,12 +133,38 @@ pub fn rekey(root: &Path, before: &str, after: &str) -> io::Result<Option<PathBu
         return Ok(Some(target));
     }
     // 行き先にも版がある（同じ名前のノートを消して作り直した等）。
-    // どちらも捨てない。同じ時刻のものは中身も同じなので上書きでよい
+    // どちらも捨てない。マージが要るのは**別のノートの版**と混ざるとき
+    // なので、同じ時刻でも中身が同じとは限らない — fs::rename は行き先を
+    // 黙って上書きするため、同名があれば枝番で逃がす（レビュー 2026-09-04）
     for entry in fs::read_dir(&source)?.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            fs::rename(&path, target.join(entry.file_name()))?;
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
         }
+        let mut destination = target.join(entry.file_name());
+        if destination.exists() {
+            // 枝番を付けると STAMP_FORMAT で読めず一覧から消える。
+            // 名前は時刻なので、**秒を進めて**空きを探す（並び順も自然）
+            let stem = destination
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if let Ok(mut stamp) = NaiveDateTime::parse_from_str(&stem, STAMP_FORMAT) {
+                while destination.exists() {
+                    stamp += Duration::seconds(1);
+                    destination = target.join(format!("{}.md", stamp.format(STAMP_FORMAT)));
+                }
+            } else {
+                // 時刻でない名前（想定外）は枝番で退避 — 消すよりまし
+                let mut counter = 2;
+                while destination.exists() {
+                    destination = target.join(format!("{stem}-{counter}.md"));
+                    counter += 1;
+                }
+            }
+        }
+        fs::rename(&path, &destination)?;
     }
     if fs::read_dir(&source)?.next().is_none() {
         fs::remove_dir(&source)?;
@@ -185,6 +214,53 @@ mod tests {
             .unwrap()
             .and_hms_opt(h, mi, 0)
             .unwrap()
+    }
+
+    #[test]
+    fn test_rekey_マージで行き先の同名の版を潰さない() {
+        // レビュー 2026-09-04: fs::rename は行き先を黙って上書きする。
+        // マージが要るのは「別のノートの版と混ざるとき」なので、同じ
+        // 時刻でも中身が同じとは限らない。どちらも残す
+        let root = TempDir::new().unwrap();
+        let source = root.path().join(folder_name("path:a.md"));
+        let target = root.path().join(folder_name("path:b.md"));
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(source.join("2026-09-04T10-00-00.md"), "aの版").unwrap();
+        fs::write(target.join("2026-09-04T10-00-00.md"), "bの版").unwrap();
+
+        rekey(root.path(), "path:a.md", "path:b.md").unwrap();
+
+        let mut contents: Vec<String> = fs::read_dir(&target)
+            .unwrap()
+            .filter_map(|e| fs::read_to_string(e.unwrap().path()).ok())
+            .collect();
+        contents.sort();
+        assert_eq!(contents, vec!["aの版".to_string(), "bの版".to_string()]);
+        // 逃がした版も一覧（STAMP_FORMAT）から見えること
+        assert_eq!(versions(root.path(), "path:b.md").len(), 2);
+    }
+
+    #[test]
+    fn test_keep_は一時ファイル経由で書く() {
+        // 履歴は唯一「作り直せない」資産（T7）。書き込み中に落ちて
+        // 切り詰められた版が正常な顔で並んではいけない
+        let root = TempDir::new().unwrap();
+        let now = NaiveDate::from_ymd_opt(2026, 9, 4)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        let kept = keep(root.path(), "path:a.md", "本文", now, true, 60)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fs::read_to_string(&kept).unwrap(), "本文");
+        // 一時ファイルの残骸が無い
+        let extras: Vec<_> = fs::read_dir(kept.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path() != kept)
+            .collect();
+        assert!(extras.is_empty(), "{extras:?}");
     }
 
     #[test]
