@@ -19,7 +19,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 
 ## 第 1 群 — 日常利用の穴（最優先）
 
-- [ ] **1-1. 前回の vault を記憶して次回起動で自動的に開く**（Q-6）
+- [x] **1-1. 前回の vault を記憶して次回起動で自動的に開く**（Q-6）
       保存先はフロント側の設定置き場（localStorage か tauri-plugin-store）。
       開けなかったら黙ってフォルダ選択に落ちる（Q-6 と同じ挙動）
 - [ ] **1-2. 画像の貼り付け / ドロップ取り込み**（A-2, editor/attachments.py）

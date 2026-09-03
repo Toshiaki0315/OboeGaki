@@ -9,6 +9,7 @@ import type { OutlineItem } from "./editor/outline";
 import { createDebouncer } from "./lib/debounce";
 import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
+import { restoreLastVault, saveLastVault } from "./lib/last-vault";
 import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
 import {
   conflictCopy,
@@ -193,9 +194,18 @@ function App() {
     if (typeof picked === "string") {
       autosave.flush();
       await openVault(picked);
+      saveLastVault(localStorage, picked);
       setDoc(null);
     }
   }
+
+  // 前回の vault を開き直す（TASKS 1-1）。開けなければ黙って選択画面のまま
+  useEffect(() => {
+    if (vaultRootRef.current) return;
+    void restoreLastVault(localStorage, openVault);
+    // 起動時に一度だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function openNote(path: string) {
     if (!vaultRoot) return;
