@@ -199,14 +199,32 @@ impl IndexDb {
         // 背景同期と watcher の更新が同時に走っても SQLITE_BUSY で落とさない
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version != SCHEMA_VERSION {
-            conn.execute_batch(
-                "DROP TABLE IF EXISTS notes;
+        // **世代番号だけを信じない。** 起動時は複数の接続（背景同期・一覧・
+        // watcher）が同時にここを通り、非トランザクションだった移行が交錯して
+        // 「user_version は新しいのに notes は旧形」が焼き付いたことがある
+        //（実機 2026-09-04。IF NOT EXISTS が旧テーブルを残すため、以後の
+        // open が全部失敗して vault が開けなくなった）。形も見て、合わなければ
+        // 作り直す — 索引は捨ててよいキャッシュ（T7）
+        let shape_ok: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('notes') WHERE name = 'title_key'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|n| n == 1)
+            .unwrap_or(false);
+        if version != SCHEMA_VERSION || !shape_ok {
+            // 移行は 1 かたまりで（BEGIN IMMEDIATE = 書き手を 1 本に）。
+            // 途中で他の接続が割り込むと半端な形が残る
+            conn.execute_batch(&format!(
+                "BEGIN IMMEDIATE;
+                 DROP TABLE IF EXISTS notes;
                  DROP TABLE IF EXISTS notes_fts;
                  DROP TABLE IF EXISTS tags;
-                 DROP TABLE IF EXISTS links;",
-            )?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+                 DROP TABLE IF EXISTS links;
+                 PRAGMA user_version = {SCHEMA_VERSION};
+                 COMMIT;"
+            ))?;
         }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS notes (
@@ -726,6 +744,43 @@ mod tests {
 
     fn paths(hits: &[SearchHit]) -> Vec<&str> {
         hits.iter().map(|h| h.path.as_str()).collect()
+    }
+
+    #[test]
+    fn test_open_バージョンが合っていても形が古ければ作り直す() {
+        // 実機で発生（2026-09-04）: 起動時に複数の接続が同時に open を通り、
+        // 「user_version は新しいのに notes は旧形」という状態が焼き付いた。
+        // IF NOT EXISTS は旧テーブルを残すので、以後すべての open が
+        // no such column: title_key で失敗し、vault が開けなくなる。
+        // 索引は捨ててよいキャッシュ（T7）— 形が合わなければ作り直す
+        let dir = TempDir::new().unwrap();
+        {
+            let conn = Connection::open(dir.path().join(INDEX_FILE)).unwrap();
+            conn.pragma_update(None, "user_version", SCHEMA_VERSION)
+                .unwrap();
+            conn.execute_batch(
+                "CREATE TABLE notes (
+                    path TEXT PRIMARY KEY, title TEXT NOT NULL,
+                    preview TEXT NOT NULL, mtime_ns INTEGER NOT NULL,
+                    size_bytes INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0
+                );",
+            )
+            .unwrap();
+        }
+        let db = IndexDb::open(dir.path()).unwrap();
+        // 新しい形で読める（title_key がある）
+        db.conn
+            .query_row("SELECT title_key FROM notes LIMIT 1", [], |_| Ok(()))
+            .err(); // 行が無いのは構わない。列が無ければ prepare で落ちる
+        let column: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('notes') WHERE name = 'title_key'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(column, 1);
     }
 
     #[test]
