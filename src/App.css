@@ -108,10 +108,28 @@ body {
 }
 
 .status-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.3rem 1rem;
   font-size: 12px;
   opacity: 0.7;
   min-height: 1.2em;
+}
+
+.status-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 数字は幅が動くと目が引っ張られるので等幅に固定する */
+.status-stats {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
 }
 
 .note-header {

@@ -47,6 +47,7 @@ import {
   type ImageResolver,
 } from "./live-preview";
 import { outlineOf, type OutlineItem } from "./outline";
+import { statsOf, type TextStats } from "./stats";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
 // onDocChanged（= 自動保存の予約）を発火させないために使う
@@ -58,6 +59,8 @@ export type EditorHandle = {
   replaceText: (text: string) => void;
   /// 見出しの一覧（アウトライン用。呼んだときだけ数える = ADR-0022）
   getOutline: () => OutlineItem[];
+  /// 文字数と行数（ステータスバー用。こちらも呼んだときだけ数える）
+  getStats: () => TextStats;
   /// 今の本文（競合の「両方残す」で使う）
   getText: () => string;
   /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
@@ -141,6 +144,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       getOutline() {
         return view.current ? outlineOf(view.current.state) : [];
+      },
+      getStats() {
+        return view.current
+          ? statsOf(view.current.state)
+          : { characters: 0, lines: 0 };
       },
       getText() {
         return view.current?.state.doc.toString() ?? "";

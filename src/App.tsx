@@ -12,6 +12,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
+import type { TextStats } from "./editor/stats";
 import { createDebouncer } from "./lib/debounce";
 import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
@@ -119,6 +120,14 @@ const WIDTH_LABELS: Record<ContentWidth, string> = {
   wide: "広め",
   full: "最大（ウィンドウ幅）",
 };
+
+/// 保存時刻（時:分）。日付は出さない — 開いている間に保存した時刻なので、
+/// 日付まで出すと情報が増えるだけで読み取りが遅くなる。
+function clockOf(at: number): string {
+  const time = new Date(at);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(time.getHours())}:${pad(time.getMinutes())}`;
+}
 
 /// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
 function folderLabel(folder: string): string {
@@ -317,6 +326,11 @@ function App() {
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
   const [cursorPos, setCursorPos] = useState(0);
   const outlineSoon = useMemo(() => createDebouncer(300), []);
+  // ステータスバーの統計（TASKS 3-10）。**打鍵ごとには数えない**
+  // （全文の走査は 16ms の予算を食う）。打ち終わってからまとめて数える
+  const [stats, setStats] = useState<TextStats>({ characters: 0, lines: 0 });
+  const statsSoon = useMemo(() => createDebouncer(300), []);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   function toggleOutline() {
     setOutlineOpen((open) => {
@@ -418,6 +432,7 @@ function App() {
     setDoc(text);
     dirtyRef.current = false;
     setStatus("");
+    setSavedAt(null);
   }
 
   async function handleCreate() {
@@ -780,6 +795,7 @@ function App() {
       );
       dirtyRef.current = false;
       setStatus("保存済み");
+      setSavedAt(Date.now());
       // 書けたので保険は要らない。**退避したときだけ**捨てに行く
       // （毎回の保存でディスクを余分に叩かない）
       if (stashed.current.delete(path)) void discardStash(root, path);
@@ -803,7 +819,17 @@ function App() {
         setOutlineItems(editorRef.current?.getOutline() ?? []),
       );
     }
+    statsSoon.schedule(() =>
+      setStats(editorRef.current?.getStats() ?? { characters: 0, lines: 0 }),
+    );
   }
+
+  // ノートを開いたら数え直す。**エディタが立ち上がったあと**に数える
+  // （子の mount → 親の effect の順なので、ここでは既に新しい内容）
+  useEffect(() => {
+    statsSoon.cancel();
+    setStats(editorRef.current?.getStats() ?? { characters: 0, lines: 0 });
+  }, [doc, currentPath, statsSoon]);
 
   // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
   useEffect(() => () => autosave.flush(), [autosave]);
@@ -1362,7 +1388,13 @@ function App() {
             </ul>
           </details>
         )}
-        <footer className="status-bar">{status}</footer>
+        <footer className="status-bar">
+          <span className="status-message">{status}</span>
+          <span className="status-stats">
+            {stats.characters} 文字 / {stats.lines} 行
+            {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
+          </span>
+        </footer>
       </section>
       {templates !== null && (
         <div
