@@ -262,17 +262,54 @@ describe("previewDecorations（ブロック系）", () => {
       "前\n\n| 名前 | 数 |\n| :--- | ---: |\n| りんご | 3 |\n| **太字** | 1 |\n\n後";
     const data = tableWidgetOf(doc, 0);
     expect(data).toEqual({
-      header: ["名前", "数"],
+      header: [[{ text: "名前", kinds: [] }], [{ text: "数", kinds: [] }]],
       aligns: ["left", "right"],
       rows: [
-        ["りんご", "3"],
-        ["**太字**", "1"], // セル内はプレーンテキスト（ADR-0035 の 5）
+        [[{ text: "りんご", kinds: [] }], [{ text: "3", kinds: [] }]],
+        [[{ text: "太字", kinds: ["strong"] }], [{ text: "1", kinds: [] }]],
       ],
     });
     // 置き換えた範囲では内側のマーカー隠しを重ねない
     const from = doc.indexOf("|");
     const decos = decorationsOf(doc, 0);
     expect(decos.some((d) => d.kind === "hide" && d.from >= from)).toBe(false);
+  });
+
+  test("セル内のインライン記法を描き分ける（ADR-0031）", () => {
+    const doc =
+      "| A | B |\n| --- | --- |\n| `Cmd+N` を押す | a~~打ち消し~~と::目立つ:: |\n| [説明](https://x.com) | #タグ です |\n\n他";
+    const data = tableWidgetOf(doc, doc.length)!;
+    expect(data.rows[0][0]).toEqual([
+      { text: "Cmd+N", kinds: ["code"] },
+      { text: " を押す", kinds: [] },
+    ]);
+    expect(data.rows[0][1]).toEqual([
+      { text: "a", kinds: [] },
+      { text: "打ち消し", kinds: ["strike"] },
+      { text: "と", kinds: [] },
+      { text: "目立つ", kinds: ["highlight"] },
+    ]);
+    // リンクは対象外: 記号だけ消すと URL が見えなくなるので生のまま
+    expect(data.rows[1][0]).toEqual([
+      { text: "[説明](https://x.com)", kinds: [] },
+    ]);
+    // タグは # ごと描く
+    expect(data.rows[1][1]).toEqual([
+      { text: "#タグ", kinds: ["tag"] },
+      { text: " です", kinds: [] },
+    ]);
+  });
+
+  test("セル内の入れ子は種類の集合で持つ", () => {
+    // 入れ子の形はオラクル済みの「**bold *em* here**」型を使う
+    // （`**…*…***` のように閉じを繋げた形は参照実装でも対にならない）
+    const doc = "| A |\n| --- |\n| **太字の*斜体*も** |\n\n他";
+    const data = tableWidgetOf(doc, doc.length)!;
+    expect(data.rows[0][0]).toEqual([
+      { text: "太字の", kinds: ["strong"] },
+      { text: "斜体", kinds: ["strong", "em"] },
+      { text: "も", kinds: ["strong"] },
+    ]);
   });
 
   test("表の中にカーソルがあるときは生のソースを見せる（表単位リビール）", () => {
@@ -331,7 +368,9 @@ describe("previewDecorations（ブロック系）", () => {
         widget?: { data?: TableData };
       }
     ).widget?.data;
-    expect(data?.rows).toEqual([["9", "2"]]);
+    expect(data?.rows).toEqual([
+      [[{ text: "9", kinds: [] }], [{ text: "2", kinds: [] }]],
+    ]);
   });
 
   test("チェックボックスへのイベントは CM6 に渡さない（実機の回帰）", () => {
