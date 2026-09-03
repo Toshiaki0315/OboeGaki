@@ -84,6 +84,10 @@ pub fn vault_open(
                 eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
             }
             history::prune(&history_root(&root), chrono::Local::now().naive_local());
+            // 期限切れのゴミも一緒に掃除する（spec §7.6、30 日）
+            if let Err(error) = vault.purge_trash(30) {
+                eprintln!("ゴミ箱の掃除に失敗した: {error}");
+            }
             let _ = app.emit("index-updated", ());
         });
     }
@@ -353,6 +357,23 @@ pub fn trash_list(root: String) -> Result<Vec<String>, String> {
         .into_iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect())
+}
+
+/// ゴミ箱の 1 件を完全に消す（G-3）。ゴミ箱の外は消さない。
+#[tauri::command]
+pub fn trash_delete(root: String, path: String) -> Result<(), String> {
+    Vault::new(&root)
+        .delete_permanently(Path::new(&path))
+        .map_err(|e| e.to_string())
+}
+
+/// ゴミ箱を空にする（G-3）。確認を取るのはフロント側の仕事。
+#[tauri::command]
+pub fn trash_empty(root: String) -> Result<(), String> {
+    Vault::new(&root)
+        .empty_trash()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

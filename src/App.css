@@ -466,3 +466,17 @@ body {
 .conflict-actions button:hover {
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
+
+/* 取り返しのつかない操作は赤系で目立たせる（ゴミ箱の完全削除） */
+button.danger {
+  color: #b3261e;
+}
+.trash-empty {
+  margin: 0.4rem 0 0.2rem;
+  width: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  button.danger {
+    color: #ff8a80;
+  }
+}

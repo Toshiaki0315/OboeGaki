@@ -282,9 +282,107 @@ impl Vault {
             target
         };
         fs::rename(path, &target)?;
-        // TODO: 期限つき掃除（purge_trash）を実装するときは、ここで mtime を
-        // 刻み直す（rename は mtime を変えないため「捨ててから」を数えられない）
+        // purge_trash の期限は「捨ててから」数える。rename は mtime を
+        // 変えないので、ここで刻み直さないと古いノートが即座に消える
+        if let Ok(file) = fs::File::options().write(true).open(&target) {
+            let _ = file.set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now()));
+        }
         Ok(target)
+    }
+
+    /// 期限を過ぎたゴミ箱の中身を消す（spec §7.6）。vault を開いたときに呼ぶ。
+    ///
+    /// 1 件の不調で掃除ごと投げ出さない — 同期の下では走査と stat の間に
+    /// ファイルが消える（iCloud / Dropbox / 別マシンが同じ vault を触る）。
+    pub fn purge_trash(&self, days: u64) -> io::Result<Vec<PathBuf>> {
+        let trash = self.trash_dir();
+        if !trash.is_dir() {
+            return Ok(vec![]);
+        }
+        let deadline = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(days.saturating_mul(24 * 3600));
+        let mut removed = Vec::new();
+        let mut stack = vec![trash.clone()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let expired = fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .map(|m| m < deadline)
+                    .unwrap_or(false);
+                if expired && fs::remove_file(&path).is_ok() {
+                    if let Some(parent) = path.parent() {
+                        prune_empty_dirs(parent, &trash.canonicalize().unwrap_or(trash.clone()));
+                    }
+                    removed.push(path);
+                }
+            }
+        }
+        removed.sort();
+        Ok(removed)
+    }
+
+    /// ゴミ箱の中身を今すぐ全部消す（G-3）。期限を待たずに消したいことがある。
+    /// 呼ぶ前に確認を取るのは UI 側の仕事。ここは黙って消す。
+    pub fn empty_trash(&self) -> io::Result<Vec<PathBuf>> {
+        let trash = self.trash_dir();
+        if !trash.is_dir() {
+            return Ok(vec![]);
+        }
+        let mut removed = Vec::new();
+        for entry in fs::read_dir(&trash)?.flatten() {
+            let path = entry.path();
+            let gone = if path.is_dir() {
+                fs::remove_dir_all(&path).is_ok()
+            } else {
+                fs::remove_file(&path).is_ok()
+            };
+            if gone {
+                removed.push(path);
+            }
+        }
+        removed.sort();
+        Ok(removed)
+    }
+
+    /// ゴミ箱の中の 1 件を完全に消す（G-3）。
+    ///
+    /// **ゴミ箱の外は消さない。** 保管フォルダのノートを直に消す道を作ると、
+    /// 押し間違いが取り返しのつかない結果になる。既に無ければ何もしない。
+    pub fn delete_permanently(&self, path: &Path) -> io::Result<()> {
+        let trash = self
+            .trash_dir()
+            .canonicalize()
+            .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "ゴミ箱がまだ無い".to_string()))?;
+        // 字句上の判定は `.trash/../メモ.md` を通す。実体で見る
+        match path.canonicalize() {
+            Ok(resolved) => {
+                if resolved == trash || !resolved.starts_with(&trash) {
+                    return Err(outside_error("ゴミ箱の外は消せない", path));
+                }
+                fs::remove_file(&resolved)?;
+                if let Some(parent) = resolved.parent() {
+                    prune_empty_dirs(parent, &trash);
+                }
+                Ok(())
+            }
+            // 実体が無い = 既に消えている。続けて押したときに落ちない。
+            // ただし字句上でもゴミ箱の中を指していることだけは確かめる
+            Err(_) => {
+                if path.starts_with(self.trash_dir()) && !path.to_string_lossy().contains("..") {
+                    Ok(())
+                } else {
+                    Err(outside_error("ゴミ箱の外は消せない", path))
+                }
+            }
+        }
     }
 
     /// ゴミ箱の中の Markdown ファイルを名前順で返す。
@@ -650,6 +748,106 @@ mod tests {
         assert!(vault.managed_dir().is_dir());
         assert!(vault.attachments_dir().is_dir());
         assert!(!root.path().join(LEGACY_MANAGED_DIR).exists());
+    }
+
+    /// テスト用: ファイルの mtime を「日数」だけ過去にずらす。
+    fn age_file(path: &Path, days: u64) {
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 24 * 3600);
+        let file = std::fs::File::options().write(true).open(path).unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(past))
+            .unwrap();
+    }
+
+    fn mtime(path: &Path) -> std::time::SystemTime {
+        std::fs::metadata(path).unwrap().modified().unwrap()
+    }
+
+    #[test]
+    fn test_trash_捨てた直後のmtimeは今になる() {
+        // rename は mtime を保つので、刻み直さないと古いノートが
+        // purge_trash で即座に消える（参照実装と同じ約束）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let path = note(root.path(), "古い.md");
+        age_file(&path, 90);
+
+        let target = vault.trash(&path).unwrap();
+        let elapsed = mtime(&target).elapsed().unwrap();
+        assert!(elapsed < std::time::Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_purge_trash_期限を過ぎたものだけ消して空の殻も残さない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let old = note(root.path(), &format!("{TRASH_DIR}/sub/古い.md"));
+        let fresh = note(root.path(), &format!("{TRASH_DIR}/新しい.md"));
+        age_file(&old, 31);
+
+        let removed = vault.purge_trash(30).unwrap();
+        assert_eq!(removed, vec![old.clone()]);
+        assert!(!old.exists());
+        assert!(!old.parent().unwrap().exists(), "空の殻を残さない");
+        assert!(fresh.exists());
+    }
+
+    #[test]
+    fn test_purge_trash_ゴミ箱が無ければ何もしない() {
+        let root = TempDir::new().unwrap();
+        assert_eq!(
+            Vault::new(root.path()).purge_trash(30).unwrap(),
+            Vec::<PathBuf>::new()
+        );
+    }
+
+    #[test]
+    fn test_empty_trash_期限を待たずに全部消す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let a = note(root.path(), &format!("{TRASH_DIR}/a.md"));
+        let b = note(root.path(), &format!("{TRASH_DIR}/sub/b.md"));
+        let keep = note(root.path(), "残る.md");
+
+        vault.empty_trash().unwrap();
+        assert!(!a.exists());
+        assert!(!b.exists());
+        assert!(keep.exists(), "ゴミ箱の外は触らない");
+    }
+
+    #[test]
+    fn test_delete_permanently_ゴミ箱の1件だけ消して殻を残さない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let gone = note(root.path(), &format!("{TRASH_DIR}/sub/消す.md"));
+        let keep = note(root.path(), &format!("{TRASH_DIR}/残す.md"));
+
+        vault.delete_permanently(&gone).unwrap();
+        assert!(!gone.exists());
+        assert!(!gone.parent().unwrap().exists());
+        assert!(keep.exists());
+    }
+
+    #[test]
+    fn test_delete_permanently_ゴミ箱の外は消さずにエラー() {
+        // 押し間違いが取り返しのつかない結果にならないための境界
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let alive = note(root.path(), "生きている.md");
+        assert!(vault.delete_permanently(&alive).is_err());
+        assert!(alive.exists());
+        let sneaky = root.path().join(format!("{TRASH_DIR}/../生きている.md"));
+        assert!(vault.delete_permanently(&sneaky).is_err());
+        assert!(alive.exists());
+    }
+
+    #[test]
+    fn test_delete_permanently_既に無ければ何もしない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let gone = vault.trash_dir().join("無い.md");
+        assert!(vault.delete_permanently(&gone).is_ok());
     }
 
     #[test]

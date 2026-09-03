@@ -98,6 +98,16 @@ export async function restoreNote(root: string, path: string): Promise<string> {
   return invoke<string>("note_restore", { root, path });
 }
 
+/// ゴミ箱の 1 件を完全に消す。消してよいかの確認は呼び出し側の仕事。
+export async function deleteForever(root: string, path: string): Promise<void> {
+  await invoke("trash_delete", { root, path });
+}
+
+/// ゴミ箱を空にする。確認は呼び出し側の仕事。
+export async function emptyTrash(root: string): Promise<void> {
+  await invoke("trash_empty", { root });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

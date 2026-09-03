@@ -125,6 +125,8 @@ pub fn run() {
             commands::note_trash,
             commands::trash_list,
             commands::note_restore,
+            commands::trash_delete,
+            commands::trash_empty,
             commands::note_search,
             commands::image_read,
             commands::attachment_save,

@@ -14,6 +14,8 @@ import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
 import {
   conflictCopy,
   createNote,
+  deleteForever,
+  emptyTrash,
   historyList,
   historyRestore,
   imageSource,
@@ -310,6 +312,29 @@ function App() {
     await openNote(restored); // 戻したノートをそのまま開いて見せる
   }
 
+  // 完全削除は取り返しがつかないので、必ず確認を挟む（G-3）
+  async function handleDeleteForever(path: string) {
+    if (!vaultRoot) return;
+    const ok = await confirm(
+      `「${trashLabel(vaultRoot, path)}」を完全に削除しますか？\nこの操作は取り消せません。`,
+      { title: "覚書", kind: "warning" },
+    );
+    if (!ok) return;
+    await deleteForever(vaultRoot, path);
+    await refresh();
+  }
+
+  async function handleEmptyTrash() {
+    if (!vaultRoot) return;
+    const ok = await confirm(
+      `ゴミ箱の ${trashNotes.length} 件をすべて完全に削除しますか？\nこの操作は取り消せません。`,
+      { title: "覚書", kind: "warning" },
+    );
+    if (!ok) return;
+    await emptyTrash(vaultRoot);
+    await refresh();
+  }
+
   function handleDocChanged(getText: () => string) {
     if (!vaultRoot || !currentPath) return;
     const root = vaultRoot;
@@ -592,9 +617,22 @@ function App() {
                 <li key={path} className="trash-item">
                   <span>{trashLabel(vaultRoot, path)}</span>
                   <button onClick={() => void handleRestore(path)}>戻す</button>
+                  <button
+                    className="danger"
+                    title="完全に削除"
+                    onClick={() => void handleDeleteForever(path)}
+                  >
+                    削除
+                  </button>
                 </li>
               ))}
             </ul>
+            <button
+              className="danger trash-empty"
+              onClick={() => void handleEmptyTrash()}
+            >
+              ゴミ箱を空にする
+            </button>
           </details>
         )}
       </aside>
