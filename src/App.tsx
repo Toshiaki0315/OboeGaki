@@ -30,7 +30,7 @@ import { splitDeck } from "./lib/slides";
 import { buildPptx } from "./lib/pptx";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
-import { pdfPages } from "./lib/pdf-import";
+import { OCR_THRESHOLD, pdfPageImage, pdfPages } from "./lib/pdf-import";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -470,12 +470,49 @@ function App() {
     }
   }
 
+  /// PDF のページを読む。**文字が取れないページだけ**読み取りに回す
+  /// （ADR-0027 追記: 切り分けはページごと）。
+  async function readPdfPages(bytes: Uint8Array): Promise<string[]> {
+    const pages = await pdfPages(bytes);
+    const found: string[] = [];
+    for (const [index, page] of pages.entries()) {
+      if (page.trim().length >= OCR_THRESHOLD) {
+        found.push(page); // 速くて正確なほうを黙って捨てない
+        continue;
+      }
+      setStatus(`文字を読み取っています… ${index + 1}/${pages.length} ページ`);
+      const image = await pdfPageImage(bytes, index + 1);
+      const read = image
+        ? await invoke<string>("ocr_image", { data: image })
+        : "";
+      // **読み取りが元より短ければ捨てる**（外すこともあるので、短くても
+      // 本物の文字が入っているページを潰さない）
+      found.push(read.trim().length > page.trim().length ? read : page);
+    }
+    return found;
+  }
+
   /// PowerPoint を読み込んでノートにする（TASKS 4-5 / F-3）。
   /// **ざっくり読んで手で直す**前提。中身だけが残り、見た目は戻らない。
   async function handleImportPptx() {
     if (!vaultRoot) return;
     const picked = await open({
-      filters: [{ name: "読み込める資料", extensions: ["pdf", "pptx"] }],
+      filters: [
+        {
+          name: "読み込める資料",
+          // 絵は読み取りに回す（ADR-0041）
+          extensions: [
+            "pdf",
+            "pptx",
+            "png",
+            "jpg",
+            "jpeg",
+            "heic",
+            "tiff",
+            "tif",
+          ],
+        },
+      ],
     });
     if (typeof picked !== "string") return;
     setStatus("読み込んでいます…");
@@ -485,9 +522,17 @@ function App() {
       const name = picked.split("/").pop() ?? "資料";
       const title = name.replace(/\.(pptx|pdf)$/i, "");
       // 形式ごとに読み方は違うが、**整えるのは同じ**（lib/imported.ts）
-      const markdown = /\.pdf$/i.test(name)
-        ? toMarkdown(await pdfPages(bytes), title)
-        : slidesToMarkdown(title, await readPptx(bytes));
+      let markdown: string;
+      if (/\.(png|jpe?g|heic|tiff?)$/i.test(name)) {
+        markdown = toMarkdown(
+          [await invoke<string>("ocr_image", { data })],
+          title,
+        );
+      } else if (/\.pdf$/i.test(name)) {
+        markdown = toMarkdown(await readPdfPages(bytes), title);
+      } else {
+        markdown = slidesToMarkdown(title, await readPptx(bytes));
+      }
       if (!markdown) {
         // 中身が無ければ題名だけのノートを作らせない
         setStatus("文字を取り出せませんでした");

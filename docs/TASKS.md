@@ -114,7 +114,9 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **4-6. 外部形式の取り込み**（ADR-0040。PDF は pdf.js、整え方は
       参照実装 core/imported.py のまま）。**文字だけ**を読む — 埋め込み
       画像と、文字の無い PDF の読み取り（OCR）は 4-7
-- [ ] **4-7. OCR**（ADR-0027, tools/ocr の Swift ツールを流用できるか検証）
+- [x] **4-7. OCR**（ADR-0041 で 0027 の決定 2 を置換）
+      Swift の同梱は要らなかった — Rust から Vision を直に呼べる
+      （実測 0.73 秒。同梱物も署名の対象も増えない）
 - [ ] **4-8. ローカル LLM アシスタント**（ADR-0025, docs/ollama.md）
 - [ ] **4-9. リンクの図（グラフ表示）・続柄・仮身化**（M-1〜M-3）
 - [ ] **4-10. 関連ノートの提示**（core/related.py）

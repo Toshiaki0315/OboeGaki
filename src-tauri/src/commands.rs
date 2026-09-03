@@ -565,6 +565,19 @@ pub fn import_read(path: String) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
+/// 絵から文字を読む（TASKS 4-7 / ADR-0041）。読めなければ空。
+///
+/// 受け取るのは base64 の画像。**元のファイルは触らない** — 読み取った
+/// 文字を返すだけで、ノートにするのは呼び出し側の仕事。
+#[tauri::command]
+pub fn ocr_image(data: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| e.to_string())?;
+    Ok(crate::ocr::recognize(&bytes))
+}
+
 /// 印刷（TASKS 4-3）。macOS の印刷パネルを出す（「PDF として保存」もここ）。
 ///
 /// 印刷されるのは**この WebView に今出ているもの**なので、何を出すかは

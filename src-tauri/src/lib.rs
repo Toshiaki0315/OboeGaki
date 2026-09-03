@@ -8,6 +8,7 @@ pub mod commands;
 pub mod front_matter;
 mod history;
 pub mod index_db;
+pub mod ocr;
 pub mod recovery;
 pub mod references;
 pub mod search_query;
@@ -80,7 +81,11 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
         .item(&item("export-html", "HTML に書き出し…", None)?)
         .item(&item("export-pptx", "PowerPoint に書き出し…", None)?)
-        .item(&item("import-pptx", "読み込む…（PDF / PowerPoint）", None)?)
+        .item(&item(
+            "import-pptx",
+            "読み込む…（PDF / PowerPoint / 画像）",
+            None,
+        )?)
         // 印刷（ADR-0038）。macOS の印刷パネルから「PDF として保存」もできる
         .item(&item("print", "プリント…", Some("CmdOrCtrl+P"))?)
         .separator()
@@ -253,6 +258,7 @@ pub fn run() {
             commands::print_page,
             commands::export_write_binary,
             commands::import_read,
+            commands::ocr_image,
             commands::conflict_copy,
             commands::startup_elapsed_ms,
         ])

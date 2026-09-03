@@ -50,3 +50,42 @@ function joinItems(items: unknown[]): string {
   }
   return text;
 }
+
+/// 文字が入っていないページ（紙を取り込んだもの）を絵にする。
+///
+/// **0 文字では判断しない**（ADR-0027 追記）。紙のページからは罫線や
+/// ページ番号の誤認で数文字だけ取れることがあり、そこで「文字がある」と
+/// 判断すると読めないまま終わる。
+export const OCR_THRESHOLD = 20;
+
+/// そのページを PNG（base64）にする。読み取りに回すためのもの。
+export async function pdfPageImage(
+  bytes: Uint8Array,
+  page: number,
+): Promise<string | null> {
+  try {
+    const pdfjs = await import("pdfjs-dist");
+    const worker = await import("pdfjs-dist/build/pdf.worker.mjs?url");
+    pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    const task = pdfjs.getDocument({ data: bytes });
+    const document = await task.promise;
+    const target = await document.getPage(page);
+    // **大きすぎると遅く、小さすぎると読めない**（参照実装は 1,600px）
+    const scale = PAGE_WIDTH / target.getViewport({ scale: 1 }).width;
+    const viewport = target.getViewport({ scale });
+    const canvas = window.document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    await target.render({ canvas, canvasContext: context, viewport }).promise;
+    await task.destroy();
+    return canvas.toDataURL("image/png").split(",")[1] ?? null;
+  } catch (error) {
+    console.warn("PDF のページを絵にできなかった", error);
+    return null;
+  }
+}
+
+/// 絵にするときの横幅。実測では A4 相当を 1,600px で読めている。
+const PAGE_WIDTH = 1600;
