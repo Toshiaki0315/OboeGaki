@@ -9,6 +9,7 @@ pub mod front_matter;
 mod history;
 pub mod index_db;
 pub mod tags;
+pub mod template;
 pub mod vault;
 pub mod watcher;
 
@@ -51,6 +52,12 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .build()?;
     let file = SubmenuBuilder::new(handle, "ファイル")
         .item(&item("new-note", "新規ノート", Some("CmdOrCtrl+N"))?)
+        .item(&item(
+            "new-from-template",
+            "テンプレートから新規…",
+            Some("CmdOrCtrl+Shift+N"),
+        )?)
+        .item(&item("daily-note", "今日のノート", Some("CmdOrCtrl+T"))?)
         .item(&item("open-vault", "保管フォルダを開く…", None)?)
         .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
@@ -109,8 +116,11 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+Shift+Y"),
         )?)
         .build()?;
+    let help = SubmenuBuilder::new(handle, "ヘルプ")
+        .item(&item("place-manual", "使い方のノートを置き直す", None)?)
+        .build()?;
     let menu = MenuBuilder::new(handle)
-        .items(&[&application, &file, &edit, &view])
+        .items(&[&application, &file, &edit, &view, &help])
         .build()?;
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
@@ -136,6 +146,10 @@ pub fn run() {
             commands::note_list,
             commands::tag_list,
             commands::notes_with_tag,
+            commands::template_list,
+            commands::note_create_from_template,
+            commands::note_daily,
+            commands::manual_place,
             commands::note_read,
             commands::note_write,
             commands::note_create,

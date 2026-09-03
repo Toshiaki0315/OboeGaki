@@ -134,6 +134,37 @@ export async function notesWithTag(
   return metas.map((meta) => toEntry(root, meta));
 }
 
+/// 作ったばかりのノート。cursor は `{{cursor}}` があった位置
+/// （UTF-16 コード単位 = CM6 のオフセット）。
+export type NewNote = { path: string; cursor: number | null };
+
+/// `templates/` にある雛形（絶対パス。名前順）。
+export async function templateList(root: string): Promise<string[]> {
+  return invoke<string[]>("template_list", { root });
+}
+
+/// 雛形から新しいノートを作る（E-4）。題名は雛形の名前になる。
+export async function createFromTemplate(
+  root: string,
+  template: string,
+): Promise<NewNote> {
+  return invoke<NewNote>("note_create_from_template", {
+    root,
+    template,
+    title: "",
+  });
+}
+
+/// 今日のノート。無ければ日次の雛形から作る（E-4）。
+export async function dailyNote(root: string): Promise<NewNote> {
+  return invoke<NewNote>("note_daily", { root });
+}
+
+/// 使い方のノートを今の内容で置き直す。置いた場所を返す。
+export async function placeManual(root: string): Promise<string> {
+  return invoke<string>("manual_place", { root });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

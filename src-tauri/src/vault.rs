@@ -13,6 +13,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Local};
+
+use crate::template::{daily_title, expand};
+
 pub const TRASH_DIR: &str = ".trash";
 pub const MANAGED_DIR: &str = ".OboeGaki";
 /// 旧名（改名 2026-08-27 / ADR-0032）。開くときに一度だけ改名して引き継ぐ。
@@ -28,6 +32,39 @@ const MAX_FILENAME_BYTES: usize = 200;
 /// 走査から外すフォルダ。watcher 側もこれを使うこと（参照実装の E-4 の教訓:
 /// 2 か所に書くと「一覧には出ないのに索引には入る」食い違いが出る）。
 pub(crate) const SKIP_DIRS: [&str; 4] = [TRASH_DIR, MANAGED_DIR, ATTACHMENTS_DIR, TEMPLATES_DIR];
+
+/// 同梱の雛形（E-4）。**ただの `.md`** なので Finder で足しても増やせる。
+/// 実体をアプリに埋め込むのは、配布物のどこに置かれても読めるようにするため。
+pub const DAILY_TEMPLATE: &str = "日次.md";
+pub const DEFAULT_TEMPLATES: [(&str, &str); 3] = [
+    (
+        DAILY_TEMPLATE,
+        include_str!("../resources/templates/日次.md"),
+    ),
+    (
+        "議事録.md",
+        include_str!("../resources/templates/議事録.md"),
+    ),
+    ("日報.md", include_str!("../resources/templates/日報.md")),
+];
+/// 置いた雛形の名前を残す印。**名前で覚える**ので、手で消した雛形は
+/// 復活せず、あとから増えた雛形は届く（参照実装で日時だけを書いていた
+/// ときは、新しい雛形が永久に現れなかった）。
+const TEMPLATES_MARKER: &str = "templates-seeded";
+
+/// 同梱の使い方ノート。初回だけ置く（ヘルプから置き直せる）。
+pub const MANUAL_TITLE: &str = "覚書の使い方";
+pub const MANUAL: &str = include_str!("../resources/manual.md");
+/// 一度置いたら二度と置き直さない印。消したマニュアルを復活させない。
+const MANUAL_MARKER: &str = "seeded";
+
+/// 作ったばかりのノート。`cursor` は `{{cursor}}` があった位置
+/// （**UTF-16 コード単位**。CM6 のオフセットにそのまま渡せる）。
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct NewNote {
+    pub path: PathBuf,
+    pub cursor: Option<usize>,
+}
 
 /// 旧名 `.hitofude` を `.OboeGaki` へ改名して引き継ぐ（ADR-0032）。
 ///
@@ -80,6 +117,7 @@ impl Vault {
             self.trash_dir(),
             self.managed_dir(),
             self.attachments_dir(),
+            self.templates_dir(),
         ] {
             fs::create_dir_all(directory)?;
         }
@@ -160,6 +198,164 @@ impl Vault {
         let path = unique_path(&self.root, &stem, ".md", None);
         crate::autosave::save_atomic(&path, &format!("# {title}\n\n"))?;
         Ok(path)
+    }
+
+    /// 本文を指定して新しいノートを作る（雛形から作るとき）。
+    pub fn create_with(&self, title: &str, text: &str) -> io::Result<PathBuf> {
+        let stem = sanitize_filename(title);
+        let path = unique_path(&self.root, &stem, ".md", None);
+        crate::autosave::save_atomic(&path, text)?;
+        Ok(path)
+    }
+
+    // --------------------------------------------------------- テンプレート（E-4）
+
+    /// `templates/` にある雛形。名前順。
+    ///
+    /// **走査（`scan`）からは外してある**（SKIP_DIRS）。雛形はノートでは
+    /// ないので、一覧に出ると本物のノートに混ざる。
+    pub fn templates(&self) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(self.templates_dir()) else {
+            return Vec::new();
+        };
+        let mut found: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_file() && is_markdown(path))
+            .collect();
+        found.sort();
+        found
+    }
+
+    /// まだ置いたことのない既定の雛形を置く。置いたパスを返す。
+    ///
+    /// 印には**置いた名前**を残す。「一度置いたら二度と置き直さない」を
+    /// 守りつつ、あとから増えた雛形は届く。名前で覚えているので、
+    /// **手で消した雛形は復活しない**。**既にある名前は上書きしない**
+    /// （手で直した雛形を消さない）。
+    pub fn seed_templates(&self) -> io::Result<Vec<PathBuf>> {
+        let marker = self.managed_dir().join(TEMPLATES_MARKER);
+        let mut known: HashSet<String> = fs::read_to_string(&marker)
+            .unwrap_or_default()
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| line.ends_with(".md"))
+            .collect();
+
+        let mut placed = Vec::new();
+        fs::create_dir_all(self.templates_dir())?;
+        for (name, text) in DEFAULT_TEMPLATES {
+            if !known.insert(name.to_string()) {
+                continue;
+            }
+            let target = self.templates_dir().join(name);
+            if target.exists() {
+                continue;
+            }
+            crate::autosave::save_atomic(&target, text)?;
+            placed.push(target);
+        }
+        let mut names: Vec<&String> = known.iter().collect();
+        names.sort();
+        fs::create_dir_all(self.managed_dir())?;
+        let listed: Vec<&str> = names.iter().map(|name| name.as_str()).collect();
+        fs::write(&marker, format!("{}\n", listed.join("\n")))?;
+        Ok(placed)
+    }
+
+    /// 雛形から新しいノートを作る。
+    ///
+    /// 題名を省いたときは雛形の名前を使う。「議事録」から作ったノートが
+    /// 「無題」になるより、あとで直すぶんだけ手が少ない。
+    pub fn create_from_template(
+        &self,
+        template: &Path,
+        title: &str,
+        now: &DateTime<Local>,
+    ) -> io::Result<NewNote> {
+        // パスは手で編集できる。外のファイルをノートに変えさせない
+        if !self.inside_templates(template) {
+            return Err(outside_error("テンプレートではないパス", template));
+        }
+        let name = if title.is_empty() {
+            template
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or(UNTITLED)
+        } else {
+            title
+        };
+        let filled = expand(&template_body(&fs::read_to_string(template)?), now, name);
+        let path = self.create_with(name, &filled.text)?;
+        Ok(NewNote {
+            path,
+            cursor: filled.cursor,
+        })
+    }
+
+    /// 今日のノートを開く。無ければ雛形から作る。
+    ///
+    /// **同じ日に何度呼んでも同じノートを返す。** 2 つできると、どちらに
+    /// 書いたか分からなくなる。`.md` は vault 直下に置く（日付でフォルダを
+    /// 切らないのは spec §7.1 — 分類はタグで行う）。
+    pub fn daily_note(&self, now: &DateTime<Local>) -> io::Result<NewNote> {
+        let title = daily_title(now);
+        let path = self.root.join(format!("{}.md", sanitize_filename(&title)));
+        if path.is_file() {
+            // 既にあるものへ印を埋め直さない。書いた内容が唯一の真実（T1）
+            return Ok(NewNote { path, cursor: None });
+        }
+        let source = self.templates_dir().join(DAILY_TEMPLATE);
+        let body = fs::read_to_string(&source)
+            .map(|text| template_body(&text))
+            .unwrap_or_else(|_| format!("# {title}\n\n"));
+        let filled = expand(&body, now, &title);
+        let path = self.create_with(&title, &filled.text)?;
+        Ok(NewNote {
+            path,
+            cursor: filled.cursor,
+        })
+    }
+
+    fn inside_templates(&self, path: &Path) -> bool {
+        match (path.canonicalize(), self.templates_dir().canonicalize()) {
+            (Ok(resolved), Ok(dir)) => resolved.starts_with(dir),
+            _ => false,
+        }
+    }
+
+    // --------------------------------------------------------------- 初回
+
+    /// ノートが 1 つも無い vault か。
+    pub fn is_empty(&self) -> bool {
+        self.scan().is_empty()
+    }
+
+    /// 初回だけ使い方ノートを置く。置いたパスを返す。置かなければ None。
+    ///
+    /// 条件は「vault が空」かつ「まだ置いたことがない」。印を管理フォルダに
+    /// 残すのは、**消したマニュアルを起動のたびに復活させない**ため。
+    /// 印は消えてもよい（T7 と同じ扱い。最悪もう一度置かれるだけ）。
+    pub fn seed_manual(&self) -> io::Result<Option<PathBuf>> {
+        let marker = self.managed_dir().join(MANUAL_MARKER);
+        if marker.exists() || !self.is_empty() {
+            return Ok(None);
+        }
+        let placed = self.place_manual()?;
+        fs::create_dir_all(self.managed_dir())?;
+        fs::write(&marker, placed.to_string_lossy().as_bytes())?;
+        Ok(Some(placed))
+    }
+
+    /// 使い方ノートを**今の内容で**置く（ヘルプメニューから）。
+    ///
+    /// アプリが新しくなって説明が増えても、既に置いたノートは古いまま残る
+    /// （印があるので `seed_manual` は二度と置かない）。ここから最新の説明を
+    /// 出せる道を残しておく。
+    ///
+    /// **既にあるノートは消さない。** 書き足したメモごと消えては困るので、
+    /// 別のファイルとして置く（`unique_path` が名前をずらす）。
+    pub fn place_manual(&self) -> io::Result<PathBuf> {
+        self.create_with(MANUAL_TITLE, MANUAL)
     }
 
     /// タイトル変更に合わせてファイル名を変える。
@@ -486,6 +682,17 @@ fn collect_markdown(directory: &Path, found: &mut Vec<PathBuf>) {
         } else if is_markdown(&entry) {
             found.push(entry);
         }
+    }
+}
+
+/// 雛形の本文（front matter を外したもの）。
+///
+/// **雛形の front matter は持ち込まない。** ピン留めのような管理情報は
+/// 雛形の持ち物で、そこから作るノートの持ち物ではない（参照実装も同じ）。
+fn template_body(text: &str) -> String {
+    match crate::front_matter::block_len(text) {
+        Some(len) => text[len..].to_string(),
+        None => text.to_string(),
     }
 }
 
@@ -1279,5 +1486,216 @@ mod tests {
         let alive = note(root.path(), "生きている.md");
         assert!(vault.restore(&alive).is_err());
         assert!(alive.exists());
+    }
+
+    // ------------------------------------------------------- テンプレート（E-4）
+
+    fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
+        use chrono::TimeZone;
+        Local
+            .with_ymd_and_hms(year, month, day, hour, minute, 0)
+            .unwrap()
+    }
+
+    #[test]
+    fn test_templates_雛形を名前順で返し_走査には出さない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::write(vault.templates_dir().join("議事録.md"), "# {{title}}\n").unwrap();
+        fs::write(vault.templates_dir().join("日報.md"), "# {{date}}\n").unwrap();
+        fs::write(vault.templates_dir().join("メモ.txt"), "雛形ではない").unwrap();
+
+        let found = vault.templates();
+
+        assert_eq!(
+            found,
+            // 名前順はコードポイント順（日 < 議）
+            vec![
+                vault.templates_dir().join("日報.md"),
+                vault.templates_dir().join("議事録.md"),
+            ]
+        );
+        // 雛形はノートではない。一覧に出ると本物のノートに混ざる
+        assert!(vault.scan().is_empty());
+    }
+
+    #[test]
+    fn test_seed_templates_初回だけ置く_手で消したものは復活しない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+
+        let placed = vault.seed_templates().unwrap();
+        assert_eq!(placed.len(), DEFAULT_TEMPLATES.len());
+        assert!(vault.templates_dir().join("日次.md").is_file());
+
+        // 2 回目は何も置かない
+        assert!(vault.seed_templates().unwrap().is_empty());
+
+        // 手で消した雛形は復活しない（印に名前が残っているため）
+        fs::remove_file(vault.templates_dir().join("日次.md")).unwrap();
+        assert!(vault.seed_templates().unwrap().is_empty());
+        assert!(!vault.templates_dir().join("日次.md").exists());
+    }
+
+    #[test]
+    fn test_seed_templates_手で直した雛形を上書きしない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::create_dir_all(vault.templates_dir()).unwrap();
+        fs::write(vault.templates_dir().join("日次.md"), "# 自分の日次\n").unwrap();
+
+        vault.seed_templates().unwrap();
+
+        let kept = fs::read_to_string(vault.templates_dir().join("日次.md")).unwrap();
+        assert_eq!(kept, "# 自分の日次\n");
+    }
+
+    #[test]
+    fn test_create_from_template_印を埋めてノートを作る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let template = vault.templates_dir().join("議事録.md");
+        fs::write(&template, "# {{title}}\n\n{{date}}\n\n- {{cursor}}\n").unwrap();
+
+        let made = vault
+            .create_from_template(&template, "定例会", &at(2026, 9, 3, 14, 5))
+            .unwrap();
+
+        assert_eq!(made.path, root.path().join("定例会.md"));
+        let text = fs::read_to_string(&made.path).unwrap();
+        assert_eq!(text, "# 定例会\n\n2026-09-03\n\n- \n");
+        assert_eq!(made.cursor, Some(text.encode_utf16().count() - 1));
+    }
+
+    #[test]
+    fn test_create_from_template_題名を省いたら雛形の名前() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let template = vault.templates_dir().join("議事録.md");
+        fs::write(&template, "# {{title}}\n").unwrap();
+
+        let made = vault
+            .create_from_template(&template, "", &at(2026, 9, 3, 14, 5))
+            .unwrap();
+
+        assert_eq!(made.path, root.path().join("議事録.md"));
+        assert_eq!(fs::read_to_string(&made.path).unwrap(), "# 議事録\n");
+    }
+
+    #[test]
+    fn test_create_from_template_雛形のfront_matterは持ち込まない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let template = vault.templates_dir().join("議事録.md");
+        // 管理情報（ピン留めなど）は雛形の持ち物で、ノートの持ち物ではない
+        fs::write(&template, "---\npinned: true\n---\n# {{title}}\n").unwrap();
+
+        let made = vault
+            .create_from_template(&template, "定例会", &at(2026, 9, 3, 14, 5))
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&made.path).unwrap(), "# 定例会\n");
+    }
+
+    #[test]
+    fn test_create_from_template_雛形の外のパスは拒否する() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let outside = note(root.path(), "普通のノート.md");
+        // パスは手で編集できる。外のファイルをノートに変えさせない
+        assert!(vault
+            .create_from_template(&outside, "x", &at(2026, 9, 3, 14, 5))
+            .is_err());
+    }
+
+    #[test]
+    fn test_daily_note_同じ日に何度呼んでも同じノート() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::write(
+            vault.templates_dir().join(DAILY_TEMPLATE),
+            "# {{date}}\n\n- [ ] {{cursor}}\n",
+        )
+        .unwrap();
+        let now = at(2026, 9, 3, 14, 5);
+
+        let first = vault.daily_note(&now).unwrap();
+        assert_eq!(first.path, root.path().join("2026-09-03.md"));
+        assert_eq!(
+            fs::read_to_string(&first.path).unwrap(),
+            "# 2026-09-03\n\n- [ ] \n"
+        );
+
+        // 2 つできると、どちらに書いたか分からなくなる
+        let again = vault.daily_note(&now).unwrap();
+        assert_eq!(again.path, first.path);
+        assert_eq!(again.cursor, None); // 既にあるものへ印を埋め直さない（T1）
+        assert_eq!(vault.scan().len(), 1);
+    }
+
+    #[test]
+    fn test_daily_note_雛形が無ければ見出しだけ() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+
+        let made = vault.daily_note(&at(2026, 9, 3, 14, 5)).unwrap();
+
+        assert_eq!(fs::read_to_string(&made.path).unwrap(), "# 2026-09-03\n\n");
+    }
+
+    #[test]
+    fn test_seed_manual_空のvaultに一度だけ置く() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+
+        let placed = vault.seed_manual().unwrap().unwrap();
+        assert_eq!(placed, root.path().join(format!("{MANUAL_TITLE}.md")));
+        assert!(fs::read_to_string(&placed).unwrap().starts_with("# "));
+
+        // 消したマニュアルを起動のたびに復活させない
+        fs::remove_file(&placed).unwrap();
+        assert!(vault.seed_manual().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_seed_manual_ノートがあるvaultには置かない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "先にあるノート.md");
+
+        assert!(vault.seed_manual().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_manual_同梱の使い方ノートはタグを増やさない() {
+        // 説明のための `#` は必ずインラインコードに入れる。素で書くと、
+        // 置いた人のタグ一覧に説明用の語が並んでしまう
+        assert_eq!(crate::tags::extract_tags(MANUAL), Vec::<String>::new());
+        assert!(MANUAL.starts_with(&format!("# {MANUAL_TITLE}\n")));
+    }
+
+    #[test]
+    fn test_place_manual_既にあるノートを消さずに置く() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+
+        let first = vault.place_manual().unwrap();
+        fs::write(&first, "# 書き足したメモ\n").unwrap();
+        let second = vault.place_manual().unwrap();
+
+        assert_ne!(second, first);
+        assert_eq!(fs::read_to_string(&first).unwrap(), "# 書き足したメモ\n");
     }
 }

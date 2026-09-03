@@ -36,9 +36,13 @@ import {
   deleteForever,
   emptyTrash,
   historyList,
+  createFromTemplate,
+  dailyNote,
   historyRestore,
   imageSource,
   notesWithTag,
+  placeManual,
+  templateList,
   pinNote,
   readNote,
   saveAttachment,
@@ -166,6 +170,11 @@ function App() {
 
   // 表の挿入（TASKS 2-6）。行 × 列を聞いてから差し込む
   const [tableDialog, setTableDialog] = useState(false);
+  // テンプレートの選択（E-4）。null は閉じている
+  const [templates, setTemplates] = useState<string[] | null>(null);
+  const [templateIndex, setTemplateIndex] = useState(0);
+  // 雛形の `{{cursor}}`。開いた直後のキャレット位置としてエディタへ渡す
+  const [initialCursor, setInitialCursor] = useState<number | null>(null);
   const tableRows = useRef<HTMLInputElement>(null);
   const tableColumns = useRef<HTMLInputElement>(null);
   function confirmInsertTable() {
@@ -258,11 +267,12 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function openNote(path: string) {
+  async function openNote(path: string, cursor: number | null = null) {
     if (!vaultRoot) return;
     autosave.flush(); // 前のノートの未保存分を書き切ってから切り替える
     const text = await readNote(vaultRoot, path);
     selectNote(path);
+    setInitialCursor(cursor);
     setDoc(text);
     dirtyRef.current = false;
     setStatus("");
@@ -273,6 +283,45 @@ function App() {
     const path = await createNote(vaultRoot, "無題");
     await refresh();
     await openNote(path);
+  }
+
+  /// テンプレートを選ぶ（Cmd+Shift+N）。**題名は聞かない** — 雛形の名前を
+  /// そのまま題名にする（題名の欄で直せば見出しも追いかける = ADR-0005）。
+  /// ダイアログを 2 枚重ねるより、開いてすぐ書けるほうが速い。
+  async function chooseTemplate() {
+    if (!vaultRoot) return;
+    const found = await templateList(vaultRoot);
+    if (found.length === 0) {
+      setStatus(`「${vaultRoot}/templates」に .md を置くと、ここから使えます`);
+      return;
+    }
+    setTemplateIndex(0);
+    setTemplates(found);
+  }
+
+  async function handleCreateFromTemplate(template: string) {
+    if (!vaultRoot) return;
+    setTemplates(null);
+    const made = await createFromTemplate(vaultRoot, template);
+    await refresh();
+    await openNote(made.path, made.cursor);
+  }
+
+  /// 今日のノート（Cmd+T）。あれば開くだけ、無ければ日次の雛形から作る。
+  async function handleDailyNote() {
+    if (!vaultRoot) return;
+    const made = await dailyNote(vaultRoot);
+    await refresh();
+    await openNote(made.path, made.cursor);
+  }
+
+  /// 使い方のノートを今の内容で置き直す（ヘルプ）。既にあるノートは
+  /// 消さず、別のファイルとして置かれる。
+  async function handlePlaceManual() {
+    if (!vaultRoot) return;
+    const placed = await placeManual(vaultRoot);
+    await refresh();
+    await openNote(placed);
   }
 
   // Enter とフォーカス外しの両方から呼ばれるので、二重発火を弾く
@@ -518,6 +567,9 @@ function App() {
   const menuActions = useRef<Record<string, () => void>>({});
   menuActions.current = {
     "new-note": () => void handleCreate(),
+    "new-from-template": () => void chooseTemplate(),
+    "daily-note": () => void handleDailyNote(),
+    "place-manual": () => void handlePlaceManual(),
     "open-vault": () => void chooseVault(),
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
@@ -891,6 +943,7 @@ function App() {
               knownTags={() =>
                 useAppStore.getState().tags.map((entry) => entry.tag)
               }
+              initialCursor={initialCursor}
             />
           </>
         ) : (
@@ -898,6 +951,47 @@ function App() {
         )}
         <footer className="status-bar">{status}</footer>
       </section>
+      {templates !== null && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setTemplates(null)}
+        >
+          <div
+            className="palette"
+            onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setTemplates(null);
+              else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setTemplateIndex((i) => Math.min(i + 1, templates.length - 1));
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setTemplateIndex((i) => Math.max(i - 1, 0));
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const chosen = templates[templateIndex];
+                if (chosen) void handleCreateFromTemplate(chosen);
+              }
+            }}
+          >
+            <header className="palette-title">テンプレートを選ぶ</header>
+            <ul>
+              {templates.map((path, index) => (
+                <li key={path}>
+                  <button
+                    autoFocus={index === 0}
+                    className={index === templateIndex ? "selected" : ""}
+                    onMouseEnter={() => setTemplateIndex(index)}
+                    onClick={() => void handleCreateFromTemplate(path)}
+                  >
+                    {noteStem(path)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
       {tableDialog && (
         <div className="palette-backdrop" onClick={() => setTableDialog(false)}>
           <div className="palette" onClick={(event) => event.stopPropagation()}>

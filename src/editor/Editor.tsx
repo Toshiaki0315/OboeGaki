@@ -87,6 +87,9 @@ type Props = {
   saveAttachment?: SaveAttachment;
   /** `#` 補完に出す既知のタグ（索引が持つ。呼ぶたびに取り直す） */
   knownTags?: () => string[];
+  /** 開いた直後のキャレット位置（雛形の `{{cursor}}`。UTF-16 単位）。
+      省くと front matter の後ろ = 本文の先頭 */
+  initialCursor?: number | null;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
@@ -98,6 +101,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     onCursorChanged,
     saveAttachment,
     knownTags,
+    initialCursor,
   },
   ref,
 ) {
@@ -204,10 +208,13 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       parent: host.current,
       state: EditorState.create({
         doc: initialDoc,
-        // front matter があればキャレットを本文の先頭に置く（隠れた
-        // 領域の中で見えないまま打ち始めない）
+        // 雛形の `{{cursor}}` があればそこへ。無ければ front matter の
+        // 後ろ（隠れた領域の中で見えないまま打ち始めない）
         selection: {
-          anchor: frontMatterRange(initialDoc)?.bodyStart ?? 0,
+          anchor:
+            initialCursor != null
+              ? Math.min(initialCursor, initialDoc.length)
+              : (frontMatterRange(initialDoc)?.bodyStart ?? 0),
         },
         extensions: [
           frontMatterHide,

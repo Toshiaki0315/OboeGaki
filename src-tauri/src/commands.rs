@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use crate::autosave;
 use crate::history;
 use crate::index_db::{IndexDb, SearchHit};
-use crate::vault::{contains, Vault};
+use crate::vault::{contains, NewNote, Vault};
 use crate::watcher::{self, Suppressor};
 
 /// ノートの履歴の鍵。id を持たないので vault からの相対パスで作る。
@@ -61,6 +61,16 @@ pub fn vault_open(
 ) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
+    // 同梱の雛形と、初回だけの使い方ノート（E-4）。どちらも付随機能なので
+    // 失敗しても vault は開く
+    if let Err(error) = vault.seed_templates() {
+        eprintln!("雛形を置けなかった: {error}");
+    }
+    match vault.seed_manual() {
+        Ok(Some(placed)) => state.suppressor.mark(&placed),
+        Ok(None) => {}
+        Err(error) => eprintln!("使い方のノートを置けなかった: {error}"),
+    }
     // 監視と索引は付随機能なので、失敗しても vault は開く（ログだけ残す）
     match watcher::start(
         app.clone(),
@@ -306,6 +316,65 @@ pub fn note_create(
         eprintln!("索引の更新に失敗した: {error}");
     }
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// `templates/` にある雛形の一覧（絶対パス。名前順）。
+#[tauri::command]
+pub fn template_list(root: String) -> Result<Vec<String>, String> {
+    Ok(Vault::new(&root)
+        .templates()
+        .into_iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect())
+}
+
+/// 雛形から新しいノートを作る（E-4）。題名が空なら雛形の名前を使う。
+#[tauri::command]
+pub fn note_create_from_template(
+    state: tauri::State<WatchState>,
+    root: String,
+    template: String,
+    title: String,
+) -> Result<NewNote, String> {
+    let vault = Vault::new(&root);
+    let made = vault
+        .create_from_template(Path::new(&template), &title, &chrono::Local::now())
+        .map_err(|e| e.to_string())?;
+    state.suppressor.mark(&made.path);
+    index_one(&vault, &made.path);
+    Ok(made)
+}
+
+/// 今日のノート（E-4）。無ければ日次の雛形から作る。
+#[tauri::command]
+pub fn note_daily(state: tauri::State<WatchState>, root: String) -> Result<NewNote, String> {
+    let vault = Vault::new(&root);
+    let made = vault
+        .daily_note(&chrono::Local::now())
+        .map_err(|e| e.to_string())?;
+    state.suppressor.mark(&made.path);
+    index_one(&vault, &made.path);
+    Ok(made)
+}
+
+/// 使い方のノートを今の内容で置き直す（ヘルプメニュー）。
+#[tauri::command]
+pub fn manual_place(state: tauri::State<WatchState>, root: String) -> Result<String, String> {
+    let vault = Vault::new(&root);
+    let placed = vault.place_manual().map_err(|e| e.to_string())?;
+    state.suppressor.mark(&placed);
+    index_one(&vault, &placed);
+    Ok(placed.to_string_lossy().into_owned())
+}
+
+/// 作ったばかりの 1 ファイルを索引へ。失敗しても作成自体は成功なので
+/// ログだけ残す（全体の整合は vault_open の同期が取り直す）。
+fn index_one(vault: &Vault, path: &Path) {
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(vault, path))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
 }
 
 #[tauri::command]
