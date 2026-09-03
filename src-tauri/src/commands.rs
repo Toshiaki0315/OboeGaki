@@ -367,6 +367,124 @@ pub fn manual_place(state: tauri::State<WatchState>, root: String) -> Result<Str
     Ok(placed.to_string_lossy().into_owned())
 }
 
+/// サイドバーのフォルダツリーの素材（ADR-0024）。
+/// **存在はディスク、件数は索引**（索引にあってディスクに無いものは出さない）。
+/// 先頭は必ず直下（空文字）。
+#[tauri::command]
+pub fn folder_list(root: String) -> Result<Vec<(String, i64)>, String> {
+    let vault = Vault::new(&root);
+    let counts = IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.folder_counts())
+        .map_err(|e| e.to_string())?;
+    let count_of = |folder: &str| counts.get(folder).copied().unwrap_or(0);
+    let mut found = vec![(String::new(), count_of(""))];
+    for folder in vault.folders() {
+        let count = count_of(&folder);
+        found.push((folder, count));
+    }
+    Ok(found)
+}
+
+/// そのフォルダ**直下**のノート（ADR-0024 追記 4）。
+#[tauri::command]
+pub fn notes_in_folder(
+    root: String,
+    folder: String,
+) -> Result<Vec<crate::index_db::NoteMeta>, String> {
+    let vault = Vault::new(&root);
+    IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.notes_in_folder(&folder))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn folder_create(root: String, folder: String) -> Result<String, String> {
+    Vault::new(&root)
+        .create_folder(&folder)
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|e| e.to_string())
+}
+
+/// フォルダの名前を変える。新しい相対パスを返す。
+///
+/// 中のノートはパスが変わるので、索引を取り直し、履歴の置き場も
+/// 付け替える（鍵がパスなので、そのままだと履歴が見えなくなる）。
+#[tauri::command]
+pub fn folder_rename(
+    state: tauri::State<WatchState>,
+    root: String,
+    folder: String,
+    name: String,
+) -> Result<String, String> {
+    let vault = Vault::new(&root);
+    let before = folder.trim_matches('/').to_string();
+    let renamed = vault
+        .rename_folder(&folder, &name)
+        .map_err(|e| e.to_string())?;
+    let moved: Vec<std::path::PathBuf> = vault
+        .scan()
+        .into_iter()
+        .filter(|path| {
+            path.strip_prefix(vault.root())
+                .map(|relative| relative.starts_with(&renamed))
+                .unwrap_or(false)
+        })
+        .collect();
+    for path in &moved {
+        state.suppressor.mark(path);
+        let after = history_key(&root, path);
+        // 旧鍵は、新しい相対パスの頭を元の名前へ戻したもの
+        let old_key = after.replacen(&format!("path:{renamed}"), &format!("path:{before}"), 1);
+        if let Err(error) = history::rekey(&history_root(&root), &old_key, &after) {
+            eprintln!("履歴の置き場を移せなかった: {error}");
+        }
+    }
+    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault)) {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    Ok(renamed)
+}
+
+#[tauri::command]
+pub fn folder_delete(root: String, folder: String) -> Result<(), String> {
+    Vault::new(&root)
+        .delete_folder(&folder)
+        .map_err(|e| e.to_string())
+}
+
+/// ノートをフォルダへ移す（ADR-0024）。移した先の絶対パスを返す。
+#[tauri::command]
+pub fn note_move(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+    folder: String,
+) -> Result<String, String> {
+    let path = guarded(&root, &path)?;
+    let vault = Vault::new(&root);
+    state.suppressor.mark(&path);
+    let moved = vault.move_note(&path, &folder).map_err(|e| e.to_string())?;
+    if moved == path {
+        return Ok(moved.to_string_lossy().into_owned());
+    }
+    state.suppressor.mark(&moved);
+    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+        db.remove(&vault, &path)?;
+        db.upsert(&vault, &moved)
+    }) {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    // 鍵がパスなので、置き場を付け替えないと履歴が見えなくなる
+    if let Err(error) = history::rekey(
+        &history_root(&root),
+        &history_key(&root, &path),
+        &history_key(&root, &moved),
+    ) {
+        eprintln!("履歴の置き場を移せなかった: {error}");
+    }
+    Ok(moved.to_string_lossy().into_owned())
+}
+
 /// 作ったばかりの 1 ファイルを索引へ。失敗しても作成自体は成功なので
 /// ログだけ残す（全体の整合は vault_open の同期が取り直す）。
 fn index_one(vault: &Vault, path: &Path) {

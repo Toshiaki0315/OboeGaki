@@ -301,6 +301,62 @@ impl IndexDb {
         rows.collect()
     }
 
+    /// そのフォルダ**直下**のノート（ADR-0024 追記 4）。
+    ///
+    /// **子孫は含めない。** ルートだけ非再帰でサブフォルダは再帰、という
+    /// 食い違いを避ける。Finder と同じで、選んだフォルダの中身が出る。
+    /// 空文字は直下。
+    pub fn notes_in_folder(&self, folder: &str) -> rusqlite::Result<Vec<NoteMeta>> {
+        let cleaned = folder.trim_matches('/');
+        let sql = if cleaned.is_empty() {
+            "SELECT path, title, preview, mtime_ns, pinned FROM notes
+             WHERE instr(path, '/') = 0"
+        } else {
+            // 区切りまで含めて前方一致する（`仕事` で `仕事場/` を拾わない）。
+            // 残りに区切りが無いものだけが直下
+            "SELECT path, title, preview, mtime_ns, pinned FROM notes
+             WHERE substr(path, 1, length(?1) + 1) = ?1 || '/'
+               AND instr(substr(path, length(?1) + 2), '/') = 0"
+        };
+        let mut statement = self.conn.prepare(sql)?;
+        let to_meta = |row: &rusqlite::Row| {
+            Ok(NoteMeta {
+                path: row.get(0)?,
+                title: row.get(1)?,
+                preview: row.get(2)?,
+                mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
+                pinned: row.get(4)?,
+            })
+        };
+        let rows = if cleaned.is_empty() {
+            statement.query_map([], to_meta)?
+        } else {
+            statement.query_map([cleaned], to_meta)?
+        };
+        rows.collect()
+    }
+
+    /// フォルダごとのノート件数（**直下だけ**）。空文字の項目は直下。
+    ///
+    /// 件数は索引（速い）、フォルダの存在はディスク（`Vault::folders`）が
+    /// 決める（ADR-0024 追記 1。索引にあってディスクに無いものは出さない）。
+    /// パスの組み立ては SQL でやらずこちらで数える — ノート数ぶんの文字列
+    /// 操作だが、SQL に階層を組み込むより読める。
+    pub fn folder_counts(&self) -> rusqlite::Result<HashMap<String, i64>> {
+        let mut counts: HashMap<String, i64> = HashMap::new();
+        let mut statement = self.conn.prepare("SELECT path FROM notes")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        for path in rows {
+            let path = path?;
+            let folder = match path.rsplit_once('/') {
+                Some((head, _)) => head.to_string(),
+                None => String::new(),
+            };
+            *counts.entry(folder).or_insert(0) += 1;
+        }
+        Ok(counts)
+    }
+
     /// 1 ファイルだけ索引を更新する（自動保存の後追い用）。
     /// 全体の整合は vault_open 時の sync が取り直すので、ここは速さ優先。
     pub fn upsert(&mut self, vault: &Vault, absolute: &Path) -> rusqlite::Result<()> {
@@ -615,6 +671,53 @@ mod tests {
 
         assert!(db.notes_with_tag("会議").unwrap().is_empty());
         assert!(db.notes_with_tag("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_notes_in_folder_直下のノートだけ返す() {
+        let (_root, vault) = vault_with(&[
+            ("直下.md", "# 直下\n"),
+            ("仕事/会議.md", "# 会議\n"),
+            ("仕事/2026/計画.md", "# 計画\n"),
+            ("仕事場/別物.md", "# 別物\n"),
+        ]);
+        let db = synced(&vault);
+
+        let paths = |folder: &str| {
+            let mut found: Vec<String> = db
+                .notes_in_folder(folder)
+                .unwrap()
+                .into_iter()
+                .map(|note| note.path)
+                .collect();
+            found.sort();
+            found
+        };
+
+        // 子孫は含めない（Finder と同じ読み方）
+        assert_eq!(paths("仕事"), vec!["仕事/会議.md".to_string()]);
+        // 区切りまで含めて前方一致する（`仕事` で `仕事場/` を拾わない）
+        assert_eq!(paths("仕事場"), vec!["仕事場/別物.md".to_string()]);
+        // 空文字は直下
+        assert_eq!(paths(""), vec!["直下.md".to_string()]);
+    }
+
+    #[test]
+    fn test_folder_counts_直下だけを数える() {
+        let (_root, vault) = vault_with(&[
+            ("直下.md", "# 直下\n"),
+            ("仕事/会議.md", "# 会議\n"),
+            ("仕事/日報.md", "# 日報\n"),
+            ("仕事/2026/計画.md", "# 計画\n"),
+        ]);
+        let db = synced(&vault);
+
+        let counts = db.folder_counts().unwrap();
+
+        // 親が子のぶんまで数えると「2 と出ているのに 1 件しか出ない」になる
+        assert_eq!(counts.get(""), Some(&1));
+        assert_eq!(counts.get("仕事"), Some(&2));
+        assert_eq!(counts.get("仕事/2026"), Some(&1));
     }
 
     #[test]

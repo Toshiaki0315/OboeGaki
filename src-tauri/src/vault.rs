@@ -25,6 +25,8 @@ pub const ATTACHMENTS_DIR: &str = "attachments";
 pub const TEMPLATES_DIR: &str = "templates";
 
 const MARKDOWN_SUFFIXES: [&str; 2] = ["md", "markdown"];
+/// macOS が勝手に置くファイル。フォルダが「空か」の判定では無視する。
+const IGNORED_FILE: &str = ".DS_Store";
 /// タイトルが空のときのフォールバック（参照実装 core/document.py と同じ値）。
 pub const UNTITLED: &str = "無題";
 /// ファイル名の上限は 255 バイト。日本語は 1 文字 3 バイトなので余裕を取る。
@@ -321,6 +323,216 @@ impl Vault {
             (Ok(resolved), Ok(dir)) => resolved.starts_with(dir),
             _ => false,
         }
+    }
+
+    // ------------------------------------------------------------ フォルダ（ADR-0024）
+
+    /// vault の中のフォルダ（vault からの相対・名前順）。
+    ///
+    /// **ディスクから引く。** 索引（ノートのパス）から作ると空フォルダが
+    /// 見えず、「作ったのに出てこない」になる。除くものは `scan()` と
+    /// 同じ（予約フォルダ・隠しフォルダ・外へ出るリンク）。
+    pub fn folders(&self) -> Vec<String> {
+        let mut found = Vec::new();
+        if !self.root.is_dir() {
+            return found;
+        }
+        let mut ancestors = HashSet::new();
+        if let Ok(real) = self.root.canonicalize() {
+            ancestors.insert(real);
+        }
+        self.walk_folders(&self.root, &ancestors, &mut found);
+        found.sort();
+        found
+    }
+
+    fn walk_folders(
+        &self,
+        directory: &Path,
+        ancestors: &HashSet<PathBuf>,
+        found: &mut Vec<String>,
+    ) {
+        let Ok(entries) = fs::read_dir(directory) else {
+            return;
+        };
+        let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+        paths.sort();
+        for entry in paths {
+            if !entry.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if SKIP_DIRS.contains(&name) || name.starts_with('.') {
+                continue;
+            }
+            let is_symlink = entry
+                .symlink_metadata()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
+            if is_symlink && !self.inside(&entry) {
+                continue;
+            }
+            let Ok(real) = entry.canonicalize() else {
+                continue;
+            };
+            if ancestors.contains(&real) {
+                continue; // 祖先へ戻るリンク（scan と同じ理由）
+            }
+            if let Ok(relative) = entry.strip_prefix(&self.root) {
+                found.push(relative.to_string_lossy().into_owned());
+            }
+            let mut next = ancestors.clone();
+            next.insert(real);
+            self.walk_folders(&entry, &next, found);
+        }
+    }
+
+    /// 受け取ったフォルダ名を vault からの相対へ整える。
+    ///
+    /// **生の名前で先に弾く。** `sanitize_filename` は先頭のドットを剥ぐので、
+    /// 後で調べると `.trash` が `trash` に化けてすり抜ける。
+    fn folder_relative(&self, folder: &str) -> io::Result<String> {
+        let raw: Vec<&str> = folder
+            .split('/')
+            .map(|part| part.trim())
+            .filter(|part| !part.is_empty())
+            .collect();
+        if raw.contains(&"..") {
+            return Err(outside_error("vault の外には出られない", Path::new(folder)));
+        }
+        if let Some(first) = raw.first() {
+            if SKIP_DIRS.contains(first) || first.starts_with('.') {
+                return Err(outside_error("予約フォルダは使えない", Path::new(folder)));
+            }
+        }
+        Ok(raw
+            .into_iter()
+            .map(sanitize_filename)
+            .collect::<Vec<String>>()
+            .join("/"))
+    }
+
+    /// フォルダを作る。作った場所を返す。
+    ///
+    /// 既にあるときは失敗する。黙って受けると「作った」の知らせが嘘になる
+    /// （別の場所を作ったと誤解させる）。
+    pub fn create_folder(&self, folder: &str) -> io::Result<PathBuf> {
+        let cleaned = self.folder_relative(folder)?;
+        if cleaned.is_empty() {
+            return Err(invalid("フォルダの名前が空"));
+        }
+        let target = self.root.join(&cleaned);
+        if target.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("同じ名前のフォルダがあります: {cleaned}"),
+            ));
+        }
+        fs::create_dir_all(&target)?;
+        Ok(target)
+    }
+
+    /// フォルダの名前を変える。新しい相対パスを返す。
+    ///
+    /// **中身は触らない。** ディレクトリの名前を変えるだけなので、中の
+    /// ノートは 1 バイトも変わらない。**親も変えない**（動かすのは移動の仕事）。
+    /// 既に同じ名前があれば失敗する — 黙って中身が合流すると、どちらの
+    /// ノートだったのか分からなくなる。
+    pub fn rename_folder(&self, folder: &str, name: &str) -> io::Result<String> {
+        let cleaned = self.folder_relative(folder)?;
+        if cleaned.is_empty() {
+            return Err(invalid("フォルダの名前が空"));
+        }
+        let source = self.root.join(&cleaned);
+        if !source.is_dir() {
+            return Err(invalid(&format!("フォルダが無い: {folder}")));
+        }
+        // **空は先に断る。** sanitize_filename は「無題」を返すので、通すと
+        // 打ち間違いが「無題」というフォルダになる
+        let typed = name.trim();
+        if typed.is_empty() {
+            return Err(invalid("新しい名前が空"));
+        }
+        // 名前は 1 段ぶん。`/` を打たれても階層は増やさない（移動ではない）
+        let new_name = sanitize_filename(&typed.replace('/', "-"));
+        let parent = match cleaned.rsplit_once('/') {
+            Some((head, _)) => format!("{head}/"),
+            None => String::new(),
+        };
+        let renamed = format!("{parent}{new_name}");
+        // 予約フォルダの名前は使わせない（`.trash` へ化けさせない）
+        if self.folder_relative(&renamed)? != renamed {
+            return Err(invalid(&format!("その名前は使えません: {typed}")));
+        }
+        let target = self.root.join(&renamed);
+        if target == source {
+            return Ok(cleaned);
+        }
+        if target.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("同じ名前のフォルダがあります: {renamed}"),
+            ));
+        }
+        fs::rename(&source, &target)?;
+        Ok(renamed)
+    }
+
+    /// フォルダを消す。
+    ///
+    /// **ノートが 1 つでも入っていたら消さない。** フォルダの削除にゴミ箱は
+    /// 無いので、中身ごと消える操作は用意しない。空のフォルダ（中が空
+    /// フォルダだけ、も含む）だけを消す。macOS が置く `.DS_Store` は無視する。
+    pub fn delete_folder(&self, folder: &str) -> io::Result<()> {
+        let cleaned = self.folder_relative(folder)?;
+        if cleaned.is_empty() {
+            return Err(invalid("フォルダの名前が空"));
+        }
+        let target = self.root.join(&cleaned);
+        if !target.is_dir() {
+            return Err(invalid(&format!("フォルダが無い: {folder}")));
+        }
+        if has_files(&target) {
+            return Err(invalid(&format!("中にノートが残っている: {cleaned}")));
+        }
+        fs::remove_dir_all(&target)
+    }
+
+    /// ノートをフォルダへ移す。移した先を返す。空文字は直下。
+    ///
+    /// **本文は書き換えない（T1）。** 添付リンクは vault ルート基準で解決
+    /// するので、どこへ動いても表示と書き出しは壊れない。
+    /// **空になっても元のフォルダは残す**（ADR-0024 追記 2。最後のノートを
+    /// 移しただけで消えると「勝手に無くなった」になる）。
+    pub fn move_note(&self, path: &Path, folder: &str) -> io::Result<PathBuf> {
+        if !path.exists() {
+            return Err(outside_error("移すノートが見つからない", path));
+        }
+        if !self.inside(path) {
+            return Err(outside_error("保管フォルダの外は移せない", path));
+        }
+        let cleaned = self.folder_relative(folder)?;
+        let destination = if cleaned.is_empty() {
+            self.root.clone()
+        } else {
+            self.root.join(&cleaned)
+        };
+        if path.parent() == Some(destination.as_path()) {
+            return Ok(path.to_path_buf()); // 同じ場所。動かす意味が無い
+        }
+        fs::create_dir_all(&destination)?;
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(UNTITLED)
+            .to_string();
+        let suffix = match path.extension().and_then(|s| s.to_str()) {
+            Some(extension) => format!(".{extension}"),
+            None => ".md".to_string(),
+        };
+        let target = unique_path(&destination, &stem, &suffix, None);
+        fs::rename(path, &target)?;
+        Ok(target)
     }
 
     // --------------------------------------------------------------- 初回
@@ -694,6 +906,29 @@ fn template_body(text: &str) -> String {
         Some(len) => text[len..].to_string(),
         None => text.to_string(),
     }
+}
+
+fn invalid(message: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message.to_string())
+}
+
+/// フォルダの中（子孫も含む）にファイルが残っているか。
+/// macOS が勝手に置く `.DS_Store` は「残っている」に数えない。
+fn has_files(directory: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return true; // 読めないなら安全側（消さない）
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            if has_files(&path) {
+                return true;
+            }
+        } else if path.file_name().and_then(|name| name.to_str()) != Some(IGNORED_FILE) {
+            return true;
+        }
+    }
+    false
 }
 
 fn outside_error(message: &str, path: &Path) -> io::Error {
@@ -1697,5 +1932,157 @@ mod tests {
 
         assert_ne!(second, first);
         assert_eq!(fs::read_to_string(&first).unwrap(), "# 書き足したメモ\n");
+    }
+
+    // ------------------------------------------------------------ フォルダ（ADR-0024）
+
+    #[test]
+    fn test_folders_ディスクから引いて予約フォルダと隠しは外す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::create_dir_all(root.path().join("仕事/2026")).unwrap();
+        fs::create_dir_all(root.path().join("日記")).unwrap();
+        fs::create_dir_all(root.path().join(".隠し")).unwrap();
+
+        // 空フォルダも見える（索引由来だと「作ったのに出てこない」になる）
+        assert_eq!(
+            vault.folders(),
+            vec![
+                "仕事".to_string(),
+                "仕事/2026".to_string(),
+                "日記".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_create_folder_作って既にあれば断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+
+        let made = vault.create_folder("仕事/2026").unwrap();
+
+        assert_eq!(made, root.path().join("仕事/2026"));
+        assert!(made.is_dir());
+        // 黙って受けると「作った」の知らせが嘘になる
+        assert!(vault.create_folder("仕事/2026").is_err());
+    }
+
+    #[test]
+    fn test_create_folder_予約フォルダとvaultの外は断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+
+        assert!(vault.create_folder("attachments/中").is_err());
+        assert!(vault.create_folder(".trash/中").is_err());
+        assert!(vault.create_folder("../外").is_err());
+        assert!(vault.create_folder("  ").is_err());
+    }
+
+    #[test]
+    fn test_rename_folder_中身は触らず名前だけ変える() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "仕事/会議.md");
+
+        let renamed = vault.rename_folder("仕事", "業務").unwrap();
+
+        assert_eq!(renamed, "業務");
+        assert!(root.path().join("業務/会議.md").is_file());
+        assert!(!root.path().join("仕事").exists());
+    }
+
+    #[test]
+    fn test_rename_folder_名前は1段ぶん_衝突は断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::create_dir_all(root.path().join("仕事")).unwrap();
+        fs::create_dir_all(root.path().join("日記")).unwrap();
+
+        // `/` を打たれても階層は増やさない（移動ではない）
+        assert_eq!(
+            vault.rename_folder("仕事", "業務/2026").unwrap(),
+            "業務-2026"
+        );
+        // 黙って中身が合流すると、どちらのノートだったのか分からなくなる
+        assert!(vault.rename_folder("業務-2026", "日記").is_err());
+        assert!(vault.rename_folder("業務-2026", "  ").is_err());
+    }
+
+    #[test]
+    fn test_delete_folder_ノートが残っていたら消さない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "仕事/会議.md");
+
+        // フォルダの削除にゴミ箱は無い。中身ごと消える操作は用意しない
+        assert!(vault.delete_folder("仕事").is_err());
+        assert!(root.path().join("仕事/会議.md").is_file());
+    }
+
+    #[test]
+    fn test_delete_folder_空なら消す_DS_Storeは無視する() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::create_dir_all(root.path().join("仕事/2026")).unwrap();
+        fs::write(root.path().join("仕事/.DS_Store"), "").unwrap();
+
+        vault.delete_folder("仕事").unwrap();
+
+        assert!(!root.path().join("仕事").exists());
+    }
+
+    #[test]
+    fn test_move_note_フォルダへ移し_無ければ作る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "会議.md");
+
+        let moved = vault.move_note(&source, "仕事/2026").unwrap();
+
+        assert_eq!(moved, root.path().join("仕事/2026/会議.md"));
+        assert!(!source.exists());
+        // 本文は書き換えない（T1）
+        assert_eq!(fs::read_to_string(&moved).unwrap(), "# note\n");
+    }
+
+    #[test]
+    fn test_move_note_直下へ戻す_同じ場所なら何もしない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "仕事/会議.md");
+
+        let moved = vault.move_note(&source, "").unwrap();
+        assert_eq!(moved, root.path().join("会議.md"));
+        // 空になっても元のフォルダは残す（ADR-0024 追記 2）
+        assert!(root.path().join("仕事").is_dir());
+
+        assert_eq!(vault.move_note(&moved, "").unwrap(), moved);
+    }
+
+    #[test]
+    fn test_move_note_同名があれば連番_予約フォルダは断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = note(root.path(), "仕事/会議.md");
+        note(root.path(), "会議.md");
+
+        assert_eq!(
+            vault.move_note(&source, "").unwrap(),
+            root.path().join("会議-2.md")
+        );
+        assert!(vault
+            .move_note(&root.path().join("会議-2.md"), "attachments")
+            .is_err());
     }
 }
