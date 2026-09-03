@@ -148,6 +148,16 @@ pub fn vault_open(
         .collect())
 }
 
+/// そのノートが今もあるか（spec §7.5）。
+///
+/// 改名やゴミ箱移動の途中でも「消えた」イベントは届くので、
+/// **本当に無いときだけ聞く**ために使う。
+#[tauri::command]
+pub fn note_exists(root: String, path: String) -> Result<bool, String> {
+    let path = guarded(&root, &path)?;
+    Ok(path.is_file())
+}
+
 #[tauri::command]
 pub fn note_read(root: String, path: String) -> Result<String, String> {
     let path = guarded(&root, &path)?;

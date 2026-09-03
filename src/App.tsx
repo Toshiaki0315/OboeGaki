@@ -65,6 +65,7 @@ import {
   deleteFolder,
   moveNote,
   noteBacklinks,
+  noteExists,
   notesInFolder,
   pendingRecovery,
   renameFolder,
@@ -1077,8 +1078,16 @@ function App() {
     refreshSoon.schedule(() => void useAppStore.getState().refresh());
     if (change.path !== currentPathRef.current) return;
     if (change.kind === "removed") {
-      // 改名・ゴミ箱移動の途中経過でも届くので、断定はしない
-      setStatus("このノートは外部で移動または削除されました");
+      // 改名・ゴミ箱移動の途中経過でも届くので、**本当に無いときだけ聞く**
+      const root = vaultRootRef.current;
+      const gone = !(await noteExists(root, change.path));
+      if (!gone) return;
+      // **自動保存を止める。** 止めないと、聞いている間に予約が起きて
+      // 消えたファイルを黙って作り直してしまう
+      autosave.cancel();
+      // 聞いている間は保存できない状態。書いたものは退避しておく（H-1）
+      void keepStash(root, change.path, editorRef.current?.getText() ?? "");
+      setDeleted(change.path);
       return;
     }
     const root = vaultRootRef.current;
@@ -1102,6 +1111,43 @@ function App() {
 
   // 前回の未保存内容（クラッシュ退避 / H-1）。0 件なら聞かない
   const [recovery, setRecovery] = useState<number>(0);
+
+  // 開いているノートが外で消された（spec §7.5）
+  const [deleted, setDeleted] = useState<string | null>(null);
+
+  /// 編集中の内容で作り直す。
+  async function recreateDeleted() {
+    const path = deleted;
+    if (!vaultRoot || !path) return;
+    setDeleted(null);
+    const text = editorRef.current?.getText() ?? "";
+    try {
+      await writeNote(
+        vaultRoot,
+        path,
+        text,
+        settingsRef.current.historyMinutes,
+      );
+      dirtyRef.current = false;
+      if (stashed.current.delete(path)) void discardStash(vaultRoot, path);
+      await refresh();
+      setStatus("編集中の内容で作り直しました");
+    } catch (error) {
+      setStatus(`作り直せませんでした: ${String(error)}`);
+    }
+  }
+
+  /// 作り直さずに閉じる。**本文だけ消すのでは足りない** — 題名や
+  /// 未保存の予約に消えたノートが残ると、表示が嘘をつく。
+  function closeDeleted() {
+    setDeleted(null);
+    autosave.cancel();
+    pendingSave.current = null;
+    dirtyRef.current = false;
+    selectNote(null);
+    setDoc(null);
+    setStatus("外部で削除されたので閉じました（退避は残してあります）");
+  }
 
   function adoptExternal(text: string) {
     autosave.cancel();
@@ -1874,6 +1920,21 @@ function App() {
               <button onClick={() => void handleRecovery(true)}>
                 復元する
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleted !== null && (
+        <div className="palette-backdrop">
+          <div className="palette">
+            <header className="palette-title">ファイルが削除されました</header>
+            <p className="dialog-text">
+              「{noteStem(deleted)}」は外部で削除されました。
+              編集中の内容で作り直しますか？
+            </p>
+            <div className="conflict-actions">
+              <button onClick={closeDeleted}>閉じる</button>
+              <button onClick={() => void recreateDeleted()}>作り直す</button>
             </div>
           </div>
         </div>

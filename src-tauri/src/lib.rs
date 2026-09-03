@@ -219,6 +219,7 @@ pub fn run() {
             commands::recovery_pending,
             commands::recovery_restore,
             commands::recovery_clear,
+            commands::note_exists,
             commands::note_read,
             commands::note_write,
             commands::note_create,

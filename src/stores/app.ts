@@ -82,6 +82,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 }));
 
+/// そのノートが今もあるか。改名・ゴミ箱移動の途中でも「消えた」は届くので、
+/// **本当に無いときだけ**聞くために確かめる（spec §7.5）。
+export async function noteExists(root: string, path: string): Promise<boolean> {
+  return invoke<boolean>("note_exists", { root, path });
+}
+
 export async function readNote(root: string, path: string): Promise<string> {
   return invoke<string>("note_read", { root, path });
 }
