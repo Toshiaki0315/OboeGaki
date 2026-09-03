@@ -10,7 +10,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { TaskList } from "@lezer/markdown";
+import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
@@ -73,7 +73,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           history(),
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
+          markdown({
+            extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
+          }),
           livePreview,
           imageResolver.of(resolveImage ?? (async () => null)),
           EditorView.lineWrapping,

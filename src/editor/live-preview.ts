@@ -195,6 +195,92 @@ class ImageWidget extends WidgetType {
   }
 }
 
+/// 表 widget に渡すデータ（ADR-0035）。抽出は純関数で行いテストする。
+export type TableAlign = "left" | "center" | "right" | null;
+export type TableData = {
+  header: string[];
+  aligns: TableAlign[];
+  rows: string[][];
+};
+
+/// 区切りセル（`:---:` など）から text-align を読む。
+function alignOf(delimiter: string): TableAlign {
+  const cell = delimiter.trim();
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  if (left && right) return "center";
+  if (right) return "right";
+  if (left) return "left";
+  return null;
+}
+
+/// Table ノードからセルの文字列を取り出す（EditorState だけで動く）。
+function tableData(state: EditorState, table: SyntaxNode): TableData {
+  const cellsOf = (row: SyntaxNode): string[] => {
+    const cells: string[] = [];
+    for (const cell of row.getChildren("TableCell")) {
+      cells.push(state.sliceDoc(cell.from, cell.to).trim());
+    }
+    return cells;
+  };
+  const header = table.getChild("TableHeader");
+  const delimiter = table.getChild("TableDelimiter");
+  const aligns = delimiter
+    ? state
+        .sliceDoc(delimiter.from, delimiter.to)
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map(alignOf)
+    : [];
+  return {
+    header: header ? cellsOf(header) : [],
+    aligns,
+    rows: table.getChildren("TableRow").map(cellsOf),
+  };
+}
+
+class TableWidget extends WidgetType {
+  readonly key: string;
+  constructor(readonly data: TableData) {
+    super();
+    this.key = JSON.stringify(data);
+  }
+  eq(other: TableWidget): boolean {
+    return other.key === this.key;
+  }
+  toDOM(): HTMLElement {
+    const holder = document.createElement("div");
+    holder.className = "cm-table-widget";
+    const table = document.createElement("table");
+    const alignAt = (index: number) => this.data.aligns[index] ?? null;
+    const headRow = document.createElement("tr");
+    this.data.header.forEach((text, index) => {
+      const cell = document.createElement("th");
+      cell.textContent = text;
+      const align = alignAt(index);
+      if (align) cell.style.textAlign = align;
+      headRow.appendChild(cell);
+    });
+    table.appendChild(headRow);
+    for (const row of this.data.rows) {
+      const tr = document.createElement("tr");
+      row.forEach((text, index) => {
+        const cell = document.createElement("td");
+        cell.textContent = text;
+        const align = alignAt(index);
+        if (align) cell.style.textAlign = align;
+        tr.appendChild(cell);
+      });
+      table.appendChild(tr);
+    }
+    holder.appendChild(table);
+    return holder;
+  }
+  ignoreEvent(): boolean {
+    return false; // クリックでカーソルが表へ入り、ソースが現れる
+  }
+}
+
 class HrWidget extends WidgetType {
   eq(): boolean {
     return true;
@@ -248,6 +334,18 @@ export function previewDecorations(
     from,
     to,
     enter: (node) => {
+      // --- 表: 範囲外にいる間は HTML の table に置き換える（ADR-0035）。
+      //     触れている間は生のソース（表単位リビール = ADR-0003 決定 3）
+      if (node.name === "Table") {
+        if (touchesSelection(state, node.from, node.to)) return;
+        out.push(
+          Decoration.replace({
+            widget: new TableWidget(tableData(state, node.node)),
+            block: true,
+          }).range(node.from, node.to),
+        );
+        return false; // 中のマーカー隠しは重ねない
+      }
       // --- 画像: 行まるごとが画像 1 つのときだけ絵に置き換える（ADR-0004）。
       //     文中の画像はリンク扱い（マーカー隠しに任せる）
       if (node.name === "Image") {
@@ -436,6 +534,23 @@ const blockTheme = EditorView.baseTheme({
   ".cm-task-checkbox": {
     marginRight: "0.4em",
     verticalAlign: "middle",
+  },
+  ".cm-table-widget": {
+    padding: "4px 0",
+  },
+  ".cm-table-widget table": {
+    borderCollapse: "collapse",
+    maxWidth: "100%",
+  },
+  ".cm-table-widget th, .cm-table-widget td": {
+    border: "1px solid color-mix(in srgb, currentColor 25%, transparent)",
+    padding: "0.3em 0.8em",
+    textAlign: "left",
+    verticalAlign: "top",
+  },
+  ".cm-table-widget th": {
+    backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+    fontWeight: "700",
   },
   ".cm-image-widget": {
     display: "inline-block",

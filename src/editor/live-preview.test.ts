@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { EditorSelection, EditorState, type Range } from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
-import { TaskList } from "@lezer/markdown";
+import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import {
@@ -14,6 +14,7 @@ import {
   previewDecorations,
   setSourceMode,
   sourceModeField,
+  type TableData,
 } from "./live-preview";
 
 type Deco = {
@@ -22,15 +23,23 @@ type Deco = {
   kind: string; // "hide" | "line:<class>" | "bullet:<glyph>" | "checkbox:<checked>" | "hr"
 };
 
+const LANG = markdown({
+  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
+});
+
+function stateOf(doc: string, anchor: number): EditorState {
+  return EditorState.create({ doc, selection: { anchor }, extensions: [LANG] });
+}
+
 function decorationsOf(doc: string, anchor: number): Deco[] {
-  const state = EditorState.create({
-    doc,
-    selection: { anchor },
-    extensions: [
-      markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
-    ],
-  });
-  return previewDecorations(state, 0, doc.length).map(simplify);
+  return previewDecorations(stateOf(doc, anchor), 0, doc.length).map(simplify);
+}
+
+function tableWidgetOf(doc: string, anchor: number): TableData | null {
+  const found = previewDecorations(stateOf(doc, anchor), 0, doc.length)
+    .map((r) => r.value.spec as { widget?: { data?: TableData } })
+    .find((spec) => spec.widget?.data !== undefined);
+  return found?.widget?.data ?? null;
 }
 
 function simplify(range: Range<Decoration>): Deco {
@@ -225,6 +234,30 @@ describe("previewDecorations（ブロック系）", () => {
         d.kind.startsWith("image:"),
       ),
     ).toBe(false);
+  });
+
+  test("表は範囲外にカーソルがあるとき table widget に置き換える", () => {
+    const doc =
+      "前\n\n| 名前 | 数 |\n| :--- | ---: |\n| りんご | 3 |\n| **太字** | 1 |\n\n後";
+    const data = tableWidgetOf(doc, 0);
+    expect(data).toEqual({
+      header: ["名前", "数"],
+      aligns: ["left", "right"],
+      rows: [
+        ["りんご", "3"],
+        ["**太字**", "1"], // セル内はプレーンテキスト（ADR-0035 の 5）
+      ],
+    });
+    // 置き換えた範囲では内側のマーカー隠しを重ねない
+    const from = doc.indexOf("|");
+    const decos = decorationsOf(doc, 0);
+    expect(decos.some((d) => d.kind === "hide" && d.from >= from)).toBe(false);
+  });
+
+  test("表の中にカーソルがあるときは生のソースを見せる（表単位リビール）", () => {
+    const doc = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n他";
+    expect(tableWidgetOf(doc, doc.indexOf("1"))).toBeNull();
+    expect(tableWidgetOf(doc, doc.length)).not.toBeNull();
   });
 
   test("チェックボックスへのイベントは CM6 に渡さない（実機の回帰）", () => {
