@@ -24,7 +24,8 @@ type AppState = {
   folders: FolderCount[];
   trashNotes: string[];
   currentPath: string | null;
-  openVault: (root: string) => Promise<void>;
+  /// `trashDays` は環境設定のゴミ箱の日数（省くと Rust 側の既定）
+  openVault: (root: string, trashDays?: number) => Promise<void>;
   refresh: () => Promise<void>;
   selectNote: (path: string | null) => void;
 };
@@ -63,9 +64,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   trashNotes: [],
   currentPath: null,
 
-  async openVault(root) {
+  async openVault(root, trashDays) {
     // レイアウト作成・監視開始・背景の索引同期を起動してから一覧を引く
-    await invoke<string[]>("vault_open", { root });
+    await invoke<string[]>("vault_open", { root, trashDays });
     const lists = await fetchLists(root);
     set({ vaultRoot: root, ...lists, currentPath: null });
   },
@@ -89,8 +90,9 @@ export async function writeNote(
   root: string,
   path: string,
   text: string,
+  historyMinutes?: number,
 ): Promise<void> {
-  await invoke("note_write", { root, path, text });
+  await invoke("note_write", { root, path, text, historyMinutes });
 }
 
 export async function createNote(root: string, title: string): Promise<string> {

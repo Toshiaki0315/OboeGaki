@@ -19,6 +19,8 @@ import {
   clampFontSize,
   DEFAULT_FONT_PX,
   FONT_STEP_PX,
+  MAX_FONT_PX,
+  MIN_FONT_PX,
   loadFontSize,
   saveFontSize,
   zoomActionFor,
@@ -28,6 +30,20 @@ import {
   saveLastVault,
   vaultErrorText,
 } from "./lib/last-vault";
+import {
+  contentWidthCss,
+  CONTENT_WIDTHS,
+  HISTORY_CHOICES,
+  loadSettings,
+  MAX_TRASH_DAYS,
+  MIN_TRASH_DAYS,
+  resolveTheme,
+  saveSettings,
+  THEMES,
+  type ContentWidth,
+  type Settings,
+  type Theme,
+} from "./lib/settings";
 import {
   formatStamp,
   sortNotes,
@@ -91,6 +107,18 @@ function noteStem(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.(md|markdown)$/i, "");
 }
+
+const THEME_LABELS: Record<Theme, string> = {
+  system: "システムに合わせる",
+  light: "ライト",
+  dark: "ダーク",
+};
+
+const WIDTH_LABELS: Record<ContentWidth, string> = {
+  standard: "標準",
+  wide: "広め",
+  full: "最大（ウィンドウ幅）",
+};
 
 /// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
 function folderLabel(folder: string): string {
@@ -166,6 +194,22 @@ function App() {
       // 保存できなくても切り替え自体は生かす
     }
   }
+  // 環境設定（TASKS 3-9）。変えたらすぐ効かせて覚える
+  const [settings, setSettings] = useState<Settings>(() =>
+    loadSettings(localStorage),
+  );
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const [preferences, setPreferences] = useState(false);
+
+  function changeSettings(next: Partial<Settings>) {
+    setSettings((current) => {
+      const merged = { ...current, ...next };
+      saveSettings(localStorage, merged);
+      return merged;
+    });
+  }
+
   // 本文の文字サイズ（Cmd+= / Cmd+-、TASKS 1-5）。変えたら覚える
   const [fontSize, setFontSize] = useState(() => loadFontSize(localStorage));
   function changeFontSize(px: number) {
@@ -300,7 +344,7 @@ function App() {
     if (typeof picked !== "string") return;
     autosave.flush();
     try {
-      await openVault(picked);
+      await openVault(picked, settingsRef.current.trashDays);
     } catch (error) {
       // 二重起動の断りも含めて、開けない理由をそのまま見せる
       setStatus(vaultErrorText(error));
@@ -310,13 +354,29 @@ function App() {
     setDoc(null);
   }
 
+  // 見た目（テーマ）。**「システムに合わせる」も含めて data-theme を書く** —
+  // CSS 側に @media を持たせると、手で選んだ設定と 2 か所で決まってずれる
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const resolved = resolveTheme(settings.theme, media.matches);
+      document.documentElement.dataset.theme = resolved;
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [settings.theme]);
+
   // 前回の vault を開き直す（TASKS 1-1）。開けなければ黙って選択画面のまま
   useEffect(() => {
     if (vaultRootRef.current) return;
-    void restoreLastVault(localStorage, openVault).catch((error) => {
-      // 別の窓が同じ vault を開いている（記憶は消さない）
-      setStatus(vaultErrorText(error));
-    });
+    const days = settingsRef.current.trashDays;
+    void restoreLastVault(localStorage, (root) => openVault(root, days)).catch(
+      (error) => {
+        // 別の窓が同じ vault を開いている（記憶は消さない）
+        setStatus(vaultErrorText(error));
+      },
+    );
     // 起動時に一度だけ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -712,7 +772,12 @@ function App() {
     dirtyRef.current = true;
     setStatus("未保存");
     pendingSave.current = async () => {
-      await writeNote(root, path, getText());
+      await writeNote(
+        root,
+        path,
+        getText(),
+        settingsRef.current.historyMinutes,
+      );
       dirtyRef.current = false;
       setStatus("保存済み");
       // 書けたので保険は要らない。**退避したときだけ**捨てに行く
@@ -807,6 +872,7 @@ function App() {
       if (currentPathRef.current) setMoveOpen(true);
     },
     "place-manual": () => void handlePlaceManual(),
+    preferences: () => setPreferences(true),
     "open-vault": () => void chooseVault(),
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
@@ -956,7 +1022,12 @@ function App() {
   return (
     <main
       className={`app app-split${outlineOpen ? " with-outline" : ""}`}
-      style={{ "--editor-font-px": `${fontSize}px` } as CSSProperties}
+      style={
+        {
+          "--editor-font-px": `${fontSize}px`,
+          "--content-width": contentWidthCss(settings.contentWidth),
+        } as CSSProperties
+      }
     >
       <aside className="note-list">
         <header>
@@ -1399,6 +1470,107 @@ function App() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      )}
+      {preferences && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setPreferences(false)}
+        >
+          <div
+            className="palette preferences"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="palette-title">環境設定</header>
+            <div className="preferences-fields">
+              <label>
+                <span>テーマ</span>
+                <select
+                  value={settings.theme}
+                  onChange={(event) =>
+                    changeSettings({
+                      theme: event.currentTarget.value as Theme,
+                    })
+                  }
+                >
+                  {THEMES.map((theme) => (
+                    <option key={theme} value={theme}>
+                      {THEME_LABELS[theme]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>文字サイズ</span>
+                <input
+                  type="number"
+                  min={MIN_FONT_PX}
+                  max={MAX_FONT_PX}
+                  value={fontSize}
+                  onChange={(event) =>
+                    changeFontSize(Number(event.currentTarget.value))
+                  }
+                />
+              </label>
+              <label>
+                <span>本文の幅</span>
+                <select
+                  value={settings.contentWidth}
+                  onChange={(event) =>
+                    changeSettings({
+                      contentWidth: event.currentTarget.value as ContentWidth,
+                    })
+                  }
+                >
+                  {CONTENT_WIDTHS.map((width) => (
+                    <option key={width} value={width}>
+                      {WIDTH_LABELS[width]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>履歴を残す間隔</span>
+                <select
+                  value={settings.historyMinutes}
+                  onChange={(event) =>
+                    changeSettings({
+                      historyMinutes: Number(event.currentTarget.value),
+                    })
+                  }
+                >
+                  {HISTORY_CHOICES.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes === 0 ? "なし" : `${minutes} 分`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>ゴミ箱の保持</span>
+                <input
+                  type="number"
+                  min={MIN_TRASH_DAYS}
+                  max={MAX_TRASH_DAYS}
+                  value={settings.trashDays}
+                  onChange={(event) =>
+                    changeSettings({
+                      trashDays: Number(event.currentTarget.value),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <p className="dialog-text">
+              「履歴を残す間隔」は「戻す」ために残す版の間隔です。本文の保存は
+              打ち終わって 0.8 秒後で、ここでは変わりません。「なし」は
+              自分で保存したときだけ残します。ゴミ箱の日数は次に保管フォルダを
+              開いたときから効きます。
+            </p>
+            <div className="conflict-actions">
+              <button onClick={() => setPreferences(false)}>閉じる</button>
+            </div>
           </div>
         </div>
       )}

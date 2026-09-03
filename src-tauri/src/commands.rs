@@ -50,6 +50,10 @@ impl Default for WatchState {
 /// フロント（lib/last-vault.ts）と揃える印。二重起動の断りだけに付ける。
 const VAULT_BUSY: &str = "vault-busy";
 
+/// ゴミ箱に置いておく日数の既定（spec §7.6）。環境設定で変えられる
+/// （フロントの lib/settings.ts と同じ値）。
+const DEFAULT_TRASH_DAYS: u64 = 30;
+
 fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
     let candidate = Path::new(path).to_path_buf();
     if contains(Path::new(root), &candidate) {
@@ -65,6 +69,7 @@ pub fn vault_open(
     app: tauri::AppHandle,
     state: tauri::State<WatchState>,
     root: String,
+    trash_days: Option<u64>,
 ) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
@@ -115,6 +120,7 @@ pub fn vault_open(
     {
         let root = root.clone();
         let app = app.clone();
+        let days = trash_days.unwrap_or(DEFAULT_TRASH_DAYS);
         std::thread::spawn(move || {
             use tauri::Emitter;
             let vault = Vault::new(&root);
@@ -124,8 +130,8 @@ pub fn vault_open(
                 eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
             }
             history::prune(&history_root(&root), chrono::Local::now().naive_local());
-            // 期限切れのゴミも一緒に掃除する（spec §7.6、30 日）
-            if let Err(error) = vault.purge_trash(30) {
+            // 期限切れのゴミも一緒に掃除する（spec §7.6。日数は環境設定）
+            if let Err(error) = vault.purge_trash(days) {
                 eprintln!("ゴミ箱の掃除に失敗した: {error}");
             }
             let _ = app.emit("index-updated", ());
@@ -150,6 +156,8 @@ pub fn note_write(
     root: String,
     path: String,
     text: String,
+    // 版を残す間隔（分。環境設定）。0 は「なし」= 自分で保存したときだけ
+    history_minutes: Option<i64>,
 ) -> Result<(), String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
@@ -168,7 +176,7 @@ pub fn note_write(
         &text,
         chrono::Local::now().naive_local(),
         false,
-        history::DEFAULT_INTERVAL_MINUTES,
+        history_minutes.unwrap_or(history::DEFAULT_INTERVAL_MINUTES),
     ) {
         eprintln!("版を残せなかった: {error}");
     }

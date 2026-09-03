@@ -48,6 +48,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     let application = SubmenuBuilder::new(handle, "覚書")
         .about(None)
         .separator()
+        .item(&item("preferences", "環境設定…", Some("CmdOrCtrl+,"))?)
+        .separator()
         .hide()
         .hide_others()
         .show_all()

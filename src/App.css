@@ -80,7 +80,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  max-width: 46rem;
+  /* 本文の幅は環境設定（ADR-0018）。既定は従来と同じ 46rem */
+  max-width: var(--content-width, 46rem);
   width: 100%;
   margin: 0 auto;
   padding: 2rem 1rem 0;
@@ -117,7 +118,8 @@ body {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  max-width: 46rem;
+  /* 題名の欄は本文と同じ幅に揃える（ずれると読み筋が折れる） */
+  max-width: var(--content-width, 46rem);
   width: 100%;
   margin: 0 auto;
   padding: 0.75rem 1rem 0;
@@ -545,6 +547,35 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 環境設定（TASKS 3-9）。項目名と値を 2 列に並べる */
+.preferences {
+  min-width: 22rem;
+}
+
+.preferences-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.6rem 1rem 0.2rem;
+  font-size: 0.85rem;
+}
+
+.preferences-fields label {
+  display: contents;
+}
+
+.preferences-fields select,
+.preferences-fields input {
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+}
+
 /* ダイアログの説明文（復元の確認など） */
 /* 保管フォルダを開く前の画面に出す知らせ（開けなかった理由） */
 .empty-note {
@@ -595,10 +626,8 @@ button.danger {
   margin: 0.4rem 0 0.2rem;
   width: 100%;
 }
-@media (prefers-color-scheme: dark) {
-  button.danger {
-    color: #ff8a80;
-  }
+:root[data-theme="dark"] button.danger {
+  color: #ff8a80;
 }
 
 /* コードブロックの配色（TASKS 2-1）。ライトは Pygments friendly 系、
@@ -616,20 +645,25 @@ button.danger {
   --code-def: #06287e;
   --code-prop: #517918;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --app-bg: #1e1e1e;
-    --code-name-bg: #5a5a63;
-    --code-name-fg: #f5f5f7;
-    --code-keyword: #ff7b72;
-    --code-string: #a5d6ff;
-    --code-comment: #8b949e;
-    --code-number: #79c0ff;
-    --code-type: #ffa657;
-    --code-func: #d2a8ff;
-    --code-def: #d2a8ff;
-    --code-prop: #7ee787;
-  }
+:root[data-theme="dark"] {
+  /* 見た目は JS が解決して data-theme に書く（テーマ設定は環境設定 =
+     TASKS 3-9）。CSS 側にも @media を置くと 2 か所で決まってずれる */
+  color-scheme: dark;
+  --app-bg: #1e1e1e;
+  --code-name-bg: #5a5a63;
+  --code-name-fg: #f5f5f7;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-comment: #8b949e;
+  --code-number: #79c0ff;
+  --code-type: #ffa657;
+  --code-func: #d2a8ff;
+  --code-def: #d2a8ff;
+  --code-prop: #7ee787;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 /* タグ補完のポップアップ（C-4）。CM6 の既定配色はライト固定で、ダークだと
