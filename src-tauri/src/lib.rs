@@ -58,6 +58,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+Shift+N"),
         )?)
         .item(&item("daily-note", "今日のノート", Some("CmdOrCtrl+T"))?)
+        .item(&item("move-note", "フォルダへ移動…", None)?)
         .item(&item("open-vault", "保管フォルダを開く…", None)?)
         .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)

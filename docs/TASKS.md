@@ -62,7 +62,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **3-2. テンプレートと同梱マニュアル**（E-4, resources/templates / MANUAL）
       `templates/` の雛形から新規作成・日次テンプレート・初回シード。
       「覚書の使い方」ノートのシードも同じ仕組みに乗せる
-- [ ] **3-3. フォルダの作成・改名とフォルダツリー**（ADR-0024, ui/sidebar.py）
+- [x] **3-3. フォルダの作成・改名とフォルダツリー**（ADR-0024, ui/sidebar.py）
 - [ ] **3-4. バックリンクとノートリンク補完**（E-6, core/notelink.py）
       索引に links テーブルを導入（スキーマ世代 +1）。本文下の帯と
       `[[` 補完をセットで

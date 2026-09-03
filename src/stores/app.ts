@@ -14,11 +14,14 @@ type NoteMeta = {
 };
 
 export type TagCount = { tag: string; count: number };
+/// フォルダと**直下の**ノート件数。`folder` が空文字なら保管フォルダ直下。
+export type FolderCount = { folder: string; count: number };
 
 type AppState = {
   vaultRoot: string | null;
   notes: NoteEntry[];
   tags: TagCount[];
+  folders: FolderCount[];
   trashNotes: string[];
   currentPath: string | null;
   openVault: (root: string) => Promise<void>;
@@ -43,14 +46,20 @@ async function fetchLists(root: string) {
   const notes: NoteEntry[] = metas.map((meta) => toEntry(root, meta));
   const tagPairs = await invoke<[string, number][]>("tag_list", { root });
   const tags: TagCount[] = tagPairs.map(([tag, count]) => ({ tag, count }));
+  const folderPairs = await invoke<[string, number][]>("folder_list", { root });
+  const folders: FolderCount[] = folderPairs.map(([folder, count]) => ({
+    folder,
+    count,
+  }));
   const trashNotes = await invoke<string[]>("trash_list", { root });
-  return { notes, tags, trashNotes };
+  return { notes, tags, folders, trashNotes };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   vaultRoot: null,
   notes: [],
   tags: [],
+  folders: [],
   trashNotes: [],
   currentPath: null,
 
@@ -163,6 +172,48 @@ export async function dailyNote(root: string): Promise<NewNote> {
 /// 使い方のノートを今の内容で置き直す。置いた場所を返す。
 export async function placeManual(root: string): Promise<string> {
   return invoke<string>("manual_place", { root });
+}
+
+/// そのフォルダ**直下**のノート（ADR-0024 追記 4。子孫は含めない）。
+export async function notesInFolder(
+  root: string,
+  folder: string,
+): Promise<NoteEntry[]> {
+  const metas = await invoke<NoteMeta[]>("notes_in_folder", { root, folder });
+  return metas.map((meta) => toEntry(root, meta));
+}
+
+export async function createFolder(
+  root: string,
+  folder: string,
+): Promise<string> {
+  return invoke<string>("folder_create", { root, folder });
+}
+
+/// フォルダの名前を変える。新しい相対パスが返る。
+export async function renameFolder(
+  root: string,
+  folder: string,
+  name: string,
+): Promise<string> {
+  return invoke<string>("folder_rename", { root, folder, name });
+}
+
+/// フォルダを消す。ノートが入っていると Rust 側が断る。
+export async function deleteFolder(
+  root: string,
+  folder: string,
+): Promise<void> {
+  await invoke("folder_delete", { root, folder });
+}
+
+/// ノートをフォルダへ移す。移した先の絶対パスが返る。
+export async function moveNote(
+  root: string,
+  path: string,
+  folder: string,
+): Promise<string> {
+  return invoke<string>("note_move", { root, path, folder });
 }
 
 export type SearchHit = {

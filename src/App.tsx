@@ -36,8 +36,13 @@ import {
   deleteForever,
   emptyTrash,
   historyList,
+  createFolder,
   createFromTemplate,
   dailyNote,
+  deleteFolder,
+  moveNote,
+  notesInFolder,
+  renameFolder,
   historyRestore,
   imageSource,
   notesWithTag,
@@ -72,6 +77,17 @@ function noteStem(path: string): string {
   return base.replace(/\.(md|markdown)$/i, "");
 }
 
+/// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
+function folderLabel(folder: string): string {
+  if (!folder) return "直下";
+  return folder.split("/").pop() ?? folder;
+}
+
+/// 階層の深さ（直下は 0）。ツリーの字下げに使う。
+function folderDepth(folder: string): number {
+  return folder ? folder.split("/").length : 0;
+}
+
 function trashLabel(root: string, path: string): string {
   const prefix = `${root}/.trash/`;
   const relative = path.startsWith(prefix) ? path.slice(prefix.length) : path;
@@ -83,6 +99,7 @@ function App() {
     vaultRoot,
     notes,
     tags,
+    folders,
     trashNotes,
     currentPath,
     openVault,
@@ -106,6 +123,9 @@ function App() {
   // タグでの絞り込み（C-4）。検索とは排他 — どちらも一覧の中身を差し替える
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tagNotes, setTagNotes] = useState<NoteEntry[]>([]);
+  // フォルダでの絞り込み（ADR-0024）。null は絞っていない、"" は直下
+  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  const [folderNotes, setFolderNotes] = useState<NoteEntry[]>([]);
   const searchSoon = useMemo(() => createDebouncer(200), []);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // 一覧の並び順（C-3 相当）。選び直したら覚える
@@ -118,10 +138,11 @@ function App() {
       return "modified";
     }
   });
-  const sortedNotes = useMemo(
-    () => sortNotes(tagFilter ? tagNotes : notes, sortOrder),
-    [notes, tagNotes, tagFilter, sortOrder],
-  );
+  const sortedNotes = useMemo(() => {
+    const listed =
+      folderFilter !== null ? folderNotes : tagFilter ? tagNotes : notes;
+    return sortNotes(listed, sortOrder);
+  }, [notes, tagNotes, tagFilter, folderNotes, folderFilter, sortOrder]);
   function changeSort(order: SortOrder) {
     setSortOrder(order);
     try {
@@ -173,6 +194,14 @@ function App() {
   // テンプレートの選択（E-4）。null は閉じている
   const [templates, setTemplates] = useState<string[] | null>(null);
   const [templateIndex, setTemplateIndex] = useState(0);
+  // フォルダの作成・改名の入力（ADR-0024）。null は閉じている
+  const [folderDialog, setFolderDialog] = useState<{
+    kind: "create" | "rename";
+    folder: string; // create: 親（"" は直下）/ rename: 対象
+  } | null>(null);
+  const folderName = useRef<HTMLInputElement>(null);
+  // 「フォルダへ移動…」の行き先選び。null は閉じている
+  const [moveOpen, setMoveOpen] = useState(false);
   // 雛形の `{{cursor}}`。開いた直後のキャレット位置としてエディタへ渡す
   const [initialCursor, setInitialCursor] = useState<number | null>(null);
   const tableRows = useRef<HTMLInputElement>(null);
@@ -324,6 +353,70 @@ function App() {
     await openNote(placed);
   }
 
+  async function confirmFolderName() {
+    const typed = folderName.current?.value.trim() ?? "";
+    const dialog = folderDialog;
+    if (!vaultRoot || !dialog || !typed) return;
+    setFolderDialog(null);
+    try {
+      if (dialog.kind === "create") {
+        const parent = dialog.folder ? `${dialog.folder}/` : "";
+        await createFolder(vaultRoot, `${parent}${typed}`);
+        setStatus(`フォルダ「${typed}」を作りました`);
+      } else {
+        const renamed = await renameFolder(vaultRoot, dialog.folder, typed);
+        // 開いているノートのパスも変わっている。開き直して追いかける
+        if (currentPath?.startsWith(`${vaultRoot}/${dialog.folder}/`)) {
+          const moved = currentPath.replace(
+            `${vaultRoot}/${dialog.folder}/`,
+            `${vaultRoot}/${renamed}/`,
+          );
+          autosave.flush();
+          await openNote(moved);
+        }
+        if (folderFilter === dialog.folder) setFolderFilter(renamed);
+        setStatus(`フォルダの名前を「${typed}」に変えました`);
+      }
+      await refresh();
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  /// フォルダを消す。**ノートが入っていたら Rust 側が断る**（フォルダの
+  /// 削除にゴミ箱は無いので、中身ごと消える操作は用意しない）。
+  async function handleDeleteFolder(folder: string) {
+    if (!vaultRoot) return;
+    const ok = await confirm(`フォルダ「${folder}」を削除しますか？`, {
+      title: "フォルダの削除",
+      kind: "warning",
+    });
+    if (!ok) return;
+    try {
+      await deleteFolder(vaultRoot, folder);
+      if (folderFilter === folder) setFolderFilter(null);
+      await refresh();
+      setStatus(`フォルダ「${folder}」を削除しました`);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  /// 開いているノートをフォルダへ移す（ADR-0024）。本文は書き換えない。
+  async function handleMoveNote(folder: string) {
+    if (!vaultRoot || !currentPath) return;
+    setMoveOpen(false);
+    autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    try {
+      const moved = await moveNote(vaultRoot, currentPath, folder);
+      await refresh();
+      await openNote(moved);
+      setStatus(folder ? `「${folder}」へ移しました` : "直下へ移しました");
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
   // Enter とフォーカス外しの両方から呼ばれるので、二重発火を弾く
   // （1 回目の改名で旧パスが消え、2 回目が「見つからない」で落ちる）
   const renaming = useRef(false);
@@ -389,7 +482,11 @@ function App() {
 
   function handleQueryChanged(next: string) {
     setQuery(next);
-    if (next.trim()) setTagFilter(null); // 検索とタグ絞り込みは排他
+    if (next.trim()) {
+      // 検索・タグ・フォルダは排他（どれも一覧の中身を差し替える）
+      setTagFilter(null);
+      setFolderFilter(null);
+    }
     if (!next.trim()) {
       searchSoon.cancel();
       setHits([]);
@@ -406,6 +503,7 @@ function App() {
   function filterByTag(tag: string | null) {
     setTagFilter(tag);
     if (tag) {
+      setFolderFilter(null);
       searchSoon.cancel();
       setQuery("");
       setHits([]);
@@ -427,6 +525,33 @@ function App() {
       alive = false;
     };
   }, [vaultRoot, tagFilter, notes]);
+
+  /// フォルダで一覧を絞る（null で解除）。検索・タグとは排他。
+  function filterByFolder(folder: string | null) {
+    setFolderFilter(folder);
+    if (folder !== null) {
+      searchSoon.cancel();
+      setQuery("");
+      setHits([]);
+      setTagFilter(null);
+    }
+  }
+
+  // 絞り込み中のフォルダのノートを引き直す（notes が変わったとき =
+  // 索引が更新されたときも）
+  useEffect(() => {
+    if (!vaultRoot || folderFilter === null) {
+      setFolderNotes([]);
+      return;
+    }
+    let alive = true;
+    void notesInFolder(vaultRoot, folderFilter).then((found) => {
+      if (alive) setFolderNotes(found);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [vaultRoot, folderFilter, notes]);
 
   // Cmd+クリック（ADR-0010/0011）。ノートは無ければ作る
   async function handleActivate(action: Activation) {
@@ -569,6 +694,9 @@ function App() {
     "new-note": () => void handleCreate(),
     "new-from-template": () => void chooseTemplate(),
     "daily-note": () => void handleDailyNote(),
+    "move-note": () => {
+      if (currentPathRef.current) setMoveOpen(true);
+    },
     "place-manual": () => void handlePlaceManual(),
     "open-vault": () => void chooseVault(),
     save: () => autosave.flush(),
@@ -752,6 +880,20 @@ function App() {
                 </button>
               </div>
             )}
+            {folderFilter !== null && (
+              <div className="tag-filter-row">
+                <span className="tag-filter-name">
+                  {folderFilter || "直下"}
+                </span>
+                <button
+                  className="tag-filter-clear"
+                  onClick={() => filterByFolder(null)}
+                  title="絞り込みを解除"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="sort-row">
               <select
                 value={sortOrder}
@@ -764,9 +906,14 @@ function App() {
               </select>
             </div>
             <ul>
-              {tagFilter && sortedNotes.length === 0 && (
-                <li className="no-hits">このタグのノートはありません</li>
-              )}
+              {(tagFilter || folderFilter !== null) &&
+                sortedNotes.length === 0 && (
+                  <li className="no-hits">
+                    {tagFilter
+                      ? "このタグのノートはありません"
+                      : "このフォルダにノートはありません"}
+                  </li>
+                )}
               {sortedNotes.map((entry) => (
                 <li key={entry.path}>
                   <button
@@ -789,6 +936,57 @@ function App() {
             </ul>
           </>
         )}
+        <details className="folder-section" open>
+          <summary>
+            フォルダ（{folders.length - 1}）
+            <button
+              className="folder-add"
+              title={
+                folderFilter
+                  ? `「${folderFilter}」の中に作る`
+                  : "保管フォルダの直下に作る"
+              }
+              onClick={(event) => {
+                event.preventDefault(); // summary の開閉を巻き込まない
+                setFolderDialog({ kind: "create", folder: folderFilter ?? "" });
+              }}
+            >
+              ＋
+            </button>
+          </summary>
+          <ul>
+            {folders.map(({ folder, count }) => (
+              <li key={folder || "."}>
+                <button
+                  className={`folder-row${folder === folderFilter ? " selected" : ""}`}
+                  style={{
+                    paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                  }}
+                  onClick={() =>
+                    filterByFolder(folder === folderFilter ? null : folder)
+                  }
+                >
+                  <span className="folder-name">{folderLabel(folder)}</span>
+                  <span className="folder-count">{count}</span>
+                </button>
+                {folder !== "" && folder === folderFilter && (
+                  <span className="folder-actions">
+                    <button
+                      onClick={() =>
+                        setFolderDialog({ kind: "rename", folder })
+                      }
+                    >
+                      名前を変更
+                    </button>
+                    <button onClick={() => void handleDeleteFolder(folder)}>
+                      削除
+                    </button>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
         {tags.length > 0 && (
           <details className="tag-section" open>
             <summary>タグ（{tags.length}）</summary>
@@ -985,6 +1183,74 @@ function App() {
                     onClick={() => void handleCreateFromTemplate(path)}
                   >
                     {noteStem(path)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {folderDialog !== null && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setFolderDialog(null)}
+        >
+          <div
+            className="palette"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="palette-title">
+              {folderDialog.kind === "create"
+                ? folderDialog.folder
+                  ? `「${folderDialog.folder}」の中に新しいフォルダ`
+                  : "新しいフォルダ"
+                : `「${folderDialog.folder}」の名前を変更`}
+            </header>
+            <div className="table-dialog-fields">
+              <label>
+                名前
+                <input
+                  ref={folderName}
+                  autoFocus
+                  defaultValue={
+                    folderDialog.kind === "rename"
+                      ? folderLabel(folderDialog.folder)
+                      : ""
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void confirmFolderName();
+                    else if (event.key === "Escape") setFolderDialog(null);
+                  }}
+                />
+              </label>
+            </div>
+            <div className="conflict-actions">
+              <button onClick={() => setFolderDialog(null)}>やめる</button>
+              <button onClick={() => void confirmFolderName()}>決定</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {moveOpen && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setMoveOpen(false)}
+        >
+          <div
+            className="palette"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="palette-title">フォルダへ移動</header>
+            <ul>
+              {folders.map(({ folder }) => (
+                <li key={folder || "."}>
+                  <button
+                    style={{
+                      paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                    }}
+                    onClick={() => void handleMoveNote(folder)}
+                  >
+                    {folderLabel(folder)}
                   </button>
                 </li>
               ))}
