@@ -823,8 +823,16 @@ export const tableField = StateField.define<DecorationSet>({
   create: computeTableSet,
   update(value, tr) {
     const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
-    if (!tr.docChanged && !tr.selection && !modeChanged) return value;
+    // **解析が進んだら数え直す。** 長いノートは開いた時点では途中までしか
+    // 解析されておらず、下のほうの表は**まだ木に無い**。スクロールで
+    // 解析が進んだことは docChanged にも selection にも出ないので、
+    // これを見ないと表が生のまま残る（実機で発覚 2026-09-04）
+    const treeGrew = syntaxTree(tr.state) !== syntaxTree(tr.startState);
+    if (!tr.docChanged && !tr.selection && !modeChanged && !treeGrew) {
+      return value;
+    }
     if (modeChanged) return computeTableSet(tr.state);
+    if (treeGrew && !tr.docChanged) return computeTableSet(tr.state);
     const meta = tableMeta.get(value);
     if (!meta) return computeTableSet(tr.state);
 
@@ -861,11 +869,16 @@ const hideMarkers = ViewPlugin.fromClass(
       const modeChanged = update.transactions.some((tr) =>
         tr.effects.some((e) => e.is(setSourceMode)),
       );
+      // 表と同じ理由で**解析の進みも見る**（画面を動かさないまま解析が
+      // 追いついたとき、装飾が掛からないまま残る）
+      const treeGrew =
+        syntaxTree(update.state) !== syntaxTree(update.startState);
       if (
         update.docChanged ||
         update.selectionSet ||
         update.viewportChanged ||
-        modeChanged
+        modeChanged ||
+        treeGrew
       ) {
         this.decorations = this.build(update.view);
       }

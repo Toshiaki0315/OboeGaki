@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 import { EditorSelection, EditorState, type Range } from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
@@ -507,5 +508,26 @@ describe("Mermaid 図（ADR-0021）", () => {
     expect(decorationsOf(code, 0).some((d) => d.kind === "mermaid")).toBe(
       false,
     );
+  });
+});
+
+describe("長いノートの下のほうにある表（実機で発覚 2026-09-04）", () => {
+  // 開いた時点では文書の途中までしか解析されていない。スクロールで解析が
+  // 進んだことは docChanged にも selection にも出ないので、それを見ないと
+  // **表が生のまま残る**
+  const doc =
+    "本文の行です。\n".repeat(4000) + "\n| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+
+  test("解析が届いていない間は表が見つからない（前提の確認）", () => {
+    const state = EditorState.create({ doc, extensions: [LANG, tableField] });
+    expect(state.field(tableField).size).toBe(0);
+  });
+
+  test("解析が進んだら数え直して表になる", () => {
+    const state = EditorState.create({ doc, extensions: [LANG, tableField] });
+    ensureSyntaxTree(state, doc.length, 5000);
+    // 解析が進んだあとに来るトランザクション（中身は空でもよい）
+    const next = state.update({}).state;
+    expect(next.field(tableField).size).toBe(1);
   });
 });
