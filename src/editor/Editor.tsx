@@ -16,6 +16,7 @@ import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
 import { formatKeymap } from "./format-commands";
+import { editorModes } from "./modes";
 import {
   activationClicks,
   activationHandler,
@@ -125,6 +126,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
           }),
           livePreview,
+          editorModes,
           imageResolver.of(resolveImage ?? (async () => null)),
           activationClicks,
           activationHandler.of((action) => activate.current?.(action)),
