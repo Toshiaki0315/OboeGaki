@@ -334,18 +334,9 @@ export function previewDecorations(
     from,
     to,
     enter: (node) => {
-      // --- 表: 範囲外にいる間は HTML の table に置き換える（ADR-0035）。
-      //     触れている間は生のソース（表単位リビール = ADR-0003 決定 3）
-      if (node.name === "Table") {
-        if (touchesSelection(state, node.from, node.to)) return;
-        out.push(
-          Decoration.replace({
-            widget: new TableWidget(tableData(state, node.node)),
-            block: true,
-          }).range(node.from, node.to),
-        );
-        return false; // 中のマーカー隠しは重ねない
-      }
+      // --- 表: 生のソースのまま触らない（描画は tableDecorations = StateField
+      //     の担当。表示中もリビール中も、中のマーカー隠しは掛けない）
+      if (node.name === "Table") return false;
       // --- 画像: 行まるごとが画像 1 つのときだけ絵に置き換える（ADR-0004）。
       //     文中の画像はリンク扱い（マーカー隠しに任せる）
       if (node.name === "Image") {
@@ -448,6 +439,50 @@ export function previewDecorations(
   });
   return out;
 }
+
+/// 表の装飾を計算する（ADR-0035）。範囲外にいる間は HTML の table に
+/// 置き換え、触れている間は生のソース（表単位リビール = ADR-0003 決定 3）。
+///
+/// **ViewPlugin ではなく StateField から提供する。** CM6 はブロック構造を
+/// 変える装飾（block widget・改行をまたぐ replace）を plugin 由来の
+/// 装飾に許さない（実機で発覚 2026-09-04）。表は文書全体を見るが、
+/// Table ノードの走査は木の上部だけで済むので軽い。
+export function tableDecorations(state: EditorState): Range<Decoration>[] {
+  if (state.field(sourceModeField, false)) return [];
+  const out: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== "Table") {
+        // 表はトップレベルのブロック。中まで潜る必要は無い
+        return node.node.parent === null || node.name === "Document"
+          ? undefined
+          : false;
+      }
+      if (!touchesSelection(state, node.from, node.to)) {
+        out.push(
+          Decoration.replace({
+            widget: new TableWidget(tableData(state, node.node)),
+            block: true,
+          }).range(node.from, node.to),
+        );
+      }
+      return false;
+    },
+  });
+  return out;
+}
+
+export const tableField = StateField.define<DecorationSet>({
+  create: (state) => RangeSet.of(tableDecorations(state), true),
+  update(value, tr) {
+    const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
+    if (tr.docChanged || tr.selection || modeChanged) {
+      return RangeSet.of(tableDecorations(tr.state), true);
+    }
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 const hideMarkers = ViewPlugin.fromClass(
   class {
@@ -573,6 +608,7 @@ export const livePreview = [
   sourceModeField,
   keymap.of([{ key: "Mod-/", run: toggleSourceMode }]),
   hideMarkers,
+  tableField,
   syntaxHighlighting(style),
   blockTheme,
 ];

@@ -14,6 +14,7 @@ import {
   previewDecorations,
   setSourceMode,
   sourceModeField,
+  tableDecorations,
   type TableData,
 } from "./live-preview";
 
@@ -36,7 +37,7 @@ function decorationsOf(doc: string, anchor: number): Deco[] {
 }
 
 function tableWidgetOf(doc: string, anchor: number): TableData | null {
-  const found = previewDecorations(stateOf(doc, anchor), 0, doc.length)
+  const found = tableDecorations(stateOf(doc, anchor))
     .map((r) => r.value.spec as { widget?: { data?: TableData } })
     .find((spec) => spec.widget?.data !== undefined);
   return found?.widget?.data ?? null;
@@ -234,6 +235,25 @@ describe("previewDecorations（ブロック系）", () => {
         d.kind.startsWith("image:"),
       ),
     ).toBe(false);
+  });
+
+  test("previewDecorations はブロック構造に触れない（ViewPlugin の制約）", () => {
+    // 実機で発覚: block widget や改行をまたぐ replace を ViewPlugin から
+    // 出すと CM6 が拒否し、表が描かれなかった（2026-09-04）。
+    // ブロック構造を変える装飾は StateField（tableDecorations）に置く
+    const doc =
+      "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n![図](attachments/a.png)\n\n---\n\n文";
+    const state = stateOf(doc, doc.length - 1);
+    for (const range of previewDecorations(state, 0, doc.length)) {
+      const spec = range.value.spec as { block?: boolean };
+      expect(spec.block ?? false, `block at ${range.from}`).toBe(false);
+      if (range.from !== range.to) {
+        expect(
+          state.sliceDoc(range.from, range.to).includes("\n"),
+          `改行またぎ at ${range.from}..${range.to}`,
+        ).toBe(false);
+      }
+    }
   });
 
   test("表は範囲外にカーソルがあるとき table widget に置き換える", () => {
