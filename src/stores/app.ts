@@ -295,6 +295,19 @@ export async function registerTemplate(
   return invoke<string>("template_register", { root, path, name });
 }
 
+/// どのノートからも指されていない添付（E-5）。
+export async function unusedAttachments(root: string): Promise<string[]> {
+  return invoke<string[]>("attachments_unused", { root });
+}
+
+/// 添付をゴミ箱へ移す。移した数が返る。
+export async function trashAttachments(
+  root: string,
+  paths: string[],
+): Promise<number> {
+  return invoke<number>("attachments_trash", { root, paths });
+}
+
 export type SearchHit = {
   /** vault からの相対パス */
   path: string;

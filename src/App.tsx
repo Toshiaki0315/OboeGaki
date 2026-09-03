@@ -74,6 +74,8 @@ import {
   restoreRecovery,
   stashNote,
   syncIndex,
+  trashAttachments,
+  unusedAttachments,
   discardStash,
   historyRestore,
   imageSource,
@@ -1027,6 +1029,7 @@ function App() {
     "open-vault": () => void chooseVault(),
     resync: () => void handleSync(false),
     "rebuild-index": () => void handleSync(true),
+    "cleanup-attachments": () => void handleCleanupAttachments(),
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
     history: () => void openHistory(),
@@ -1063,6 +1066,37 @@ function App() {
     });
     return () => void unlisten.then((stop) => stop());
   }, []);
+
+  /// 使っていない添付を片づける（E-5）。
+  ///
+  /// **手で走らせる。** 起動のたびに動かすと、参照の取りこぼしが
+  /// 「気づかないうちにファイルが動く」に直結する。件数を見せて、
+  /// 押したときだけ動かす。
+  async function handleCleanupAttachments() {
+    if (!vaultRoot) return;
+    // **書きかけの本文も数える。** 先に保存しないと、貼ったばかりの画像が
+    // 「どこからも指されていない」ことになって消える
+    autosave.flush();
+    const found = await unusedAttachments(vaultRoot);
+    if (found.length === 0) {
+      setStatus("どの添付もノートから使われています");
+      return;
+    }
+    const names = found
+      .slice(0, 10)
+      .map((path) => `・${path.split("/").pop()}`)
+      .join("\n");
+    const more = found.length > 10 ? `\n…ほか ${found.length - 10} 件` : "";
+    const ok = await confirm(
+      `どのノートからも使われていない添付が ${found.length} 件あります。\n` +
+        `ゴミ箱へ移しますか？（${settingsRef.current.trashDays} 日は戻せます）\n\n${names}${more}`,
+      { title: "使っていない添付を片づける", kind: "warning" },
+    );
+    if (!ok) return;
+    const moved = await trashAttachments(vaultRoot, found);
+    await refresh();
+    setStatus(`${moved} 件をゴミ箱へ移しました`);
+  }
 
   /// ファイルと索引を手で合わせ直す（M-6）。**打ちかけを先に書く**
   /// （走査は保存済みのものを読む）。

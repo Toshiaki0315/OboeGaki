@@ -267,6 +267,88 @@ impl Vault {
         Ok(target)
     }
 
+    // --------------------------------------------------------- 添付の片づけ（E-5）
+
+    /// どのノートからも指されていない添付。名前順。
+    ///
+    /// **広く数える。** 数え漏らしはそのまま画像の消失になるので、ゴミ箱の
+    /// 中のノート（戻したときに絵が要る）も、雛形も、サブフォルダのノートも
+    /// 見る。読めないファイルは飛ばす（1 つのせいで片づけられなくなるほうが困る）。
+    ///
+    /// `attachments/` 直下のファイルだけを対象にする。人が自分で作った
+    /// サブフォルダと隠しファイル（`.DS_Store`）は**こちらの持ち物では
+    /// ないので触らない**。
+    pub fn unused_attachments(&self) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(self.attachments_dir()) else {
+            return Vec::new();
+        };
+        let mut used: HashSet<String> = HashSet::new();
+        for note in self.all_markdown() {
+            if let Ok(text) = fs::read_to_string(&note) {
+                used.extend(crate::references::attachment_names(&text));
+            }
+        }
+        let mut found: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| {
+                let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                    return false;
+                };
+                path.is_file() && !name.starts_with('.') && !used.contains(name)
+            })
+            .collect();
+        found.sort();
+        found
+    }
+
+    /// 参照を数える対象。**走査（`scan`）より広い。**
+    ///
+    /// `scan()` はノート一覧のためのもので、ゴミ箱と雛形を外している。
+    /// こちらは「消してよいか」の判定なので、そこも見る必要がある。
+    fn all_markdown(&self) -> Vec<PathBuf> {
+        let mut found = self.scan();
+        for directory in [self.trash_dir(), self.templates_dir()] {
+            let Ok(entries) = fs::read_dir(&directory) else {
+                continue;
+            };
+            let mut stack: Vec<PathBuf> = entries
+                .filter_map(|entry| entry.ok().map(|e| e.path()))
+                .collect();
+            while let Some(path) = stack.pop() {
+                if path.is_dir() {
+                    if let Ok(inner) = fs::read_dir(&path) {
+                        stack.extend(inner.filter_map(|entry| entry.ok().map(|e| e.path())));
+                    }
+                } else if is_markdown(&path) {
+                    found.push(path);
+                }
+            }
+        }
+        found
+    }
+
+    /// 添付をゴミ箱へ移す。移した先を返す。
+    ///
+    /// **消さない。** 判定は「本文に名前が出てこない」という消極的なもので、
+    /// 取りこぼせば使用中の画像を片づけてしまう。期限のあいだは戻せる。
+    ///
+    /// **`attachments/` の中のものしか動かさない。** パスは呼び出し側から
+    /// 来るので、ここでもう一度確かめる（ノートを片づけてしまわないため）。
+    pub fn trash_attachments(&self, paths: &[PathBuf]) -> Vec<PathBuf> {
+        let mut moved = Vec::new();
+        for path in paths {
+            if path.parent() != Some(self.attachments_dir().as_path()) || !path.is_file() {
+                eprintln!("添付ではないので動かさない: {}", path.display());
+                continue;
+            }
+            match self.trash(path) {
+                Ok(target) => moved.push(target),
+                Err(error) => eprintln!("添付を片づけられなかった: {error}"),
+            }
+        }
+        moved
+    }
+
     // --------------------------------------------------------- テンプレート（E-4）
 
     /// `templates/` にある雛形。名前順。
@@ -2019,6 +2101,68 @@ mod tests {
 
         assert_ne!(second, first);
         assert_eq!(fs::read_to_string(&first).unwrap(), "# 書き足したメモ\n");
+    }
+
+    // ------------------------------------------------------------ 添付の片づけ（E-5）
+
+    #[test]
+    fn test_unused_attachments_どこからも指されていないものだけ() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        for name in ["使用中.png", "孤児.png", ".DS_Store"] {
+            fs::write(vault.attachments_dir().join(name), "x").unwrap();
+        }
+        fs::create_dir_all(vault.attachments_dir().join("自分の箱")).unwrap();
+        fs::write(
+            root.path().join("a.md"),
+            "# a\n\n![](attachments/使用中.png)\n",
+        )
+        .unwrap();
+
+        let found = vault.unused_attachments();
+
+        assert_eq!(found, vec![vault.attachments_dir().join("孤児.png")]);
+    }
+
+    #[test]
+    fn test_unused_attachments_ゴミ箱と雛形の参照も数える() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        for name in ["ゴミ箱から.png", "雛形から.png"] {
+            fs::write(vault.attachments_dir().join(name), "x").unwrap();
+        }
+        // **広く数える。** 数え漏らしはそのまま画像の消失になる
+        fs::write(
+            vault.trash_dir().join("捨てた.md"),
+            "![](attachments/ゴミ箱から.png)\n",
+        )
+        .unwrap();
+        fs::write(
+            vault.templates_dir().join("型.md"),
+            "![](attachments/雛形から.png)\n",
+        )
+        .unwrap();
+
+        assert!(vault.unused_attachments().is_empty());
+    }
+
+    #[test]
+    fn test_trash_attachments_添付以外は動かさない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let orphan = vault.attachments_dir().join("孤児.png");
+        fs::write(&orphan, "x").unwrap();
+        let note = note(root.path(), "巻き込まれない.md");
+
+        let moved = vault.trash_attachments(&[orphan.clone(), note.clone()]);
+
+        // **消さない**（ゴミ箱へ移す）。判定は消極的なので戻せる道を残す
+        assert_eq!(moved.len(), 1);
+        assert!(!orphan.exists());
+        assert!(note.is_file()); // ノートは添付ではない
     }
 
     // ------------------------------------------------------------ 複製と登録

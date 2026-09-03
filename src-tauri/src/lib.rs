@@ -9,6 +9,7 @@ pub mod front_matter;
 mod history;
 pub mod index_db;
 pub mod recovery;
+pub mod references;
 pub mod search_query;
 pub mod tags;
 pub mod template;
@@ -70,6 +71,11 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         // 手入れ（M-6）。監視が取りこぼしたぶんを押せば必ず合わせられる
         .item(&item("resync", "最新の情報に同期", None)?)
         .item(&item("rebuild-index", "索引を作り直す", None)?)
+        .item(&item(
+            "cleanup-attachments",
+            "使っていない添付を片づける…",
+            None,
+        )?)
         .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
         .item(&item("export-html", "HTML に書き出し…", None)?)
@@ -205,6 +211,8 @@ pub fn run() {
             commands::template_list,
             commands::template_register,
             commands::note_duplicate,
+            commands::attachments_unused,
+            commands::attachments_trash,
             commands::note_create_from_template,
             commands::note_daily,
             commands::manual_place,

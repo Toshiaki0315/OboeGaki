@@ -360,6 +360,33 @@ pub fn template_register(root: String, path: String, name: String) -> Result<Str
         .map_err(|e| e.to_string())
 }
 
+/// どのノートからも指されていない添付（E-5）。絶対パスを名前順で返す。
+#[tauri::command]
+pub fn attachments_unused(root: String) -> Result<Vec<String>, String> {
+    Ok(Vault::new(&root)
+        .unused_attachments()
+        .into_iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect())
+}
+
+/// 添付をゴミ箱へ移す（E-5）。移した数を返す。
+#[tauri::command]
+pub fn attachments_trash(
+    state: tauri::State<WatchState>,
+    root: String,
+    paths: Vec<String>,
+) -> Result<usize, String> {
+    let vault = Vault::new(&root);
+    let mut targets = Vec::new();
+    for path in paths {
+        let path = guarded(&root, &path)?;
+        state.suppressor.mark(&path);
+        targets.push(path);
+    }
+    Ok(vault.trash_attachments(&targets).len())
+}
+
 /// そのタグ（と配下のタグ）が付いたノートだけの一覧（C-4）。
 /// サイドバーのタグクリックはこれで絞る。
 #[tauri::command]
