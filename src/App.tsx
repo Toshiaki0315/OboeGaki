@@ -261,6 +261,31 @@ function App() {
   const fontSizeRef = useRef(fontSize);
   fontSizeRef.current = fontSize;
 
+  // 見出しパレット（Cmd+R、C-2）。**飛んだら閉じる道具**なので、
+  // 出しっぱなしのアウトライン（Cmd+5）とは別に持つ
+  const [headings, setHeadings] = useState<OutlineItem[] | null>(null);
+  const [headingQuery, setHeadingQuery] = useState("");
+  const [headingIndex, setHeadingIndex] = useState(0);
+
+  /// 今のノートの見出しでパレットを開く。**空のパレットは出さない**
+  /// （何も無いことが分かればよい）。
+  function openHeadingPalette() {
+    const found = editorRef.current?.getOutline() ?? [];
+    if (found.length === 0) {
+      setStatus("このノートには見出しがありません");
+      return;
+    }
+    setHeadingQuery("");
+    setHeadingIndex(0);
+    setHeadings(found);
+  }
+
+  function jumpToHeading(item: OutlineItem | undefined) {
+    if (!item) return;
+    setHeadings(null);
+    editorRef.current?.revealPos(item.from);
+  }
+
   // クイックオープン（Cmd+O、spec §5.4）
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -943,6 +968,7 @@ function App() {
     },
     "search-all": () => searchInputRef.current?.focus(),
     outline: toggleOutline,
+    "heading-palette": openHeadingPalette,
     "toggle-trees": () =>
       changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
     "toggle-notes": () =>
@@ -1324,6 +1350,74 @@ function App() {
           onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
         />
       )}
+      {headings !== null &&
+        (() => {
+          // クイックオープンと同じ絞り方（入口が増えても操作を覚え直さない）
+          // 空の見出し（`##` だけの行）も選べるようにする
+          const labels = headings.map(
+            (item) => item.text || "（無題の見出し）",
+          );
+          const ranked = rankCandidates(headingQuery, labels).slice(0, 30);
+          return (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setHeadings(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <input
+                  autoFocus
+                  className="palette-input"
+                  placeholder="見出しへ飛ぶ"
+                  value={headingQuery}
+                  onChange={(event) => {
+                    setHeadingQuery(event.currentTarget.value);
+                    setHeadingIndex(0);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setHeadings(null);
+                    else if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setHeadingIndex((i) =>
+                        Math.min(i + 1, ranked.length - 1),
+                      );
+                    } else if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setHeadingIndex((i) => Math.max(i - 1, 0));
+                    } else if (event.key === "Enter") {
+                      event.preventDefault();
+                      jumpToHeading(headings[ranked[headingIndex] ?? -1]);
+                    }
+                  }}
+                />
+                <ul>
+                  {ranked.map((headingIdx, rankedIndex) => (
+                    <li key={`${headings[headingIdx].from}`}>
+                      <button
+                        className={
+                          rankedIndex === headingIndex ? "selected" : ""
+                        }
+                        // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
+                        style={{
+                          paddingLeft: `${0.5 + (headings[headingIdx].level - 1) * 0.9}rem`,
+                        }}
+                        onMouseEnter={() => setHeadingIndex(rankedIndex)}
+                        onClick={() => jumpToHeading(headings[headingIdx])}
+                      >
+                        {labels[headingIdx]}
+                      </button>
+                    </li>
+                  ))}
+                  {ranked.length === 0 && (
+                    <li className="no-hits">見つかりません</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          );
+        })()}
       {quickOpen &&
         (() => {
           const labels = notes.map((entry) => entry.label);

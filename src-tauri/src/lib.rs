@@ -118,6 +118,11 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("zoom-out", "文字を小さく（Cmd+-）", None)?)
         .item(&item("zoom-reset", "標準の大きさ（Cmd+0）", None)?)
         .separator()
+        .item(&item(
+            "heading-palette",
+            "見出しへ飛ぶ…",
+            Some("CmdOrCtrl+R"),
+        )?)
         .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
         .item(&item(
