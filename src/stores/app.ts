@@ -88,6 +88,24 @@ export async function searchNotes(
   return invoke<SearchHit[]>("note_search", { root, query });
 }
 
+export type HistoryEntry = { stamp: string; path: string };
+
+export async function historyList(
+  root: string,
+  path: string,
+): Promise<HistoryEntry[]> {
+  return invoke<HistoryEntry[]>("history_list", { root, path });
+}
+
+/// 版を書き戻す。返り値は書き戻したあとの本文。
+export async function historyRestore(
+  root: string,
+  path: string,
+  version: string,
+): Promise<string> {
+  return invoke<string>("history_restore", { root, path, version });
+}
+
 // 画像の data URL キャッシュ。装飾は再計算のたびに widget を作り直すので、
 // invoke の往復を毎回払わない（参照実装 image_cache の役目）
 const imageCache = new Map<string, Promise<string | null>>();

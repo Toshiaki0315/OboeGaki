@@ -8,9 +8,24 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::autosave;
+use crate::history;
 use crate::index_db::{IndexDb, SearchHit};
 use crate::vault::{contains, Vault};
 use crate::watcher::{self, Suppressor};
+
+/// ノートの履歴の鍵。id を持たないので vault からの相対パスで作る。
+fn history_key(root: &str, path: &Path) -> String {
+    let relative = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned();
+    format!("path:{relative}")
+}
+
+fn history_root(root: &str) -> std::path::PathBuf {
+    history::store_root(&Vault::new(root).managed_dir())
+}
 
 /// vault ごとに 1 本の watcher と、自書き込みの無視リスト。
 /// 新しい vault を開いたら watcher を置き換える（drop で旧監視は止まる）。
@@ -54,6 +69,8 @@ pub fn vault_open(
     if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault)) {
         eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
     }
+    // 履歴の掃除（ADR-0023: 50 版 / 30 日）。失敗しても開くのは止めない
+    history::prune(&history_root(&root), chrono::Local::now().naive_local());
     Ok(vault
         .scan()
         .into_iter()
@@ -84,7 +101,69 @@ pub fn note_write(
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
+    // 版の履歴（ADR-0023）。60 分間引き。失敗しても保存は成立している
+    if let Err(error) = history::keep(
+        &history_root(&root),
+        &history_key(&root, &path),
+        &text,
+        chrono::Local::now().naive_local(),
+        false,
+        history::DEFAULT_INTERVAL_MINUTES,
+    ) {
+        eprintln!("版を残せなかった: {error}");
+    }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct HistoryEntry {
+    pub stamp: String,
+    pub path: String,
+}
+
+#[tauri::command]
+pub fn history_list(root: String, path: String) -> Result<Vec<HistoryEntry>, String> {
+    let path = guarded(&root, &path)?;
+    Ok(
+        history::versions(&history_root(&root), &history_key(&root, &path))
+            .into_iter()
+            .map(|version| HistoryEntry {
+                stamp: version.saved_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                path: version.path.to_string_lossy().into_owned(),
+            })
+            .collect(),
+    )
+}
+
+/// 版を書き戻す。戻す前に今の内容を 1 版残す（取り消せない操作を増やさない）。
+/// 返り値は書き戻したあとの本文（フロントがエディタへ流し込む）。
+#[tauri::command]
+pub fn history_restore(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+    version: String,
+) -> Result<String, String> {
+    let note = guarded(&root, &path)?;
+    let version = guarded(&root, &version)?;
+    let store = history_root(&root);
+    let key = history_key(&root, &note);
+    let now = chrono::Local::now().naive_local();
+    if let Ok(current) = fs::read_to_string(&note) {
+        if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
+            eprintln!("戻す前の版を残せなかった: {error}");
+        }
+    }
+    let text = fs::read_to_string(&version).map_err(|e| e.to_string())?;
+    state.suppressor.mark(&note);
+    autosave::save_atomic(&note, &text).map_err(|e| e.to_string())?;
+    let vault = Vault::new(&root);
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    Ok(text)
 }
 
 /// プロセス開始から UI マウントまでの時間（spec §6.6: 起動 < 1.5 秒の実測）。
@@ -142,6 +221,14 @@ pub fn note_rename(
         .rename(&path, &title)
         .map_err(|e| e.to_string())?;
     state.suppressor.mark(&renamed);
+    // 鍵がパスなので、置き場を付け替えないと履歴が見えなくなる
+    if let Err(error) = history::rekey(
+        &history_root(&root),
+        &history_key(&root, &path),
+        &history_key(&root, &renamed),
+    ) {
+        eprintln!("履歴の置き場を移せなかった: {error}");
+    }
     Ok(renamed.to_string_lossy().into_owned())
 }
 

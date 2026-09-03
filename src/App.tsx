@@ -10,6 +10,8 @@ import { createDebouncer } from "./lib/debounce";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   createNote,
+  historyList,
+  historyRestore,
   imageSource,
   readNote,
   renameNote,
@@ -18,6 +20,7 @@ import {
   trashNote,
   useAppStore,
   writeNote,
+  type HistoryEntry,
   type SearchHit,
 } from "./stores/app";
 import "./App.css";
@@ -73,6 +76,33 @@ function App() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteIndex, setPaletteIndex] = useState(0);
+  // 版の履歴（ADR-0023）
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(
+    null,
+  );
+
+  async function openHistory() {
+    if (!vaultRoot || !currentPath) return;
+    autosave.flush(); // 未保存分を書き切ってから一覧を出す
+    setHistoryEntries(await historyList(vaultRoot, currentPath));
+  }
+
+  async function restoreVersion(entry: HistoryEntry) {
+    if (!vaultRoot || !currentPath) return;
+    const ok = await confirm(
+      `${entry.stamp} の版に戻しますか？\n（今の内容も履歴に残ります）`,
+      { title: "覚書", kind: "warning" },
+    );
+    if (!ok) return;
+    const text = await historyRestore(vaultRoot, currentPath, entry.path);
+    autosave.cancel();
+    pendingSave.current = null;
+    dirtyRef.current = false;
+    editorRef.current?.replaceText(text);
+    setHistoryEntries(null);
+    setStatus(`${entry.stamp} の版に戻しました`);
+  }
+
   // アウトライン（Cmd+5、ADR-0022）。既定では出さず、開閉の状態は残す
   const [outlineOpen, setOutlineOpen] = useState(() => {
     try {
@@ -486,6 +516,7 @@ function App() {
                 }}
                 onBlur={(event) => void handleRename(event.currentTarget.value)}
               />
+              <button onClick={() => void openHistory()}>履歴</button>
               <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
             </header>
             <Editor
@@ -505,6 +536,36 @@ function App() {
         )}
         <footer className="status-bar">{status}</footer>
       </section>
+      {historyEntries !== null && (
+        <div
+          className="palette-backdrop"
+          onMouseDown={() => setHistoryEntries(null)}
+        >
+          <div
+            className="palette"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="palette-title">
+              版の履歴（新しい順・戻す前に今の内容も残ります）
+            </header>
+            <ul>
+              {historyEntries.map((entry) => (
+                <li key={entry.path} className="history-row">
+                  <span>{entry.stamp}</span>
+                  <button onClick={() => void restoreVersion(entry)}>
+                    戻す
+                  </button>
+                </li>
+              ))}
+              {historyEntries.length === 0 && (
+                <li className="no-hits">
+                  まだ版がありません（保存から 60 分間隔で残ります）
+                </li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
       {outlineOpen && (
         <aside className="outline-pane">
           <header>目次</header>

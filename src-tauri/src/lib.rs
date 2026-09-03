@@ -5,6 +5,7 @@
 pub mod assets;
 pub mod autosave;
 pub mod commands;
+pub mod history;
 pub mod index_db;
 pub mod vault;
 pub mod watcher;
@@ -37,6 +38,8 @@ pub fn run() {
             commands::note_restore,
             commands::note_search,
             commands::image_read,
+            commands::history_list,
+            commands::history_restore,
             commands::startup_elapsed_ms,
         ])
         .run(tauri::generate_context!())
