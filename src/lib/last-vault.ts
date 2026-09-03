@@ -8,6 +8,20 @@ type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export const VAULT_KEY = "oboegaki.vault";
 
+/// 「既に別のウィンドウで開いている」の印（Rust 側 vault_open が返す
+/// メッセージの頭）。**「開けない」と区別する**ためだけに使う。
+export const VAULT_BUSY = "vault-busy";
+
+/// その失敗が二重起動の断りか。
+export function isVaultBusy(error: unknown): boolean {
+  return String(error).includes(VAULT_BUSY);
+}
+
+/// 画面に出す文言（印を落とす）。
+export function vaultErrorText(error: unknown): string {
+  return String(error).replace(new RegExp(`.*${VAULT_BUSY}:\\s*`), "");
+}
+
 export function saveLastVault(storage: StorageLike, root: string): void {
   try {
     storage.setItem(VAULT_KEY, root);
@@ -32,7 +46,10 @@ export async function restoreLastVault(
   try {
     await openVault(root);
     return root;
-  } catch {
+  } catch (error) {
+    // **二重起動の断りは忘れない。** 向こうを閉じれば次は開ける。忘れると、
+    // 閉じたあとに前回の vault へ戻れなくなる
+    if (isVaultBusy(error)) throw error;
     try {
       storage.removeItem(VAULT_KEY);
     } catch {

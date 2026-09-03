@@ -23,7 +23,11 @@ import {
   saveFontSize,
   zoomActionFor,
 } from "./lib/font-size";
-import { restoreLastVault, saveLastVault } from "./lib/last-vault";
+import {
+  restoreLastVault,
+  saveLastVault,
+  vaultErrorText,
+} from "./lib/last-vault";
 import {
   formatStamp,
   sortNotes,
@@ -293,18 +297,26 @@ function App() {
 
   async function chooseVault() {
     const picked = await open({ directory: true });
-    if (typeof picked === "string") {
-      autosave.flush();
+    if (typeof picked !== "string") return;
+    autosave.flush();
+    try {
       await openVault(picked);
-      saveLastVault(localStorage, picked);
-      setDoc(null);
+    } catch (error) {
+      // 二重起動の断りも含めて、開けない理由をそのまま見せる
+      setStatus(vaultErrorText(error));
+      return;
     }
+    saveLastVault(localStorage, picked);
+    setDoc(null);
   }
 
   // 前回の vault を開き直す（TASKS 1-1）。開けなければ黙って選択画面のまま
   useEffect(() => {
     if (vaultRootRef.current) return;
-    void restoreLastVault(localStorage, openVault);
+    void restoreLastVault(localStorage, openVault).catch((error) => {
+      // 別の窓が同じ vault を開いている（記憶は消さない）
+      setStatus(vaultErrorText(error));
+    });
     // 起動時に一度だけ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -926,6 +938,8 @@ function App() {
       <main className="app app-empty">
         <h1>覚書</h1>
         <button onClick={() => void chooseVault()}>保管フォルダを開く</button>
+        {/* 開けなかった理由（二重起動の断りなど）はここにしか出せない */}
+        {status && <p className="empty-note">{status}</p>}
       </main>
     );
   }

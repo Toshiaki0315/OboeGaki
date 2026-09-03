@@ -13,6 +13,7 @@ pub mod search_query;
 pub mod tags;
 pub mod template;
 pub mod vault;
+pub mod vault_lock;
 pub mod watcher;
 pub mod wikilink;
 
@@ -138,6 +139,22 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let _ = STARTED.set(Instant::now());
     tauri::Builder::default()
+        // 二重起動を止める（H-1 層 2）。2 つ目を起動したら、**今ある窓を
+        // 前に出す**（同じ vault を 2 窓で開くと watcher が互いの保存に
+        // 反応し、競合ダイアログが行き来する）。
+        // 別の窓が別の vault を開いている場合の取りこぼしは vault ロックが拾う
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            // 既定のラベルは "main"。設定で変えても拾えるよう保険を置く
+            let found = app
+                .get_webview_window("main")
+                .or_else(|| app.webview_windows().values().next().cloned());
+            if let Some(window) = found {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

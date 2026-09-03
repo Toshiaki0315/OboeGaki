@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { restoreLastVault, saveLastVault, VAULT_KEY } from "./last-vault";
+import {
+  isVaultBusy,
+  restoreLastVault,
+  saveLastVault,
+  VAULT_BUSY,
+  VAULT_KEY,
+} from "./last-vault";
 
 // localStorage の代役。実物は WebView にしか無いので注入で切り離す
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -60,6 +66,18 @@ describe("restoreLastVault", () => {
     expect(storage.dump()[VAULT_KEY]).toBeUndefined();
   });
 
+  it("test_別の窓が開いているときは記憶を忘れずに投げ返す", async () => {
+    // 「開けない」と違い、**次回は開けるかもしれない**（向こうを閉じれば
+    // よい）。忘れると、閉じたあとに前回の vault へ戻れなくなる
+    const storage = fakeStorage({ [VAULT_KEY]: "/v/notes" });
+    await expect(
+      restoreLastVault(storage, async () => {
+        throw new Error(`${VAULT_BUSY}: 既に別のウィンドウで開いています`);
+      }),
+    ).rejects.toThrow();
+    expect(storage.dump()[VAULT_KEY]).toBe("/v/notes");
+  });
+
   it("test_読み出しが例外を投げても_nullで済ませる", async () => {
     const broken = {
       getItem: () => {
@@ -70,5 +88,12 @@ describe("restoreLastVault", () => {
     };
     const result = await restoreLastVault(broken, async () => {});
     expect(result).toBeNull();
+  });
+});
+
+describe("isVaultBusy", () => {
+  it("test_二重起動の断りだけを見分ける", () => {
+    expect(isVaultBusy(new Error(`${VAULT_BUSY}: 開いています`))).toBe(true);
+    expect(isVaultBusy("開けない")).toBe(false);
   });
 });

@@ -546,6 +546,16 @@ body {
 }
 
 /* ダイアログの説明文（復元の確認など） */
+/* 保管フォルダを開く前の画面に出す知らせ（開けなかった理由） */
+.empty-note {
+  max-width: 28rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-align: center;
+  opacity: 0.75;
+}
+
 .dialog-text {
   margin: 0;
   padding: 0.2rem 1rem 0.6rem;

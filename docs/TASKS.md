@@ -73,7 +73,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       なく**アプリのデータフォルダ**（vault ごとに分ける）— 保存できない
       理由が vault 側にあることが多く、書けない場所の保険は保険にならない
       （参照実装 autosave.recovery_root と同じ判断）
-- [ ] **3-7. 二重起動の安全化**（H-1, acquire_vault_lock）
+- [x] **3-7. 二重起動の安全化**（H-1, acquire_vault_lock）
       vault ロック（Tauri は single-instance プラグインが使える）
 - [ ] **3-8. ウィンドウ位置・サイズの保存**（config.window_geometry）
 - [ ] **3-9. 環境設定ダイアログ**（ui/preferences.py, N-1）

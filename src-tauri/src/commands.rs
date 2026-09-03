@@ -32,6 +32,9 @@ fn history_root(root: &str) -> std::path::PathBuf {
 pub struct WatchState {
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     suppressor: Arc<Suppressor>,
+    /// 開いている vault のロック（H-1 層 2）。**開いている間は持ち続ける**
+    /// （手放すと OS がロックを外す）。別の vault を開いたら置き換える。
+    lock: Mutex<Option<crate::vault_lock::VaultLock>>,
 }
 
 impl Default for WatchState {
@@ -39,9 +42,13 @@ impl Default for WatchState {
         Self {
             watcher: Mutex::new(None),
             suppressor: Arc::new(Suppressor::default()),
+            lock: Mutex::new(None),
         }
     }
 }
+
+/// フロント（lib/last-vault.ts）と揃える印。二重起動の断りだけに付ける。
+const VAULT_BUSY: &str = "vault-busy";
 
 fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
     let candidate = Path::new(path).to_path_buf();
@@ -61,6 +68,29 @@ pub fn vault_open(
 ) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
+    // 同じ vault の二重起動を止める（H-1 層 2 / spec §6.1）。2 窓で開くと
+    // watcher が互いの保存に反応し、競合ダイアログが行き来する。
+    // **先に手放してから取る** — 同じ vault を開き直すとき、自分の持って
+    // いるロックに自分でぶつかる
+    {
+        let mut held = state.lock.lock().expect("vault lock");
+        *held = None;
+        match crate::vault_lock::acquire(&vault.managed_dir()) {
+            crate::vault_lock::LockOutcome::Acquired(lock) => *held = Some(lock),
+            crate::vault_lock::LockOutcome::Busy => {
+                // 頭の印はフロントが「開けない」と区別するためのもの
+                // （記憶している vault を忘れるかどうかが変わる）
+                return Err(format!(
+                    "{VAULT_BUSY}: この保管フォルダは既に別のウィンドウで開いています。そちらをお使いください。"
+                ));
+            }
+            // 置けなかっただけ。開けない保管フォルダと同じ扱いにする
+            // （守るものが無い。ここで断ると嘘になる）
+            crate::vault_lock::LockOutcome::Unavailable => {
+                eprintln!("二重起動のロックを置けなかった（このまま開く）")
+            }
+        }
+    }
     // 同梱の雛形と、初回だけの使い方ノート（E-4）。どちらも付随機能なので
     // 失敗しても vault は開く
     if let Err(error) = vault.seed_templates() {
