@@ -30,7 +30,7 @@ import {
 } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { tags } from "@lezer/highlight";
-import { highlightTag } from "./extended-inline";
+import { hashtagTag, highlightTag, wikiLinkTag } from "./extended-inline";
 
 // 隠す対象のインラインマーカー（§6.4 のリビール表のインライン分）。
 // URL はマーカーではないが「`(url)` 部分を隠す」規則なのでここに含める
@@ -42,6 +42,7 @@ const MARK_NODES = new Set([
   "CodeMark",
   "LinkMark",
   "URL",
+  "WikiLinkMark",
 ]);
 
 /// ソースモード（Cmd+/）。ON の間はすべてのライブプレビュー装飾を止めて
@@ -338,6 +339,14 @@ const style = HighlightStyle.define([
     borderRadius: "3px",
   },
   { tag: tags.link, color: "#0a84ff", textDecoration: "underline" },
+  { tag: wikiLinkTag, color: "#0a84ff" },
+  {
+    tag: hashtagTag,
+    color: "#0a84ff",
+    backgroundColor: "color-mix(in srgb, #0a84ff 12%, transparent)",
+    borderRadius: "999px",
+    padding: "0.05em 0.5em",
+  },
 ]);
 
 /// ブロック装飾の見た目。旧実装の painter_overlay（paintEvent 描画）に相当する

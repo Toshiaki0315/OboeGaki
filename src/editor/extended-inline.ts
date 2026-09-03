@@ -20,6 +20,10 @@ import { Tag, tags } from "@lezer/highlight";
 
 /// ハイライト（`::目立つ::`）のスタイル付けに使う専用タグ。
 export const highlightTag = Tag.define();
+/// `#タグ`（ピル表示）のスタイル付けに使う専用タグ。
+export const hashtagTag = Tag.define();
+/// ノートリンク `[[名前]]` のスタイル付けに使う専用タグ。
+export const wikiLinkTag = Tag.define();
 
 const StrikeDelim: DelimiterType = {
   resolve: "Strikethrough",
@@ -32,6 +36,10 @@ const HighlightDelim: DelimiterType = {
 
 const TILDE = 126; // ~
 const COLON = 58; // :
+const HASH = 35; // #
+const BRACKET = 91; // [
+const CLOSE_BRACKET = 93; // ]
+const PIPE = 124; // |
 
 const ASCII_WORD = /[A-Za-z0-9_]/;
 
@@ -68,8 +76,56 @@ export const extendedInline: MarkdownConfig = {
     { name: "StrikethroughMark", style: tags.processingInstruction },
     { name: "Highlight", style: { "Highlight/...": highlightTag } },
     { name: "HighlightMark", style: tags.processingInstruction },
+    { name: "Hashtag", style: hashtagTag },
+    { name: "WikiLink", style: { "WikiLink/...": wikiLinkTag } },
+    { name: "WikiLinkMark", style: tags.processingInstruction },
   ],
   parseInline: [
+    {
+      // `#タグ`（参照実装 core/tags.py の TAG_RE）。直前が空白か行頭の
+      // ときだけ。名前は空白と `#` 以外の連続。`#` 自体は隠さない（§6.4）
+      name: "Hashtag",
+      before: "Emphasis",
+      parse(cx, next, pos) {
+        if (next !== HASH) return -1;
+        if (pos > cx.offset && !/\s/.test(cx.slice(pos - 1, pos))) return -1;
+        let end = pos + 1;
+        while (end < cx.end) {
+          const code = cx.char(end);
+          if (code === HASH || /\s/.test(cx.slice(end, end + 1))) break;
+          end++;
+        }
+        if (end === pos + 1) return -1; // 名前が無い
+        return cx.addElement(cx.elt("Hashtag", pos, end));
+      },
+    },
+    {
+      // ノートリンク `[[名前]]`（E-6 / ADR-0011）。ふつうのリンクより先に
+      // 見る（あとに回すと `[[a]](b)` の `[a]` が先にリンク化して範囲が
+      // ずれる）。`|` を含むものと空名は拾わない。名前の中は解釈しない
+      // （`[[a_b_c]]` の `_` は名前の一部）
+      name: "WikiLink",
+      before: "Link",
+      parse(cx, next, pos) {
+        if (next !== BRACKET || cx.char(pos + 1) !== BRACKET) return -1;
+        let end = pos + 2;
+        while (end < cx.end && cx.char(end) !== CLOSE_BRACKET) {
+          const code = cx.char(end);
+          if (code === BRACKET || code === PIPE) return -1;
+          end++;
+        }
+        if (end + 1 >= cx.end && cx.char(end + 1) !== CLOSE_BRACKET) return -1;
+        if (cx.char(end + 1) !== CLOSE_BRACKET) return -1;
+        if (!cx.slice(pos + 2, end).trim()) return -1; // 名前が無い
+        const close = end + 2;
+        return cx.addElement(
+          cx.elt("WikiLink", pos, close, [
+            cx.elt("WikiLinkMark", pos, pos + 2),
+            cx.elt("WikiLinkMark", close - 2, close),
+          ]),
+        );
+      },
+    },
     {
       name: "RelaxedStrikethrough",
       before: "Emphasis",

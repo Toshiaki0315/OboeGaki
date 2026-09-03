@@ -34,6 +34,21 @@ function readOracle(name: string): OracleCase[] {
 }
 
 function toSpan(node: SyntaxNode): Span | null {
+  // タグとノートリンクはマーカーの形が固定なので直接組み立てる
+  if (node.name === "Hashtag") {
+    return {
+      type: "TAG",
+      open: [node.from, node.from], // `#` は隠さない = マーカー幅ゼロ
+      close: [node.to, node.to],
+    };
+  }
+  if (node.name === "WikiLink") {
+    return {
+      type: "WIKI_LINK",
+      open: [node.from, node.from + 2],
+      close: [node.to - 2, node.to],
+    };
+  }
   let type: string;
   let markName: string;
   if (node.name === "Emphasis" || node.name === "StrongEmphasis") {
