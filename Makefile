@@ -1,6 +1,6 @@
 # 覚書（OboeGaki）Tauri 版の開発コマンド入口。hitofude と同じ流儀。
 
-.PHONY: setup run test test-rust check fmt bench-search bench-startup bench
+.PHONY: setup run test test-rust check fmt bench-search bench-startup bench dmg
 
 setup:            ## 初回セットアップ
 	npm install
@@ -28,6 +28,11 @@ bench-startup:    ## 起動時間の実測（spec §6.6: < 1.5 秒。release を
 bench: bench-search  ## 3 基準の計測（打鍵は bench.html — docs/bench.md 参照）
 	@echo "打鍵の実測: npx vite を起動して http://localhost:5173/bench.html を開く"
 	@echo "起動の実測: make bench-startup"
+
+dmg:              ## インストール用 DMG を新規ビルドから作る（hitofude の make dmg と同役）
+	npm run tauri build
+	@echo "DMG: src-tauri/target/release/bundle/dmg/"
+	@echo "署名・公証は Apple Developer アカウント取得後（hitofude TASKS 0-C と同じ）"
 
 check:            ## コミット前チェック（lint + 型 + テスト全部）
 	npx prettier --check src

@@ -82,7 +82,16 @@ CodeMirror 6（編集コア）/ Lezer（パーサ）/ Zustand / dnd-kit
 - ✅ Cmd+クリックの activation（2026-09-04、実機確認済み）: ノートリンク
   （無ければ作る）・タグ絞り込み・外部リンク（http/https/mailto のみ）
 
-次の候補:
-- ノート内検索（Cmd+F）と書式コマンド（Cmd+B/I 等）
-- クイックオープン（Cmd+O）
-- 表セル内のインライン装飾（ADR-0031）、アウトライン（ADR-0022）
+- ✅ 書式コマンド一式（Cmd+B/I/E/K/Shift+X/Shift+H、見出し ±、
+  チェックボックス切替）と Cmd+F ノート内検索（日本語 UI）
+- ✅ クイックオープン（Cmd+O、ファジー一致）と Cmd+N/S/Shift+F
+- ✅ 表セル内のインライン装飾（ADR-0031）とアウトライン（Cmd+5、ADR-0022）
+- ✅ ノート履歴（ADR-0023）: 60 分間引き・50 版/30 日・改名追従・
+  戻す前に現状を保全
+- ✅ HTML 書き出し（ADR-0007 の CM6 版、画像は data URL 埋め込み）
+- ✅ フォーカス/タイプライタモード（Cmd+Shift+D/Y）
+- ✅ 配布: make dmg で OboeGaki_0.1.0_aarch64.dmg（5.4MB）。
+  署名・公証は Apple Developer アカウント取得後
+
+残り（大きめ）: 競合の「両方残す」、索引同期の背景化（bench.md 記載）、
+ADR-0005（改名 ↔ H1 同期）、設定画面、Cmd+R 見出しパレット
