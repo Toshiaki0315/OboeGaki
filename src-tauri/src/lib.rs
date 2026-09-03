@@ -155,6 +155,22 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        // 窓の位置と大きさを覚える（TASKS 3-8 / config.window_geometry の役目）。
+        //
+        // **表示状態（VISIBLE）と枠（DECORATIONS）は覚えない。** 参照実装は
+        // `Cmd+H` で隠してから終了すると次の起動が真っ白な窓になる穴を踏んで
+        // いる。位置と大きさだけなら、隠れて出てこない窓は作れない。
+        // 画面構成が変わって窓が画面の外に落ちる場合はプラグインが位置を
+        // 捨てる（保存された位置と重なるモニタが無ければ OS に任せる）
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

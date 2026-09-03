@@ -75,7 +75,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       （参照実装 autosave.recovery_root と同じ判断）
 - [x] **3-7. 二重起動の安全化**（H-1, acquire_vault_lock）
       vault ロック（Tauri は single-instance プラグインが使える）
-- [ ] **3-8. ウィンドウ位置・サイズの保存**（config.window_geometry）
+- [x] **3-8. ウィンドウ位置・サイズの保存**（config.window_geometry）
 - [ ] **3-9. 環境設定ダイアログ**（ui/preferences.py, N-1）
       フォントサイズ・履歴の間隔・ゴミ箱の日数・本文幅・テーマ手動切替。
       1-3 / 1-5 / 本文幅の受け皿。設定の置き場は 1-1 で決めたものに揃える
