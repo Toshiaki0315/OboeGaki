@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import type { Activation } from "./editor/activation";
+import type { OutlineItem } from "./editor/outline";
 import { createDebouncer } from "./lib/debounce";
 import { rankCandidates } from "./lib/fuzzy";
 import {
@@ -72,6 +73,40 @@ function App() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteIndex, setPaletteIndex] = useState(0);
+  // アウトライン（Cmd+5、ADR-0022）。既定では出さず、開閉の状態は残す
+  const [outlineOpen, setOutlineOpen] = useState(() => {
+    try {
+      return localStorage.getItem("oboegaki.outline") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const outlineOpenRef = useRef(outlineOpen);
+  outlineOpenRef.current = outlineOpen;
+  const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
+  const [cursorPos, setCursorPos] = useState(0);
+  const outlineSoon = useMemo(() => createDebouncer(300), []);
+
+  function toggleOutline() {
+    setOutlineOpen((open) => {
+      const next = !open;
+      try {
+        localStorage.setItem("oboegaki.outline", next ? "1" : "0");
+      } catch {
+        // 保存できなくても開閉自体は生かす
+      }
+      return next;
+    });
+  }
+
+  // 隠れているときは数えない（ADR-0022）
+  useEffect(() => {
+    if (!outlineOpen) {
+      setOutlineItems([]);
+      return;
+    }
+    setOutlineItems(editorRef.current?.getOutline() ?? []);
+  }, [outlineOpen, doc, currentPath]);
 
   async function chooseVault() {
     const picked = await open({ directory: true });
@@ -193,6 +228,11 @@ function App() {
         setStatus(`保存に失敗: ${String(error)}`);
       });
     });
+    if (outlineOpenRef.current) {
+      outlineSoon.schedule(() =>
+        setOutlineItems(editorRef.current?.getOutline() ?? []),
+      );
+    }
   }
 
   // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
@@ -226,6 +266,9 @@ function App() {
       } else if (key === "f" && event.shiftKey) {
         event.preventDefault(); // 全ノート検索（Cmd+Shift+F）
         searchInputRef.current?.focus();
+      } else if (key === "5" && !event.shiftKey) {
+        event.preventDefault(); // アウトライン開閉（ADR-0022）
+        toggleOutline();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -294,8 +337,17 @@ function App() {
     );
   }
 
+  // 現在地: キャレット位置以前の最後の見出し
+  const currentOutlineIndex = (() => {
+    let found = -1;
+    outlineItems.forEach((item, index) => {
+      if (item.from <= cursorPos) found = index;
+    });
+    return found;
+  })();
+
   return (
-    <main className="app app-split">
+    <main className={`app app-split${outlineOpen ? " with-outline" : ""}`}>
       <aside className="note-list">
         <header>
           <button onClick={() => void handleCreate()}>＋ 新規</button>
@@ -443,6 +495,9 @@ function App() {
               onDocChanged={handleDocChanged}
               resolveImage={(url) => imageSource(vaultRoot, url)}
               onActivate={(action) => void handleActivate(action)}
+              onCursorChanged={(pos) => {
+                if (outlineOpenRef.current) setCursorPos(pos);
+              }}
             />
           </>
         ) : (
@@ -450,6 +505,27 @@ function App() {
         )}
         <footer className="status-bar">{status}</footer>
       </section>
+      {outlineOpen && (
+        <aside className="outline-pane">
+          <header>目次</header>
+          <ul>
+            {outlineItems.map((item, index) => (
+              <li key={`${item.from}-${item.text}`}>
+                <button
+                  className={index === currentOutlineIndex ? "current" : ""}
+                  style={{ paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem` }}
+                  onClick={() => editorRef.current?.revealPos(item.from)}
+                >
+                  {item.text}
+                </button>
+              </li>
+            ))}
+            {outlineItems.length === 0 && (
+              <li className="no-hits">見出しがありません</li>
+            )}
+          </ul>
+        </aside>
+      )}
     </main>
   );
 }

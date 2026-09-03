@@ -22,6 +22,7 @@ import {
   type Activation,
 } from "./activation";
 import { imageResolver, livePreview, type ImageResolver } from "./live-preview";
+import { outlineOf, type OutlineItem } from "./outline";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
 // onDocChanged（= 自動保存の予約）を発火させないために使う
@@ -31,6 +32,10 @@ export type EditorHandle = {
   /// 文書全体を差し替える（外部変更のリロード用）。キャレットは同じ
   /// オフセットへ復元する（文書が縮んだら末尾に丸める）
   replaceText: (text: string) => void;
+  /// 見出しの一覧（アウトライン用。呼んだときだけ数える = ADR-0022）
+  getOutline: () => OutlineItem[];
+  /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
+  revealPos: (pos: number) => void;
 };
 
 type Props = {
@@ -42,10 +47,12 @@ type Props = {
   resolveImage?: ImageResolver;
   /** Cmd+クリック時の動作（ノートを開く・タグで絞る・URL を開く） */
   onActivate?: (action: Activation) => void;
+  /** キャレット位置が変わるたびに呼ぶ（アウトラインの現在地表示用） */
+  onCursorChanged?: (pos: number) => void;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
-  { initialDoc, onDocChanged, resolveImage, onActivate },
+  { initialDoc, onDocChanged, resolveImage, onActivate, onCursorChanged },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
@@ -55,6 +62,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   notify.current = onDocChanged;
   const activate = useRef(onActivate);
   activate.current = onActivate;
+  const cursorChanged = useRef(onCursorChanged);
+  cursorChanged.current = onCursorChanged;
 
   useImperativeHandle(
     ref,
@@ -69,6 +78,18 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           selection: { anchor: head },
           annotations: externalReload.of(true),
         });
+      },
+      getOutline() {
+        return view.current ? outlineOf(view.current.state) : [];
+      },
+      revealPos(pos) {
+        const current = view.current;
+        if (!current) return;
+        current.dispatch({
+          selection: { anchor: pos },
+          effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 24 }),
+        });
+        current.focus();
       },
     }),
     [],
@@ -109,6 +130,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           activationHandler.of((action) => activate.current?.(action)),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
+            if (update.selectionSet) {
+              cursorChanged.current?.(update.state.selection.main.head);
+            }
             if (!update.docChanged) return;
             if (update.transactions.some((t) => t.annotation(externalReload))) {
               return; // 外部リロードは「編集」ではない
