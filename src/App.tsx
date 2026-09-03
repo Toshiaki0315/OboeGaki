@@ -888,6 +888,10 @@ function App() {
     );
   }
 
+  // 表示モード（通常 / ソース）。**ノートを跨いで続く** — 切り替えボタンが
+  // 見えているのに、ノートを開き直すと戻るのは筋が悪い
+  const [sourceMode, setSourceMode] = useState(false);
+
   // 印刷用に組んだ本文（ADR-0038）。null なら一度も刷っていない。
   // **同じ本文をもう一度刷れるよう毎回別の値にする**（文字列だけだと
   // 2 回目の `Cmd+P` で state が変わらず、印刷パネルが出ない）
@@ -2189,6 +2193,46 @@ function App() {
                     void handleRename(event.currentTarget.value)
                   }
                 />
+                {/* 通常表示 / ソース表示の切り替え（`Cmd+/` と同じもの） */}
+                <div
+                  className="mode-switch"
+                  role="group"
+                  aria-label="表示の切り替え"
+                >
+                  <button
+                    className={sourceMode ? "" : "selected"}
+                    title="通常表示"
+                    aria-pressed={!sourceMode}
+                    onClick={() => editorRef.current?.setSourceMode(false)}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h7M2.5 12.5h9"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    className={sourceMode ? "selected" : ""}
+                    title="ソース表示（Cmd+/）"
+                    aria-pressed={sourceMode}
+                    onClick={() => editorRef.current?.setSourceMode(true)}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
                 <button
                   onClick={() => void handlePin()}
                   title="一覧の先頭に固定"
@@ -2228,6 +2272,8 @@ function App() {
                 }
                 initialCursor={initialCursor}
                 diagramTheme={diagramTheme}
+                sourceMode={sourceMode}
+                onSourceModeChanged={setSourceMode}
               />
             </>
           ) : (

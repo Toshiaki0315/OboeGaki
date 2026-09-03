@@ -134,6 +134,42 @@ body {
   opacity: 0.85;
 }
 
+/* 通常表示 / ソース表示の切り替え。macOS のセグメントに寄せる */
+.mode-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.note-header .mode-switch button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.note-header .mode-switch button svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 選んでいるほうを浮かせる（どちらが効いているか一目で分かる） */
+.note-header .mode-switch button.selected {
+  background: var(--app-bg);
+  opacity: 1;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+}
+
 .note-header {
   display: flex;
   gap: 0.5rem;

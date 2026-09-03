@@ -45,6 +45,8 @@ import {
   imageResolver,
   livePreview,
   setDiagramTheme,
+  setSourceMode,
+  sourceModeField,
   toggleSourceMode,
   type ImageResolver,
 } from "./live-preview";
@@ -74,8 +76,10 @@ export type EditorHandle = {
   revealPos: (pos: number) => void;
   /// 図の見た目をテーマに合わせる（ADR-0021。変えると図を描き直す）
   setDiagramTheme: (theme: MermaidTheme) => void;
-  /// 表示モードの切り替え（メニューバーから呼ぶ）
+  /// 表示モードの切り替え（メニューバーと題名の行のボタンから呼ぶ）
   toggleSourceMode: () => void;
+  /// 表示モードを指定して切り替える（切り替えボタン用）
+  setSourceMode: (source: boolean) => void;
   toggleFocusMode: () => void;
   toggleTypewriterMode: () => void;
   /** キャレット位置に空の表を差し込む（rows は見出しを除いた行数） */
@@ -107,6 +111,10 @@ type Props = {
   initialCursor?: number | null;
   /** 図の見た目（ADR-0021）。開いた時点のテーマ */
   diagramTheme?: MermaidTheme;
+  /** 開いた時点の表示モード（ソースモードはノートを跨いで続く） */
+  sourceMode?: boolean;
+  /** 表示モードが変わったら呼ぶ（`Cmd+/` でも切り替わるため） */
+  onSourceModeChanged?: (source: boolean) => void;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
@@ -121,6 +129,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     knownNotes,
     initialCursor,
     diagramTheme,
+    sourceMode,
+    onSourceModeChanged,
   },
   ref,
 ) {
@@ -139,6 +149,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   tagSource.current = knownTags;
   const noteSource = useRef(knownNotes);
   noteSource.current = knownNotes;
+  const modeChanged = useRef(onSourceModeChanged);
+  modeChanged.current = onSourceModeChanged;
 
   useImperativeHandle(
     ref,
@@ -191,6 +203,12 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       toggleSourceMode() {
         if (view.current) toggleSourceMode(view.current);
+      },
+      setSourceMode(source) {
+        const current = view.current;
+        if (!current) return;
+        if (current.state.field(sourceModeField, false) === source) return;
+        toggleSourceMode(current);
       },
       toggleFocusMode() {
         if (view.current) toggleFocus(view.current);
@@ -269,6 +287,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         extensions: [
           frontMatterHide,
           diagramThemeField.init(() => diagramTheme ?? "light"),
+          sourceModeField.init(() => sourceMode ?? false),
           history(),
           autoPair, // 選択を * や [ で囲む（spec §5.5-4）
           // タグ補完（C-4）。↑↓ / Enter は completionKeymap が持つ。
@@ -323,6 +342,16 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           urlPasteLink, // 画像の取り込みが先、URL のリンク化が後
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
+            // `Cmd+/` でも切り替わるので、変わったことを外へ知らせる
+            if (
+              update.transactions.some((tr) =>
+                tr.effects.some((effect) => effect.is(setSourceMode)),
+              )
+            ) {
+              modeChanged.current?.(
+                update.state.field(sourceModeField, false) ?? false,
+              );
+            }
             if (update.selectionSet) {
               cursorChanged.current?.(update.state.selection.main.head);
             }
