@@ -24,6 +24,8 @@ export const highlightTag = Tag.define();
 export const hashtagTag = Tag.define();
 /// ノートリンク `[[名前]]` のスタイル付けに使う専用タグ。
 export const wikiLinkTag = Tag.define();
+/// 脚注参照 `[^1]` のスタイル付けに使う専用タグ（B-3。リンクと同系色）。
+export const footnoteTag = Tag.define();
 
 const StrikeDelim: DelimiterType = {
   resolve: "Strikethrough",
@@ -35,6 +37,8 @@ const HighlightDelim: DelimiterType = {
 };
 
 const TILDE = 126; // ~
+const CARET = 94; // ^
+const H_LOWER = 104; // h
 const COLON = 58; // :
 const HASH = 35; // #
 const BRACKET = 91; // [
@@ -77,6 +81,8 @@ export const extendedInline: MarkdownConfig = {
     { name: "Highlight", style: { "Highlight/...": highlightTag } },
     { name: "HighlightMark", style: tags.processingInstruction },
     { name: "Hashtag", style: hashtagTag },
+    { name: "FootnoteRef", style: footnoteTag },
+    { name: "BareURL", style: tags.link },
     { name: "WikiLink", style: { "WikiLink/...": wikiLinkTag } },
     { name: "WikiLinkMark", style: tags.processingInstruction },
   ],
@@ -124,6 +130,65 @@ export const extendedInline: MarkdownConfig = {
             cx.elt("WikiLinkMark", close - 2, close),
           ]),
         );
+      },
+    },
+    {
+      // 脚注参照 `[^label]`（B-3、参照実装 _FOOTNOTE_RE）。ラベルは
+      // 空白と角括弧以外の 1 文字以上。ふつうのリンクより先に見る
+      name: "FootnoteRef",
+      before: "Link",
+      parse(cx, next, pos) {
+        if (next !== BRACKET || cx.char(pos + 1) !== CARET) return -1;
+        let end = pos + 2;
+        while (end < cx.end && cx.char(end) !== CLOSE_BRACKET) {
+          const ch = cx.slice(end, end + 1);
+          if (ch === "[" || /\s/.test(ch)) return -1;
+          end++;
+        }
+        if (end >= cx.end || end === pos + 2) return -1; // 閉じ無し・空ラベル
+        return cx.addElement(cx.elt("FootnoteRef", pos, end + 1));
+      },
+    },
+    {
+      // 裸 URL（参照実装 _BARE_URL_RE）。https?:// で始まり、空白・
+      // <>()[]・引用符・日本語の句読点で止まる。`(...)` の丸括弧グループは
+      // URL の一部として拾う（Wikipedia の `犬_(動物)` など）。
+      // 直前が単語文字か `/` なら反応しない（xhttps:// はただの語）
+      name: "BareURL",
+      parse(cx, next, pos) {
+        if (next !== H_LOWER) return -1;
+        const head = cx.slice(pos, Math.min(cx.end, pos + 8));
+        if (!/^https?:\/\//.test(head)) return -1;
+        if (pos > cx.offset && /[\w/]/.test(cx.slice(pos - 1, pos))) return -1;
+        // 参照実装の止め文字（\s <>()[] "' 、。）に全角の括弧類を足した。
+        // 「（URL）」の形は日本語で頻出で、）を含めると必ず切れたリンクになる
+        const stop = /[\s<>()\[\]"'、。（）「」]/;
+        let end = pos + (head.startsWith("https") ? 8 : 7);
+        let advanced = false;
+        while (end < cx.end) {
+          const ch = cx.slice(end, end + 1);
+          if (ch === "(") {
+            // 丸括弧グループ: 空白と括弧を含まない中身 + 閉じ括弧
+            let probe = end + 1;
+            while (
+              probe < cx.end &&
+              !/[\s()]/.test(cx.slice(probe, probe + 1))
+            ) {
+              probe++;
+            }
+            if (probe < cx.end && cx.char(probe) === 41) {
+              end = probe + 1;
+              advanced = true;
+              continue;
+            }
+            break;
+          }
+          if (stop.test(ch)) break;
+          end++;
+          advanced = true;
+        }
+        if (!advanced) return -1; // `https://` だけでは URL ではない
+        return cx.addElement(cx.elt("BareURL", pos, end));
       },
     },
     {

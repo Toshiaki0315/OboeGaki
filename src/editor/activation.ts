@@ -38,6 +38,13 @@ export function activationAt(
         const name = state.sliceDoc(node.from + 2, node.to - 2).trim();
         return { kind: "note", payload: name };
       }
+      case "BareURL": {
+        if (pos >= node.to) return null;
+        const url = state.sliceDoc(node.from, node.to);
+        return ALLOWED_SCHEMES.test(url)
+          ? { kind: "link", payload: url }
+          : null;
+      }
       case "Link":
       case "Autolink": {
         const urlNode = node.getChild("URL");
