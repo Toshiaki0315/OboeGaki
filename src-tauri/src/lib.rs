@@ -12,6 +12,7 @@ pub mod tags;
 pub mod template;
 pub mod vault;
 pub mod watcher;
+pub mod wikilink;
 
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -157,6 +158,8 @@ pub fn run() {
             commands::folder_rename,
             commands::folder_delete,
             commands::note_move,
+            commands::note_backlinks,
+            commands::note_titles,
             commands::note_read,
             commands::note_write,
             commands::note_create,

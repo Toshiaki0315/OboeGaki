@@ -27,7 +27,8 @@ pub const INDEX_FILE: &str = "index.sqlite";
 /// 捨ててよいキャッシュなので、移行コードを書くより作り直しが正しい）。
 /// 2: notes_fts の path を索引対象にし、LIKE フォールバックにも path を足した
 /// 3: tags テーブルを追加（サイドバーのタグ一覧）
-const SCHEMA_VERSION: i64 = 4;
+/// 5: links テーブルを追加（バックリンク。E-6）
+const SCHEMA_VERSION: i64 = 5;
 /// この文字数以上なら trigram FTS、未満なら LIKE フォールバック。
 const FTS_MIN_CHARS: usize = 3;
 const SEARCH_LIMIT: usize = 50;
@@ -45,6 +46,15 @@ pub struct NoteMeta {
     pub mtime_ms: i64,
     /// front matter の `pinned: true`（spec §7.3。一覧の先頭固定）
     pub pinned: bool,
+}
+
+/// バックリンクの 1 件（E-6）。`context` は**指している行**そのもの。
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct Backlink {
+    /// vault からの相対パス
+    pub path: String,
+    pub title: String,
+    pub context: String,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -133,6 +143,16 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
             rusqlite::params![relative, tag],
         )?;
     }
+    // 指しているノート（E-6）。**行き先の有無は問わない** — まだ無いノートへの
+    // リンクも、作られた瞬間に繋がるべきもの（ADR-0011）
+    tx.execute("DELETE FROM links WHERE path = ?1", [&relative])?;
+    for target in crate::wikilink::links(&text) {
+        let context = crate::wikilink::context_line(&text, &target);
+        tx.execute(
+            "INSERT OR IGNORE INTO links(path, target, context) VALUES (?1, ?2, ?3)",
+            rusqlite::params![relative, target, context],
+        )?;
+    }
     Ok(())
 }
 
@@ -154,7 +174,8 @@ impl IndexDb {
             conn.execute_batch(
                 "DROP TABLE IF EXISTS notes;
                  DROP TABLE IF EXISTS notes_fts;
-                 DROP TABLE IF EXISTS tags;",
+                 DROP TABLE IF EXISTS tags;
+                 DROP TABLE IF EXISTS links;",
             )?;
             conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         }
@@ -178,7 +199,14 @@ impl IndexDb {
                 tag  TEXT NOT NULL,
                 PRIMARY KEY (path, tag)
             );
-            CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);",
+            CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
+            CREATE TABLE IF NOT EXISTS links (
+                path    TEXT NOT NULL,
+                target  TEXT NOT NULL,
+                context TEXT NOT NULL,
+                PRIMARY KEY (path, target)
+            );
+            CREATE INDEX IF NOT EXISTS idx_links_target ON links(target COLLATE NOCASE);",
         )?;
         Ok(Self { conn })
     }
@@ -222,6 +250,7 @@ impl IndexDb {
             tx.execute("DELETE FROM notes WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM notes_fts WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM tags WHERE path = ?1", [gone])?;
+            tx.execute("DELETE FROM links WHERE path = ?1", [gone])?;
         }
         tx.commit()
     }
@@ -253,6 +282,7 @@ impl IndexDb {
         tx.execute("DELETE FROM notes WHERE path = ?1", [&relative])?;
         tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
         tx.execute("DELETE FROM tags WHERE path = ?1", [&relative])?;
+        tx.execute("DELETE FROM links WHERE path = ?1", [&relative])?;
         tx.commit()
     }
 
@@ -355,6 +385,41 @@ impl IndexDb {
             *counts.entry(folder).or_insert(0) += 1;
         }
         Ok(counts)
+    }
+
+    /// その題名を `[[…]]` で指しているノート（E-6）。
+    ///
+    /// **大小は無視する**（`COLLATE NOCASE`）。開くときの解決が無視する以上、
+    /// 逆から引くときも同じでないと片道になる。日本語には大小が無いので
+    /// 効くのは英字だけ。空白のゆれは `wikilink::normalize` が吸収する。
+    pub fn backlinks(&self, title: &str) -> rusqlite::Result<Vec<Backlink>> {
+        let target = crate::wikilink::normalize(title);
+        if target.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = self.conn.prepare(
+            "SELECT notes.path, notes.title, links.context
+             FROM notes JOIN links ON links.path = notes.path
+             WHERE links.target = ?1 COLLATE NOCASE",
+        )?;
+        let rows = statement.query_map([target], |row| {
+            Ok(Backlink {
+                path: row.get(0)?,
+                title: row.get(1)?,
+                context: row.get(2)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// ノートの題名だけ（`[[` 補完の素材）。
+    ///
+    /// 一覧（`list_notes`）は preview まで運ぶので、打鍵ごとに呼ぶには重い
+    /// （参照実装のコードレビュー指摘）。
+    pub fn note_titles(&self) -> rusqlite::Result<Vec<String>> {
+        let mut statement = self.conn.prepare("SELECT title FROM notes")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        rows.collect()
     }
 
     /// 1 ファイルだけ索引を更新する（自動保存の後追い用）。
@@ -671,6 +736,62 @@ mod tests {
 
         assert!(db.notes_with_tag("会議").unwrap().is_empty());
         assert!(db.notes_with_tag("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_backlinks_その題名を指しているノートを返す() {
+        let (_root, vault) = vault_with(&[
+            ("会議メモ.md", "# 会議メモ\n\n本体。\n"),
+            ("日報.md", "# 日報\n\n打ち合わせは [[会議メモ]] を見よ。\n"),
+            ("計画.md", "# 計画\n\n[[会議メモ]] と [[日報]]。\n"),
+            ("無関係.md", "# 無関係\n\n会議メモ とだけ書いてある。\n"),
+        ]);
+        let db = synced(&vault);
+
+        let mut found = db.backlinks("会議メモ").unwrap();
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].path, "日報.md");
+        // 冒頭ではなく**指している行**を出す（長いノートでは冒頭を見ても
+        // 関係が分からない）
+        assert_eq!(found[0].context, "打ち合わせは [[会議メモ]] を見よ。");
+        assert_eq!(found[1].path, "計画.md");
+    }
+
+    #[test]
+    fn test_backlinks_大小と空白のゆれを吸収する() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n[[Meeting  Notes]]\n")]);
+        let db = synced(&vault);
+
+        assert_eq!(db.backlinks("meeting notes").unwrap().len(), 1);
+        assert!(db.backlinks("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_backlinks_リンクを消したら消える() {
+        let (root, vault) = vault_with(&[
+            ("会議メモ.md", "# 会議メモ\n"),
+            ("日報.md", "# 日報\n\n[[会議メモ]]\n"),
+        ]);
+        let mut db = synced(&vault);
+        assert_eq!(db.backlinks("会議メモ").unwrap().len(), 1);
+
+        fs::write(root.path().join("日報.md"), "# 日報\n\nもう指していない\n").unwrap();
+        db.sync(&vault).unwrap();
+
+        assert!(db.backlinks("会議メモ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_note_titles_補完の素材を題名だけ返す() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n"), ("仕事/b.md", "# b\n")]);
+        let db = synced(&vault);
+
+        let mut found = db.note_titles().unwrap();
+        found.sort();
+
+        assert_eq!(found, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]

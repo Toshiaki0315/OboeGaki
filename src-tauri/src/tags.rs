@@ -37,7 +37,10 @@ pub fn normalize(raw: &str) -> String {
 
 /// インラインコードを非空白文字で潰す。長さは変えない（オフセットを保ち、
 /// `` `code`#tag `` の `#` を「直前が空白」と誤認させないため）。
-fn mask_inline_code(line: &str) -> String {
+///
+/// `wikilink` からも使う。コードの見分け方が 2 か所にあると、片方だけ
+/// 直されて「タグは拾わないのにリンクは拾う」のようなずれが出る。
+pub(crate) fn mask_inline_code(line: &str) -> String {
     let chars: Vec<char> = line.chars().collect();
     let mut out = chars.clone();
     let mut index = 0;
