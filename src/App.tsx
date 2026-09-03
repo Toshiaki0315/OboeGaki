@@ -750,6 +750,8 @@ function App() {
   function toggleOutline() {
     setOutlineOpen((open) => {
       const next = !open;
+      // 右のペインは 1 つだけ（同時に出すと場所を取り合う）
+      if (next) setAssistantOpen(false);
       try {
         localStorage.setItem("oboegaki.outline", next ? "1" : "0");
       } catch {
@@ -1489,7 +1491,13 @@ function App() {
       setSavingSearch(typed);
     },
     outline: toggleOutline,
-    assistant: () => setAssistantOpen((open) => !open),
+    assistant: () => {
+      // 右のペインは 1 つだけ（同時に出すと場所を取り合う）
+      setAssistantOpen((open) => {
+        if (!open) setOutlineOpen(false);
+        return !open;
+      });
+    },
     "llm-unload": () => void handleUnloadModel(),
     "heading-palette": openHeadingPalette,
     "style-check": checkStyleNow,
@@ -2034,7 +2042,7 @@ function App() {
             onPointerDown={(event) => startResize(event, "listWidth", 1)}
           />
         )}
-        {outlineOpen && (
+        {(outlineOpen || assistantOpen) && (
           <div
             className="pane-resizer outline"
             title="幅を変える"
