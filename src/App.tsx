@@ -18,6 +18,13 @@ import {
   renderMermaid,
   type MermaidTheme,
 } from "./editor/mermaid";
+import {
+  restoreRightPane,
+  RIGHT_PANE_KEY,
+  type RightPane,
+  togglePane,
+} from "./lib/right-pane";
+import { safeSubscribe } from "./lib/subscribe";
 import { createDebouncer } from "./lib/debounce";
 import {
   codeKey,
@@ -728,14 +735,14 @@ function App() {
     setStatus(`${entry.stamp} の版に戻しました`);
   }
 
-  // アウトライン（Cmd+5、ADR-0022）。既定では出さず、開閉の状態は残す
-  const [outlineOpen, setOutlineOpen] = useState(() => {
-    try {
-      return localStorage.getItem("oboegaki.outline") === "1";
-    } catch {
-      return false;
-    }
-  });
+  // 右のペイン（アウトライン Cmd+5 / アシスタント Cmd+6）。**1 つの状態で
+  // 持つ**ので、同時に開くことがそもそも表現できない（ADR-0022 / lib/right-pane）
+  const [rightPane, setRightPane] = useState<RightPane>(() =>
+    restoreRightPane(localStorage),
+  );
+  const outlineOpen = rightPane === "outline";
+  // 出ていないときは数えない（ADR-0022）。**登録し直さない購読**（エディタの
+  // コールバック）から見るので ref で持つ
   const outlineOpenRef = useRef(outlineOpen);
   outlineOpenRef.current = outlineOpen;
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
@@ -748,14 +755,10 @@ function App() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   function toggleOutline() {
-    // **更新関数の中で別の state を触らない。** そこは副作用を置く場所では
-    // なく、二重に呼ばれると片方が落ちる（実機で発覚 2026-09-04:
-    // アシスタントが閉じずにアウトラインが左下へ回り込んだ）
-    const next = !outlineOpenRef.current;
-    if (next) setAssistantOpen(false); // 右のペインは 1 つだけ
-    setOutlineOpen(next);
+    const next = togglePane(rightPane, "outline");
+    setRightPane(next);
     try {
-      localStorage.setItem("oboegaki.outline", next ? "1" : "0");
+      localStorage.setItem(RIGHT_PANE_KEY, next === "outline" ? "1" : "0");
     } catch {
       // 保存できなくても開閉自体は生かす
     }
@@ -786,7 +789,7 @@ function App() {
   }
 
   // アシスタント（TASKS 4-8 / ADR-0025）。**無ければ機能ごと畳む**
-  const [assistantOpen, setAssistantOpen] = useState(false);
+  const assistantOpen = rightPane === "assistant";
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [answer, setAnswer] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -831,20 +834,26 @@ function App() {
 
   // 流れてきたぶんから順に出す（最初の 1 文字まで数秒あり、黙って待たせない）
   useEffect(() => {
-    const chunks = listen<string>("llm-chunk", (event) => {
-      setAnswer((current) => current + event.payload);
-    });
-    const done = listen<string>("llm-done", () => setThinking(false));
-    const failed = listen<string>("llm-failed", (event) => {
-      setThinking(false);
-      setAnswer(
-        llmErrorText(event.payload, settingsRef.current.llmTimeoutMinutes),
-      );
-    });
+    const chunks = safeSubscribe(() =>
+      listen<string>("llm-chunk", (event) => {
+        setAnswer((current) => current + event.payload);
+      }),
+    );
+    const done = safeSubscribe(() =>
+      listen<string>("llm-done", () => setThinking(false)),
+    );
+    const failed = safeSubscribe(() =>
+      listen<string>("llm-failed", (event) => {
+        setThinking(false);
+        setAnswer(
+          llmErrorText(event.payload, settingsRef.current.llmTimeoutMinutes),
+        );
+      }),
+    );
     return () => {
-      void chunks.then((stop) => stop());
-      void done.then((stop) => stop());
-      void failed.then((stop) => stop());
+      chunks();
+      done();
+      failed();
     };
   }, []);
 
@@ -1409,44 +1418,22 @@ function App() {
         fontSizeRef.current + (action === "in" ? FONT_STEP_PX : -FONT_STEP_PX),
       );
   }
-  const shortcutActions = useRef({
-    create: handleCreate,
-    flushSave: () => autosave.flush(),
-    zoom: applyZoom,
-  });
-  shortcutActions.current = {
-    create: handleCreate,
-    flushSave: () => autosave.flush(),
-    zoom: applyZoom,
-  };
+  const shortcutActions = useRef({ zoom: applyZoom });
+  shortcutActions.current = { zoom: applyZoom };
+  // **メニューに載せたショートカットはここで拾わない。** アクセラレータは
+  // メニュー経由でも届くので、両方で拾うと 1 回の打鍵で動作が 2 回走る。
+  // トグル（Cmd+5 / Cmd+O）は往復して何も起きず、Cmd+N は 2 枚できる
+  // （実機で発覚 2026-09-04: アシスタントからアウトラインへ切り替わらない）。
+  // ここに残すのは、メニュー側にアクセラレータを**あえて付けていない**
+  // 文字サイズだけ（JIS 配列で Cmd+= が化けるため。lib.rs のコメント参照）
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.metaKey || event.ctrlKey || event.altKey) return;
-      const key = event.key.toLowerCase();
-      if (key === "o" && !event.shiftKey) {
+      // 文字サイズ（TASKS 1-5）。JIS 配列で正しく効くよう event.key で見る
+      const zoom = zoomActionFor(event.key, event.shiftKey);
+      if (zoom) {
         event.preventDefault();
-        setQuickOpen((open) => !open);
-        setPaletteQuery("");
-        setPaletteIndex(0);
-      } else if (key === "n" && !event.shiftKey) {
-        event.preventDefault();
-        void shortcutActions.current.create();
-      } else if (key === "s" && !event.shiftKey) {
-        event.preventDefault();
-        shortcutActions.current.flushSave(); // 自動保存があるので実質フラッシュ
-      } else if (key === "f" && event.shiftKey) {
-        event.preventDefault(); // 全ノート検索（Cmd+Shift+F）
-        searchInputRef.current?.focus();
-      } else if (key === "5" && !event.shiftKey) {
-        event.preventDefault(); // アウトライン開閉（ADR-0022）
-        toggleOutline();
-      } else {
-        // 文字サイズ（TASKS 1-5）。JIS 配列で正しく効くよう event.key で見る
-        const zoom = zoomActionFor(event.key, event.shiftKey);
-        if (zoom) {
-          event.preventDefault();
-          shortcutActions.current.zoom(zoom);
-        }
+        shortcutActions.current.zoom(zoom);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1491,11 +1478,7 @@ function App() {
       setSavingSearch(typed);
     },
     outline: toggleOutline,
-    assistant: () => {
-      const next = !assistantOpen;
-      if (next) setOutlineOpen(false); // 右のペインは 1 つだけ
-      setAssistantOpen(next);
-    },
+    assistant: () => setRightPane((pane) => togglePane(pane, "assistant")),
     "llm-unload": () => void handleUnloadModel(),
     "heading-palette": openHeadingPalette,
     "style-check": checkStyleNow,
@@ -1520,10 +1503,12 @@ function App() {
     typewriter: () => editorRef.current?.toggleTypewriterMode(),
   };
   useEffect(() => {
-    const unlisten = listen<string>("menu", (event) => {
-      menuActions.current[event.payload]?.();
-    });
-    return () => void unlisten.then((stop) => stop());
+    const unlisten = safeSubscribe(() =>
+      listen<string>("menu", (event) => {
+        menuActions.current[event.payload]?.();
+      }),
+    );
+    return unlisten;
   }, []);
 
   /// 使っていない添付を片づける（E-5）。
@@ -1577,37 +1562,43 @@ function App() {
   // 走査の結果を知らせる（M-6）。**「変わりはありません」まで言う** —
   // 変わらなかったことを言わないと、押した人には失敗と区別が付かない
   useEffect(() => {
-    const unlisten = listen<[boolean, SyncResult]>("index-synced", (event) => {
-      const [full, result] = event.payload;
-      const parts = [
-        result.added > 0 && `${result.added} 件増えました`,
-        result.updated > 0 && `${result.updated} 件変わりました`,
-        result.removed > 0 && `${result.removed} 件消えました`,
-      ].filter(Boolean);
-      const head = full ? "索引を作り直しました" : "最新の情報に同期しました";
-      setStatus(
-        parts.length
-          ? `${head}（${parts.join("、")}）`
-          : `${head}（変わりはありません）`,
-      );
-      void useAppStore.getState().refresh();
-    });
-    return () => void unlisten.then((stop) => stop());
+    const unlisten = safeSubscribe(() =>
+      listen<[boolean, SyncResult]>("index-synced", (event) => {
+        const [full, result] = event.payload;
+        const parts = [
+          result.added > 0 && `${result.added} 件増えました`,
+          result.updated > 0 && `${result.updated} 件変わりました`,
+          result.removed > 0 && `${result.removed} 件消えました`,
+        ].filter(Boolean);
+        const head = full ? "索引を作り直しました" : "最新の情報に同期しました";
+        setStatus(
+          parts.length
+            ? `${head}（${parts.join("、")}）`
+            : `${head}（変わりはありません）`,
+        );
+        void useAppStore.getState().refresh();
+      }),
+    );
+    return unlisten;
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<string>("index-sync-failed", (event) => {
-      setStatus(`索引の同期に失敗しました: ${event.payload}`);
-    });
-    return () => void unlisten.then((stop) => stop());
+    const unlisten = safeSubscribe(() =>
+      listen<string>("index-sync-failed", (event) => {
+        setStatus(`索引の同期に失敗しました: ${event.payload}`);
+      }),
+    );
+    return unlisten;
   }, []);
 
   // 背景の索引同期が終わったら一覧を引き直す（大きな vault の初回同期）
   useEffect(() => {
-    const unlisten = listen("index-updated", () => {
-      void useAppStore.getState().refresh();
-    });
-    return () => void unlisten.then((stop) => stop());
+    const unlisten = safeSubscribe(() =>
+      listen("index-updated", () => {
+        void useAppStore.getState().refresh();
+      }),
+    );
+    return unlisten;
   }, []);
 
   // 起動時間の実測（spec §6.6）。ベンチ時は Rust 側が印字して終了する
@@ -1621,11 +1612,13 @@ function App() {
   // ノートは未編集なら静かにリロード、編集中なら確認を挟む
   const refreshSoon = useMemo(() => createDebouncer(300), []);
   useEffect(() => {
-    const unlisten = listen<{ path: string; kind: string }>(
-      "vault-changed",
-      (event) => void handleExternalChange(event.payload),
+    const unlisten = safeSubscribe(() =>
+      listen<{ path: string; kind: string }>(
+        "vault-changed",
+        (event) => void handleExternalChange(event.payload),
+      ),
     );
-    return () => void unlisten.then((stop) => stop());
+    return unlisten;
     // eslint 相当の依存警告は無い構成だが、意図として登録は一度だけ。
     // ハンドラが読む値はすべて ref 経由
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3015,7 +3008,7 @@ function App() {
             )}
           </aside>
         )}
-        {outlineOpen && !assistantOpen && (
+        {outlineOpen && (
           <aside className="outline-pane">
             <header>目次</header>
             <ul>
