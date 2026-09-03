@@ -94,6 +94,29 @@ describe("loadSettings", () => {
   });
 });
 
+describe("ローカルLLM の設定（ADR-0025）", () => {
+  it("test_モデル名は空にできない（押しても何も起きないアプリにしない）", () => {
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: '{"llmModel":"   "}',
+    });
+    expect(loadSettings(storage).llmModel).toBe(DEFAULT_SETTINGS.llmModel);
+  });
+
+  it("test_ポートと待ち時間は範囲の外なら既定へ", () => {
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: '{"llmPort":0,"llmTimeoutMinutes":999}',
+    });
+    const found = loadSettings(storage);
+    expect(found.llmPort).toBe(DEFAULT_SETTINGS.llmPort);
+    expect(found.llmTimeoutMinutes).toBe(DEFAULT_SETTINGS.llmTimeoutMinutes);
+  });
+
+  it("test_送り先の設定は持たない（外へ出す道を作らない）", () => {
+    // ADR-0025 決定 3。ここに host が生えたら設計が変わったということ
+    expect(Object.keys(DEFAULT_SETTINGS)).not.toContain("llmHost");
+  });
+});
+
 describe("resolveTheme", () => {
   it("test_システムなら今の見た目に従う", () => {
     expect(resolveTheme("system", true)).toBe("dark");

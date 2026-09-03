@@ -59,6 +59,7 @@ import {
   contentWidthCss,
   CONTENT_WIDTHS,
   HISTORY_CHOICES,
+  KEEP_ALIVE_CHOICES,
   loadSettings,
   MAX_TRASH_DAYS,
   MIN_TRASH_DAYS,
@@ -151,6 +152,19 @@ const WIDTH_LABELS: Record<ContentWidth, string> = {
   wide: "広め",
   full: "最大（ウィンドウ幅）",
 };
+
+/// ローカルLLM の断りを、画面に出す言葉にする（ADR-0025 追記）。
+/// **動いているのに「動いているか確かめて」は嘘になる**ので、時間切れは
+/// 別の言葉にする。
+function llmErrorText(code: string, minutes: number): string {
+  if (code.startsWith("not-running")) {
+    return "Ollama が動いていません。`ollama serve` で動かすか、https://ollama.com から入れてください。";
+  }
+  if (code.startsWith("timed-out")) {
+    return `${minutes} 分待っても答えが返りませんでした。大きいモデルは読み込みだけで数分かかります（設定で延ばせます）。`;
+  }
+  return `答えを受け取れませんでした: ${code}`;
+}
 
 /// 保存時刻（時:分）。日付は出さない — 開いている間に保存した時刻なので、
 /// 日付まで出すと情報が増えるだけで読み取りが遅くなる。
@@ -680,6 +694,89 @@ function App() {
     }
     saveLastVault(localStorage, picked);
     setDoc(null);
+  }
+
+  // アシスタント（TASKS 4-8 / ADR-0025）。**無ければ機能ごと畳む**
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [llmReady, setLlmReady] = useState<boolean | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [thinking, setThinking] = useState(false);
+
+  // 開いたときだけ動いているか確かめる（**押してから断らない**）
+  useEffect(() => {
+    if (!assistantOpen) return;
+    let alive = true;
+    void invoke<boolean>("llm_available", { port: settings.llmPort })
+      .then((found) => {
+        if (alive) setLlmReady(found);
+      })
+      .catch(() => {
+        if (alive) setLlmReady(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [assistantOpen, settings.llmPort]);
+
+  // 流れてきたぶんから順に出す（最初の 1 文字まで数秒あり、黙って待たせない）
+  useEffect(() => {
+    const chunks = listen<string>("llm-chunk", (event) => {
+      setAnswer((current) => current + event.payload);
+    });
+    const done = listen<string>("llm-done", () => setThinking(false));
+    const failed = listen<string>("llm-failed", (event) => {
+      setThinking(false);
+      setAnswer(
+        llmErrorText(event.payload, settingsRef.current.llmTimeoutMinutes),
+      );
+    });
+    return () => {
+      void chunks.then((stop) => stop());
+      void done.then((stop) => stop());
+      void failed.then((stop) => stop());
+    };
+  }, []);
+
+  /// ノートを読ませる。**本文は書き換えない**（答えは横に出すだけ）。
+  async function askAssistant(task: string) {
+    if (!vaultRoot || !currentPath) return;
+    autosave.flush(); // 打ちかけを書き切ってから読ませる
+    const text = editorRef.current?.getText() ?? "";
+    setAnswer("");
+    setThinking(true);
+    const started = await invoke<boolean>("llm_generate", {
+      port: settings.llmPort,
+      model: settings.llmModel,
+      task,
+      title: noteStem(currentPath),
+      body: text,
+      context: settings.llmContext,
+      timeoutMinutes: settings.llmTimeoutMinutes,
+      keepAlive: settings.llmKeepAlive,
+    });
+    if (!started) {
+      setThinking(false);
+      setAnswer("いま考えています。終わるまでお待ちください。");
+      return;
+    }
+    // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）
+    const loaded = await invoke<boolean>("llm_loaded", {
+      port: settings.llmPort,
+      model: settings.llmModel,
+    });
+    if (!loaded) setAnswer("モデルを読み込んでいます…");
+  }
+
+  async function handleUnloadModel() {
+    const done = await invoke<boolean>("llm_unload", {
+      port: settings.llmPort,
+      model: settings.llmModel,
+    });
+    setStatus(
+      done
+        ? "モデルを降ろしました"
+        : "いま考えています（終わってから降ろせます）",
+    );
   }
 
   // 印刷用に組んだ本文（ADR-0038）。null なら一度も刷っていない。
@@ -1279,6 +1376,8 @@ function App() {
       setSavingSearch(typed);
     },
     outline: toggleOutline,
+    assistant: () => setAssistantOpen((open) => !open),
+    "llm-unload": () => void handleUnloadModel(),
     "heading-palette": openHeadingPalette,
     "toggle-trees": () =>
       changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
@@ -1543,7 +1642,7 @@ function App() {
     <>
       <main
         className={
-          `app app-split${outlineOpen ? " with-outline" : ""}` +
+          `app app-split${outlineOpen || assistantOpen ? " with-outline" : ""}` +
           (leftVisible ? "" : " no-list")
         }
         style={
@@ -2235,6 +2334,63 @@ function App() {
                   </select>
                 </label>
                 <label>
+                  <span>LLM のモデル</span>
+                  <input
+                    value={settings.llmModel}
+                    placeholder="gemma3:4b"
+                    onChange={(event) =>
+                      changeSettings({ llmModel: event.currentTarget.value })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>LLM のポート</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={settings.llmPort}
+                    onChange={(event) =>
+                      changeSettings({
+                        llmPort: Number(event.currentTarget.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>答えを待つ上限（分）</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={settings.llmTimeoutMinutes}
+                    onChange={(event) =>
+                      changeSettings({
+                        llmTimeoutMinutes: Number(event.currentTarget.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>モデルを残す時間</span>
+                  <select
+                    value={settings.llmKeepAlive}
+                    onChange={(event) =>
+                      changeSettings({
+                        llmKeepAlive: event.currentTarget.value,
+                      })
+                    }
+                  >
+                    {KEEP_ALIVE_CHOICES.map((value) => (
+                      <option key={value} value={value}>
+                        {value === "0"
+                          ? "すぐ降ろす"
+                          : value.replace("m", " 分")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
                   <span>ゴミ箱の保持</span>
                   <input
                     type="number"
@@ -2250,6 +2406,8 @@ function App() {
                 </label>
               </div>
               <p className="dialog-text">
+                ローカルLLM の**送り先は 127.0.0.1 に固定**です（ノートは
+                外へ出ません）。ポートは同じ機械の別の窓口を指すだけです。
                 「履歴を残す間隔」は「戻す」ために残す版の間隔です。本文の保存は
                 打ち終わって 0.8 秒後で、ここでは変わりません。「なし」は
                 自分で保存したときだけ残します。ゴミ箱の日数は次に保管フォルダを
@@ -2537,6 +2695,51 @@ function App() {
               </ul>
             </div>
           </div>
+        )}
+        {assistantOpen && (
+          <aside className="assistant-pane">
+            <header>アシスタント</header>
+            {llmReady === false ? (
+              // **押してから断らない**（G-3 のゴミ箱と同じ作法）
+              <p className="assistant-note">
+                ローカルLLM（Ollama）が動いていません。
+                <br />
+                ollama.com から入れて `ollama serve` で動かすと使えます。
+                <br />
+                送り先は 127.0.0.1 に固定されています（ノートは外へ出ません）。
+              </p>
+            ) : (
+              <>
+                <div className="assistant-actions">
+                  <button
+                    disabled={thinking || !currentPath}
+                    onClick={() => void askAssistant("summary")}
+                  >
+                    要約
+                  </button>
+                  <button
+                    disabled={thinking || !currentPath}
+                    onClick={() => void askAssistant("review")}
+                  >
+                    レビュー
+                  </button>
+                  <button
+                    disabled={thinking || !currentPath}
+                    onClick={() => void askAssistant("questions")}
+                  >
+                    質問を出す
+                  </button>
+                </div>
+                <p className="assistant-note">
+                  このノートだけを読んで答えます（送り先は 127.0.0.1）。
+                  本文は書き換えません。
+                </p>
+                <div className="assistant-answer">
+                  {answer || (thinking ? "考えています…" : "")}
+                </div>
+              </>
+            )}
+          </aside>
         )}
         {outlineOpen && (
           <aside className="outline-pane">

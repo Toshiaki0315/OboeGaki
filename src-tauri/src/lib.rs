@@ -8,6 +8,7 @@ pub mod commands;
 pub mod front_matter;
 mod history;
 pub mod index_db;
+pub mod llm;
 pub mod ocr;
 pub mod recovery;
 pub mod references;
@@ -72,6 +73,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         // 手入れ（M-6）。監視が取りこぼしたぶんを押せば必ず合わせられる
         .item(&item("resync", "最新の情報に同期", None)?)
         .item(&item("rebuild-index", "索引を作り直す", None)?)
+        .item(&item("llm-unload", "モデルを降ろす", None)?)
         .item(&item(
             "cleanup-attachments",
             "使っていない添付を片づける…",
@@ -143,6 +145,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+R"),
         )?)
         .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
+        .item(&item("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
         .item(&item(
             "focus-mode",
@@ -259,6 +262,11 @@ pub fn run() {
             commands::export_write_binary,
             commands::import_read,
             commands::ocr_image,
+            commands::llm_available,
+            commands::llm_models,
+            commands::llm_loaded,
+            commands::llm_unload,
+            commands::llm_generate,
             commands::conflict_copy,
             commands::startup_elapsed_ms,
         ])

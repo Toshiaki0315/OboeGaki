@@ -38,6 +38,9 @@ pub struct WatchState {
     /// 走査が動いているか（M-6）。**二重に走らせない** — 同じ索引を
     /// 2 本で書くと、片方の見た「消えた」がもう片方の書き込みを消す
     syncing: Arc<std::sync::atomic::AtomicBool>,
+    /// 生成が走っているか（TASKS 4-8）。**答えの途中でモデルを降ろさない**
+    /// ためと、二重に始めないため
+    generating: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for WatchState {
@@ -47,6 +50,7 @@ impl Default for WatchState {
             suppressor: Arc::new(Suppressor::default()),
             lock: Mutex::new(None),
             syncing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -563,6 +567,96 @@ pub fn import_read(path: String) -> Result<String, String> {
     use base64::Engine;
     let bytes = fs::read(&path).map_err(|e| e.to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+// ------------------------------------------------------------ ローカルLLM
+
+/// Ollama が動いているか（TASKS 4-8 / ADR-0025）。
+///
+/// **押してから断らない**ための確認。動いていなければ機能ごと畳む。
+#[tauri::command]
+pub fn llm_available(port: u16) -> bool {
+    crate::llm::available(port)
+}
+
+/// 入っているモデルの名前（設定の候補に出す）。
+#[tauri::command]
+pub fn llm_models(port: u16) -> Vec<String> {
+    crate::llm::models(port)
+}
+
+/// そのモデルが今メモリに載っているか（載っていなければ「読み込んで
+/// います…」と言えるようにする）。
+#[tauri::command]
+pub fn llm_loaded(port: u16, model: String) -> bool {
+    crate::llm::is_loaded(port, &model)
+}
+
+/// モデルをメモリから降ろす。**答えの途中では降ろさない**（走っている
+/// 生成を壊す）ので、走っている間は断る。
+#[tauri::command]
+pub fn llm_unload(
+    state: tauri::State<WatchState>,
+    port: u16,
+    model: String,
+) -> Result<bool, String> {
+    use std::sync::atomic::Ordering;
+    if state.generating.load(Ordering::SeqCst) {
+        return Ok(false);
+    }
+    crate::llm::unload(port, &model).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// ノートを読ませる（TASKS 4-8）。始めたら true、走っている最中なら false。
+///
+/// **打鍵の経路に入れない**（spec §6.6）。生成は別スレッドで回し、流れて
+/// きたぶんは `llm-chunk` で送る（最初の 1 文字まで数秒あり、黙って
+/// 待たせない）。終わりは `llm-done`、失敗は `llm-failed`。
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn llm_generate(
+    app: tauri::AppHandle,
+    state: tauri::State<WatchState>,
+    port: u16,
+    model: String,
+    task: String,
+    title: String,
+    body: String,
+    context: u32,
+    timeout_minutes: u64,
+    keep_alive: String,
+) -> Result<bool, String> {
+    use std::sync::atomic::Ordering;
+    if state.generating.swap(true, Ordering::SeqCst) {
+        return Ok(false);
+    }
+    let generating = state.generating.clone();
+    std::thread::spawn(move || {
+        use tauri::Emitter;
+        let prompt = crate::llm::prompt_for(&task, &title, &body);
+        let outcome = crate::llm::generate(
+            port,
+            &model,
+            &prompt,
+            context,
+            std::time::Duration::from_secs(timeout_minutes * 60),
+            &keep_alive,
+            |piece| {
+                let _ = app.emit("llm-chunk", piece);
+            },
+        );
+        generating.store(false, Ordering::SeqCst);
+        match outcome {
+            Ok(answer) => {
+                let _ = app.emit("llm-done", answer);
+            }
+            Err(error) => {
+                let _ = app.emit("llm-failed", error.to_string());
+            }
+        }
+    });
+    Ok(true)
 }
 
 /// 絵から文字を読む（TASKS 4-7 / ADR-0041）。読めなければ空。

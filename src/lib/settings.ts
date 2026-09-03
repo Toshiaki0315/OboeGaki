@@ -32,6 +32,18 @@ export type Settings = {
   notesVisible: boolean;
   /// フォルダ・タグ・ゴミ箱の並び（サイドバー相当）を出すか（Cmd+1）。
   treesVisible: boolean;
+  /// ローカルLLM のモデル名（ADR-0025。**空にはできない** — 空のまま
+  /// 保存できると、押しても何も起きないアプリになる）。
+  llmModel: string;
+  /// Ollama のポート。**送り先は 127.0.0.1 に固定**で、これは同じ機械の
+  /// 別の窓口を指すだけ。
+  llmPort: number;
+  /// 一度に渡す量（文脈長）。メモリと引き換え。
+  llmContext: number;
+  /// 答えを待つ上限（分）。手元のモデルで桁が違うので既定 1 つでは決められない。
+  llmTimeoutMinutes: number;
+  /// 答えたあとモデルを残す長さ（Ollama の既定と同じ 5 分）。
+  llmKeepAlive: string;
 };
 
 export const THEMES: Theme[] = ["system", "light", "dark"];
@@ -54,7 +66,14 @@ export const DEFAULT_SETTINGS: Settings = {
   // 次の起動が真っ白な窓になった（実測）
   notesVisible: true,
   treesVisible: true,
+  llmModel: "gemma3:4b", // ADR-0025 の既定（1b は日本語が壊れる）
+  llmPort: 11434,
+  llmContext: 8192, // 既定の 4k では長いノートが黙って切れる
+  llmTimeoutMinutes: 10,
+  llmKeepAlive: "5m",
 };
+
+export const KEEP_ALIVE_CHOICES = ["0", "1m", "5m", "30m"];
 
 const WIDTHS: Record<ContentWidth, string> = {
   standard: "46rem", // App.css の従来値
@@ -112,6 +131,29 @@ export function loadSettings(storage: StorageLike): Settings {
     ),
     notesVisible: readFlag(stored.notesVisible, DEFAULT_SETTINGS.notesVisible),
     treesVisible: readFlag(stored.treesVisible, DEFAULT_SETTINGS.treesVisible),
+    // 空のモデル名は既定へ戻す（押しても何も起きないアプリにしない）
+    llmModel:
+      typeof stored.llmModel === "string" && stored.llmModel.trim()
+        ? stored.llmModel.trim()
+        : DEFAULT_SETTINGS.llmModel,
+    llmPort: readNumber(stored.llmPort, 1, 65535, DEFAULT_SETTINGS.llmPort),
+    llmContext: readNumber(
+      stored.llmContext,
+      1024,
+      131072,
+      DEFAULT_SETTINGS.llmContext,
+    ),
+    llmTimeoutMinutes: readNumber(
+      stored.llmTimeoutMinutes,
+      1,
+      60,
+      DEFAULT_SETTINGS.llmTimeoutMinutes,
+    ),
+    llmKeepAlive: pick(
+      stored.llmKeepAlive,
+      KEEP_ALIVE_CHOICES,
+      DEFAULT_SETTINGS.llmKeepAlive,
+    ),
   };
 }
 
@@ -157,6 +199,18 @@ export function clampPaneWidth(
 /// 真偽値だけを採る（`"はい"` のような手書きは既定へ）。
 function readFlag(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+/// 範囲の外なら既定へ（丸めない。手で書き換えられた設定を信じない）。
+function readNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const found = Math.round(Number(value));
+  if (!Number.isFinite(found) || found < min || found > max) return fallback;
+  return found;
 }
 
 function readDays(value: unknown): number {
