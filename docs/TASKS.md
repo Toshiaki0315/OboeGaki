@@ -108,7 +108,9 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       画面と同じ Lezer のパーサで色分けし、実色は書き出した HTML の
       CSS 変数が持つ（1 枚で完結したまま読む人の明暗に合う）。
       印刷（4-3）にも同じ色が乗る（紙はライトの組で刷る）
-- [ ] **4-5. PowerPoint 取り込み / 書き出し / スライド分割**（F-3〜F-5）
+- [x] **4-5. PowerPoint 取り込み / 書き出し / スライド分割**（ADR-0039）
+      割り方は純関数（lib/slides.ts）、書き出しは pptxgenjs、取り込みは
+      jszip + DOMParser。どちらも動的 import
 - [ ] **4-6. 外部形式の取り込み**（F-1, editor/importer.py）
 - [ ] **4-7. OCR**（ADR-0027, tools/ocr の Swift ツールを流用できるか検証）
 - [ ] **4-8. ローカル LLM アシスタント**（ADR-0025, docs/ollama.md）

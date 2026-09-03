@@ -24,6 +24,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2.5.5",
     "codemirror": "^6.0.2",
+    "jszip": "^3.10.1",
     "markdown-it": "^15.0.1",
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",

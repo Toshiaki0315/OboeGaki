@@ -28,6 +28,7 @@ import {
 import { highlightCodeHtml } from "./lib/export-code";
 import { splitDeck } from "./lib/slides";
 import { buildPptx } from "./lib/pptx";
+import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -464,6 +465,40 @@ function App() {
       setStatus(`書き出しました: ${target}`);
     } catch (error) {
       setStatus(`書き出せませんでした: ${String(error)}`);
+    }
+  }
+
+  /// PowerPoint を読み込んでノートにする（TASKS 4-5 / F-3）。
+  /// **ざっくり読んで手で直す**前提。中身だけが残り、見た目は戻らない。
+  async function handleImportPptx() {
+    if (!vaultRoot) return;
+    const picked = await open({
+      filters: [{ name: "PowerPoint", extensions: ["pptx"] }],
+    });
+    if (typeof picked !== "string") return;
+    setStatus("読み込んでいます…");
+    try {
+      const data = await invoke<string>("import_read", { path: picked });
+      const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+      const title = (picked.split("/").pop() ?? "資料").replace(/\.pptx$/i, "");
+      const markdown = slidesToMarkdown(title, await readPptx(bytes));
+      if (!markdown) {
+        // 中身が無ければ題名だけのノートを作らせない
+        setStatus("文字を取り出せませんでした");
+        return;
+      }
+      const path = await createNote(vaultRoot, title);
+      await writeNote(
+        vaultRoot,
+        path,
+        markdown,
+        settingsRef.current.historyMinutes,
+      );
+      await refresh();
+      await openNote(path);
+      setStatus("読み込みました（見た目は戻りません。手で整えてください）");
+    } catch (error) {
+      setStatus(`読み込めませんでした: ${String(error)}`);
     }
   }
 
@@ -1174,6 +1209,7 @@ function App() {
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
     "export-pptx": () => void handleExportPptx(),
+    "import-pptx": () => void handleImportPptx(),
     print: () => void handlePrint(),
     history: () => void openHistory(),
     trash: () => void handleTrash(),

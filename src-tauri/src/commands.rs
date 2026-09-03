@@ -554,6 +554,17 @@ pub fn export_write_binary(path: String, data: String) -> Result<(), String> {
     fs::write(&path, bytes).map_err(|e| e.to_string())
 }
 
+/// 取り込むファイルを base64 で読む（TASKS 4-5 の PowerPoint など）。
+///
+/// **vault の外を読む。** 取り込みは外から持ってくる操作で、置き場を
+/// 選ぶのはユーザー。書き込みはしないので、封じ込めの対象にしない。
+#[tauri::command]
+pub fn import_read(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
 /// 印刷（TASKS 4-3）。macOS の印刷パネルを出す（「PDF として保存」もここ）。
 ///
 /// 印刷されるのは**この WebView に今出ているもの**なので、何を出すかは
