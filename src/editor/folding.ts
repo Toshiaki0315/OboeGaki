@@ -18,31 +18,28 @@ export function headingSection(
 ): { from: number; to: number } | null {
   const line = state.doc.lineAt(lineStart);
   const tree = syntaxTree(state);
-  let level = 0;
-  tree.iterate({
-    from: line.from,
-    to: line.to,
-    enter(node) {
-      const found = HEADING_RE.exec(node.name);
-      if (found && node.from === line.from) level = Number(found[1]);
-    },
-  });
-  if (level === 0) return null;
+  // 行頭の見出しノードを取る。resolve だと Document に丸められることが
+  // あるので、行頭位置を含む最小ノードから親へ辿る
+  let heading = tree.resolveInner(line.from, 1);
+  while (heading.parent && !HEADING_RE.test(heading.name)) {
+    heading = heading.parent;
+  }
+  const found = HEADING_RE.exec(heading.name);
+  if (!found || heading.from !== line.from) return null;
+  const level = Number(found[1]);
 
-  // 次の「同じか浅い」見出しを探す。H1 は配下の H2 ごと巻き込む
+  // 次の「同じか浅い」見出しまで、トップレベルの兄弟だけを辿る。
+  // tree.iterate は enter で false を返しても走査自体は止まらないため、
+  // 文書末まで舐めてしまい打鍵のたびに O(文書長) かかる（実測で
+  // p95 26.5ms → 基準割れ）。兄弟歩きなら節の長さで止まる
   let end = state.doc.length;
-  tree.iterate({
-    from: line.to,
-    to: state.doc.length,
-    enter(node) {
-      if (end < state.doc.length) return false; // もう決まった
-      const found = HEADING_RE.exec(node.name);
-      if (found && Number(found[1]) <= level && node.from > line.to) {
-        end = state.doc.lineAt(node.from).from - 1; // 前の行の行末
-        return false;
-      }
-    },
-  });
+  for (let node = heading.node.nextSibling; node; node = node.nextSibling) {
+    const next = HEADING_RE.exec(node.name);
+    if (next && Number(next[1]) <= level) {
+      end = state.doc.lineAt(node.from).from - 1; // 前の行の行末
+      break;
+    }
+  }
   if (end <= line.to) return null; // 中身が無い
   return { from: line.to, to: end };
 }

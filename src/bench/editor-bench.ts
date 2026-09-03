@@ -14,6 +14,11 @@ import { relaxedAsterisk } from "../editor/relaxed-emphasis";
 import { extendedInline } from "../editor/extended-inline";
 import { inputAssist } from "../editor/input-assist";
 import { livePreview } from "../editor/live-preview";
+import { syntaxHighlighting } from "@codemirror/language";
+import { autoPair } from "../editor/auto-pair";
+import { codeHighlight, resolveCodeLanguage } from "../editor/code-blocks";
+import { frontMatterHide } from "../editor/frontmatter";
+import { headingFolding } from "../editor/folding";
 
 const KEYSTROKES = 300;
 const BUDGET_MS = 16;
@@ -65,14 +70,21 @@ async function run() {
     parent: document.querySelector("#host")!,
     state: EditorState.create({
       doc,
+      // 本番（Editor.tsx）と同じ拡張一式で測る。フェンスの入れ子パース
+      // （codeLanguages）や front matter の監視が抜けた計測は嘘になる
       extensions: [
+        frontMatterHide,
         history(),
+        autoPair,
         inputAssist,
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown({
           extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
+          codeLanguages: resolveCodeLanguage,
         }),
+        syntaxHighlighting(codeHighlight),
         livePreview,
+        headingFolding,
         EditorView.lineWrapping,
       ],
     }),
