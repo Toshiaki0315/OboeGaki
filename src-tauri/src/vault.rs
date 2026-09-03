@@ -187,6 +187,14 @@ impl Vault {
         }
         let target = unique_path(&folder, &stem, ".md", Some(path));
         fs::rename(path, &target)?;
+        // 「名前を変更」は本文の見出しも書き換える（ADR-0005）。
+        // 見出しには打った通りのタイトルが入る（ファイル名側だけ sanitize）
+        if let Ok(text) = fs::read_to_string(&target) {
+            let rewritten = with_title(&text, title);
+            if rewritten != text {
+                crate::autosave::save_atomic(&target, &rewritten)?;
+            }
+        }
         Ok(target)
     }
 
@@ -430,6 +438,71 @@ pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<
         index += 1;
     }
     candidate
+}
+
+/// タイトルを付け替えた本文を返す（ADR-0005）。
+///
+/// タイトルは本文から導かれるので、本文を書き換えるのが唯一の付け替え方。
+/// - 見出しがあれば、その行の文字だけを差し替える（深さは保つ）
+/// - 見出しが無ければ本文の先頭に `# タイトル` を足す
+/// - front matter とコードフェンスの中は見出しとして扱わない
+pub fn with_title(text: &str, title: &str) -> String {
+    // 見出しは 1 行。改行や連続空白を持ち込ませない
+    let cleaned = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() {
+        return text.to_string();
+    }
+
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut in_front_matter = false;
+    let mut in_fence = false;
+    let mut heading: Option<usize> = None;
+    for (number, line) in lines.iter().enumerate() {
+        if number == 0 && line.trim_end() == "---" {
+            in_front_matter = true;
+            continue;
+        }
+        if in_front_matter {
+            if line.trim_end() == "---" {
+                in_front_matter = false;
+            }
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let hashes = line.chars().take_while(|c| *c == '#').count();
+        if (1..=6).contains(&hashes)
+            && line[hashes..].starts_with(' ')
+            && !line[hashes..].trim().is_empty()
+        {
+            heading = Some(number);
+            break;
+        }
+    }
+
+    match heading {
+        Some(number) => {
+            let hashes = lines[number].chars().take_while(|c| *c == '#').count();
+            let mut replaced = lines.clone();
+            let marker = &lines[number][..hashes];
+            let new_line = format!("{marker} {cleaned}");
+            replaced[number] = &new_line;
+            replaced.join("\n")
+        }
+        None => {
+            if text.trim().is_empty() {
+                format!("# {cleaned}\n")
+            } else {
+                format!("# {cleaned}\n\n{text}")
+            }
+        }
+    }
 }
 
 /// `candidate` が vault の中に留まるか。Tauri commands の入口で必ず通す。
@@ -700,14 +773,39 @@ mod tests {
     }
 
     #[test]
-    fn test_rename_元のフォルダに留めて改名する() {
+    fn test_rename_元のフォルダに留めて改名し見出しも追従する() {
         let root = TempDir::new().unwrap();
         let vault = Vault::new(root.path());
         let old = note(root.path(), "sub/旧名.md");
         let renamed = vault.rename(&old, "新名").unwrap();
         assert_eq!(renamed, root.path().join("sub/新名.md"));
         assert!(!old.exists());
-        assert_eq!(fs::read_to_string(&renamed).unwrap(), "# note\n");
+        // ADR-0005: 「名前を変更」は本文の見出しも書き換える
+        assert_eq!(fs::read_to_string(&renamed).unwrap(), "# 新名\n");
+    }
+
+    #[test]
+    fn test_with_title_見出しの行だけ差し替えて深さを保つ() {
+        assert_eq!(with_title("## 旧題\n\n本文\n", "新題"), "## 新題\n\n本文\n");
+    }
+
+    #[test]
+    fn test_with_title_見出しが無ければ先頭に足す() {
+        assert_eq!(with_title("本文だけ\n", "新題"), "# 新題\n\n本文だけ\n");
+        assert_eq!(with_title("", "新題"), "# 新題\n");
+    }
+
+    #[test]
+    fn test_with_title_フェンスとfront_matterの中は見出しではない() {
+        let text = "---\ntags: [a]\n---\n```\n# コード\n```\n\n# 本物\n";
+        let expected = "---\ntags: [a]\n---\n```\n# コード\n```\n\n# 新題\n";
+        assert_eq!(with_title(text, "新題"), expected);
+    }
+
+    #[test]
+    fn test_with_title_改行入りは1行に畳み_空なら原文のまま() {
+        assert_eq!(with_title("# 旧\n", "新\nしい  題"), "# 新 しい 題\n");
+        assert_eq!(with_title("# 旧\n", "   "), "# 旧\n");
     }
 
     #[test]
