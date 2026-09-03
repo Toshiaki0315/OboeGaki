@@ -56,4 +56,29 @@ describe("renderHtml", () => {
     const html = renderHtml("![図](attachments/a.png)\n", "t");
     expect(html).toContain('<img src="attachments/a.png" alt="図"');
   });
+
+  test("数式は MathML で出る（外部リソースを参照しない / ADR-0036）", () => {
+    const html = renderHtml("式は $E = mc^2$ です。\n", "数式");
+    expect(html).toContain("<math");
+    // 画面と同じ文字列を使うので、フォントも JS も埋めない
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("@font-face");
+  });
+
+  test("`$$` ブロックはディスプレイ数式になる", () => {
+    const html = renderHtml("$$\n\\frac{a}{b}\n$$\n", "数式");
+    expect(html).toContain('display="block"');
+  });
+
+  test("値段は数式にしない", () => {
+    const html = renderHtml("価格は $100 と $200 です。\n", "値段");
+    expect(html).not.toContain("<math");
+    expect(html).toContain("$100");
+  });
+
+  test("組めない式は書いたまま出す", () => {
+    const html = renderHtml("壊れた $\\frac{a$ です。\n", "壊れ");
+    expect(html).not.toContain("<math");
+    expect(html).toContain("\\frac{a");
+  });
 });

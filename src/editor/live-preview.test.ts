@@ -47,7 +47,12 @@ function tableWidgetOf(doc: string, anchor: number): TableData | null {
 function simplify(range: Range<Decoration>): Deco {
   const spec = range.value.spec as {
     class?: string;
-    widget?: { glyph?: string; checked?: boolean; url?: string };
+    widget?: {
+      glyph?: string;
+      checked?: boolean;
+      url?: string;
+      mathml?: string;
+    };
   };
   let kind = "hide";
   if (spec.class) kind = `line:${spec.class}`;
@@ -56,6 +61,7 @@ function simplify(range: Range<Decoration>): Deco {
   else if (spec.widget?.checked !== undefined)
     kind = `checkbox:${spec.widget.checked}`;
   else if (spec.widget?.url !== undefined) kind = `image:${spec.widget.url}`;
+  else if (spec.widget?.mathml !== undefined) kind = "math";
   else if (spec.widget) kind = "hr";
   return { from: range.from, to: range.to, kind };
 }
@@ -421,5 +427,57 @@ describe("セル内の <br>（ADR-0028）", () => {
     const doc = "本文の<br>はそのまま\n";
     const decos = decorationsOf(doc, doc.length);
     expect(decos.every((d) => d.kind !== "hide")).toBe(true);
+  });
+});
+
+describe("数式（ADR-0036）", () => {
+  test("インライン数式を組んで置き換える", () => {
+    const doc = "式は $E = mc^2$ です";
+    const from = doc.indexOf("$");
+    const to = doc.lastIndexOf("$") + 1;
+    expect(has(decorationsOf(doc, 0), { from, to, kind: "math" })).toBe(true);
+  });
+
+  test("キャレットが触れている間は生の LaTeX に戻す", () => {
+    const doc = "式は $E = mc^2$ です";
+    const inside = doc.indexOf("mc");
+    expect(decorationsOf(doc, inside).some((d) => d.kind === "math")).toBe(
+      false,
+    );
+  });
+
+  test("組めない式は置き換えない（直せる状態を保つ）", () => {
+    const doc = "壊れた $\\frac{a$ です";
+    expect(decorationsOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
+  });
+
+  test("値段は数式にしない", () => {
+    const doc = "価格は $100 と $200 です";
+    expect(decorationsOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
+  });
+
+  test("行をまたぐ `$$` ブロックを組む", () => {
+    const doc = "本文\n\n$$\n\\frac{a}{b}\n$$\n\n続き";
+    const from = doc.indexOf("$$");
+    const to = doc.lastIndexOf("$$") + 2;
+    expect(has(decorationsOf(doc, 0), { from, to, kind: "math" })).toBe(true);
+  });
+
+  test("ブロックはどの行に触れても式全体が生に戻る", () => {
+    const doc = "$$\n\\frac{a}{b}\n$$\n";
+    const middle = doc.indexOf("frac");
+    expect(decorationsOf(doc, middle).some((d) => d.kind === "math")).toBe(
+      false,
+    );
+  });
+
+  test("閉じの無い `$$` はブロックにしない（以降が全部数式にならない）", () => {
+    const doc = "$$\n\\frac{a}{b}\n\nふつうの本文";
+    expect(decorationsOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
+  });
+
+  test("コードの中は数式にしない", () => {
+    const doc = "`$x$` と書く";
+    expect(decorationsOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
   });
 });

@@ -95,9 +95,9 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 
 ## 第 4 群 — 大物・専門機能（各々 ADR を書いてから）
 
-- [ ] **4-1. 数式**（ADR-0009 / 0020）
-      WebView なので KaTeX 等が使える。MathML 前提だった参照実装の
-      決定は前提ごと見直す（ADR 必須）
+- [x] **4-1. 数式**（ADR-0036 で 0009 / 0020 を置換）
+      Temml で LaTeX → MathML。画面（CM6 widget）も HTML 書き出しも
+      同じ文字列を使い、組むのは WebKit。同梱は実測 +215KB
 - [ ] **4-2. Mermaid 図**（ADR-0021）配布サイズへの影響も測る
 - [ ] **4-3. PDF 書き出し・印刷**（ADR-0007）WebView の印刷機能を検証
 - [ ] **4-4. HTML 書き出しのコード色分け**（core/html。2-1 と同じ字句解析を再利用）

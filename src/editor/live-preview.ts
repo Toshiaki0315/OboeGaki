@@ -36,8 +36,10 @@ import {
   footnoteTag,
   hashtagTag,
   highlightTag,
+  mathTag,
   wikiLinkTag,
 } from "./extended-inline";
+import { mathSpanAt, renderMath } from "./math";
 import { splitFenceInfo } from "./code-blocks";
 
 // 隠す対象のインラインマーカー（§6.4 のリビール表のインライン分）。
@@ -160,6 +162,31 @@ class CheckboxWidget extends WidgetType {
   // （渡すとカーソル移動 → リビールで widget が消える）
   ignoreEvent(): boolean {
     return true;
+  }
+}
+
+/// 数式（ADR-0036）。Temml が作った MathML をそのまま置く。
+/// 組むのは WebKit（macOS 13+ の MathML Core）。
+class MathWidget extends WidgetType {
+  constructor(
+    readonly mathml: string,
+    readonly display: boolean,
+  ) {
+    super();
+  }
+  eq(other: MathWidget): boolean {
+    // 同じ式を組み直さない（打鍵の経路に入るため）
+    return other.mathml === this.mathml && other.display === this.display;
+  }
+  toDOM(): HTMLElement {
+    const host = document.createElement(this.display ? "div" : "span");
+    host.className = this.display ? "cm-math cm-math-block" : "cm-math";
+    // 埋めるのは Temml が組んだ MathML（外から来た文字列ではない）
+    host.innerHTML = this.mathml;
+    return host;
+  }
+  ignoreEvent(): boolean {
+    return false; // 式の上を押したらキャレットを置きたい
   }
 }
 
@@ -475,6 +502,38 @@ export function previewDecorations(
         );
         return false; // 中のマーカー隠しは重ねない
       }
+      // --- 数式ブロック（ADR-0036）: リビールは**式全体**（途中の行だけ
+      //     生に戻すと、式の断片と絵が同時に見えて読めない）
+      if (node.name === "MathBlock") {
+        if (touchesSelection(state, node.from, node.to)) return false;
+        const source = state.sliceDoc(node.from, node.to);
+        // 開きと閉じの `$$` 行を外した中身
+        const latex = source.split("\n").slice(1, -1).join("\n").trim();
+        const mathml = latex ? renderMath(latex, true) : null;
+        if (!mathml) return false;
+        out.push(
+          Decoration.replace({
+            widget: new MathWidget(mathml, true),
+            block: true,
+          }).range(node.from, node.to),
+        );
+        return false;
+      }
+      // --- 数式（ADR-0036）: キャレットが触れている間は生の LaTeX に戻す
+      if (node.name === "InlineMath") {
+        if (touchesSelection(state, node.from, node.to)) return false;
+        const found = mathSpanAt(state.sliceDoc(node.from, node.to), 0);
+        if (!found) return false;
+        const mathml = renderMath(found.latex, found.display);
+        // 組めない式は生のまま（書いた人が直せる状態を保つ）
+        if (!mathml) return false;
+        out.push(
+          Decoration.replace({
+            widget: new MathWidget(mathml, found.display),
+          }).range(node.from, node.to),
+        );
+        return false;
+      }
       // --- インラインマーカー: 親の範囲にカーソルが触れている間は見せる
       if (MARK_NODES.has(node.name)) {
         if (lineSelected(node.from)) return;
@@ -776,6 +835,8 @@ const style = HighlightStyle.define([
     verticalAlign: "super",
     fontSize: "0.8em",
   },
+  // 生に戻った式（キャレットが触れている間）は等幅で見せる
+  { tag: mathTag, fontFamily: "ui-monospace, Menlo, monospace" },
   {
     tag: hashtagTag,
     color: "#0a84ff",
@@ -788,6 +849,12 @@ const style = HighlightStyle.define([
 /// ブロック装飾の見た目。旧実装の painter_overlay（paintEvent 描画）に相当する
 /// ものが、CM6 では行クラスと widget + CSS で済む。
 const blockTheme = EditorView.baseTheme({
+  // 数式（ADR-0036）。ディスプレイ数式は行として中央に置く
+  ".cm-math-block": {
+    display: "block",
+    textAlign: "center",
+    margin: "0.4em 0",
+  },
   ".cm-blockquote-line": {
     borderLeft: "3px solid color-mix(in srgb, currentColor 30%, transparent)",
     paddingLeft: "10px",

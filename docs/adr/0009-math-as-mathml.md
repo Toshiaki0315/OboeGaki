@@ -1,7 +1,7 @@
 # ADR-0009: 数式は MathML にする。PDF だけ LaTeX のまま出す
 
 - **日付**: 2026-08-10
-- **状態**: 採用
+- **状態**: ADR-0036 で置換（Tauri / WebView 版）。MathML という結論は残り、変換器が `latex2mathml` → Temml に、画面も組むように変わった
 - **覆す対象**: なし。TASKS.md B-5 の「MathJax（`tex-svg`）の同梱で足りる」
   という見積もりを**置き換える**。ADR-0007 の「HTML と PDF は同じ文字列を
   使う」に**唯一の例外**を作る

@@ -1,12 +1,15 @@
 // Markdown → HTML の書き出し（ADR-0007 の CM6 版）。
 // 参照実装 core/html.py と同じく markdown-it 系で組む
 // （commonmark + table + strikethrough + 脚注 + タスク）。
-// エディタ未対応の数式・コンテナは対象外。生の HTML は無効（html: false）。
+// 数式は Temml で MathML にする（ADR-0036）。**画面と同じ文字列**なので、
+// 書き出した HTML はフォントも JS も埋めずにどのブラウザでも組める。
+// コンテナは対象外。生の HTML は無効（html: false）。
 //
 // 画像の src は相対パスのまま出す。埋め込み（data URL 化）は vault を
 // 知っている呼び出し側の仕事。
 
 import MarkdownIt from "markdown-it";
+import { mathSpanAt, renderMath } from "../editor/math";
 import footnote from "markdown-it-footnote";
 import taskLists from "markdown-it-task-lists";
 
@@ -54,12 +57,62 @@ const highlightRule: InlineRule = (state, silent) => {
   return true;
 };
 
+/// `$…$` / `$$…$$`（1 行）を MathML にする独自インライン規則。
+/// 検出の規則はエディタと**同じ mathSpanAt**（2 か所に書くと画面と
+/// 書き出しで見えるものがずれる）。
+const mathRule: InlineRule = (state, silent) => {
+  const found = mathSpanAt(state.src, state.pos);
+  if (!found) return false;
+  const mathml = renderMath(found.latex, found.display);
+  if (!mathml) return false; // 組めない式は書いたまま出す
+  if (!silent) {
+    const token = state.push("html_inline", "", 0);
+    token.content = mathml;
+  }
+  state.pos = found.end;
+  return true;
+};
+
+/// `$$` だけの行で挟んだブロックを MathML にする（エディタの MathBlock と対）。
+const mathBlockRule = (
+  state: Parameters<Parameters<Md["block"]["ruler"]["before"]>[2]>[0],
+  startLine: number,
+  endLine: number,
+  silent: boolean,
+): boolean => {
+  const lineAt = (index: number) =>
+    state.src.slice(
+      state.bMarks[index] + state.tShift[index],
+      state.eMarks[index],
+    );
+  if (lineAt(startLine).trim() !== "$$") return false;
+  let line = startLine + 1;
+  while (line < endLine && lineAt(line).trim() !== "$$") line++;
+  if (line >= endLine) return false; // 閉じが無い
+  const latex = [];
+  for (let index = startLine + 1; index < line; index++) {
+    latex.push(lineAt(index));
+  }
+  const mathml = renderMath(latex.join("\n").trim(), true);
+  if (!mathml) return false;
+  if (!silent) {
+    const token = state.push("html_block", "", 0);
+    token.content = `${mathml}\n`;
+    token.map = [startLine, line + 1];
+  }
+  state.line = line + 1;
+  return true;
+};
+
 function renderer() {
   const md = new MarkdownIt("commonmark", { html: false })
     .enable(["table", "strikethrough"])
     .use(footnote)
     .use(taskLists);
   md.inline.ruler.before("emphasis", "oboegaki_highlight", highlightRule);
+  // 数式はコードより後、強調より先（`$a_b$` の `_` を強調に取られない）
+  md.inline.ruler.before("emphasis", "oboegaki_math", mathRule);
+  md.block.ruler.before("fence", "oboegaki_math_block", mathBlockRule);
   return md;
 }
 

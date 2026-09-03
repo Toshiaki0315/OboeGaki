@@ -17,6 +17,7 @@ import type {
   MarkdownConfig,
 } from "@lezer/markdown";
 import { Tag, tags } from "@lezer/highlight";
+import { mathSpanAt } from "./math";
 
 /// ハイライト（`::目立つ::`）のスタイル付けに使う専用タグ。
 export const highlightTag = Tag.define();
@@ -24,6 +25,8 @@ export const highlightTag = Tag.define();
 export const hashtagTag = Tag.define();
 /// ノートリンク `[[名前]]` のスタイル付けに使う専用タグ。
 export const wikiLinkTag = Tag.define();
+/// 数式（`$…$`）のスタイル付けに使う専用タグ。
+export const mathTag = Tag.define();
 /// 脚注参照 `[^1]` のスタイル付けに使う専用タグ（B-3。リンクと同系色）。
 export const footnoteTag = Tag.define();
 
@@ -44,6 +47,7 @@ const HASH = 35; // #
 const BRACKET = 91; // [
 const CLOSE_BRACKET = 93; // ]
 const PIPE = 124; // |
+const DOLLAR = 36; // $
 
 const ASCII_WORD = /[A-Za-z0-9_]/;
 
@@ -85,8 +89,46 @@ export const extendedInline: MarkdownConfig = {
     { name: "BareURL", style: tags.link },
     { name: "WikiLink", style: { "WikiLink/...": wikiLinkTag } },
     { name: "WikiLinkMark", style: tags.processingInstruction },
+    { name: "InlineMath", style: mathTag },
+    { name: "MathBlock", block: true, style: mathTag },
+  ],
+  parseBlock: [
+    {
+      // 行をまたぐ数式ブロック（ADR-0036）。`$$` だけの行で開き、
+      // 次の `$$` だけの行で閉じる。**閉じが無ければブロックにしない**
+      // （書きかけの `$$` で以降の本文が全部数式になると読めない）
+      name: "MathBlock",
+      before: "FencedCode",
+      parse(cx, line) {
+        if (line.text.slice(line.pos).trim() !== "$$") return false;
+        const start = cx.lineStart;
+        while (cx.nextLine()) {
+          if (line.text.trim() !== "$$") continue;
+          const end = cx.lineStart + line.text.length;
+          cx.nextLine();
+          cx.addElement(cx.elt("MathBlock", start, end));
+          return true;
+        }
+        return false; // 閉じが無い
+      },
+    },
   ],
   parseInline: [
+    {
+      // 数式 `$…$` / `$$…$$`（ADR-0036）。**コードより後、強調より先**に
+      // 見る（`$a_b$` の `_` を強調に取られない）。誤検出の条件は
+      // math.ts の mathSpanAt が持つ（`$` は値段にも出てくる）
+      name: "InlineMath",
+      before: "Emphasis",
+      parse(cx, next, pos) {
+        if (next !== DOLLAR) return -1;
+        // 行の中だけを見る（式は行をまたがない。またぐものは MathBlock）
+        const line = cx.slice(cx.offset, cx.end);
+        const found = mathSpanAt(line, pos - cx.offset);
+        if (!found) return -1;
+        return cx.addElement(cx.elt("InlineMath", pos, cx.offset + found.end));
+      },
+    },
     {
       // `#タグ`（参照実装 core/tags.py の TAG_RE）。直前が空白か行頭の
       // ときだけ。名前は空白と `#` 以外の連続。`#` 自体は隠さない（§6.4）
