@@ -2178,73 +2178,77 @@ function App() {
         <section className="editor-pane">
           {doc !== null && currentPath !== null ? (
             <>
-              <header className="note-header">
-                <input
-                  key={currentPath}
-                  className="title-input"
-                  defaultValue={noteStem(currentPath)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
-                      event.currentTarget.blur();
+              {/* 題名の行は本文と同じ幅で中央に置くので、区切り線は
+                  外側の帯に引く（線だけが短いと途中で切れて見える） */}
+              <div className="note-header-bar">
+                <header className="note-header">
+                  <input
+                    key={currentPath}
+                    className="title-input"
+                    defaultValue={noteStem(currentPath)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={(event) =>
+                      void handleRename(event.currentTarget.value)
                     }
-                  }}
-                  onBlur={(event) =>
-                    void handleRename(event.currentTarget.value)
-                  }
-                />
-                {/* 通常表示 / ソース表示の切り替え（`Cmd+/` と同じもの） */}
-                <div
-                  className="mode-switch"
-                  role="group"
-                  aria-label="表示の切り替え"
-                >
-                  <button
-                    className={sourceMode ? "" : "selected"}
-                    title="通常表示"
-                    aria-pressed={!sourceMode}
-                    onClick={() => editorRef.current?.setSourceMode(false)}
+                  />
+                  {/* 通常表示 / ソース表示の切り替え（`Cmd+/` と同じもの） */}
+                  <div
+                    className="mode-switch"
+                    role="group"
+                    aria-label="表示の切り替え"
                   >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h7M2.5 12.5h9"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
+                    <button
+                      className={sourceMode ? "" : "selected"}
+                      title="通常表示"
+                      aria-pressed={!sourceMode}
+                      onClick={() => editorRef.current?.setSourceMode(false)}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h7M2.5 12.5h9"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      className={sourceMode ? "selected" : ""}
+                      title="ソース表示（Cmd+/）"
+                      aria-pressed={sourceMode}
+                      onClick={() => editorRef.current?.setSourceMode(true)}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                   <button
-                    className={sourceMode ? "selected" : ""}
-                    title="ソース表示（Cmd+/）"
-                    aria-pressed={sourceMode}
-                    onClick={() => editorRef.current?.setSourceMode(true)}
+                    onClick={() => void handlePin()}
+                    title="一覧の先頭に固定"
                   >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
+                    {notes.find((entry) => entry.path === currentPath)?.pinned
+                      ? "ピンを外す"
+                      : "ピン留め"}
                   </button>
-                </div>
-                <button
-                  onClick={() => void handlePin()}
-                  title="一覧の先頭に固定"
-                >
-                  {notes.find((entry) => entry.path === currentPath)?.pinned
-                    ? "ピンを外す"
-                    : "ピン留め"}
-                </button>
-                <button onClick={() => void handleExport()}>書き出し</button>
-                <button onClick={() => void openHistory()}>履歴</button>
-                <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
-              </header>
+                  <button onClick={() => void handleExport()}>書き出し</button>
+                  <button onClick={() => void openHistory()}>履歴</button>
+                  <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
+                </header>
+              </div>
               <Editor
                 key={currentPath}
                 ref={editorRef}
