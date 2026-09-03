@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { AUTO_PAIRS, isUrl, wrapPair, wrapSelections } from "./auto-pair";
+import {
+  AUTO_PAIRS,
+  isUrl,
+  linkifyPaste,
+  wrapPair,
+  wrapSelections,
+} from "./auto-pair";
 
 describe("wrapPair", () => {
   it.each(Object.entries(AUTO_PAIRS))(
@@ -63,5 +69,46 @@ describe("isUrl", () => {
     ["空", "", false],
   ])("test_%s", (_label, text, expected) => {
     expect(isUrl(text)).toBe(expected);
+  });
+});
+
+describe("linkifyPaste", () => {
+  it("test_選択があるときにURLを貼るとリンクになる", () => {
+    const state = EditorState.create({
+      doc: "公式サイトを見る",
+      selection: EditorSelection.range(0, 5),
+    });
+    const spec = linkifyPaste(state, "https://example.com/");
+    expect(spec).not.toBeNull();
+    const next = state.update(spec!);
+    expect(next.state.doc.toString()).toBe(
+      "[公式サイト](https://example.com/)を見る",
+    );
+    // 参照実装 insert_link と同じく、キャレットはリンク全体の後ろ
+    expect(next.state.selection.main.from).toBe(
+      "[公式サイト](https://example.com/)".length,
+    );
+  });
+
+  it("test_選択が無ければ何もしない_素のURLが入るのが仕様", () => {
+    const state = EditorState.create({ doc: "メモ" });
+    expect(linkifyPaste(state, "https://example.com/")).toBeNull();
+  });
+
+  it("test_URLでない貼り付けは触らない", () => {
+    const state = EditorState.create({
+      doc: "公式サイト",
+      selection: EditorSelection.range(0, 5),
+    });
+    expect(linkifyPaste(state, "ただの文")).toBeNull();
+  });
+
+  it("test_前後の空白や改行は落としてURLにする", () => {
+    const state = EditorState.create({
+      doc: "リンク",
+      selection: EditorSelection.range(0, 3),
+    });
+    const next = state.update(linkifyPaste(state, "  https://a.jp\n")!);
+    expect(next.state.doc.toString()).toBe("[リンク](https://a.jp)");
   });
 });

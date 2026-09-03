@@ -79,9 +79,12 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+Shift+F"),
         )?)
         .separator()
-        .item(&item("zoom-in", "文字を大きく", Some("CmdOrCtrl+="))?)
-        .item(&item("zoom-out", "文字を小さく", Some("CmdOrCtrl+-"))?)
-        .item(&item("zoom-reset", "標準の大きさ", Some("CmdOrCtrl+0"))?)
+        // アクセラレータを付けない: メニューのそれは US 配列の物理キーで
+        // 解釈され、JIS では Cmd+= が別のキーに化けた（実機報告）。
+        // ショートカットは WebView 側の keydown（event.key）が担う
+        .item(&item("zoom-in", "文字を大きく（Cmd+=）", None)?)
+        .item(&item("zoom-out", "文字を小さく（Cmd+-）", None)?)
+        .item(&item("zoom-reset", "標準の大きさ（Cmd+0）", None)?)
         .separator()
         .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)

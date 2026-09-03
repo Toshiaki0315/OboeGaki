@@ -21,6 +21,7 @@ import {
   FONT_STEP_PX,
   loadFontSize,
   saveFontSize,
+  zoomActionFor,
 } from "./lib/font-size";
 import { restoreLastVault, saveLastVault } from "./lib/last-vault";
 import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
@@ -386,13 +387,22 @@ function App() {
 
   // グローバルショートカット（spec §5.4）。ハンドラは一度だけ登録し、
   // 最新の状態は ref 経由で読む
+  function applyZoom(action: "in" | "out" | "reset") {
+    if (action === "reset") changeFontSize(DEFAULT_FONT_PX);
+    else
+      changeFontSize(
+        fontSizeRef.current + (action === "in" ? FONT_STEP_PX : -FONT_STEP_PX),
+      );
+  }
   const shortcutActions = useRef({
     create: handleCreate,
     flushSave: () => autosave.flush(),
+    zoom: applyZoom,
   });
   shortcutActions.current = {
     create: handleCreate,
     flushSave: () => autosave.flush(),
+    zoom: applyZoom,
   };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -415,6 +425,13 @@ function App() {
       } else if (key === "5" && !event.shiftKey) {
         event.preventDefault(); // アウトライン開閉（ADR-0022）
         toggleOutline();
+      } else {
+        // 文字サイズ（TASKS 1-5）。JIS 配列で正しく効くよう event.key で見る
+        const zoom = zoomActionFor(event.key);
+        if (zoom) {
+          event.preventDefault();
+          shortcutActions.current.zoom(zoom);
+        }
       }
     };
     window.addEventListener("keydown", onKey);

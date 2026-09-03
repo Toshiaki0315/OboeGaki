@@ -6,6 +6,7 @@ import {
   MAX_FONT_PX,
   MIN_FONT_PX,
   saveFontSize,
+  zoomActionFor,
 } from "./font-size";
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -66,5 +67,24 @@ describe("loadFontSize / saveFontSize", () => {
     };
     expect(() => saveFontSize(broken, 20)).not.toThrow();
     expect(loadFontSize(broken)).toBe(DEFAULT_FONT_PX);
+  });
+});
+
+describe("zoomActionFor", () => {
+  it.each([
+    ["=", "in"],
+    ["+", "in"], // JIS では + が Shift+; なので、文字で見る
+    ["-", "out"],
+    ["0", "reset"],
+  ] as const)("test_キー%sで%s", (key, action) => {
+    expect(zoomActionFor(key)).toBe(action);
+  });
+
+  it("test_関係ないキーはnull", () => {
+    // JIS 実機で Cmd+; が文字サイズを変えていた回帰（アクセラレータが
+    // US 配列の物理キーで解釈されるため。event.key なら配列に追従する）
+    expect(zoomActionFor(";")).toBeNull();
+    expect(zoomActionFor("a")).toBeNull();
+    expect(zoomActionFor("^")).toBeNull();
   });
 });

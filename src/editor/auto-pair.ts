@@ -91,31 +91,44 @@ export const autoPair = EditorView.inputHandler.of((view, _from, _to, text) => {
   return true;
 });
 
+/// 選択があるときに URL を貼ったら `[選択](URL)` にする transaction。
+/// 選択が無い・URL でないときは null（素の貼り付けに任せる）。
+export function linkifyPaste(
+  state: EditorState,
+  clipboardText: string,
+): TransactionSpec | null {
+  const { main } = state.selection;
+  if (main.empty || !isUrl(clipboardText)) return null;
+  const replacement = insertLink(
+    state.doc.toString(),
+    main.from,
+    main.to,
+    clipboardText.trim(),
+  );
+  return {
+    changes: {
+      from: replacement.start,
+      to: replacement.end,
+      insert: replacement.text,
+    },
+    selection: EditorSelection.range(
+      replacement.selectStart,
+      replacement.selectEnd,
+    ),
+    userEvent: "input.paste",
+  };
+}
+
 /// 選択中に URL を貼ったらリンクにする。
 export const urlPasteLink = EditorView.domEventHandlers({
   paste: (event, view) => {
-    const text = event.clipboardData?.getData("text/plain") ?? "";
-    const { main } = view.state.selection;
-    if (main.empty || !isUrl(text)) return false;
-    event.preventDefault();
-    const replacement = insertLink(
-      view.state.doc.toString(),
-      main.from,
-      main.to,
-      text.trim(),
+    const spec = linkifyPaste(
+      view.state,
+      event.clipboardData?.getData("text/plain") ?? "",
     );
-    view.dispatch({
-      changes: {
-        from: replacement.start,
-        to: replacement.end,
-        insert: replacement.text,
-      },
-      selection: EditorSelection.range(
-        replacement.selectStart,
-        replacement.selectEnd,
-      ),
-      userEvent: "input.paste",
-    });
+    if (!spec) return false;
+    event.preventDefault();
+    view.dispatch(spec);
     return true;
   },
 });

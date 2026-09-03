@@ -34,3 +34,22 @@ export function saveFontSize(storage: StorageLike, px: number): void {
     // 記憶できなくても今の表示は生きている
   }
 }
+
+/// Cmd と一緒に押されたキーを増減の指示へ写す。
+///
+/// メニューのアクセラレータは US 配列の物理キーで解釈されるため、JIS では
+/// `Cmd+=` のつもりが `Cmd+;` に化けた（実機報告）。`event.key` は
+/// 配列に追従した文字が来るので、こちらで判定する。
+export function zoomActionFor(key: string): "in" | "out" | "reset" | null {
+  switch (key) {
+    case "=":
+    case "+": // JIS では + が Shift+;。表記に頼らず文字で見る
+      return "in";
+    case "-":
+      return "out";
+    case "0":
+      return "reset";
+    default:
+      return null;
+  }
+}
