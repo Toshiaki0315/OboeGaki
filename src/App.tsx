@@ -24,7 +24,12 @@ import {
   zoomActionFor,
 } from "./lib/font-size";
 import { restoreLastVault, saveLastVault } from "./lib/last-vault";
-import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
+import {
+  formatStamp,
+  sortNotes,
+  type NoteEntry,
+  type SortOrder,
+} from "./lib/note-order";
 import {
   conflictCopy,
   createNote,
@@ -33,6 +38,7 @@ import {
   historyList,
   historyRestore,
   imageSource,
+  notesWithTag,
   pinNote,
   readNote,
   saveAttachment,
@@ -93,6 +99,9 @@ function App() {
   const dirtyRef = useRef(false); // 保存されていない編集があるか
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  // タグでの絞り込み（C-4）。検索とは排他 — どちらも一覧の中身を差し替える
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagNotes, setTagNotes] = useState<NoteEntry[]>([]);
   const searchSoon = useMemo(() => createDebouncer(200), []);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // 一覧の並び順（C-3 相当）。選び直したら覚える
@@ -106,8 +115,8 @@ function App() {
     }
   });
   const sortedNotes = useMemo(
-    () => sortNotes(notes, sortOrder),
-    [notes, sortOrder],
+    () => sortNotes(tagFilter ? tagNotes : notes, sortOrder),
+    [notes, tagNotes, tagFilter, sortOrder],
   );
   function changeSort(order: SortOrder) {
     setSortOrder(order);
@@ -331,6 +340,7 @@ function App() {
 
   function handleQueryChanged(next: string) {
     setQuery(next);
+    if (next.trim()) setTagFilter(null); // 検索とタグ絞り込みは排他
     if (!next.trim()) {
       searchSoon.cancel();
       setHits([]);
@@ -343,6 +353,32 @@ function App() {
     });
   }
 
+  /// タグで一覧を絞る（null で解除）。検索とは排他。
+  function filterByTag(tag: string | null) {
+    setTagFilter(tag);
+    if (tag) {
+      searchSoon.cancel();
+      setQuery("");
+      setHits([]);
+    }
+  }
+
+  // 絞り込み中のタグのノートを引き直す。notes が変わったとき（= 索引が
+  // 更新されたとき）も引き直して、絞った一覧を置き去りにしない
+  useEffect(() => {
+    if (!vaultRoot || !tagFilter) {
+      setTagNotes([]);
+      return;
+    }
+    let alive = true;
+    void notesWithTag(vaultRoot, tagFilter).then((found) => {
+      if (alive) setTagNotes(found);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [vaultRoot, tagFilter, notes]);
+
   // Cmd+クリック（ADR-0010/0011）。ノートは無ければ作る
   async function handleActivate(action: Activation) {
     const root = vaultRootRef.current;
@@ -352,7 +388,7 @@ function App() {
       return;
     }
     if (action.kind === "tag") {
-      handleQueryChanged(`#${action.payload}`);
+      filterByTag(action.payload);
       return;
     }
     const wanted = action.payload.toLowerCase();
@@ -652,6 +688,18 @@ function App() {
           </ul>
         ) : (
           <>
+            {tagFilter && (
+              <div className="tag-filter-row">
+                <span className="tag-filter-name">#{tagFilter}</span>
+                <button
+                  className="tag-filter-clear"
+                  onClick={() => filterByTag(null)}
+                  title="絞り込みを解除"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="sort-row">
               <select
                 value={sortOrder}
@@ -664,6 +712,9 @@ function App() {
               </select>
             </div>
             <ul>
+              {tagFilter && sortedNotes.length === 0 && (
+                <li className="no-hits">このタグのノートはありません</li>
+              )}
               {sortedNotes.map((entry) => (
                 <li key={entry.path}>
                   <button
@@ -693,8 +744,8 @@ function App() {
               {tags.map(({ tag, count }) => (
                 <li key={tag}>
                   <button
-                    className="tag-row"
-                    onClick={() => handleQueryChanged(`#${tag}`)}
+                    className={`tag-row${tag === tagFilter ? " selected" : ""}`}
+                    onClick={() => filterByTag(tag === tagFilter ? null : tag)}
                   >
                     <span className="tag-name">#{tag}</span>
                     <span className="tag-count">{count}</span>

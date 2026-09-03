@@ -135,6 +135,7 @@ pub fn run() {
             commands::vault_open,
             commands::note_list,
             commands::tag_list,
+            commands::notes_with_tag,
             commands::note_read,
             commands::note_write,
             commands::note_create,

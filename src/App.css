@@ -367,6 +367,42 @@ body {
   padding: 0 0 0.4rem;
 }
 
+/* タグ絞り込み中の帯（C-4）。今どの条件で一覧が絞られているかを常に見せる */
+.tag-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, #0a84ff 12%, transparent);
+}
+
+.tag-filter-name {
+  color: #0a84ff;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-filter-clear {
+  flex: none;
+  font: inherit;
+  font-size: 0.75rem;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0 0.2rem;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.tag-filter-clear:hover {
+  opacity: 1;
+}
+
 .sort-row select {
   font: inherit;
   font-size: 0.8rem;

@@ -266,6 +266,41 @@ impl IndexDb {
         rows.collect()
     }
 
+    /// そのタグ、または配下のタグ（`work` に対する `work/会議`）を持つノート。
+    /// サイドバーのタグクリックはこれで絞る — 全文検索で `#work` を探すと
+    /// 本文に「#workshop」と書いただけのノートまで拾ってしまう（C-4）。
+    ///
+    /// tags 表には本文に現れたタグだけを入れてある（祖先は入れない。タグ一覧に
+    /// 本文のどこにも無い名前が並ぶのを避けるため）ので、配下は前方一致で拾う。
+    pub fn notes_with_tag(&self, tag: &str) -> rusqlite::Result<Vec<NoteMeta>> {
+        let normalized = crate::tags::normalize(tag);
+        if normalized.is_empty() {
+            return Ok(Vec::new());
+        }
+        // LIKE のメタ文字（% _ \）はタグ名に入りうるので必ず退避する
+        let escaped = normalized
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let descendants = format!("{escaped}/%");
+        let mut statement = self.conn.prepare(
+            "SELECT notes.path, notes.title, notes.preview, notes.mtime_ns, notes.pinned
+             FROM notes JOIN tags ON tags.path = notes.path
+             WHERE tags.tag = ?1 OR tags.tag LIKE ?2 ESCAPE '\\'
+             GROUP BY notes.path",
+        )?;
+        let rows = statement.query_map(rusqlite::params![normalized, descendants], |row| {
+            Ok(NoteMeta {
+                path: row.get(0)?,
+                title: row.get(1)?,
+                preview: row.get(2)?,
+                mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
+                pinned: row.get(4)?,
+            })
+        })?;
+        rows.collect()
+    }
+
     /// 1 ファイルだけ索引を更新する（自動保存の後追い用）。
     /// 全体の整合は vault_open 時の sync が取り直すので、ここは速さ優先。
     pub fn upsert(&mut self, vault: &Vault, absolute: &Path) -> rusqlite::Result<()> {
@@ -537,6 +572,49 @@ mod tests {
         fs::remove_file(root.path().join("a.md")).unwrap();
         db.sync(&vault).unwrap();
         assert_eq!(db.tag_list().unwrap(), Vec::<(String, i64)>::new());
+    }
+
+    #[test]
+    fn test_notes_with_tag_そのタグと配下のタグを持つノートだけ返す() {
+        let (_root, vault) = vault_with(&[
+            ("a.md", "# a\n\n#work が付いている\n"),
+            ("b.md", "# b\n\n#work/会議 は配下\n"),
+            ("c.md", "# c\n\n#workshop は別のタグ\n"),
+            ("d.md", "# d\n\nタグは無いが work とは書いてある\n"),
+        ]);
+        let db = synced(&vault);
+
+        let mut found: Vec<String> = db
+            .notes_with_tag("work")
+            .unwrap()
+            .into_iter()
+            .map(|note| note.path)
+            .collect();
+        found.sort();
+
+        assert_eq!(found, vec!["a.md".to_string(), "b.md".to_string()]);
+    }
+
+    #[test]
+    fn test_notes_with_tag_大文字小文字は正規化して当てる() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n#Work/会議 の記録\n")]);
+        let db = synced(&vault);
+
+        let found = db.notes_with_tag("WORK").unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, "a.md");
+        // 一覧と同じ素材が揃っている（並び順・ピンはフロント側の持ち物）
+        assert_eq!(found[0].title, "a");
+    }
+
+    #[test]
+    fn test_notes_with_tag_知らないタグは空() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n#メモ\n")]);
+        let db = synced(&vault);
+
+        assert!(db.notes_with_tag("会議").unwrap().is_empty());
+        assert!(db.notes_with_tag("").unwrap().is_empty());
     }
 
     #[test]

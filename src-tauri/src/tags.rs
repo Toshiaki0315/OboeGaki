@@ -27,7 +27,7 @@ pub fn extract_tags(text: &str) -> Vec<String> {
 }
 
 /// 索引に載せる形へ揃える（spec §7.3: 小文字フルパス）。
-fn normalize(raw: &str) -> String {
+pub fn normalize(raw: &str) -> String {
     raw.split('/')
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()

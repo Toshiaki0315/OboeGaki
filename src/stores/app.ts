@@ -26,17 +26,21 @@ type AppState = {
   selectNote: (path: string | null) => void;
 };
 
-// 一覧の引き直しだけ（軽い）。索引の同期はしない — 同期は vault_open の
-// 背景スレッドと watcher が担い、終わると index-updated が飛んでくる
-async function fetchLists(root: string) {
-  const metas = await invoke<NoteMeta[]>("note_list", { root });
-  const notes: NoteEntry[] = metas.map((meta) => ({
+function toEntry(root: string, meta: NoteMeta): NoteEntry {
+  return {
     path: `${root}/${meta.path}`,
     label: meta.path.replace(/\.(md|markdown)$/i, ""),
     preview: meta.preview,
     mtimeMs: meta.mtime_ms,
     pinned: meta.pinned,
-  }));
+  };
+}
+
+// 一覧の引き直しだけ（軽い）。索引の同期はしない — 同期は vault_open の
+// 背景スレッドと watcher が担い、終わると index-updated が飛んでくる
+async function fetchLists(root: string) {
+  const metas = await invoke<NoteMeta[]>("note_list", { root });
+  const notes: NoteEntry[] = metas.map((meta) => toEntry(root, meta));
   const tagPairs = await invoke<[string, number][]>("tag_list", { root });
   const tags: TagCount[] = tagPairs.map(([tag, count]) => ({ tag, count }));
   const trashNotes = await invoke<string[]>("trash_list", { root });
@@ -117,6 +121,17 @@ export async function deleteForever(root: string, path: string): Promise<void> {
 /// ゴミ箱を空にする。確認は呼び出し側の仕事。
 export async function emptyTrash(root: string): Promise<void> {
   await invoke("trash_empty", { root });
+}
+
+/// そのタグ（と配下のタグ）が付いたノートだけ。サイドバーのタグクリックは
+/// 全文検索ではなくこれで絞る（C-4。`#work` の検索が「#workshop」と
+/// 書いただけのノートまで拾うのを避ける）。
+export async function notesWithTag(
+  root: string,
+  tag: string,
+): Promise<NoteEntry[]> {
+  const metas = await invoke<NoteMeta[]>("notes_with_tag", { root, tag });
+  return metas.map((meta) => toEntry(root, meta));
 }
 
 export type SearchHit = {

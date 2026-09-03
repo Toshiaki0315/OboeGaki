@@ -273,6 +273,16 @@ pub fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String>
         .map_err(|e| e.to_string())
 }
 
+/// そのタグ（と配下のタグ）が付いたノートだけの一覧（C-4）。
+/// サイドバーのタグクリックはこれで絞る。
+#[tauri::command]
+pub fn notes_with_tag(root: String, tag: String) -> Result<Vec<crate::index_db::NoteMeta>, String> {
+    let vault = Vault::new(&root);
+    IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.notes_with_tag(&tag))
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn note_search(root: String, query: String) -> Result<Vec<SearchHit>, String> {
     let vault = Vault::new(&root);
