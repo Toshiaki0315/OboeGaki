@@ -26,6 +26,7 @@ import {
 import { attachmentEvents, type SaveAttachment } from "./attachments";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
+import { headingFolding } from "./folding";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import {
   imageResolver,
@@ -177,6 +178,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           }),
           syntaxHighlighting(codeHighlight),
           livePreview,
+          headingFolding, // 見出しの折りたたみ（ADR-0019）
           editorModes,
           imageResolver.of(resolveImage ?? (async () => null)),
           activationClicks,

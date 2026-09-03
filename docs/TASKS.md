@@ -43,7 +43,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       2-3 ピン留めの前提
 - [x] **2-3. ピン留め**（§7.3。2-2 に依存）
       front matter `pinned: true` に永続化、一覧の先頭固定、ピン中は削除ガード
-- [ ] **2-4. 見出しの折りたたみ**（ADR-0019, core/folding.py）
+- [x] **2-4. 見出しの折りたたみ**（ADR-0019, core/folding.py）
       CM6 の foldService に見出し区間を返すだけで乗る見込み
 - [ ] **2-5. 脚注 `[^1]` の装飾と裸 URL のリンク化**（B-3, inline_scanner）
       裸 URL は Lezer 拡張のカスタムノードとして追加し、activation に乗せる
