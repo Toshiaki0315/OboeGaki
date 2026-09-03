@@ -26,6 +26,8 @@ import {
   renderHtml,
 } from "./lib/export-html";
 import { highlightCodeHtml } from "./lib/export-code";
+import { splitDeck } from "./lib/slides";
+import { buildPptx } from "./lib/pptx";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -439,6 +441,30 @@ function App() {
       await colorCode(text),
     );
     setPrintBody({ html: await embedImages(body, vaultRoot), at: Date.now() });
+  }
+
+  /// PowerPoint に書き出す（TASKS 4-5 / F-5）。
+  /// **ざっくり作って手で整える**前提。割り方は lib/slides.ts が決める。
+  async function handleExportPptx() {
+    if (!vaultRoot || !currentPath) return;
+    autosave.flush();
+    const text = await readNote(vaultRoot, currentPath);
+    const title = noteStem(currentPath);
+    const target = await save({
+      defaultPath: `${title}.pptx`,
+      filters: [{ name: "PowerPoint", extensions: ["pptx"] }],
+    });
+    if (!target) return;
+    setStatus("PowerPoint を組んでいます…");
+    try {
+      const data = await buildPptx(splitDeck(text), (url) =>
+        imageSource(vaultRoot, url),
+      );
+      await invoke("export_write_binary", { path: target, data });
+      setStatus(`書き出しました: ${target}`);
+    } catch (error) {
+      setStatus(`書き出せませんでした: ${String(error)}`);
+    }
   }
 
   async function handleExport() {
@@ -1147,6 +1173,7 @@ function App() {
     "cleanup-attachments": () => void handleCleanupAttachments(),
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
+    "export-pptx": () => void handleExportPptx(),
     print: () => void handlePrint(),
     history: () => void openHistory(),
     trash: () => void handleTrash(),

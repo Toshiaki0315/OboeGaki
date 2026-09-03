@@ -541,6 +541,19 @@ pub fn index_sync(
     Ok(true)
 }
 
+/// 書き出したファイルをそのまま置く（base64 で受け取る）。
+///
+/// PowerPoint（TASKS 4-5）のように**中身がバイト列**のものに使う。
+/// 置き場はユーザーが選んだ場所なので vault の外でよい。
+#[tauri::command]
+pub fn export_write_binary(path: String, data: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| e.to_string())?;
+    fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
 /// 印刷（TASKS 4-3）。macOS の印刷パネルを出す（「PDF として保存」もここ）。
 ///
 /// 印刷されるのは**この WebView に今出ているもの**なので、何を出すかは

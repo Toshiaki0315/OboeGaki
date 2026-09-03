@@ -79,6 +79,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
         .item(&item("export-html", "HTML に書き出し…", None)?)
+        .item(&item("export-pptx", "PowerPoint に書き出し…", None)?)
         // 印刷（ADR-0038）。macOS の印刷パネルから「PDF として保存」もできる
         .item(&item("print", "プリント…", Some("CmdOrCtrl+P"))?)
         .separator()
@@ -249,6 +250,7 @@ pub fn run() {
             commands::history_restore,
             commands::export_write,
             commands::print_page,
+            commands::export_write_binary,
             commands::conflict_copy,
             commands::startup_elapsed_ms,
         ])
