@@ -3,10 +3,18 @@
 
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import type { NoteEntry } from "../lib/note-order";
+
+type NoteMeta = {
+  path: string; // vault からの相対パス
+  title: string;
+  preview: string;
+  mtime_ms: number;
+};
 
 type AppState = {
   vaultRoot: string | null;
-  notes: string[];
+  notes: NoteEntry[];
   trashNotes: string[];
   currentPath: string | null;
   openVault: (root: string) => Promise<void>;
@@ -15,7 +23,14 @@ type AppState = {
 };
 
 async function fetchLists(root: string) {
-  const notes = await invoke<string[]>("vault_open", { root });
+  await invoke<string[]>("vault_open", { root }); // 索引同期と監視の開始
+  const metas = await invoke<NoteMeta[]>("note_list", { root });
+  const notes: NoteEntry[] = metas.map((meta) => ({
+    path: `${root}/${meta.path}`,
+    label: meta.path.replace(/\.(md|markdown)$/i, ""),
+    preview: meta.preview,
+    mtimeMs: meta.mtime_ms,
+  }));
   const trashNotes = await invoke<string[]>("trash_list", { root });
   return { notes, trashNotes };
 }

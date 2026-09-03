@@ -33,6 +33,17 @@ const SEARCH_LIMIT: usize = 50;
 /// 一覧に出す本文の頭。参照実装 core/document.py の preview と同じ 200 文字。
 const PREVIEW_CHARS: usize = 200;
 
+/// 一覧に出すノートの素材（ADR-0022 系の一覧強化）。
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct NoteMeta {
+    /// vault からの相対パス
+    pub path: String,
+    pub title: String,
+    pub preview: String,
+    /// ミリ秒（JS の Date と突き合わせやすい単位）
+    pub mtime_ms: i64,
+}
+
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub struct SearchHit {
     pub path: String,
@@ -184,6 +195,22 @@ impl IndexDb {
             tx.execute("DELETE FROM notes_fts WHERE path = ?1", [gone])?;
         }
         tx.commit()
+    }
+
+    /// 一覧の素材を返す。並び順はフロント側の持ち物（設定で切り替える）。
+    pub fn list_notes(&self) -> rusqlite::Result<Vec<NoteMeta>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT path, title, preview, mtime_ns FROM notes")?;
+        let rows = statement.query_map([], |row| {
+            Ok(NoteMeta {
+                path: row.get(0)?,
+                title: row.get(1)?,
+                preview: row.get(2)?,
+                mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
+            })
+        })?;
+        rows.collect()
     }
 
     /// 1 ファイルだけ索引を更新する（自動保存の後追い用）。
@@ -400,6 +427,23 @@ mod tests {
         let db = synced(&vault); // 開き直しで作り直されるはず
 
         assert_eq!(paths(&db.search("作り直しの検証").unwrap()), vec!["a.md"]);
+    }
+
+    #[test]
+    fn test_list_notes_一覧の素材を返す() {
+        let (_root, vault) = vault_with(&[
+            ("会議.md", "# 会議\n\n進捗の共有について。\n"),
+            ("日記/今日.md", "# 今日\n\n晴れ。\n"),
+        ]);
+        let db = synced(&vault);
+        let mut found = db.list_notes().unwrap();
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].path, "会議.md");
+        assert_eq!(found[0].title, "会議");
+        assert_eq!(found[0].preview, "進捗の共有について。");
+        assert!(found[0].mtime_ms > 1_600_000_000_000); // ms 単位である
+        assert_eq!(found[1].path, "日記/今日.md");
     }
 
     #[test]

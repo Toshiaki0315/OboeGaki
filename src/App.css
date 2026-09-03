@@ -346,3 +346,46 @@ body {
   padding: 0.25rem 0.7rem;
   cursor: pointer;
 }
+
+.sort-row {
+  padding: 0 0 0.4rem;
+}
+
+.sort-row select {
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+}
+
+.note-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.note-row-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-row-preview {
+  display: block;
+  font-size: 0.8rem;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-row-stamp {
+  font-size: 0.72rem;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}

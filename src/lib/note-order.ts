@@ -1,0 +1,35 @@
+// ノート一覧の並び順（参照実装 C-3 / note_list_pane の役目）。
+
+export type NoteEntry = {
+  /// 絶対パス（開くときに使う）
+  path: string;
+  /// vault からの相対パス（拡張子なし）。フォルダ込みで表示する
+  label: string;
+  preview: string;
+  mtimeMs: number;
+};
+
+export type SortOrder = "modified" | "title";
+
+const byTitle = (a: NoteEntry, b: NoteEntry) =>
+  a.label.localeCompare(b.label, "ja");
+
+export function sortNotes(entries: NoteEntry[], order: SortOrder): NoteEntry[] {
+  const sorted = [...entries];
+  if (order === "title") {
+    sorted.sort(byTitle);
+  } else {
+    sorted.sort((a, b) => b.mtimeMs - a.mtimeMs || byTitle(a, b));
+  }
+  return sorted;
+}
+
+const pad = (value: number) => String(value).padStart(2, "0");
+
+export function formatStamp(mtimeMs: number): string {
+  const date = new Date(mtimeMs);
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    ` ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}

@@ -9,6 +9,7 @@ import type { OutlineItem } from "./editor/outline";
 import { createDebouncer } from "./lib/debounce";
 import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
+import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
 import {
   createNote,
   historyList,
@@ -73,6 +74,28 @@ function App() {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const searchSoon = useMemo(() => createDebouncer(200), []);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // 一覧の並び順（C-3 相当）。選び直したら覚える
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
+    try {
+      return localStorage.getItem("oboegaki.sort") === "title"
+        ? "title"
+        : "modified";
+    } catch {
+      return "modified";
+    }
+  });
+  const sortedNotes = useMemo(
+    () => sortNotes(notes, sortOrder),
+    [notes, sortOrder],
+  );
+  function changeSort(order: SortOrder) {
+    setSortOrder(order);
+    try {
+      localStorage.setItem("oboegaki.sort", order);
+    } catch {
+      // 保存できなくても切り替え自体は生かす
+    }
+  }
   // クイックオープン（Cmd+O、spec §5.4）
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -257,9 +280,9 @@ function App() {
     const wanted = action.payload.toLowerCase();
     const target = useAppStore
       .getState()
-      .notes.find((path) => noteStem(path).toLowerCase() === wanted);
+      .notes.find((entry) => noteStem(entry.path).toLowerCase() === wanted);
     if (target) {
-      await openNote(target);
+      await openNote(target.path);
       return;
     }
     const created = await createNote(root, action.payload);
@@ -439,18 +462,37 @@ function App() {
             {hits.length === 0 && <li className="no-hits">見つかりません</li>}
           </ul>
         ) : (
-          <ul>
-            {notes.map((path) => (
-              <li key={path}>
-                <button
-                  className={path === currentPath ? "selected" : ""}
-                  onClick={() => void openNote(path)}
-                >
-                  {noteLabel(vaultRoot, path)}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="sort-row">
+              <select
+                value={sortOrder}
+                onChange={(event) =>
+                  changeSort(event.currentTarget.value as SortOrder)
+                }
+              >
+                <option value="modified">更新順</option>
+                <option value="title">名前順</option>
+              </select>
+            </div>
+            <ul>
+              {sortedNotes.map((entry) => (
+                <li key={entry.path}>
+                  <button
+                    className={`note-row${entry.path === currentPath ? " selected" : ""}`}
+                    onClick={() => void openNote(entry.path)}
+                  >
+                    <span className="note-row-title">{entry.label}</span>
+                    {entry.preview && (
+                      <span className="note-row-preview">{entry.preview}</span>
+                    )}
+                    <span className="note-row-stamp">
+                      {formatStamp(entry.mtimeMs)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
         {trashNotes.length > 0 && (
           <details className="trash-section">
@@ -468,13 +510,13 @@ function App() {
       </aside>
       {quickOpen &&
         (() => {
-          const labels = notes.map((path) => noteLabel(vaultRoot, path));
+          const labels = notes.map((entry) => entry.label);
           const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
           const choose = (rankedIndex: number) => {
             const noteIndex = ranked[rankedIndex];
             if (noteIndex === undefined) return;
             setQuickOpen(false);
-            void openNote(notes[noteIndex]);
+            void openNote(notes[noteIndex].path);
           };
           return (
             <div
@@ -512,7 +554,7 @@ function App() {
                 />
                 <ul>
                   {ranked.map((noteIndex, rankedIndex) => (
-                    <li key={notes[noteIndex]}>
+                    <li key={notes[noteIndex].path}>
                       <button
                         className={
                           rankedIndex === paletteIndex ? "selected" : ""

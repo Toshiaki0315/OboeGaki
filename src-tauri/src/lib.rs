@@ -29,6 +29,7 @@ pub fn run() {
         .manage(commands::WatchState::default())
         .invoke_handler(tauri::generate_handler![
             commands::vault_open,
+            commands::note_list,
             commands::note_read,
             commands::note_write,
             commands::note_create,
