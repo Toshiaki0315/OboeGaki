@@ -748,17 +748,17 @@ function App() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   function toggleOutline() {
-    setOutlineOpen((open) => {
-      const next = !open;
-      // 右のペインは 1 つだけ（同時に出すと場所を取り合う）
-      if (next) setAssistantOpen(false);
-      try {
-        localStorage.setItem("oboegaki.outline", next ? "1" : "0");
-      } catch {
-        // 保存できなくても開閉自体は生かす
-      }
-      return next;
-    });
+    // **更新関数の中で別の state を触らない。** そこは副作用を置く場所では
+    // なく、二重に呼ばれると片方が落ちる（実機で発覚 2026-09-04:
+    // アシスタントが閉じずにアウトラインが左下へ回り込んだ）
+    const next = !outlineOpenRef.current;
+    if (next) setAssistantOpen(false); // 右のペインは 1 つだけ
+    setOutlineOpen(next);
+    try {
+      localStorage.setItem("oboegaki.outline", next ? "1" : "0");
+    } catch {
+      // 保存できなくても開閉自体は生かす
+    }
   }
 
   // 隠れているときは数えない（ADR-0022）
@@ -1492,11 +1492,9 @@ function App() {
     },
     outline: toggleOutline,
     assistant: () => {
-      // 右のペインは 1 つだけ（同時に出すと場所を取り合う）
-      setAssistantOpen((open) => {
-        if (!open) setOutlineOpen(false);
-        return !open;
-      });
+      const next = !assistantOpen;
+      if (next) setOutlineOpen(false); // 右のペインは 1 つだけ
+      setAssistantOpen(next);
     },
     "llm-unload": () => void handleUnloadModel(),
     "heading-palette": openHeadingPalette,
@@ -3017,7 +3015,7 @@ function App() {
             )}
           </aside>
         )}
-        {outlineOpen && (
+        {outlineOpen && !assistantOpen && (
           <aside className="outline-pane">
             <header>目次</header>
             <ul>
