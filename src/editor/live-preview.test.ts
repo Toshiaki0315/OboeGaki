@@ -12,6 +12,7 @@ import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import {
   bulletGlyph,
+  blockWidgetDecorations,
   previewDecorations,
   setSourceMode,
   sourceModeField,
@@ -36,6 +37,10 @@ function stateOf(doc: string, anchor: number): EditorState {
 
 function decorationsOf(doc: string, anchor: number): Deco[] {
   return previewDecorations(stateOf(doc, anchor), 0, doc.length).map(simplify);
+}
+
+function blocksOf(doc: string, anchor: number): Deco[] {
+  return blockWidgetDecorations(stateOf(doc, anchor)).map(simplify);
 }
 
 function tableWidgetOf(doc: string, anchor: number): TableData | null {
@@ -463,20 +468,18 @@ describe("数式（ADR-0036）", () => {
     const doc = "本文\n\n$$\n\\frac{a}{b}\n$$\n\n続き";
     const from = doc.indexOf("$$");
     const to = doc.lastIndexOf("$$") + 2;
-    expect(has(decorationsOf(doc, 0), { from, to, kind: "math" })).toBe(true);
+    expect(has(blocksOf(doc, 0), { from, to, kind: "math" })).toBe(true);
   });
 
   test("ブロックはどの行に触れても式全体が生に戻る", () => {
     const doc = "$$\n\\frac{a}{b}\n$$\n";
     const middle = doc.indexOf("frac");
-    expect(decorationsOf(doc, middle).some((d) => d.kind === "math")).toBe(
-      false,
-    );
+    expect(blocksOf(doc, middle).some((d) => d.kind === "math")).toBe(false);
   });
 
   test("閉じの無い `$$` はブロックにしない（以降が全部数式にならない）", () => {
     const doc = "$$\n\\frac{a}{b}\n\nふつうの本文";
-    expect(decorationsOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
+    expect(blocksOf(doc, 0).some((d) => d.kind === "math")).toBe(false);
   });
 
   test("コードの中は数式にしない", () => {
@@ -491,23 +494,17 @@ describe("Mermaid 図（ADR-0021）", () => {
   test("ブロックまるごと図に置き換える", () => {
     const from = doc.indexOf("```");
     const to = doc.lastIndexOf("```") + 3;
-    expect(has(decorationsOf(doc, 0), { from, to, kind: "mermaid" })).toBe(
-      true,
-    );
+    expect(has(blocksOf(doc, 0), { from, to, kind: "mermaid" })).toBe(true);
   });
 
   test("キャレットが触れている間はコードのまま（式と同じ判断）", () => {
     const inside = doc.indexOf("graph");
-    expect(decorationsOf(doc, inside).some((d) => d.kind === "mermaid")).toBe(
-      false,
-    );
+    expect(blocksOf(doc, inside).some((d) => d.kind === "mermaid")).toBe(false);
   });
 
   test("他の言語のフェンスは図にしない", () => {
     const code = "```js\nlet a = 1;\n```\n";
-    expect(decorationsOf(code, 0).some((d) => d.kind === "mermaid")).toBe(
-      false,
-    );
+    expect(blocksOf(code, 0).some((d) => d.kind === "mermaid")).toBe(false);
   });
 });
 
@@ -529,5 +526,27 @@ describe("長いノートの下のほうにある表（実機で発覚 2026-09-0
     // 解析が進んだあとに来るトランザクション（中身は空でもよい）
     const next = state.update({}).state;
     expect(next.field(tableField).size).toBe(1);
+  });
+});
+
+describe("plugin 由来の装飾は行をまたがない（実機で発覚 2026-09-04）", () => {
+  // CM6 はブロック構造を変える装飾を plugin 由来の装飾に許さず、**投げる**
+  // （画面が真っ白になる）。ADR-0035 が表で踏んだ罠を、数式と図でもう一度
+  // 踏んだ。**この不変条件を試験で固定する**
+  const docs = [
+    "本文\n\n$$\n\\frac{a}{b}\n$$\n\n続き",
+    "本文\n\n```mermaid\ngraph TD;\n  A-->B;\n```\n\n続き",
+    "| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+    "# 見出し\n\n- 箇条書き\n\n> 引用\n\n```js\nlet a = 1;\n```\n",
+  ];
+
+  test("previewDecorations が返す範囲に改行が入らない", () => {
+    for (const doc of docs) {
+      for (const range of previewDecorations(stateOf(doc, 0), 0, doc.length)) {
+        const spec = range.value.spec as { class?: string };
+        if (spec.class) continue; // 行クラスは範囲を置き換えない
+        expect(doc.slice(range.from, range.to)).not.toContain("\n");
+      }
+    }
   });
 });

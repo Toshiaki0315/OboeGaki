@@ -550,23 +550,10 @@ export function previewDecorations(
         );
         return false; // 中のマーカー隠しは重ねない
       }
-      // --- 数式ブロック（ADR-0036）: リビールは**式全体**（途中の行だけ
-      //     生に戻すと、式の断片と絵が同時に見えて読めない）
-      if (node.name === "MathBlock") {
-        if (touchesSelection(state, node.from, node.to)) return false;
-        const source = state.sliceDoc(node.from, node.to);
-        // 開きと閉じの `$$` 行を外した中身
-        const latex = source.split("\n").slice(1, -1).join("\n").trim();
-        const mathml = latex ? renderMath(latex, true) : null;
-        if (!mathml) return false;
-        out.push(
-          Decoration.replace({
-            widget: new MathWidget(mathml, true),
-            block: true,
-          }).range(node.from, node.to),
-        );
-        return false;
-      }
+      // --- 数式ブロックと Mermaid は**行をまたぐ**ので、ここでは作らない。
+      //     CM6 は plugin 由来の装飾にブロック構造の変更を許さない
+      //     （ADR-0035 が表で踏んだ罠。blockWidgetField が担う）
+      if (node.name === "MathBlock") return false;
       // --- 数式（ADR-0036）: キャレットが触れている間は生の LaTeX に戻す
       if (node.name === "InlineMath") {
         if (touchesSelection(state, node.from, node.to)) return false;
@@ -609,32 +596,9 @@ export function previewDecorations(
         }
         // --- コードブロック: 全行に背景、フェンス行はブロック外にいる間隠す
         case "FencedCode": {
-          // --- Mermaid（ADR-0021）: ブロックまるごと図にする。
-          //     リビールはブロック全体（式と同じ判断）
-          const languageNode = node.node.getChild("CodeInfo");
-          const languageName = languageNode
-            ? state.sliceDoc(languageNode.from, languageNode.to).trim()
-            : "";
-          if (languageName === "mermaid") {
-            if (touchesSelection(state, node.from, node.to)) return false;
-            const first = state.doc.lineAt(node.from);
-            const last = state.doc.lineAt(node.to);
-            const code = state
-              .sliceDoc(first.to + 1, last.from)
-              .replace(/\n$/, "")
-              .trim();
-            if (!code) return false;
-            out.push(
-              Decoration.replace({
-                widget: new MermaidWidget(
-                  code,
-                  state.field(diagramThemeField, false) ?? "light",
-                ),
-                block: true,
-              }).range(node.from, node.to),
-            );
-            return false;
-          }
+          // Mermaid の図は blockWidgetField が作る（行をまたぐ装飾は
+          // plugin 由来では効かない）。ここでは背景とフェンス隠しだけ
+          if (mermaidCode(state, node.node) !== null) return false;
           pushLineClass(out, state, node.from, node.to, "cm-codeblock-line");
           if (touchesSelection(state, node.from, node.to)) return;
           const first = state.doc.lineAt(node.from);
@@ -818,6 +782,94 @@ function editNearTables(tr: {
   });
   return near;
 }
+
+/// ```mermaid のフェンスなら中身。違えば null。
+function mermaidCode(state: EditorState, node: SyntaxNode): string | null {
+  const info = node.getChild("CodeInfo");
+  const language = info ? state.sliceDoc(info.from, info.to).trim() : "";
+  if (language !== "mermaid") return null;
+  const first = state.doc.lineAt(node.from);
+  const last = state.doc.lineAt(node.to);
+  if (last.from <= first.to) return null;
+  const code = state
+    .sliceDoc(first.to + 1, last.from)
+    .replace(/\n$/, "")
+    .trim();
+  return code || null;
+}
+
+/// 行をまたぐ装飾（数式ブロック・Mermaid の図）。
+///
+/// **StateField から提供する。** CM6 はブロック構造を変える装飾を plugin
+/// 由来の装飾に許さず、**投げる**（画面が真っ白になる。ADR-0035 が表で
+/// 踏んだ罠を、数式と図でもう一度踏んだ = 実機で発覚 2026-09-04）。
+export function blockWidgetDecorations(
+  state: EditorState,
+): Range<Decoration>[] {
+  if (state.field(sourceModeField, false)) return [];
+  const out: Range<Decoration>[] = [];
+  const theme = state.field(diagramThemeField, false) ?? "light";
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name === "MathBlock") {
+        // リビールは**式全体**（途中の行だけ生に戻すと、式の断片と絵が
+        // 同時に見えて読めない）
+        if (touchesSelection(state, node.from, node.to)) return false;
+        const source = state.sliceDoc(node.from, node.to);
+        const latex = source.split("\n").slice(1, -1).join("\n").trim();
+        const mathml = latex ? renderMath(latex, true) : null;
+        if (!mathml) return false;
+        out.push(
+          Decoration.replace({
+            widget: new MathWidget(mathml, true),
+            block: true,
+          }).range(node.from, node.to),
+        );
+        return false;
+      }
+      if (node.name === "FencedCode") {
+        const code = mermaidCode(state, node.node);
+        if (code === null) return false;
+        if (touchesSelection(state, node.from, node.to)) return false;
+        out.push(
+          Decoration.replace({
+            widget: new MermaidWidget(code, theme),
+            block: true,
+          }).range(node.from, node.to),
+        );
+        return false;
+      }
+      // ブロックはトップレベル。中まで潜る必要は無い
+      return node.node.parent === null || node.name === "Document"
+        ? undefined
+        : false;
+    },
+  });
+  return out;
+}
+
+/// 数式ブロックと図。**表と分けてある** — 表は編集の近さで間引く仕組みを
+/// 持つが、こちらは素直に数え直すほうが確かで、数も少ない。
+export const blockWidgetField = StateField.define<DecorationSet>({
+  create: (state) => RangeSet.of(blockWidgetDecorations(state), true),
+  update(value, tr) {
+    const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
+    const themeChanged = tr.effects.some((e) => e.is(setDiagramTheme));
+    // 解析の進みも見る（表と同じ理由）
+    const treeGrew = syntaxTree(tr.state) !== syntaxTree(tr.startState);
+    if (
+      !tr.docChanged &&
+      !tr.selection &&
+      !modeChanged &&
+      !themeChanged &&
+      !treeGrew
+    ) {
+      return value;
+    }
+    return RangeSet.of(blockWidgetDecorations(tr.state), true);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 export const tableField = StateField.define<DecorationSet>({
   create: computeTableSet,
@@ -1036,6 +1088,7 @@ export const livePreview = [
   keymap.of([{ key: "Mod-/", run: toggleSourceMode }]),
   hideMarkers,
   tableField,
+  blockWidgetField,
   syntaxHighlighting(style),
   blockTheme,
 ];
