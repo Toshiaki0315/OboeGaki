@@ -38,15 +38,22 @@ export function saveFontSize(storage: StorageLike, px: number): void {
 /// Cmd と一緒に押されたキーを増減の指示へ写す。
 ///
 /// メニューのアクセラレータは US 配列の物理キーで解釈されるため、JIS では
-/// `Cmd+=` のつもりが `Cmd+;` に化けた（実機報告）。`event.key` は
-/// 配列に追従した文字が来るので、こちらで判定する。
-export function zoomActionFor(key: string): "in" | "out" | "reset" | null {
+/// `Cmd+=` のつもりが `Cmd+;` に化けた（実機報告）。さらに Cmd を押して
+/// いる間は Shift を足しても `event.key` が基底文字のまま届くので、
+/// Shift の有無も見る — JIS の `Cmd+=` は物理的に `Cmd+Shift+-` で、
+/// key は "-" のまま来る（実機報告 2 件目）。
+export function zoomActionFor(
+  key: string,
+  shift: boolean,
+): "in" | "out" | "reset" | null {
   switch (key) {
     case "=":
-    case "+": // JIS では + が Shift+;。表記に頼らず文字で見る
+    case "+":
       return "in";
     case "-":
-      return "out";
+      return shift ? "in" : "out"; // JIS: Shift+- は「=」のつもり
+    case ";":
+      return shift ? "in" : null; // JIS: Shift+; は「+」のつもり
     case "0":
       return "reset";
     default:

@@ -427,7 +427,7 @@ function App() {
         toggleOutline();
       } else {
         // 文字サイズ（TASKS 1-5）。JIS 配列で正しく効くよう event.key で見る
-        const zoom = zoomActionFor(event.key);
+        const zoom = zoomActionFor(event.key, event.shiftKey);
         if (zoom) {
           event.preventDefault();
           shortcutActions.current.zoom(zoom);

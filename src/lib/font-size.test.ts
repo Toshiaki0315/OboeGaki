@@ -71,20 +71,25 @@ describe("loadFontSize / saveFontSize", () => {
 });
 
 describe("zoomActionFor", () => {
+  // JIS 実機での報告 2 件の回帰:
+  // 1) メニューのアクセラレータが Cmd+; に化けた（→ event.key で判定）
+  // 2) Cmd を押している間は Shift を足しても event.key が基底文字のまま
+  //    （JIS の Cmd+= は物理的に Cmd+Shift+- だが、key は "-" で届く）
   it.each([
-    ["=", "in"],
-    ["+", "in"], // JIS では + が Shift+; なので、文字で見る
-    ["-", "out"],
-    ["0", "reset"],
-  ] as const)("test_キー%sで%s", (key, action) => {
-    expect(zoomActionFor(key)).toBe(action);
+    ["=", false, "in"],
+    ["=", true, "in"],
+    ["+", false, "in"],
+    ["-", true, "in"], // JIS: Shift+- が = なので「大きく」
+    [";", true, "in"], // JIS: Shift+; が + なので「大きく」
+    ["-", false, "out"],
+    ["0", false, "reset"],
+  ] as const)("test_キー%s_shift%sで%s", (key, shift, action) => {
+    expect(zoomActionFor(key, shift)).toBe(action);
   });
 
   it("test_関係ないキーはnull", () => {
-    // JIS 実機で Cmd+; が文字サイズを変えていた回帰（アクセラレータが
-    // US 配列の物理キーで解釈されるため。event.key なら配列に追従する）
-    expect(zoomActionFor(";")).toBeNull();
-    expect(zoomActionFor("a")).toBeNull();
-    expect(zoomActionFor("^")).toBeNull();
+    expect(zoomActionFor(";", false)).toBeNull();
+    expect(zoomActionFor("a", false)).toBeNull();
+    expect(zoomActionFor("^", false)).toBeNull();
   });
 });
