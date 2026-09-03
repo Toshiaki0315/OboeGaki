@@ -428,3 +428,26 @@ body {
   opacity: 0.55;
   font-variant-numeric: tabular-nums;
 }
+
+.conflict-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.2rem 0.4rem 0.4rem;
+}
+
+.conflict-actions button {
+  font: inherit;
+  font-size: 0.9rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conflict-actions button:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}

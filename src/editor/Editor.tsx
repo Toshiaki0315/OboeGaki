@@ -40,6 +40,8 @@ export type EditorHandle = {
   replaceText: (text: string) => void;
   /// 見出しの一覧（アウトライン用。呼んだときだけ数える = ADR-0022）
   getOutline: () => OutlineItem[];
+  /// 今の本文（競合の「両方残す」で使う）
+  getText: () => string;
   /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
   revealPos: (pos: number) => void;
   /// 表示モードの切り替え（メニューバーから呼ぶ）
@@ -91,6 +93,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       getOutline() {
         return view.current ? outlineOf(view.current.state) : [];
+      },
+      getText() {
+        return view.current?.state.doc.toString() ?? "";
       },
       toggleSourceMode() {
         if (view.current) toggleSourceMode(view.current);

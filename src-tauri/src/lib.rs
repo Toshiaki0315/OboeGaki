@@ -130,6 +130,7 @@ pub fn run() {
             commands::history_list,
             commands::history_restore,
             commands::export_write,
+            commands::conflict_copy,
             commands::startup_elapsed_ms,
         ])
         .run(tauri::generate_context!())

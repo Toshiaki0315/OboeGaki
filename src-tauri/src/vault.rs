@@ -440,6 +440,17 @@ pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<
     candidate
 }
 
+/// 競合コピーの置き場を決める（spec §7.5 の「両方残す」）。
+/// `名前 (競合 YYYY-MM-DD).md` の形。同名があれば連番で逃がす。
+pub fn conflict_copy_path(path: &Path, date: &str) -> PathBuf {
+    let folder = path.parent().unwrap_or(Path::new("."));
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(UNTITLED);
+    unique_path(folder, &format!("{stem} (競合 {date})"), ".md", None)
+}
+
 /// タイトルを付け替えた本文を返す（ADR-0005）。
 ///
 /// タイトルは本文から導かれるので、本文を書き換えるのが唯一の付け替え方。
@@ -782,6 +793,18 @@ mod tests {
         assert!(!old.exists());
         // ADR-0005: 「名前を変更」は本文の見出しも書き換える
         assert_eq!(fs::read_to_string(&renamed).unwrap(), "# 新名\n");
+    }
+
+    #[test]
+    fn test_conflict_copy_path_競合の名前を作り_同名は連番で逃がす() {
+        let dir = TempDir::new().unwrap();
+        let base = note(dir.path(), "会議.md");
+        let copy = conflict_copy_path(&base, "2026-09-04");
+        assert_eq!(copy, dir.path().join("会議 (競合 2026-09-04).md"));
+
+        note(dir.path(), "会議 (競合 2026-09-04).md");
+        let second = conflict_copy_path(&base, "2026-09-04");
+        assert_eq!(second, dir.path().join("会議 (競合 2026-09-04)-2.md"));
     }
 
     #[test]

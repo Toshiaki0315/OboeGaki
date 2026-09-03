@@ -109,6 +109,15 @@ export async function searchNotes(
   return invoke<SearchHit[]>("note_search", { root, query });
 }
 
+/// 競合の「両方残す」: 自分の版を競合コピーに保存し、その場所を返す。
+export async function conflictCopy(
+  root: string,
+  path: string,
+  text: string,
+): Promise<string> {
+  return invoke<string>("conflict_copy", { root, path, text });
+}
+
 export type HistoryEntry = { stamp: string; path: string };
 
 export async function historyList(

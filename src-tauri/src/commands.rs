@@ -166,6 +166,30 @@ pub fn history_restore(
     Ok(text)
 }
 
+/// 競合の「両方残す」（spec §7.5）。自分の版を
+/// `名前 (競合 YYYY-MM-DD).md` に保存し、その場所を返す。
+/// 元のファイルは触らない（外部の版がそのまま残る）。
+#[tauri::command]
+pub fn conflict_copy(
+    state: tauri::State<WatchState>,
+    root: String,
+    path: String,
+    text: String,
+) -> Result<String, String> {
+    let note = guarded(&root, &path)?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let copy = crate::vault::conflict_copy_path(&note, &today);
+    state.suppressor.mark(&copy);
+    autosave::save_atomic(&copy, &text).map_err(|e| e.to_string())?;
+    let vault = Vault::new(&root);
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &copy))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    Ok(copy.to_string_lossy().into_owned())
+}
+
 /// 書き出しの保存（HTML など）。保存先はネイティブの保存ダイアログで
 /// ユーザーが選んだパスなので、vault の封じ込め検査は掛けない
 /// （掛けると書き出し先を vault の中に縛ってしまう）。

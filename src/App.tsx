@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ask, confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -11,6 +11,7 @@ import { renderHtml } from "./lib/export-html";
 import { rankCandidates } from "./lib/fuzzy";
 import { formatStamp, sortNotes, type SortOrder } from "./lib/note-order";
 import {
+  conflictCopy,
   createNote,
   historyList,
   historyRestore,
@@ -425,21 +426,44 @@ function App() {
       editorRef.current?.replaceText(text); // 静かにリロード（キャレット維持）
       return;
     }
-    // 競合。spec §7.5 は 3 択（外部 / 自分 / 両方残す）だが、
-    // 「両方残す」は未実装なので 2 択で確認する（TODO: 競合コピーの作成）
-    const useExternal = await ask(
-      "このノートは外部でも変更されています。外部の変更を読み込み直しますか？\n（「いいえ」で自分の版を保存して上書きします）",
-      { title: "覚書", kind: "warning" },
-    );
-    if (useExternal) {
-      autosave.cancel();
-      pendingSave.current = null;
-      dirtyRef.current = false;
-      editorRef.current?.replaceText(text);
+    // 競合。3 択（外部 / 自分 / 両方残す = spec §7.5）をアプリ内の
+    // ダイアログで聞く（ネイティブの ask は 2 択しかできない）
+    setConflict({ path: change.path, externalText: text });
+  }
+
+  // 競合ダイアログ（spec §7.5）
+  const [conflict, setConflict] = useState<{
+    path: string;
+    externalText: string;
+  } | null>(null);
+
+  function adoptExternal(text: string) {
+    autosave.cancel();
+    pendingSave.current = null;
+    dirtyRef.current = false;
+    editorRef.current?.replaceText(text);
+  }
+
+  async function resolveConflict(choice: "external" | "mine" | "both") {
+    if (!conflict || !vaultRoot) return;
+    const found = conflict;
+    setConflict(null);
+    if (choice === "external") {
+      adoptExternal(found.externalText);
       setStatus("外部の変更を読み込みました");
-    } else {
-      autosave.flush();
+      return;
     }
+    if (choice === "mine") {
+      autosave.flush(); // 自分の版で上書き保存
+      setStatus("自分の版で上書きしました");
+      return;
+    }
+    // 両方残す: 自分の版を競合コピーへ、このノートは外部の版に
+    const mine = editorRef.current?.getText() ?? "";
+    const copy = await conflictCopy(vaultRoot, found.path, mine);
+    adoptExternal(found.externalText);
+    await refresh();
+    setStatus(`自分の版を「${noteLabel(vaultRoot, copy)}」に残しました`);
   }
 
   if (!vaultRoot) {
@@ -658,6 +682,26 @@ function App() {
         )}
         <footer className="status-bar">{status}</footer>
       </section>
+      {conflict !== null && (
+        <div className="palette-backdrop">
+          <div className="palette">
+            <header className="palette-title">
+              このノートは外部でも変更されています。どうしますか？
+            </header>
+            <div className="conflict-actions">
+              <button onClick={() => void resolveConflict("external")}>
+                外部の変更を採用（自分の編集を捨てる）
+              </button>
+              <button onClick={() => void resolveConflict("mine")}>
+                自分の版で上書き（外部の変更を捨てる）
+              </button>
+              <button onClick={() => void resolveConflict("both")}>
+                両方残す（自分の版を「名前 (競合 日付)」に保存）
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {historyEntries !== null && (
         <div
           className="palette-backdrop"
