@@ -6,6 +6,10 @@ import {
   shiftHeading,
   toggleCheckbox,
   toggleWrap,
+  cycleHeading,
+  toggleBullet,
+  toggleOrdered,
+  toggleQuote,
 } from "./format-commands";
 
 describe("toggleWrap", () => {
@@ -151,5 +155,80 @@ describe("toggleCheckbox", () => {
   test("見出しとコードはタスクにしない（事故防止）", () => {
     expect(toggleCheckbox("# 見出し", "heading")).toBeNull();
     expect(toggleCheckbox("const a = 1;", "code")).toBeNull();
+  });
+});
+
+describe("cycleHeading", () => {
+  test.each([
+    ["段落はH1に", "本文", "# 本文"],
+    ["H1はH2に", "# 本文", "## 本文"],
+    ["H2はH3に", "## 本文", "### 本文"],
+    ["H3は段落に戻る", "### 本文", "本文"],
+    ["手打ちのH4は段落に戻す", "#### 本文", "本文"],
+  ])("test_%s", (_label, line, expected) => {
+    expect(cycleHeading(line)).toBe(expected);
+  });
+});
+
+describe("行単位のトグル（共通の約束）", () => {
+  test("test_全部付いていれば外す", () => {
+    expect(toggleBullet(["- a", "- b"])).toEqual(["a", "b"]);
+    expect(toggleOrdered(["1. a", "2. b"])).toEqual(["a", "b"]);
+    expect(toggleQuote(["> a", "> b"])).toEqual(["a", "b"]);
+  });
+
+  test("test_一部だけなら揃える", () => {
+    expect(toggleBullet(["- a", "b"])).toEqual(["- a", "- b"]);
+    expect(toggleQuote(["> a", "b"])).toEqual(["> a", "> b"]);
+  });
+
+  test("test_付けるときは字下げを保つ", () => {
+    expect(toggleBullet(["  a"])).toEqual(["  - a"]);
+    // 外すときは記号もろとも字下げも外れる（参照実装の実出力）
+    expect(toggleBullet(["  - a"])).toEqual(["a"]);
+  });
+});
+
+describe("toggleBullet / toggleOrdered", () => {
+  test("test_空行は触らない", () => {
+    expect(toggleBullet(["a", "", "b"])).toEqual(["- a", "", "- b"]);
+  });
+
+  test("test_空行しか無ければ付ける", () => {
+    // 「これから書く」という意思。何も起きないほうが困る
+    expect(toggleBullet([""])).toEqual(["- "]);
+  });
+
+  test("test_番号付きからは乗り換える", () => {
+    expect(toggleBullet(["1. a", "2. b"])).toEqual(["- a", "- b"]);
+    expect(toggleOrdered(["- a", "- b"])).toEqual(["1. a", "2. b"]);
+  });
+
+  test("test_番号は1から振り直す", () => {
+    expect(toggleOrdered(["5. a", "9. b", "c"])).toEqual([
+      "1. a",
+      "2. b",
+      "3. c",
+    ]);
+  });
+
+  test("test_チェックボックスは記号の一部として扱わない", () => {
+    // `- [ ] 買う` から `- ` だけ外すと `[ ] 買う` が残る。残すのが正しい
+    expect(toggleBullet(["- [ ] 買う"])).toEqual(["[ ] 買う"]);
+  });
+});
+
+describe("toggleQuote", () => {
+  test("test_空行も引用にする", () => {
+    // 空行が引用から抜けると、そこで引用が途切れて別々になる
+    expect(toggleQuote(["a", "", "b"])).toEqual(["> a", "> ", "> b"]);
+  });
+
+  test("test_付いているかの判定に空行は入れない", () => {
+    expect(toggleQuote(["> a", "", "> b"])).toEqual(["a", "", "b"]);
+  });
+
+  test("test_入れ子は作らない", () => {
+    expect(toggleQuote(["> a", "b"])).toEqual(["> a", "> b"]);
   });
 });

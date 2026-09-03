@@ -494,6 +494,10 @@ function App() {
     },
     "search-all": () => searchInputRef.current?.focus(),
     outline: toggleOutline,
+    "format-heading": () => editorRef.current?.applyLineFormat("heading"),
+    "format-bullet": () => editorRef.current?.applyLineFormat("bullet"),
+    "format-ordered": () => editorRef.current?.applyLineFormat("ordered"),
+    "format-quote": () => editorRef.current?.applyLineFormat("quote"),
     "insert-table": () => {
       if (currentPathRef.current) setTableDialog(true);
     },

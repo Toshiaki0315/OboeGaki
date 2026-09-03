@@ -68,6 +68,13 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .paste()
         .select_all()
         .separator()
+        // 書式（B-1）。エディタのキー（Cmd+B 等）は横取りしないよう
+        // アクセラレータを付けない
+        .item(&item("format-heading", "見出し（段落⇄H1⇄H2⇄H3）", None)?)
+        .item(&item("format-bullet", "箇条書き", None)?)
+        .item(&item("format-ordered", "番号付きリスト", None)?)
+        .item(&item("format-quote", "引用", None)?)
+        .separator()
         .item(&item("insert-table", "表を挿入…", None)?)
         .build()?;
     let view = SubmenuBuilder::new(handle, "表示")

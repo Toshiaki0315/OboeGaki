@@ -226,6 +226,114 @@ function lineCommand(
   };
 }
 
+// ------------------------------------------------- 行単位のトグル（B-1）
+//
+// 複数行を選んで押すのが普通なので、行の並びを受けて並びを返す。
+// 3 つに共通の約束（参照実装 TestLineTogglesShareRules と同じ）:
+// - 全部付いていれば外す。一部だけなら揃える
+// - 行数を変えない。字下げは保つ
+
+const TOOLBAR_MAX_HEADING_LEVEL = 3;
+const INDENT_RE = /^[ \t]*/;
+const ORDERED_RE = /^[ \t]*\d{1,9}[.)][ \t]+/;
+const UNORDERED_RE = /^[ \t]*[-*+][ \t]+/;
+const QUOTE_RE = /^> ?/;
+
+/// 段落 → H1 → H2 → H3 → 段落 と一周させる。行き止まりを作らない —
+/// 手で打った H4 以下は段落へ戻す。
+export function cycleHeading(line: string): string {
+  const heading = HEADING_RE.exec(line);
+  const current = heading ? heading[1].length : 0;
+  const body = heading ? line.slice(heading[0].length) : line;
+  const level = current < TOOLBAR_MAX_HEADING_LEVEL ? current + 1 : 0;
+  return level ? `${"#".repeat(level)} ${body}` : body;
+}
+
+/// リスト記号を外した行と、その行の字下げ。チェックボックスは記号の
+/// 一部として扱わない（`[ ] 買う` が残るのが正しい）。
+function withoutListMarker(line: string): [string, string] {
+  const indent = INDENT_RE.exec(line)?.[0] ?? "";
+  for (const pattern of [ORDERED_RE, UNORDERED_RE]) {
+    const found = pattern.exec(line);
+    if (found) return [line.slice(found[0].length), indent];
+  }
+  return [line.slice(indent.length), indent];
+}
+
+/// 空行は触らない（`- ` だけの行は役に立たない）。ただし空行しか
+/// 無いときは付ける — 「これから書く」という意思なので。
+function toggleList(lines: readonly string[], numbered: boolean): string[] {
+  const wanted = numbered ? ORDERED_RE : UNORDERED_RE;
+  let targets = lines
+    .map((line, index) => (line.trim() ? index : -1))
+    .filter((index) => index >= 0);
+  if (targets.length === 0) targets = lines.map((_, index) => index);
+  const removing = targets.every((index) => wanted.test(lines[index]));
+
+  const result = [...lines];
+  let number = 0;
+  for (const index of targets) {
+    const [stripped, indent] = withoutListMarker(lines[index]);
+    if (removing) {
+      result[index] = stripped;
+      continue;
+    }
+    number += 1;
+    const marker = numbered ? `${number}. ` : "- ";
+    result[index] = `${indent}${marker}${stripped.replace(/^\s+/, "")}`;
+  }
+  return result;
+}
+
+export function toggleBullet(lines: readonly string[]): string[] {
+  return toggleList(lines, false);
+}
+
+export function toggleOrdered(lines: readonly string[]): string[] {
+  return toggleList(lines, true);
+}
+
+/// 引用にする / 外す。空行も引用にする（抜けると引用が途切れる）が、
+/// 付いているかの判定には空行を入れない。入れ子は作らない。
+export function toggleQuote(lines: readonly string[]): string[] {
+  const targets = lines.filter((line) => line.trim());
+  const judged = targets.length > 0 ? targets : [...lines];
+  if (judged.every((line) => QUOTE_RE.test(line))) {
+    return lines.map((line) => line.replace(QUOTE_RE, ""));
+  }
+  return lines.map((line) =>
+    QUOTE_RE.test(line) ? line : line ? `> ${line}` : "> ",
+  );
+}
+
+/// 選択行の並びをまとめて書き換える StateCommand を作る。
+export function linesCommand(
+  transform: (lines: readonly string[]) => readonly string[],
+): StateCommand {
+  return ({ state, dispatch }) => {
+    const { from, to } = state.selection.main;
+    const first = state.doc.lineAt(from);
+    const last = state.doc.lineAt(to);
+    const lines: string[] = [];
+    for (let n = first.number; n <= last.number; n++) {
+      lines.push(state.doc.line(n).text);
+    }
+    const next = transform(lines);
+    const insert = next.join("\n");
+    if (insert === lines.join("\n")) return false;
+    dispatch(
+      state.update({
+        changes: { from: first.from, to: last.to, insert },
+        // 触った行の並びを選び直す（続けて別のトグルを押せる）
+        selection: { anchor: first.from, head: first.from + insert.length },
+        userEvent: "input",
+        scrollIntoView: true,
+      }),
+    );
+    return true;
+  };
+}
+
 /// spec §5.4 の書式ショートカット。
 export const formatKeymap = keymap.of([
   { key: "Mod-b", run: wrapCommand("**") },

@@ -16,7 +16,14 @@ import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
-import { formatKeymap } from "./format-commands";
+import {
+  cycleHeading,
+  formatKeymap,
+  linesCommand,
+  toggleBullet,
+  toggleOrdered,
+  toggleQuote,
+} from "./format-commands";
 import { editorModes, toggleFocus, toggleTypewriter } from "./modes";
 import {
   activationClicks,
@@ -57,6 +64,8 @@ export type EditorHandle = {
   toggleTypewriterMode: () => void;
   /** キャレット位置に空の表を差し込む（rows は見出しを除いた行数） */
   insertTable: (rows: number, columns: number) => void;
+  /** 行単位の書式（メニューの書式サブメニューから） */
+  applyLineFormat: (kind: "heading" | "bullet" | "ordered" | "quote") => void;
 };
 
 type Props = {
@@ -126,6 +135,20 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       toggleTypewriterMode() {
         if (view.current) toggleTypewriter(view.current);
+      },
+      applyLineFormat(kind) {
+        const current = view.current;
+        if (!current) return;
+        const command =
+          kind === "heading"
+            ? linesCommand((lines) => lines.map(cycleHeading))
+            : kind === "bullet"
+              ? linesCommand(toggleBullet)
+              : kind === "ordered"
+                ? linesCommand(toggleOrdered)
+                : linesCommand(toggleQuote);
+        command(current);
+        current.focus();
       },
       insertTable(rows: number, columns: number) {
         const current = view.current;
