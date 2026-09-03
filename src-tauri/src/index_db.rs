@@ -95,6 +95,17 @@ pub fn note_preview(text: &str) -> String {
     normalized.chars().take(PREVIEW_CHARS).collect()
 }
 
+/// その日の 0 時（**その土地の時計で**）を epoch からのナノ秒で。
+/// 更新日の絞り込みは「画面に出ている日付」で切りたいので UTC ではない。
+fn day_start_ns(day: chrono::NaiveDate) -> i64 {
+    use chrono::TimeZone;
+    chrono::Local
+        .from_local_datetime(&day.and_hms_opt(0, 0, 0).expect("0 時は必ずある"))
+        .earliest()
+        .map(|at| at.timestamp_nanos_opt().unwrap_or(i64::MAX))
+        .unwrap_or(i64::MAX)
+}
+
 fn mtime_ns(meta: &fs::Metadata) -> i64 {
     use std::os::unix::fs::MetadataExt;
     meta.mtime() * 1_000_000_000 + meta.mtime_nsec()
@@ -422,52 +433,116 @@ impl IndexDb {
     }
 
     /// ハイブリッド検索。返りは vault からの相対パス。
+    /// ハイブリッド検索。返りは vault からの相対パス。
+    ///
+    /// 問い合わせは `search_query::parse` が読む（`#タグ` と
+    /// `after:` / `before:` で絞れる。書き方は本文と同じ）。
     pub fn search(&self, query: &str) -> rusqlite::Result<Vec<SearchHit>> {
-        let trimmed = query.trim();
-        if trimmed.is_empty() {
-            return Ok(Vec::new());
+        let parsed = crate::search_query::parse(query);
+        let (filters, mut params) = self.filter_clause(&parsed);
+        if parsed.text.is_empty() {
+            if !parsed.has_filters() {
+                return Ok(Vec::new());
+            }
+            // 絞り込みだけを書いたのに何も出ないと、打ち間違えたように見える。
+            // 並びは一覧と同じ（ピン留め → 更新順）
+            let sql = format!(
+                "SELECT path, title, preview FROM notes
+                 WHERE 1 = 1{filters}
+                 ORDER BY pinned DESC, mtime_ns DESC LIMIT ?"
+            );
+            params.push(Box::new(SEARCH_LIMIT as i64));
+            return self.hits(&sql, params);
         }
-        if trimmed.chars().count() >= FTS_MIN_CHARS {
+        if parsed.text.chars().count() >= FTS_MIN_CHARS {
             // フレーズとして引用符で包む（FTS クエリ構文の注入を避ける）
-            let phrase = format!("\"{}\"", trimmed.replace('"', "\"\""));
-            let mut statement = self.conn.prepare(
-                "SELECT path, title, snippet(notes_fts, 2, '', '', '…', 12)
-                 FROM notes_fts WHERE notes_fts MATCH ?1
-                 ORDER BY rank LIMIT ?2",
-            )?;
-            let rows =
-                statement.query_map(rusqlite::params![phrase, SEARCH_LIMIT as i64], |row| {
-                    Ok(SearchHit {
-                        path: row.get(0)?,
-                        title: row.get(1)?,
-                        snippet: row.get(2)?,
-                    })
-                })?;
-            rows.collect()
+            let phrase = format!("\"{}\"", parsed.text.replace('"', "\"\""));
+            let sql = format!(
+                "SELECT notes.path, notes.title, snippet(notes_fts, 2, '', '', '…', 12)
+                 FROM notes_fts JOIN notes ON notes.path = notes_fts.path
+                 WHERE notes_fts MATCH ?{filters}
+                 ORDER BY rank LIMIT ?"
+            );
+            let mut bound: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(phrase)];
+            bound.extend(params);
+            bound.push(Box::new(SEARCH_LIMIT as i64));
+            self.hits(&sql, bound)
         } else {
             // trigram は 2 文字以下にヒットしないので LIKE に切り替える
-            let escaped = trimmed
+            let escaped = parsed
+                .text
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
             let like = format!("%{escaped}%");
-            let mut statement = self.conn.prepare(
+            let sql = format!(
                 "SELECT path, title, preview FROM notes
-                 WHERE title LIKE ?1 ESCAPE '\\'
-                    OR preview LIKE ?1 ESCAPE '\\'
-                    OR path LIKE ?1 ESCAPE '\\'
-                 ORDER BY title LIMIT ?2",
-            )?;
-            let rows =
-                statement.query_map(rusqlite::params![like, SEARCH_LIMIT as i64], |row| {
-                    Ok(SearchHit {
-                        path: row.get(0)?,
-                        title: row.get(1)?,
-                        snippet: row.get(2)?,
-                    })
-                })?;
-            rows.collect()
+                 WHERE (title LIKE ? ESCAPE '\\'
+                     OR preview LIKE ? ESCAPE '\\'
+                     OR path LIKE ? ESCAPE '\\'){filters}
+                 ORDER BY title LIMIT ?"
+            );
+            let mut bound: Vec<Box<dyn rusqlite::ToSql>> = vec![
+                Box::new(like.clone()),
+                Box::new(like.clone()),
+                Box::new(like),
+            ];
+            bound.extend(params);
+            bound.push(Box::new(SEARCH_LIMIT as i64));
+            self.hits(&sql, bound)
         }
+    }
+
+    /// タグと期間の絞り（AND）。`notes` を参照する句なので、`notes` を
+    /// 含む問い合わせにだけ足せる。
+    ///
+    /// タグは 1 つにつき 1 つの `EXISTS` を並べる（`idx_tags_tag` がそのまま
+    /// 使える）。配下のタグも当てるのはサイドバーの絞り込みと同じ規則。
+    fn filter_clause(
+        &self,
+        parsed: &crate::search_query::SearchQuery,
+    ) -> (String, Vec<Box<dyn rusqlite::ToSql>>) {
+        let mut clause = String::new();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        for tag in &parsed.tags {
+            clause.push_str(
+                " AND EXISTS (SELECT 1 FROM tags WHERE tags.path = notes.path
+                    AND (tags.tag = ? OR tags.tag LIKE ? ESCAPE '\\'))",
+            );
+            let escaped = tag
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            params.push(Box::new(tag.clone()));
+            params.push(Box::new(format!("{escaped}/%")));
+        }
+        // **期間は両端を含む**（`after:2026-08-01` は 8/1 も出す）。
+        // 区切りとして打つ日付は含むほうが素直
+        if let Some(after) = parsed.after {
+            clause.push_str(" AND notes.mtime_ns >= ?");
+            params.push(Box::new(day_start_ns(after)));
+        }
+        if let Some(before) = parsed.before {
+            clause.push_str(" AND notes.mtime_ns < ?");
+            params.push(Box::new(day_start_ns(before + chrono::Duration::days(1))));
+        }
+        (clause, params)
+    }
+
+    fn hits(
+        &self,
+        sql: &str,
+        params: Vec<Box<dyn rusqlite::ToSql>>,
+    ) -> rusqlite::Result<Vec<SearchHit>> {
+        let mut statement = self.conn.prepare(sql)?;
+        let rows = statement.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+            Ok(SearchHit {
+                path: row.get(0)?,
+                title: row.get(1)?,
+                snippet: row.get(2)?,
+            })
+        })?;
+        rows.collect()
     }
 }
 
@@ -833,6 +908,85 @@ mod tests {
         assert_eq!(db.list_notes().unwrap().len(), 1);
         assert_eq!(db.search("タグ 付きの本文").unwrap(), vec![]);
         assert_eq!(db.tag_list().unwrap(), Vec::<(String, i64)>::new());
+    }
+
+    #[test]
+    fn test_search_タグで絞る_全部満たすものだけ() {
+        let (_root, vault) = vault_with(&[
+            ("a.md", "# a\n\n#仕事 #予算 の話。来週の会議。\n"),
+            ("b.md", "# b\n\n#仕事 だけ。来週の会議。\n"),
+            ("c.md", "# c\n\nタグ無し。来週の会議。\n"),
+        ]);
+        let db = synced(&vault);
+
+        // AND で絞る（OR だと、絞ったのに件数が増えて驚く）
+        assert_eq!(
+            paths(&db.search("来週の会議 #仕事 #予算").unwrap()),
+            ["a.md"]
+        );
+        let both = db.search("来週の会議 #仕事").unwrap();
+        assert_eq!(both.len(), 2);
+    }
+
+    #[test]
+    fn test_search_タグは配下も当てる() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n#work/会議 の記録。\n")]);
+        let db = synced(&vault);
+
+        assert_eq!(paths(&db.search("#work").unwrap()), ["a.md"]);
+    }
+
+    #[test]
+    fn test_search_タグだけでも並べる() {
+        // 絞り込みだけを書いたのに何も出ないと、打ち間違えたように見える
+        let (_root, vault) =
+            vault_with(&[("a.md", "# a\n\n#メモ\n"), ("b.md", "# b\n\nタグ無し\n")]);
+        let db = synced(&vault);
+
+        let found = db.search("#メモ").unwrap();
+        assert_eq!(paths(&found), ["a.md"]);
+        assert_eq!(found[0].snippet, "#メモ"); // 本文の頭（preview）が出る
+    }
+
+    #[test]
+    fn test_search_期間で絞る_両端を含む() {
+        use std::time::{Duration, SystemTime};
+        let (root, vault) = vault_with(&[("古い.md", "# 古い\n\n記録。\n")]);
+        // 更新日を 10 日前にする
+        let old = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 10);
+        let file = fs::File::options()
+            .write(true)
+            .open(root.path().join("古い.md"))
+            .unwrap();
+        file.set_modified(old).unwrap();
+        drop(file);
+        let db = synced(&vault);
+
+        let today = chrono::Local::now().date_naive();
+        let yesterday = today - chrono::Duration::days(1);
+        assert!(db
+            .search(&format!("記録 after:{}", yesterday.format("%Y-%m-%d")))
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            paths(
+                &db.search(&format!("記録 before:{}", today.format("%Y-%m-%d")))
+                    .unwrap()
+            ),
+            ["古い.md"]
+        );
+    }
+
+    #[test]
+    fn test_search_2文字とタグの組み合わせ() {
+        // LIKE フォールバックの経路でも絞りが効く
+        let (_root, vault) = vault_with(&[
+            ("a.md", "# a\n\n人事 の話 #仕事\n"),
+            ("b.md", "# b\n\n人事 の話 タグ無し\n"),
+        ]);
+        let db = synced(&vault);
+
+        assert_eq!(paths(&db.search("人事 #仕事").unwrap()), ["a.md"]);
     }
 
     #[test]

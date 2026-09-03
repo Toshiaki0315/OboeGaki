@@ -499,7 +499,16 @@ function App() {
     searchSoon.schedule(() => {
       const root = vaultRootRef.current;
       if (!root) return;
-      void searchNotes(root, next).then(setHits);
+      void searchNotes(root, next).then((outcome) => {
+        setHits(outcome.hits);
+        // 読めない日付を黙って絞りに使わない。0 件になった理由が
+        // 画面から読めないと、打ち間違いに気づけない
+        setStatus(
+          outcome.unreadable.length > 0
+            ? `日付として読めません: ${outcome.unreadable.join(" ")}（例: after:2026-09-03）`
+            : "",
+        );
+      });
     });
   }
 

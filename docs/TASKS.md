@@ -66,7 +66,7 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
 - [x] **3-4. バックリンクとノートリンク補完**（E-6, core/notelink.py）
       索引に links テーブルを導入（スキーマ世代 +1）。本文下の帯と
       `[[` 補完をセットで
-- [ ] **3-5. 検索式**（core/searchquery.py）
+- [x] **3-5. 検索式**（core/searchquery.py）
       語の AND / OR・タグ条件。参照実装の構文をそのまま移植
 - [ ] **3-6. クラッシュ退避**（H-1, autosave.stash / recovery）
       未保存の内容を管理フォルダへ退避し、起動時に復元を提案

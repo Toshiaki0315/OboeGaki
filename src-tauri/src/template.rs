@@ -120,6 +120,17 @@ fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
+/// `2026-08-14` を日付として読む。その形でなければ None。
+///
+/// **書き戻して一致するものだけ**を認める。ゼロ詰めの無い `2026-8-14` も
+/// 読める書き方にすると説明が増えるし、アプリはゼロ詰めしか作らない。
+/// 検索の `after:` / `before:`（search_query）と日次ノートの判定が
+/// **同じ規則を使う**ための 1 本。別々に書くと片方だけ緩めたときにずれる。
+pub fn strict_date(value: &str) -> Option<chrono::NaiveDate> {
+    let day = chrono::NaiveDate::parse_from_str(value, DATE_FORMAT).ok()?;
+    (day.format(DATE_FORMAT).to_string() == value).then_some(day)
+}
+
 /// 日次ノートの題名（E-4）。`{{date}}` と同じ書式にする — ファイル名にも
 /// 一覧にも出るので、揃っていないと日付順に見えない。
 pub fn daily_title(now: &DateTime<Local>) -> String {
@@ -198,6 +209,18 @@ mod tests {
         // 絵文字（BMP 外）はサロゲートペアで 2 単位。CM6 の数え方に合わせる
         let found = expand("😀{{cursor}}", &now, "");
         assert_eq!(found.cursor, Some(2));
+    }
+
+    #[test]
+    fn test_strict_date_書き戻して一致するものだけ() {
+        use chrono::NaiveDate;
+        assert_eq!(
+            strict_date("2026-08-14"),
+            NaiveDate::from_ymd_opt(2026, 8, 14)
+        );
+        assert_eq!(strict_date("2026-8-14"), None); // ゼロ詰めでない
+        assert_eq!(strict_date("2026-13-01"), None);
+        assert_eq!(strict_date("きのう"), None);
     }
 
     #[test]

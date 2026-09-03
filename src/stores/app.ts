@@ -234,11 +234,15 @@ export type SearchHit = {
   snippet: string;
 };
 
+/// 検索の結果。`unreadable` は日付として読めなかった `after:` / `before:`
+/// （探すのはやめないが、書き方が違うことは画面に出す）。
+export type SearchOutcome = { hits: SearchHit[]; unreadable: string[] };
+
 export async function searchNotes(
   root: string,
   query: string,
-): Promise<SearchHit[]> {
-  return invoke<SearchHit[]>("note_search", { root, query });
+): Promise<SearchOutcome> {
+  return invoke<SearchOutcome>("note_search", { root, query });
 }
 
 /// 貼り付け・ドロップの画像を attachments/ へ保存し、本文へ挿す

@@ -8,6 +8,7 @@ pub mod commands;
 pub mod front_matter;
 mod history;
 pub mod index_db;
+pub mod search_query;
 pub mod tags;
 pub mod template;
 pub mod vault;

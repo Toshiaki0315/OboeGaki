@@ -293,12 +293,26 @@ pub fn notes_with_tag(root: String, tag: String) -> Result<Vec<crate::index_db::
         .map_err(|e| e.to_string())
 }
 
+/// 検索の結果。読めなかった `after:` / `before:` を一緒に返す。
+///
+/// **探すのはやめない**（言葉として扱う）が、書き方が違うことは画面から
+/// 読めるようにする。0 件になった理由が分からないと打ち間違いに気づけない。
+#[derive(serde::Serialize)]
+pub struct SearchOutcome {
+    pub hits: Vec<SearchHit>,
+    pub unreadable: Vec<String>,
+}
+
 #[tauri::command]
-pub fn note_search(root: String, query: String) -> Result<Vec<SearchHit>, String> {
+pub fn note_search(root: String, query: String) -> Result<SearchOutcome, String> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
+    let hits = IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.search(&query))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(SearchOutcome {
+        hits,
+        unreadable: crate::search_query::parse(&query).unreadable_dates,
+    })
 }
 
 #[tauri::command]
