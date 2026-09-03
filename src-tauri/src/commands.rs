@@ -998,6 +998,15 @@ pub fn note_trash(
     let vault = Vault::new(&root);
     let moved = vault.trash(&path).map_err(|e| e.to_string())?;
     state.suppressor.mark(&moved);
+    // **鍵はファイルに付いて回る**（ADR-0042）。ここで付け替えないと、
+    // 戻すときに名前が変わったノートの履歴が行方不明になる
+    if let Err(error) = history::rekey(
+        &history_root(&root),
+        &history_key(&root, &path),
+        &history_key(&root, &moved),
+    ) {
+        eprintln!("履歴の置き場を移せなかった: {error}");
+    }
     // ゴミ箱の中は索引に入れない（検索・一覧の対象外）
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.remove(&vault, &path))
@@ -1069,6 +1078,15 @@ pub fn note_restore(
     let vault = Vault::new(&root);
     let restored = vault.restore(&path).map_err(|e| e.to_string())?;
     state.suppressor.mark(&restored);
+    // 戻した先の名前が変わることがある（同名の後継が居ると連番が付く）。
+    // **鍵はファイルに付いて回る**（ADR-0042）
+    if let Err(error) = history::rekey(
+        &history_root(&root),
+        &history_key(&root, &path),
+        &history_key(&root, &restored),
+    ) {
+        eprintln!("履歴の置き場を移せなかった: {error}");
+    }
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &restored))
     {
