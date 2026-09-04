@@ -1255,10 +1255,6 @@ body.resizing {
 button.danger {
   color: #b3261e;
 }
-.trash-empty {
-  margin: 0.4rem 0 0.2rem;
-  width: 100%;
-}
 :root[data-theme="dark"] button.danger {
   color: #ff8a80;
 }

@@ -447,7 +447,8 @@ function App() {
 
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
   const [trashMenu, setTrashMenu] = useState<{
-    path: string;
+    /// null なら「ゴミ箱そのもの」への操作（空にする）
+    path: string | null;
     x: number;
     y: number;
   } | null>(null);
@@ -2249,7 +2250,20 @@ function App() {
               )}
               {settings.treesVisible && trashNotes.length > 0 && (
                 <details className="trash-section">
-                  <summary>ゴミ箱（{trashNotes.length}）</summary>
+                  <summary
+                    title="右クリックで空にできます"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      // path が無いときは「ゴミ箱そのもの」への操作
+                      setTrashMenu({
+                        path: null,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                  >
+                    ゴミ箱（{trashNotes.length}）
+                  </summary>
                   <ul>
                     {trashNotes.map((entry) => {
                       const { name, folder } = trashParts(
@@ -2286,12 +2300,6 @@ function App() {
                       );
                     })}
                   </ul>
-                  <button
-                    className="danger trash-empty"
-                    onClick={() => void handleEmptyTrash()}
-                  >
-                    ゴミ箱を空にする
-                  </button>
                 </details>
               )}
             </aside>
@@ -3362,7 +3370,9 @@ function App() {
                     style={(() => {
                       const at = menuPosition(
                         trashMenu,
-                        { width: 180, height: 84 },
+                        // 高さは項目の数ぶん。決め打ちにすると項目 1 つの
+                        // メニューが押した場所から離れて出る
+                        { width: 180, height: target === null ? 44 : 84 },
                         {
                           width: window.innerWidth,
                           height: window.innerHeight,
@@ -3372,20 +3382,37 @@ function App() {
                     })()}
                     onMouseDown={(event) => event.stopPropagation()}
                   >
-                    <li>
-                      <button onClick={run(() => void handleRestore(target))}>
-                        元に戻す
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    <li>
-                      <button
-                        className="danger"
-                        onClick={run(() => void handleDeleteForever(target))}
-                      >
-                        完全に削除
-                      </button>
-                    </li>
+                    {target === null ? (
+                      <li>
+                        <button
+                          className="danger"
+                          onClick={run(() => void handleEmptyTrash())}
+                        >
+                          ゴミ箱を空にする…
+                        </button>
+                      </li>
+                    ) : (
+                      <>
+                        <li>
+                          <button
+                            onClick={run(() => void handleRestore(target))}
+                          >
+                            元に戻す
+                          </button>
+                        </li>
+                        <li className="separator" />
+                        <li>
+                          <button
+                            className="danger"
+                            onClick={run(
+                              () => void handleDeleteForever(target),
+                            )}
+                          >
+                            完全に削除
+                          </button>
+                        </li>
+                      </>
+                    )}
                   </ul>
                 </div>
               );
