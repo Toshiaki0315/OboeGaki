@@ -1632,3 +1632,24 @@ button.danger {
 .editor-host .cm-foldGutter .cm-gutterElement:hover {
   opacity: 0.85;
 }
+
+/* 掴んだノートの札（要望 2026-09-04）。**画面の外に置いて絵にだけ使う** —
+   行を絵にすると WebKit が層ごと写し取り、窓の幅いっぱいの帯になって
+   隣のペインの本文まで一緒に動いて見える。
+   `display: none` にはしない（写し取ってもらえなくなる） */
+.drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--pane-line);
+  background: var(--app-bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+  font-size: 0.9rem;
+  pointer-events: none;
+}

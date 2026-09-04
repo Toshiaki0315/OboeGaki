@@ -450,6 +450,10 @@ function App() {
   // 掴んでいるノートのパス。**ref で持つ** — dragover は毎フレーム飛ぶので、
   // 掴んだものまで state にすると打鍵と同じだけ再描画が走る
   const draggingNote = useRef<string | null>(null);
+  /// 掴んだときに持ち歩く札。**行そのものを絵にしない** — WebKit は行の
+  /// 載っている層ごと写し取るので、窓の幅いっぱいの帯になって隣のペインの
+  /// 本文まで一緒に動く（実機で発覚 2026-09-04）
+  const dragGhost = useRef<HTMLElement | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [folderMenu, setFolderMenu] = useState<{
     folder: string;
@@ -2145,18 +2149,21 @@ function App() {
                               "text/plain",
                               noteStem(entry.path),
                             );
-                            // **掴んだ絵をこの行に限る。** 任せると WebKit は
-                            // 行の載っている層ごと写し取り、隣のペインまで
-                            // 一緒に持ち上がって見える（実機で発覚 2026-09-04）
-                            event.dataTransfer.setDragImage(
-                              event.currentTarget,
-                              16,
-                              12,
-                            );
+                            // 画面の外で作った札を絵にする。**画面に載って
+                            // いないと写し取ってもらえない**ので、消すのは
+                            // 掴み終わってから（dragend）
+                            const ghost = document.createElement("div");
+                            ghost.className = "drag-ghost";
+                            ghost.textContent = noteStem(entry.path);
+                            document.body.appendChild(ghost);
+                            dragGhost.current = ghost;
+                            event.dataTransfer.setDragImage(ghost, 12, 12);
                           }}
                           onDragEnd={() => {
                             draggingNote.current = null;
                             setDropFolder(null);
+                            dragGhost.current?.remove();
+                            dragGhost.current = null;
                           }}
                           onClick={() => void openNote(entry.path)}
                           onContextMenu={(event) => {
