@@ -21,14 +21,33 @@ import type { SyntaxNode } from "@lezer/common";
 import { relaxedAsterisk } from "../editor/relaxed-emphasis";
 import { extendedInline } from "../editor/extended-inline";
 
+/// 装飾を持った文字のかたまり（TASKS 5-1）。**記号は落とすが装飾は落とさない** —
+/// 素の文字にすると、書いた人が PowerPoint 側で付け直すことになる。
+export type Run = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  strike?: boolean;
+  code?: boolean;
+  /// リンクの行き先（`[題](url)` の url）
+  link?: string;
+};
+
 export type SlideBlock =
-  | { kind: "paragraph"; text: string }
-  | { kind: "heading"; text: string }
-  | { kind: "bullet"; text: string; level: number }
+  | { kind: "paragraph"; runs: Run[] }
+  | { kind: "heading"; runs: Run[] }
+  | { kind: "bullet"; runs: Run[]; level: number }
   | { kind: "code"; text: string; language: string }
   | { kind: "table"; rows: string[] };
 
+/// 装飾を落とした文字（題名・発表者ノート・テストが使う）。
+export function plainText(runs: readonly Run[]): string {
+  return runs.map((run) => run.text).join("");
+}
+
 export type Slide = {
+  /// `section` は扉（題だけの 1 枚）。2 つ目以降の `#` がこれになる
+  kind: "content" | "section";
   title: string;
   blocks: SlideBlock[];
   /// 右側に置く画像のパス。**本文とは分ける**（並びに混ぜない）。
@@ -77,13 +96,30 @@ export function splitDeck(text: string): Deck {
     if (heading) {
       const level = Number(heading[1]);
       const body = plain(text, node);
-      if (level === 1) {
-        deck.title = deck.title || body;
+      if (level === 1 && !deck.title) {
+        deck.title = body;
+      } else if (level === 1) {
+        // **2 つ目以降の `#` は扉にする**（TASKS 5-3）。これまでは捨てて
+        // いたので、書いた区切りが PowerPoint 側に届かなかった
+        deck.slides.push({
+          kind: "section",
+          title: body,
+          blocks: [],
+          images: [],
+          notes: "",
+        });
+        current = null; // 扉に本文は載せない（次の `##` から拾う）
       } else if (level === 2) {
-        current = { title: body, blocks: [], images: [], notes: "" };
+        current = {
+          kind: "content",
+          title: body,
+          blocks: [],
+          images: [],
+          notes: "",
+        };
         deck.slides.push(current);
       } else {
-        add({ kind: "heading", text: body });
+        add({ kind: "heading", runs: runsOf(text, node) });
       }
       continue;
     }
@@ -95,10 +131,10 @@ export function splitDeck(text: string): Deck {
           if (current) current.images.push(image);
           break;
         }
-        const body = plain(text, node);
-        if (!body) break;
-        if (current) add({ kind: "paragraph", text: body });
-        else subtitle.push(body); // 表紙に載る文章はここにある
+        const runs = runsOf(text, node);
+        if (plainText(runs) === "") break;
+        if (current) add({ kind: "paragraph", runs });
+        else subtitle.push(plainText(runs)); // 表紙に載る文章はここにある
         break;
       }
       case "Blockquote": {
@@ -113,7 +149,7 @@ export function splitDeck(text: string): Deck {
         for (const item of listItems(node)) {
           add({
             kind: "bullet",
-            text: plain(text, item.node),
+            runs: runsOf(text, item.node),
             level: item.level,
           });
         }
@@ -179,7 +215,113 @@ function imageOnly(text: string, node: SyntaxNode): string | null {
   return url ? text.slice(url.from, url.to) : null;
 }
 
-/// 記号を外した本文（入れ子のリストとコードは含めない）。
+/// 装飾ごと拾った本文（TASKS 5-1）。
+///
+/// **記号は落とすが、装飾は落とさない。** 太字を素の文字にすると、書いた人が
+/// PowerPoint 側で付け直すことになる。入れ子のリストとコードは含めない
+/// （それぞれ別のブロックとして拾う）。
+function runsOf(text: string, node: SyntaxNode): Run[] {
+  const runs: Run[] = [];
+  const styles: Run[] = [];
+  let pos = node.from;
+
+  const style = (): Omit<Run, "text"> =>
+    styles.reduce<Omit<Run, "text">>((merged, item) => {
+      const { text: _drop, ...rest } = item;
+      return { ...merged, ...rest };
+    }, {});
+
+  const emit = (to: number) => {
+    if (to <= pos) return;
+    const slice = text.slice(pos, to);
+    pos = to;
+    if (slice) runs.push({ text: slice, ...style() });
+  };
+
+  // **「自分自身か」を範囲で見ない。** 段落の全体が太字のとき
+  // （`**…**` だけの行）、StrongEmphasis の範囲は段落と同じになり、
+  // 自分と取り違えて装飾を取りこぼす（実測 2026-09-05）。
+  // 最初に入るのは必ず自分なので、数えて判じる
+  let entered = 0;
+  node.cursor().iterate(
+    (child) => {
+      if (++entered === 1) return true;
+      if (
+        SKIP.has(child.name) ||
+        MARKS.has(child.name) ||
+        child.name === "URL"
+      ) {
+        // 記号と、別に拾うもの（入れ子のリスト・コード）は本文に出さない
+        emit(child.from);
+        pos = Math.max(pos, child.to);
+        return false;
+      }
+      const styled = STYLES[child.name];
+      if (styled) {
+        emit(child.from);
+        styles.push(
+          child.name === "Link"
+            ? { text: "", link: linkTarget(text, child.node) }
+            : { text: "", ...styled },
+        );
+      }
+      return true;
+    },
+    (child) => {
+      if (!STYLES[child.name] || styles.length === 0) return;
+      emit(child.to);
+      styles.pop();
+    },
+  );
+  emit(node.to);
+  return tidy(runs);
+}
+
+/// 装飾の名前 → 付ける印。Lezer のノード名で引く。
+const STYLES: Record<string, Omit<Run, "text"> | undefined> = {
+  StrongEmphasis: { bold: true },
+  Emphasis: { italic: true },
+  Strikethrough: { strike: true },
+  InlineCode: { code: true },
+  Link: {}, // 行き先は linkTarget が読む
+};
+
+/// 別のブロックとして拾うもの（本文には混ぜない）。
+const SKIP = new Set(["BulletList", "OrderedList", "FencedCode", "CodeBlock"]);
+
+function linkTarget(text: string, node: SyntaxNode): string | undefined {
+  const url = node.getChild("URL");
+  return url ? text.slice(url.from, url.to) : undefined;
+}
+
+/// 改行を空白に畳み、両端を落とし、同じ装飾の隣どうしを繋ぐ。
+/// **途中の空白は残す**（`a **b** c` の空白が消えると語が繋がる）。
+function tidy(runs: Run[]): Run[] {
+  const folded = runs
+    .map((run) => ({ ...run, text: run.text.replace(/\s*\n\s*/g, " ") }))
+    .filter((run) => run.text !== "");
+  const merged: Run[] = [];
+  for (const run of folded) {
+    const last = merged[merged.length - 1];
+    const sameStyle =
+      last &&
+      last.bold === run.bold &&
+      last.italic === run.italic &&
+      last.strike === run.strike &&
+      last.code === run.code &&
+      last.link === run.link;
+    if (sameStyle) last.text += run.text;
+    else merged.push({ ...run });
+  }
+  if (merged.length > 0) {
+    merged[0].text = merged[0].text.replace(/^\s+/, "");
+    const last = merged[merged.length - 1];
+    last.text = last.text.replace(/\s+$/, "");
+  }
+  return merged.filter((run) => run.text !== "");
+}
+
+/// 記号を外した本文（題名・発表者ノート用。装飾は持たない）。
 function plain(text: string, node: SyntaxNode): string {
   const drops: [number, number][] = [];
   const skip = new Set([
