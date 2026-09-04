@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canDropInto, folderOf } from "./note-drop";
+import { canDropInto, folderOf, isNoteDrag, NOTE_DRAG_TYPE } from "./note-drop";
 
 const root = "/v/notes";
 
@@ -24,5 +24,19 @@ describe("canDropInto", () => {
     // 受け付けても何も起きないのに「移しました」と出てしまう
     expect(canDropInto(root, `${root}/a.md`, "")).toBe(false);
     expect(canDropInto(root, `${root}/仕事/a.md`, "仕事")).toBe(false);
+  });
+});
+
+describe("isNoteDrag", () => {
+  it("test_こちらが載せた型があればノートの落下と見なす", () => {
+    expect(isNoteDrag([NOTE_DRAG_TYPE, "text/plain"])).toBe(true);
+  });
+
+  it("test_よそからの文字やファイルは受けない", () => {
+    // Finder からの画像は本文側（editor/attachments）が受ける。
+    // フォルダの行が横取りすると、貼り込みができなくなる
+    expect(isNoteDrag(["Files"])).toBe(false);
+    expect(isNoteDrag(["text/plain"])).toBe(false);
+    expect(isNoteDrag([])).toBe(false);
   });
 });

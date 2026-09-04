@@ -14,7 +14,7 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
-import { canDropInto } from "./lib/note-drop";
+import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
@@ -1261,6 +1261,20 @@ function App() {
     }
   }
 
+  /// このフォルダの行がこの落下を受けるか。
+  ///
+  /// **掴んでいるものは ref から見る。** 途中では `getData` が読めない
+  /// 決まりなので、どのノートかは ref が知っている。ref を取り逃した
+  /// ときのために、載せた目印（型）でも見分けられるようにしておく。
+  function acceptsDrop(
+    event: { dataTransfer: DataTransfer },
+    folder: string,
+  ): boolean {
+    const dragged = draggingNote.current;
+    if (dragged) return canDropInto(vaultRoot ?? "", dragged, folder);
+    return isNoteDrag(Array.from(event.dataTransfer.types));
+  }
+
   /// フォルダの行へ落とされたノートを移す（要望 2026-09-04）。
   ///
   /// **メニューの「フォルダへ移動…」と同じ道を通す**（`moveNote`）。
@@ -2122,8 +2136,14 @@ function App() {
                             draggingNote.current = entry.path;
                             event.dataTransfer.effectAllowed = "move";
                             event.dataTransfer.setData(
-                              "text/plain",
+                              NOTE_DRAG_TYPE,
                               entry.path,
+                            );
+                            // 目印だけでは掴んだ絵が出ない環境があるので
+                            // 素の文字も載せる（外へ落としたときは題名）
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              noteStem(entry.path),
                             );
                           }}
                           onDragEnd={() => {
@@ -2229,7 +2249,40 @@ function App() {
                   </summary>
                   <ul>
                     {folders.map(({ folder, count }) => (
-                      <li key={folder || "."}>
+                      // **受け口はボタンではなく行に置く。** WebKit では
+                      // ボタンがドラッグの出来事を飲んでしまう。あわせて
+                      // **dragenter と dragover の両方を止める** —
+                      // dragover だけで受けられるのは Chrome の甘さで、
+                      // WebKit はこれが無いと落とせない（実機で発覚
+                      // 2026-09-04: 掴めるのに落とせない）
+                      <li
+                        key={folder || "."}
+                        onDragEnter={(event) => {
+                          if (!acceptsDrop(event, folder)) return;
+                          event.preventDefault();
+                          setDropFolder(folder);
+                        }}
+                        onDragOver={(event) => {
+                          if (!acceptsDrop(event, folder)) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                          setDropFolder(folder);
+                        }}
+                        onDragLeave={() =>
+                          setDropFolder((current) =>
+                            current === folder ? null : current,
+                          )
+                        }
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const dragged =
+                            draggingNote.current ||
+                            event.dataTransfer.getData(NOTE_DRAG_TYPE);
+                          draggingNote.current = null;
+                          setDropFolder(null);
+                          if (dragged) void handleDropOnFolder(dragged, folder);
+                        }}
+                      >
                         <button
                           className={
                             `folder-row${folder === folderFilter ? " selected" : ""}` +
@@ -2251,32 +2304,6 @@ function App() {
                               x: event.clientX,
                               y: event.clientY,
                             });
-                          }}
-                          onDragOver={(event) => {
-                            const dragged = draggingNote.current;
-                            // **落とせないところでは受けない。** 受けると
-                            // 何も起きないのに「移しました」と出る
-                            if (!dragged) return;
-                            if (!canDropInto(vaultRoot, dragged, folder))
-                              return;
-                            event.preventDefault();
-                            event.dataTransfer.dropEffect = "move";
-                            setDropFolder(folder);
-                          }}
-                          onDragLeave={() =>
-                            setDropFolder((current) =>
-                              current === folder ? null : current,
-                            )
-                          }
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            const dragged =
-                              draggingNote.current ||
-                              event.dataTransfer.getData("text/plain");
-                            draggingNote.current = null;
-                            setDropFolder(null);
-                            if (dragged)
-                              void handleDropOnFolder(dragged, folder);
                           }}
                         >
                           <span className="folder-name">

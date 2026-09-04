@@ -21,3 +21,15 @@ export function canDropInto(
 ): boolean {
   return folderOf(root, path) !== folder;
 }
+
+/// 掴んでいるものに載せる目印。**専用の型を作る。**
+/// `text/plain` で見分けると、よそからの文字の落下まで受けてしまう。
+export const NOTE_DRAG_TYPE = "application/x-oboegaki-note";
+
+/// この落下はノートのものか（`dataTransfer.types` から判断する）。
+///
+/// 中身（`getData`）は落とすまで読めない決まりなので、途中の判断は
+/// 型の一覧だけで行う。
+export function isNoteDrag(types: readonly string[]): boolean {
+  return types.includes(NOTE_DRAG_TYPE);
+}
