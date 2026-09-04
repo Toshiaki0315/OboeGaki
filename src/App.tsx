@@ -10,6 +10,12 @@ import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+// **クリップボードは Rust 側から触る**（要望 2026-09-04）。WebView の
+// `navigator.clipboard.readText()` は許可が下りず、貼り付けが動かなかった
+import {
+  readText as readClipboard,
+  writeText as writeClipboard,
+} from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
@@ -605,7 +611,7 @@ function App() {
   async function copyNoteLink(path: string) {
     const link = `[[${noteStem(path)}]]`;
     try {
-      await navigator.clipboard.writeText(link);
+      await writeClipboard(link);
       setStatus(`${link} をコピーしました`);
     } catch (error) {
       setStatus(`コピーできませんでした: ${String(error)}`);
@@ -1573,20 +1579,21 @@ function App() {
   /// タグで一覧を絞る（null で解除）。検索とは排他。
   /// 本文の切り取り・コピー・貼り付け（右クリックのメニューから）。
   ///
-  /// **貼り付けは読み取りの許可が要る。** WebView が断ることがあるので、
-  /// そのときは Cmd+V を案内する（黙って何も起きないのがいちばん困る）。
+  /// **クリップボードは Rust 側から触る。** WebView の
+  /// `navigator.clipboard.readText()` は許可が下りず、貼り付けが動かなかった
+  /// （実機報告 2026-09-04）。それでも失敗したときは Cmd+V を案内する。
   async function editorClipboard(action: "cut" | "copy" | "paste") {
     const editor = editorRef.current;
     if (!editor) return;
     try {
       if (action === "paste") {
-        const text = await navigator.clipboard.readText();
+        const text = await readClipboard();
         if (text) editor.replaceSelection(text);
         return;
       }
       const selected = editor.getSelection();
       if (!selected) return;
-      await navigator.clipboard.writeText(selected);
+      await writeClipboard(selected);
       if (action === "cut") editor.replaceSelection("");
     } catch {
       setStatus(
@@ -1600,7 +1607,7 @@ function App() {
   /// タグ名をコピーする。**`#` ごと**（本文に貼ればそのままタグになる）。
   async function copyTag(tag: string) {
     try {
-      await navigator.clipboard.writeText(`#${tag}`);
+      await writeClipboard(`#${tag}`);
       setStatus(`#${tag} をコピーしました`);
     } catch (error) {
       setStatus(`コピーできませんでした: ${String(error)}`);

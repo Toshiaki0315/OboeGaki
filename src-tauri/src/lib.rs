@@ -216,6 +216,9 @@ pub fn run() {
                 )
                 .build(),
         )
+        // クリップボード（要望 2026-09-04）。**WebView の読み取りは通らない** —
+        // 本文の右クリックからの貼り付けが動かなかったので、Rust 側から読む
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
