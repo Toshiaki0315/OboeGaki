@@ -1577,3 +1577,30 @@ button.danger {
   margin: 0 0.3rem;
   background: var(--pane-line);
 }
+
+/* 折りたたみの三角（見出しの開閉）。**紙の一部として見せる。**
+   CM6 の既定は灰色の帯（#f5f5f5）＋右の罫線で、本文と別の面に見える
+   （要望 2026-09-04）。ダークでも既定は明るい灰のままなので、ここで消す */
+.editor-host .cm-gutters {
+  background: transparent;
+  border-right: none;
+  color: inherit;
+}
+
+/* 三角が小さくて狙いにくい（要望 2026-09-04）。字を大きくして、行の高さの
+   中で縦に中央へ置く — 要素の高さは CM6 が px で決めるので、字を大きくしても
+   本文の行とずれない */
+.editor-host .cm-foldGutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  font-size: 1.4em;
+  line-height: 1;
+  opacity: 0.38;
+  cursor: pointer;
+}
+
+.editor-host .cm-foldGutter .cm-gutterElement:hover {
+  opacity: 0.85;
+}
