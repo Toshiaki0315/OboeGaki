@@ -234,6 +234,7 @@ pub fn run() {
         .manage(commands::WatchState::default())
         .invoke_handler(tauri::generate_handler![
             commands::vault_open,
+            commands::default_vault,
             commands::note_list,
             commands::tag_list,
             commands::notes_with_tag,

@@ -21,6 +21,11 @@ pub const TRASH_DIR: &str = ".trash";
 pub const MANAGED_DIR: &str = ".OboeGaki";
 /// 旧名（改名 2026-08-27 / ADR-0032）。開くときに一度だけ改名して引き継ぐ。
 pub const LEGACY_MANAGED_DIR: &str = ".hitofude";
+
+/// 既定の保管フォルダの名前（ADR-0032 決定 3）。
+pub const DEFAULT_VAULT_NAME: &str = "OboeGakiNotes";
+/// 旧の既定名。**パスを保存していない人を置き去りにしない**。
+pub const LEGACY_VAULT_NAME: &str = "HitofudeNotes";
 pub const ATTACHMENTS_DIR: &str = "attachments";
 pub const TEMPLATES_DIR: &str = "templates";
 
@@ -1377,6 +1382,21 @@ pub fn contains(root: &Path, candidate: &Path) -> bool {
     }
 }
 
+/// 既定の保管フォルダ（ADR-0032 決定 3）。
+///
+/// **パスを保存していない人を置き去りにしない。** 旧の既定フォルダが
+/// 在って、新しい名前がまだ無ければ、旧のほうを使い続ける。**フォルダは
+/// 動かさない**（iCloud / Dropbox の同期下にあり得る）。新しい名前が
+/// 既に在るなら引っ越し済みなので、そちらが正。
+pub fn default_vault_in(documents: &Path) -> PathBuf {
+    let fresh = documents.join(DEFAULT_VAULT_NAME);
+    let legacy = documents.join(LEGACY_VAULT_NAME);
+    if !fresh.exists() && legacy.is_dir() {
+        return legacy;
+    }
+    fresh
+}
+
 /// ゴミ箱の 1 件。
 #[derive(Debug, PartialEq)]
 pub struct TrashEntry {
@@ -2026,6 +2046,45 @@ mod tests {
         note(root.path(), "生きている.md"); // ゴミ箱の外は入らない
 
         assert_eq!(vault.trash_list(), vec![a, inner]);
+    }
+
+    #[test]
+    fn test_既定の保管フォルダは新しい名前() {
+        let home = TempDir::new().unwrap();
+        let documents = home.path().join("Documents");
+        fs::create_dir_all(&documents).unwrap();
+
+        assert_eq!(
+            default_vault_in(&documents),
+            documents.join(DEFAULT_VAULT_NAME)
+        );
+    }
+
+    #[test]
+    fn test_旧の既定フォルダが在ればそれを使い続ける() {
+        // **フォルダは動かさない**（iCloud / Dropbox の同期下にあり得る）。
+        // パスを保存していない人を置き去りにしない（ADR-0032 決定 3）
+        let home = TempDir::new().unwrap();
+        let documents = home.path().join("Documents");
+        fs::create_dir_all(documents.join(LEGACY_VAULT_NAME)).unwrap();
+
+        assert_eq!(
+            default_vault_in(&documents),
+            documents.join(LEGACY_VAULT_NAME)
+        );
+    }
+
+    #[test]
+    fn test_新しい名前が既に在れば引っ越し済みとみなす() {
+        let home = TempDir::new().unwrap();
+        let documents = home.path().join("Documents");
+        fs::create_dir_all(documents.join(LEGACY_VAULT_NAME)).unwrap();
+        fs::create_dir_all(documents.join(DEFAULT_VAULT_NAME)).unwrap();
+
+        assert_eq!(
+            default_vault_in(&documents),
+            documents.join(DEFAULT_VAULT_NAME)
+        );
     }
 
     #[test]

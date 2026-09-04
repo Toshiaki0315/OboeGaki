@@ -1298,16 +1298,25 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultRoot, currentPath, sortedNotes]);
 
-  // 前回の vault を開き直す（TASKS 1-1）。開けなければ黙って選択画面のまま
+  // 前回の vault を開き直す（TASKS 1-1）。覚えが無ければ既定の場所を開く
+  // （ADR-0032 決定 3）。開けなければ黙って選択画面のまま
   useEffect(() => {
     if (vaultRootRef.current) return;
     const days = settingsRef.current.trashDays;
-    void restoreLastVault(localStorage, (root) => openVault(root, days)).catch(
-      (error) => {
+    void restoreLastVault(localStorage, (root) => openVault(root, days))
+      .then(async (restored) => {
+        if (restored) return;
+        // **覚えていない人にフォルダを選ばせない。** 既定の場所を開いて、
+        // 無ければそこに作る（`vault_open` が中身を整える）。
+        // 場所を保存はしない — 保存すると、あとで新しい既定へ移った人が
+        // 旧い場所に留まってしまう（既定値運用のまま置いておく）
+        const fallback = await invoke<string>("default_vault");
+        await openVault(fallback, days);
+      })
+      .catch((error) => {
         // 別の窓が同じ vault を開いている（記憶は消さない）
         setStatus(vaultErrorText(error));
-      },
-    );
+      });
     // 起動時に一度だけ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

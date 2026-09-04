@@ -673,6 +673,17 @@ pub async fn llm_loaded(port: u16, model: String) -> bool {
     crate::llm::is_loaded(port, &model)
 }
 
+/// 既定の保管フォルダ（ADR-0032 決定 3）。パスを保存していない人が
+/// 最初に開く場所。**まだ無ければ作るのは開くときの仕事**（`vault_open`）。
+#[tauri::command]
+pub fn default_vault(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let documents = app.path().document_dir().map_err(|e| e.to_string())?;
+    Ok(crate::vault::default_vault_in(&documents)
+        .to_string_lossy()
+        .into_owned())
+}
+
 /// 走っている生成を止める（L-1）。**受け取ったぶんはそのまま残す** —
 /// 途中まででも読める答えが出ていることがある。
 ///
