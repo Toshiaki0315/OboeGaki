@@ -110,6 +110,8 @@ body {
 }
 
 .note-list header {
+  display: flex;
+  gap: 0.5rem; /* ＋新規 と フォルダ変更 をくっつけない（実機報告） */
   padding: 0.25rem 0.5rem 0.75rem;
   border-bottom: 1px solid var(--pane-line);
   margin-bottom: 0.5rem;
@@ -204,58 +206,68 @@ body {
 }
 
 /* 通常表示 / ソース表示の切り替え。macOS のセグメントに寄せる */
-.mode-switch {
-  display: inline-flex;
-  flex: none;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-}
-
-.note-header .mode-switch button {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: inherit;
-  opacity: 0.55;
-  cursor: pointer;
-}
-
-.note-header .mode-switch button svg {
-  width: 15px;
-  height: 15px;
-}
-
-/* 選んでいるほうを浮かせる（どちらが効いているか一目で分かる） */
-.note-header .mode-switch button.selected {
-  background: var(--app-bg);
-  opacity: 1;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
-}
 
 /* 題名の行の帯。**線は窓の幅いっぱいに引く**（本文と同じ幅で切ると
    途中で切れて見える） */
 .note-header-bar {
   flex: none;
   border-bottom: 1px solid var(--pane-line);
+  /* 題名（46rem 中央）と操作アイコン（右端）を横に並べる */
+  display: flex;
+  align-items: center;
 }
 
 .note-header {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   /* 題名の欄は本文と同じ幅に揃える（ずれると読み筋が折れる） */
   max-width: var(--content-width, 46rem);
   width: 100%;
   margin: 0 auto;
   padding: 0.75rem 1rem 0;
   box-sizing: border-box;
+}
+
+/* ノートの操作アイコン（ペインの右端。題名の幅とは独立） */
+.note-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.75rem 0.9rem 0 0.5rem;
+  flex: none;
+}
+
+.note-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.note-actions button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 1;
+}
+
+.note-actions button.selected {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 1;
+}
+
+.note-actions svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .title-input {

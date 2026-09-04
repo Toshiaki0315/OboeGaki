@@ -2337,58 +2337,120 @@ function App() {
                       void handleRename(event.currentTarget.value)
                     }
                   />
-                  {/* 通常表示 / ソース表示の切り替え（`Cmd+/` と同じもの） */}
-                  <div
-                    className="mode-switch"
-                    role="group"
-                    aria-label="表示の切り替え"
-                  >
-                    <button
-                      className={sourceMode ? "" : "selected"}
-                      title="通常表示"
-                      aria-pressed={!sourceMode}
-                      onClick={() => editorRef.current?.setSourceMode(false)}
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true">
-                        <path
-                          d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h7M2.5 12.5h9"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      className={sourceMode ? "selected" : ""}
-                      title="ソース表示（Cmd+/）"
-                      aria-pressed={sourceMode}
-                      onClick={() => editorRef.current?.setSourceMode(true)}
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true">
-                        <path
-                          d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => void handlePin()}
-                    title="一覧の先頭に固定"
-                  >
-                    {notes.find((entry) => entry.path === currentPath)?.pinned
-                      ? "ピンを外す"
-                      : "ピン留め"}
-                  </button>
-                  <button onClick={() => void handleExport()}>書き出し</button>
-                  <button onClick={() => void openHistory()}>履歴</button>
-                  <button onClick={() => void handleTrash()}>ゴミ箱へ</button>
                 </header>
+                {/* 操作はアイコンでペインの右端に寄せる（題名の 46rem 幅とは
+                    独立。ユーザー要望 2026-09-04）。並びは
+                    ピン → 書き出し → 履歴 → ゴミ箱 → ソース表示切替 */}
+                <div
+                  className="note-actions"
+                  role="group"
+                  aria-label="ノートの操作"
+                >
+                  {(() => {
+                    const pinned = notes.find(
+                      (entry) => entry.path === currentPath,
+                    )?.pinned;
+                    return (
+                      <button
+                        className={pinned ? "selected" : ""}
+                        title={
+                          pinned ? "ピンを外す" : "ピン留め（一覧の先頭に固定）"
+                        }
+                        aria-pressed={pinned}
+                        onClick={() => void handlePin()}
+                      >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                          <path
+                            d="M9.5 2 14 6.5l-3 1-2.5 4.5L4 7.5 8.5 5l1-3Z"
+                            fill={pinned ? "currentColor" : "none"}
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M6 10 2.5 13.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
+                    );
+                  })()}
+                  <button
+                    title="HTML に書き出し"
+                    onClick={() => void handleExport()}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M8 10V2.5M5 5l3-3 3 3M3 9.5v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <button title="版の履歴" onClick={() => void openHistory()}>
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <circle
+                        cx="8"
+                        cy="8"
+                        r="5.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                      />
+                      <path
+                        d="M8 5v3.2l2.2 1.4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    title="ゴミ箱へ移動"
+                    onClick={() => void handleTrash()}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M3 4.5h10M6.5 4.5v-1a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M4.5 4.5l.7 8a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8M6.7 7v4M9.3 7v4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    className={sourceMode ? "selected" : ""}
+                    title={
+                      sourceMode
+                        ? "通常表示に戻す（Cmd+/）"
+                        : "ソース表示（Cmd+/）"
+                    }
+                    aria-pressed={sourceMode}
+                    onClick={() =>
+                      editorRef.current?.setSourceMode(!sourceMode)
+                    }
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path
+                        d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <Editor
                 key={currentPath}
