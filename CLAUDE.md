@@ -64,6 +64,7 @@ make check
 | フロントのテスト        | `make test`（= `vitest run`）                                 |
 | Rust のテスト           | `make test-rust`                                              |
 | コミット前チェック      | `make check`                                                  |
+| CI と同じ手順を手元で   | `make ci`（HEAD を取り出して `npm ci` から回す）              |
 | フォーマット            | `make fmt`                                                    |
 | 依存追加（TS）          | `npm install <pkg>` / `npm install -D <pkg>`                  |
 | 依存追加（Rust）        | `cd src-tauri && cargo add <crate>`                           |
