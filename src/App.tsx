@@ -472,6 +472,11 @@ function App() {
     x: number;
     y: number;
   } | null>(null);
+  const [tagMenu, setTagMenu] = useState<{
+    tag: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [trashMenu, setTrashMenu] = useState<{
     /// null なら「ゴミ箱そのもの」への操作（空にする）
     path: string | null;
@@ -1555,6 +1560,25 @@ function App() {
   }
 
   /// タグで一覧を絞る（null で解除）。検索とは排他。
+  /// タグ名をコピーする。**`#` ごと**（本文に貼ればそのままタグになる）。
+  async function copyTag(tag: string) {
+    try {
+      await navigator.clipboard.writeText(`#${tag}`);
+      setStatus(`#${tag} をコピーしました`);
+    } catch (error) {
+      setStatus(`コピーできませんでした: ${String(error)}`);
+    }
+  }
+
+  /// このタグで全ノート検索する（絞り込みと違い、本文まで見る）。
+  ///
+  /// **検索欄に打ったのと同じ道を通す**（`handleQueryChanged`）。
+  /// `setQuery` だけでは欄の字が変わるだけで、探しに行かない。
+  function searchByTag(tag: string) {
+    handleQueryChanged(`#${tag}`);
+    searchInputRef.current?.focus();
+  }
+
   function filterByTag(tag: string | null) {
     setTagFilter(tag);
     if (tag) {
@@ -2507,9 +2531,21 @@ function App() {
                       <li key={tag}>
                         <button
                           className={`tag-row${tag === tagFilter ? " selected" : ""}`}
+                          title="右クリックで絞る・検索・コピー"
                           onClick={() =>
                             filterByTag(tag === tagFilter ? null : tag)
                           }
+                          // **OS の既定のメニューを出さない**（要望
+                          // 2026-09-04）。「Google で検索」「共有」など、
+                          // 選んだ文字を外へ出す道が並んでしまう
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setTagMenu({
+                              tag,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
                         >
                           <span className="tag-name">#{tag}</span>
                           <span className="tag-count">{count}</span>
@@ -3690,6 +3726,64 @@ function App() {
                         onClick={run(() => void handleTrash(target))}
                       >
                         ゴミ箱へ移動
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              );
+            })()}
+          {tagMenu !== null &&
+            (() => {
+              const target = tagMenu.tag;
+              const filtered = target === tagFilter;
+              const run = (action: () => void) => () => {
+                setTagMenu(null);
+                action();
+              };
+              return (
+                <div
+                  className="menu-backdrop"
+                  onMouseDown={() => setTagMenu(null)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setTagMenu(null);
+                  }}
+                >
+                  <ul
+                    className="context-menu"
+                    style={(() => {
+                      const at = menuPosition(
+                        tagMenu,
+                        { width: 200, height: 120 },
+                        {
+                          width: window.innerWidth,
+                          height: window.innerHeight,
+                        },
+                      );
+                      return { left: at.x, top: at.y };
+                    })()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <li>
+                      <button
+                        onClick={run(() =>
+                          filterByTag(filtered ? null : target),
+                        )}
+                      >
+                        {filtered ? "絞り込みを解除" : `#${target} で絞り込む`}
+                      </button>
+                    </li>
+                    <li>
+                      {/* 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
+                        検索へ回す（同じ書き方が検索欄でも効く） */}
+                      <button onClick={run(() => searchByTag(target))}>
+                        このタグで全ノート検索
+                      </button>
+                    </li>
+                    <li className="separator" />
+                    <li>
+                      <button onClick={run(() => void copyTag(target))}>
+                        タグ名をコピー
                       </button>
                     </li>
                   </ul>
