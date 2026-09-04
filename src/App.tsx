@@ -2145,6 +2145,14 @@ function App() {
                               "text/plain",
                               noteStem(entry.path),
                             );
+                            // **掴んだ絵をこの行に限る。** 任せると WebKit は
+                            // 行の載っている層ごと写し取り、隣のペインまで
+                            // 一緒に持ち上がって見える（実機で発覚 2026-09-04）
+                            event.dataTransfer.setDragImage(
+                              event.currentTarget,
+                              16,
+                              12,
+                            );
                           }}
                           onDragEnd={() => {
                             draggingNote.current = null;
