@@ -67,7 +67,7 @@ import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme } from "./lib/slide-theme";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
-import { OCR_THRESHOLD, pdfPageImage, pdfPages } from "./lib/pdf-import";
+import { OCR_THRESHOLD, pdfPages } from "./lib/pdf-import";
 import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
@@ -793,19 +793,28 @@ function App() {
 
   /// PDF のページを読む。**文字が取れないページだけ**読み取りに回す
   /// （ADR-0027 追記: 切り分けはページごと）。
-  async function readPdfPages(bytes: Uint8Array): Promise<string[]> {
+  ///
+  /// **ページ数は Rust にも訊く。** 文字の層が無い PDF（macOS の
+  /// 「印刷 → PDF」や取り込んだ紙）では pdf.js が 1 ページも返さないことが
+  /// あり、そのときページの並びが空だと**読み取りに一度も回らないまま
+  /// 「文字を取り出せませんでした」で終わる**（実機報告 2026-09-05）。
+  async function readPdfPages(bytes: Uint8Array, data: string) {
     const pages = await pdfPages(bytes);
+    const count =
+      pages.length || (await invoke<number>("pdf_page_count", { data }));
     const found: string[] = [];
-    for (const [index, page] of pages.entries()) {
+    for (let index = 0; index < count; index++) {
+      const page = pages[index] ?? "";
       if (page.trim().length >= OCR_THRESHOLD) {
         found.push(page); // 速くて正確なほうを黙って捨てない
         continue;
       }
-      setStatus(`文字を読み取っています… ${index + 1}/${pages.length} ページ`);
-      const image = await pdfPageImage(bytes, index + 1);
-      const read = image
-        ? await invoke<string>("ocr_image", { data: image })
-        : "";
+      setStatus(`文字を読み取っています… ${index + 1}/${count} ページ`);
+      // **絵にするのも Rust の仕事**（同じ機械の中で完結させる）
+      const read = await invoke<string>("ocr_pdf_page", {
+        data,
+        page: index + 1,
+      });
       // **読み取りが元より短ければ捨てる**（外すこともあるので、短くても
       // 本物の文字が入っているページを潰さない）
       found.push(read.trim().length > page.trim().length ? read : page);
@@ -850,7 +859,7 @@ function App() {
           title,
         );
       } else if (/\.pdf$/i.test(name)) {
-        markdown = toMarkdown(await readPdfPages(bytes), title);
+        markdown = toMarkdown(await readPdfPages(bytes, data), title);
       } else {
         markdown = slidesToMarkdown(title, await readPptx(bytes));
       }

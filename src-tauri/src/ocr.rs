@@ -15,28 +15,54 @@
 /// 読み取る言語（この順で当てる）。日本語の資料が主なので日本語が先。
 const LANGUAGES: [&str; 2] = ["ja-JP", "en-US"];
 
+/// 絵（CGImage）から文字を読む。**PDF のページを描いたものを渡す**
+/// （pdf.rs）。バイト列に直さずに済むので、間に画像形式を挟まない。
+#[cfg(target_os = "macos")]
+pub fn recognize_image(image: &objc2_core_graphics::CGImage) -> String {
+    use objc2::AllocAnyThread;
+    use objc2_foundation::NSDictionary;
+    use objc2_vision::VNImageRequestHandler;
+
+    unsafe {
+        let options = NSDictionary::new();
+        let handler = VNImageRequestHandler::initWithCGImage_options(
+            VNImageRequestHandler::alloc(),
+            image,
+            &options,
+        );
+        run(&handler)
+    }
+}
+
 /// 画像のバイト列から文字を読む。読めなければ空文字。
 ///
 /// **読めないことは壊れることではない**（F-2 と同じ約束）。画像で
 /// なくても、文字が無くても、空を返して呼び出し側に知らせる。
 #[cfg(target_os = "macos")]
 pub fn recognize(image: &[u8]) -> String {
-    use objc2::rc::Retained;
     use objc2::AllocAnyThread;
-    use objc2_foundation::{NSArray, NSData, NSDictionary, NSString};
-    use objc2_vision::{
-        VNImageRequestHandler, VNRecognizeTextRequest, VNRequest, VNRequestTextRecognitionLevel,
-    };
+    use objc2_foundation::{NSData, NSDictionary};
+    use objc2_vision::VNImageRequestHandler;
+
+    let data = NSData::with_bytes(image);
+    let options = NSDictionary::new();
+    let handler = VNImageRequestHandler::initWithData_options(
+        VNImageRequestHandler::alloc(),
+        &data,
+        &options,
+    );
+    run(&handler)
+}
+
+/// 読み取りを頼んで、返ってきた行を繋ぐ。**入口（バイト列 / 絵）が違っても
+/// 頼み方は 1 つ**（言語も精度も揃えないと、経路で結果が変わる）。
+#[cfg(target_os = "macos")]
+fn run(handler: &objc2_vision::VNImageRequestHandler) -> String {
+    use objc2::rc::Retained;
+    use objc2_foundation::{NSArray, NSString};
+    use objc2_vision::{VNRecognizeTextRequest, VNRequest, VNRequestTextRecognitionLevel};
 
     unsafe {
-        let data = NSData::with_bytes(image);
-        let options = NSDictionary::new();
-        let handler = VNImageRequestHandler::initWithData_options(
-            VNImageRequestHandler::alloc(),
-            &data,
-            &options,
-        );
-
         let request = VNRecognizeTextRequest::new();
         // 速さより正しさ（会議メモの金額や日付を読み違えない）
         request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);

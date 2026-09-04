@@ -800,6 +800,28 @@ pub async fn ocr_image(data: String) -> Result<String, String> {
     Ok(crate::ocr::recognize(&bytes))
 }
 
+/// PDF のページ数（TASKS 4-6）。読めなければ 0。
+#[tauri::command]
+pub async fn pdf_page_count(data: String) -> Result<usize, String> {
+    Ok(crate::pdf::page_count(&decode(&data)?))
+}
+
+/// PDF のページを絵にして読む（実機報告 2026-09-05）。
+///
+/// **画面（pdf.js）で描かない。** ワーカーと canvas が要る経路は、
+/// そこが動かないと読み取りに辿り着く前に終わる。同じ機械の中で完結させる。
+#[tauri::command]
+pub async fn ocr_pdf_page(data: String, page: usize) -> Result<String, String> {
+    Ok(crate::pdf::read_page(&decode(&data)?, page))
+}
+
+fn decode(data: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| e.to_string())
+}
+
 /// 印刷（TASKS 4-3）。macOS の印刷パネルを出す（「PDF として保存」もここ）。
 ///
 /// 印刷されるのは**この WebView に今出ているもの**なので、何を出すかは

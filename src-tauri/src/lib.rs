@@ -10,6 +10,7 @@ mod history;
 pub mod index_db;
 pub mod llm;
 pub mod ocr;
+pub mod pdf;
 pub mod recovery;
 pub mod references;
 pub mod related;
@@ -283,6 +284,8 @@ pub fn run() {
             commands::export_write_binary,
             commands::import_read,
             commands::ocr_image,
+            commands::pdf_page_count,
+            commands::ocr_pdf_page,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,
