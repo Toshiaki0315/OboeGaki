@@ -1909,27 +1909,27 @@ function App() {
                     歯車に読めない、という向こうでの学びごと持ってくる） */}
                 <svg viewBox="0 0 16 16" aria-hidden="true">
                   <path
-                    d="M11.25 8H12.5M10.3 10.3l.88.88M8 11.25v1.25M5.7 10.3l-.88.88M4.75 8H3.5M5.7 5.7l-.88-.88M8 4.75V3.5M10.3 5.7l.88-.88"
+                    d="M12.4 8h2M11.11 11.11l1.42 1.42M8 12.4v2M4.89 11.11l-1.42 1.42M3.6 8h-2M4.89 4.89 3.47 3.47M8 3.6v-2M11.11 4.89l1.42-1.42"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="2"
+                    strokeWidth="2.4"
                     strokeLinecap="round"
                   />
                   <circle
                     cx="8"
                     cy="8"
-                    r="2.75"
+                    r="3.5"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="1.25"
+                    strokeWidth="1.6"
                   />
                   <circle
                     cx="8"
                     cy="8"
-                    r="1"
+                    r="1.2"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="1.25"
+                    strokeWidth="1.4"
                   />
                 </svg>
               </button>

@@ -124,19 +124,20 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 2.1rem;
+  height: 2.1rem;
   padding: 0;
   background: none;
-  opacity: 0.7;
+  opacity: 0.75;
 }
 .note-list header .settings-button:hover {
   background: color-mix(in srgb, currentColor 10%, transparent);
   opacity: 1;
 }
 .note-list header .settings-button svg {
-  width: 1rem;
-  height: 1rem;
+  /* Slack / Gmail の歯車と並べても読める大きさに（実機報告） */
+  width: 1.3rem;
+  height: 1.3rem;
 }
 
 .note-list ul {
