@@ -18,10 +18,10 @@ import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import {
   availableFonts,
   BODY_FONTS,
+  CODE_FONTS,
   FONT_SAMPLE,
   fontStack,
   type Measure,
-  MONO_FONTS,
 } from "./lib/fonts";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
@@ -459,8 +459,8 @@ function App() {
     () => availableFonts(BODY_FONTS, measureFont),
     [measureFont],
   );
-  const monoFontChoices = useMemo(
-    () => availableFonts(MONO_FONTS, measureFont),
+  const codeFontChoices = useMemo(
+    () => availableFonts(CODE_FONTS, measureFont),
     [measureFont],
   );
   const [dropTrash, setDropTrash] = useState(false);
@@ -3085,7 +3085,11 @@ function App() {
                         </span>
                       </label>
                       <label>
-                        <span>等幅フォント</span>
+                        {/* 等幅に限らない（要望 2026-09-04）。ここが効くのは
+                          コード・数式・Mermaid のソースで、桁を空白で
+                          揃えるのをやめた（ADR-0044）ので等幅である必要は
+                          もう無い。呼び名も中身に合わせる */}
+                        <span>コード・数式のフォント</span>
                         <input
                           list="mono-fonts"
                           value={settings.monoFont}
@@ -3097,7 +3101,7 @@ function App() {
                           }
                         />
                         <datalist id="mono-fonts">
-                          {monoFontChoices.map((font) => (
+                          {codeFontChoices.map((font) => (
                             <option
                               key={font.family}
                               value={font.family}

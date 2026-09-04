@@ -62,6 +62,18 @@ export const MONO_FONTS: readonly FontChoice[] = [
   { family: "Osaka-Mono", label: "等幅・Osaka" },
 ];
 
+/// コード・数式・Mermaid のソースに使うフォントの候補。
+///
+/// **等幅だけに絞らない**（要望 2026-09-04）。桁を空白で揃えるのをやめた
+/// （ADR-0044）ので、ここが等幅である必要はもう無い。読みやすさで選べる
+/// ように、等幅を先に置いたうえで本文の候補も後ろに並べる。
+export const CODE_FONTS: readonly FontChoice[] = [
+  ...MONO_FONTS,
+  ...BODY_FONTS.filter(
+    (font) => !MONO_FONTS.some((mono) => mono.family === font.family),
+  ),
+];
+
 /// 幅を測る係。渡された CSS の `font` 指定で見本の文字列を測って幅を返す。
 export type Measure = (fontSpec: string) => number;
 

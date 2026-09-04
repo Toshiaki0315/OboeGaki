@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   availableFonts,
   BODY_FONTS,
+  CODE_FONTS,
   fontStack,
   isFontAvailable,
   MONO_FONTS,
@@ -75,6 +76,24 @@ describe("候補の中身", () => {
     for (const font of [...BODY_FONTS, ...MONO_FONTS]) {
       expect(font.label).not.toBe("");
     }
+  });
+});
+
+describe("CODE_FONTS", () => {
+  it("test_等幅を先に置き、そのあとに普通のフォントも並べる", () => {
+    // 「等幅の欄に等幅しか出ない」のが不便（要望 2026-09-04）。桁揃えを
+    // やめた（ADR-0044）ので、コードを等幅以外で組んでも困らない
+    const families = CODE_FONTS.map((font) => font.family);
+    expect(families.slice(0, MONO_FONTS.length)).toEqual(
+      MONO_FONTS.map((font) => font.family),
+    );
+    expect(families).toContain("Hiragino Sans");
+  });
+
+  it("test_同じフォントを二度並べない", () => {
+    // 等幅にも本文にも居るもの（BIZ UDGothic）がある
+    const families = CODE_FONTS.map((font) => font.family);
+    expect(new Set(families).size).toBe(families.length);
   });
 });
 

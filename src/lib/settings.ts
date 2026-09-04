@@ -26,7 +26,8 @@ export type Settings = {
   contentWidth: ContentWidth;
   /// 本文のフォント。空 = システムの既定のまま。
   bodyFont: string;
-  /// 等幅フォント（コード・表の整形）。空 = 既定の等幅スタック。
+  /// コード・数式・Mermaid のソースのフォント。空 = 既定の等幅スタック。
+  /// **等幅に限らない**（ADR-0044 で桁揃えをやめたので縛る理由が無い）。
   monoFont: string;
   /// タブを何文字ぶんの幅で見せるか。書いた文字は変わらない。
   tabWidth: number;
