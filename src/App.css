@@ -67,10 +67,46 @@ body {
 
 .note-list {
   border-right: 1px solid var(--pane-line);
-  overflow-y: auto;
+  /* スクロールはペイン全体ではなく .note-scroll が持つ。フォルダ・タグ・
+     ゴミ箱は下に固定で残る（ユーザー要望 2026-09-04） */
+  overflow: hidden;
   height: 100%;
   box-sizing: border-box;
   padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ノート一覧（検索結果も同じ入れ物）だけが縦に伸び、内部でスクロールする */
+.note-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 下に固定のセクション。開いた側はペインの約 1/3 を使い、中身が
+   それを超えたらセクションの中でスクロールする（一覧が約 2/3 残る） */
+.note-list > details {
+  flex: 0 0 auto;
+}
+.folder-section[open],
+.tag-section[open] {
+  flex: 0 0 33%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.folder-section[open] > ul,
+.tag-section[open] > ul {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* 保存した検索・ゴミ箱は小さめに抑えて、はみ出したら中でスクロール */
+.search-section[open] > ul,
+.trash-section[open] > ul {
+  max-height: 20vh;
+  overflow-y: auto;
 }
 
 .note-list header {

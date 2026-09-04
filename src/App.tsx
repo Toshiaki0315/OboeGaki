@@ -521,6 +521,28 @@ function App() {
     editorRef.current?.revealPos(item.from);
   }
 
+  // 左下のフォルダ / タグは排他で開く（ユーザー要望 2026-09-04）。
+  // 両方開くと一覧が痩せすぎる。開いた側が縦の約 1/3 を使う
+  const [sideOpen, setSideOpen] = useState<"folders" | "tags" | null>(() => {
+    try {
+      const kept = localStorage.getItem("oboegaki.side");
+      return kept === "folders" || kept === "tags" ? kept : "folders";
+    } catch {
+      return "folders";
+    }
+  });
+  function toggleSide(kind: "folders" | "tags") {
+    setSideOpen((current) => {
+      const next = current === kind ? null : kind;
+      try {
+        localStorage.setItem("oboegaki.side", next ?? "");
+      } catch {
+        // 覚えられなくても開閉自体は生かす
+      }
+      return next;
+    });
+  }
+
   // クイックオープン（Cmd+O、spec §5.4）
   const [quickOpen, setQuickOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -1889,7 +1911,7 @@ function App() {
               />
             )}
             {!settings.notesVisible ? null : query.trim() ? (
-              <ul>
+              <ul className="note-scroll">
                 {hits.map((hit) => (
                   <li key={hit.path}>
                     <button
@@ -1906,7 +1928,7 @@ function App() {
                 )}
               </ul>
             ) : (
-              <>
+              <div className="note-scroll">
                 {tagFilter && (
                   <div className="tag-filter-row">
                     <span className="tag-filter-name">#{tagFilter}</span>
@@ -1983,7 +2005,7 @@ function App() {
                     </li>
                   ))}
                 </ul>
-              </>
+              </div>
             )}
             {settings.treesVisible && searches.length > 0 && (
               <details className="search-section" open>
@@ -2020,8 +2042,13 @@ function App() {
               </details>
             )}
             {settings.treesVisible && (
-              <details className="folder-section" open>
-                <summary>
+              <details className="folder-section" open={sideOpen === "folders"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault(); // 開閉はこちらで持つ（タグと排他）
+                    toggleSide("folders");
+                  }}
+                >
                   フォルダ（{folders.length - 1}）
                   <button
                     className="folder-add"
@@ -2032,6 +2059,7 @@ function App() {
                     }
                     onClick={(event) => {
                       event.preventDefault(); // summary の開閉を巻き込まない
+                      event.stopPropagation();
                       setFolderDialog({
                         kind: "create",
                         folder: folderFilter ?? "",
@@ -2082,8 +2110,15 @@ function App() {
               </details>
             )}
             {settings.treesVisible && tags.length > 0 && (
-              <details className="tag-section" open>
-                <summary>タグ（{tags.length}）</summary>
+              <details className="tag-section" open={sideOpen === "tags"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
+                    toggleSide("tags");
+                  }}
+                >
+                  タグ（{tags.length}）
+                </summary>
                 <ul>
                   {tags.map(({ tag, count }) => (
                     <li key={tag}>
