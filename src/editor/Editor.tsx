@@ -5,7 +5,13 @@
 // 文書を React state や Zustand にミラーしてはならない（キーストロークごとの
 // 再レンダリングは性能基準 16ms を壊す）。
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  type MouseEvent,
+} from "react";
 import { EditorView, keymap } from "@codemirror/view";
 import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
@@ -96,6 +102,8 @@ type Props = {
   onActivate?: (action: Activation) => void;
   /** キャレット位置が変わるたびに呼ぶ（アウトラインの現在地表示用） */
   onCursorChanged?: (pos: number) => void;
+  /** 本文の右クリック。**アプリ側でメニューを出す**（OS の既定を出さない） */
+  onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   /** 貼り付け・ドロップの画像を保存して Markdown を返す（保存先は
       アプリ側の持ち物）。無ければ取り込みは無効 */
   saveAttachment?: SaveAttachment;
@@ -126,6 +134,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     resolveImage,
     onActivate,
     onCursorChanged,
+    onContextMenu,
     saveAttachment,
     tabWidth,
     indentedCode,
@@ -387,5 +396,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     };
   }, [initialDoc]);
 
-  return <div ref={host} className="editor-host" />;
+  return (
+    <div ref={host} className="editor-host" onContextMenu={onContextMenu} />
+  );
 });

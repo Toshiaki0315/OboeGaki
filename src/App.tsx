@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
@@ -476,6 +477,14 @@ function App() {
     tag: string;
     x: number;
     y: number;
+  } | null>(null);
+  const [gearMenu, setGearMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [editorMenu, setEditorMenu] = useState<{
+    x: number;
+    y: number;
+    selected: boolean;
   } | null>(null);
   const [trashMenu, setTrashMenu] = useState<{
     /// null なら「ゴミ箱そのもの」への操作（空にする）
@@ -1560,6 +1569,32 @@ function App() {
   }
 
   /// タグで一覧を絞る（null で解除）。検索とは排他。
+  /// 本文の切り取り・コピー・貼り付け（右クリックのメニューから）。
+  ///
+  /// **貼り付けは読み取りの許可が要る。** WebView が断ることがあるので、
+  /// そのときは Cmd+V を案内する（黙って何も起きないのがいちばん困る）。
+  async function editorClipboard(action: "cut" | "copy" | "paste") {
+    const editor = editorRef.current;
+    if (!editor) return;
+    try {
+      if (action === "paste") {
+        const text = await navigator.clipboard.readText();
+        if (text) editor.replaceSelection(text);
+        return;
+      }
+      const selected = editor.getSelection();
+      if (!selected) return;
+      await navigator.clipboard.writeText(selected);
+      if (action === "cut") editor.replaceSelection("");
+    } catch {
+      setStatus(
+        action === "paste"
+          ? "貼り付けられませんでした（Cmd+V で貼れます）"
+          : "コピーできませんでした（Cmd+C で取れます）",
+      );
+    }
+  }
+
   /// タグ名をコピーする。**`#` ごと**（本文に貼ればそのままタグになる）。
   async function copyTag(tag: string) {
     try {
@@ -2993,6 +3028,17 @@ function App() {
                   onCursorChanged={(pos) => {
                     if (outlineOpenRef.current) setCursorPos(pos);
                   }}
+                  // **OS の既定のメニューを出さない**（要望 2026-09-04）。
+                  // 「Google で検索」「共有」など、本文を外へ出す道が並ぶ
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setEditorMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      selected:
+                        (editorRef.current?.getSelection() ?? "") !== "",
+                    });
+                  }}
                   saveAttachment={(data, name) =>
                     saveAttachment(vaultRoot, data, name)
                   }
@@ -3732,6 +3778,172 @@ function App() {
                 </div>
               );
             })()}
+          {editorMenu !== null &&
+            (() => {
+              const selected = editorMenu.selected;
+              const run = (action: () => void) => () => {
+                setEditorMenu(null);
+                action();
+              };
+              const format = (kind: FormatKind, label: string) => (
+                <li key={kind}>
+                  <button
+                    onClick={run(() => editorRef.current?.applyFormat(kind))}
+                  >
+                    {label}
+                  </button>
+                </li>
+              );
+              return (
+                <div
+                  className="menu-backdrop"
+                  onMouseDown={() => setEditorMenu(null)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setEditorMenu(null);
+                  }}
+                >
+                  <ul
+                    className="context-menu"
+                    style={(() => {
+                      const at = menuPosition(
+                        editorMenu,
+                        { width: 200, height: 300 },
+                        {
+                          width: window.innerWidth,
+                          height: window.innerHeight,
+                        },
+                      );
+                      return { left: at.x, top: at.y };
+                    })()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <li>
+                      {/* 選んでいないときは押せない状態で見せる
+                        （項目ごと消すと、なぜ無いのか分からない） */}
+                      <button
+                        disabled={!selected}
+                        onClick={run(() => void editorClipboard("cut"))}
+                      >
+                        切り取り
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        disabled={!selected}
+                        onClick={run(() => void editorClipboard("copy"))}
+                      >
+                        コピー
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={run(() => void editorClipboard("paste"))}
+                      >
+                        貼り付け
+                      </button>
+                    </li>
+                    <li className="separator" />
+                    {format("strong", "太字")}
+                    {format("emphasis", "斜体")}
+                    {format("code", "コード")}
+                    {format("link", "リンク")}
+                    <li className="separator" />
+                    {format("heading", "見出し")}
+                    {format("bullet", "箇条書き")}
+                    {format("quote", "引用")}
+                    <li className="separator" />
+                    <li>
+                      <button onClick={run(() => setTableDialog(true))}>
+                        表を挿入…
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              );
+            })()}
+          {gearMenu !== null &&
+            (() => {
+              // 参照実装（ui/menus.build_gear_menu）と同じ考え方:
+              // **メニューバーと同じ動作を使い回し、よく使うものだけ**。
+              // 全部の写しにすると、探す手間がメニューバーと変わらない
+              const run = (action: () => void) => () => {
+                setGearMenu(null);
+                action();
+              };
+              const check = (on: boolean) => (on ? "✓ " : "　");
+              const menu = menuActions.current;
+              return (
+                <div
+                  className="menu-backdrop"
+                  onMouseDown={() => setGearMenu(null)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setGearMenu(null);
+                  }}
+                >
+                  <ul
+                    className="context-menu"
+                    style={(() => {
+                      const at = menuPosition(
+                        gearMenu,
+                        { width: 230, height: 300 },
+                        {
+                          width: window.innerWidth,
+                          height: window.innerHeight,
+                        },
+                      );
+                      return { left: at.x, top: at.y };
+                    })()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <li>
+                      <button onClick={run(openPreferences)}>環境設定…</button>
+                    </li>
+                    <li className="separator" />
+                    <li>
+                      <button onClick={run(() => menu["toggle-trees"]?.())}>
+                        {check(settings.treesVisible)}サイドバー
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(() => menu["toggle-notes"]?.())}>
+                        {check(settings.notesVisible)}ノート一覧
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(toggleOutline)}>
+                        {check(outlineOpen)}アウトライン
+                      </button>
+                    </li>
+                    {/* 使わない設定のときは並べない（押せない項目を見せない） */}
+                    {settings.assistantEnabled && (
+                      <li>
+                        <button onClick={run(() => menu.assistant?.())}>
+                          {check(assistantOpen)}アシスタント
+                        </button>
+                      </li>
+                    )}
+                    <li className="separator" />
+                    <li>
+                      <button onClick={run(() => menu["source-mode"]?.())}>
+                        {check(sourceMode)}ソース表示
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(() => menu["focus-mode"]?.())}>
+                        　フォーカスモード
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(() => menu.typewriter?.())}>
+                        　タイプライタモード
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              );
+            })()}
           {tagMenu !== null &&
             (() => {
               const target = tagMenu.tag;
@@ -4341,9 +4553,13 @@ function App() {
         <footer className="status-bar">
           <button
             className="settings-button"
-            title="環境設定（Cmd+,）"
-            aria-label="環境設定"
-            onClick={openPreferences}
+            title="メニュー"
+            aria-label="メニュー"
+            onClick={(event) => {
+              // 押した場所から出す（下端なので上へ伸びる。menuPosition が丸める）
+              const box = event.currentTarget.getBoundingClientRect();
+              setGearMenu({ x: box.left, y: box.top });
+            }}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path
