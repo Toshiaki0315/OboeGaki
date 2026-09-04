@@ -129,6 +129,13 @@ body {
   padding: 0;
 }
 
+/* ノートの境目（要望 2026-09-04）。**線は li に引く** — ボタンに引くと
+   選択中の角の丸みが線で切られる。最後の 1 件には引かない（宙に浮く線を
+   作らない） */
+.note-rows > li + li {
+  border-top: 1px solid var(--pane-line);
+}
+
 .note-list li button {
   display: block;
   width: 100%;
@@ -354,23 +361,14 @@ body {
 }
 
 .trash-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.35rem 0.5rem;
   opacity: 0.8;
+  /* 操作は右クリック（要望 2026-09-04）。押せることが分かるように */
+  cursor: default;
 }
 
-.trash-item button {
-  font: inherit;
-  font-size: 0.8rem;
-  color: inherit;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  border: none;
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  cursor: pointer;
+.trash-item + .trash-item {
+  border-top: 1px solid var(--pane-line);
 }
 
 .search-input {

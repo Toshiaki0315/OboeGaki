@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
+import { menuPosition } from "./lib/context-menu";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
@@ -450,6 +451,11 @@ function App() {
   fontSizeRef.current = fontSize;
 
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
+  const [trashMenu, setTrashMenu] = useState<{
+    path: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [noteMenu, setNoteMenu] = useState<{
     path: string;
     x: number;
@@ -2012,7 +2018,7 @@ function App() {
                 />
               )}
               {!settings.notesVisible ? null : query.trim() ? (
-                <ul className="note-scroll">
+                <ul className="note-scroll note-rows">
                   {hits.map((hit) => (
                     <li key={hit.path}>
                       <button
@@ -2069,7 +2075,7 @@ function App() {
                       <option value="title">名前順</option>
                     </select>
                   </div>
-                  <ul>
+                  <ul className="note-rows">
                     {(tagFilter || folderFilter !== null) &&
                       sortedNotes.length === 0 && (
                         <li className="no-hits">
@@ -2251,18 +2257,22 @@ function App() {
                   <summary>ゴミ箱（{trashNotes.length}）</summary>
                   <ul>
                     {trashNotes.map((path) => (
-                      <li key={path} className="trash-item">
+                      /* 操作は右クリックへ（要望 2026-09-04）。ボタンを
+                        並べると題名が押し出されて読めなくなる */
+                      <li
+                        key={path}
+                        className="trash-item"
+                        title="右クリックで戻す・削除"
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setTrashMenu({
+                            path,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
+                      >
                         <span>{trashLabel(vaultRoot, path)}</span>
-                        <button onClick={() => void handleRestore(path)}>
-                          戻す
-                        </button>
-                        <button
-                          className="danger"
-                          title="完全に削除"
-                          onClick={() => void handleDeleteForever(path)}
-                        >
-                          削除
-                        </button>
                       </li>
                     ))}
                   </ul>
@@ -3254,10 +3264,17 @@ function App() {
                   <ul
                     className="context-menu"
                     // 窓の端で押されても外へはみ出さない（下の行が多い）
-                    style={{
-                      left: Math.min(noteMenu.x, window.innerWidth - 220),
-                      top: Math.min(noteMenu.y, window.innerHeight - 280),
-                    }}
+                    style={(() => {
+                      const at = menuPosition(
+                        noteMenu,
+                        { width: 220, height: 300 },
+                        {
+                          width: window.innerWidth,
+                          height: window.innerHeight,
+                        },
+                      );
+                      return { left: at.x, top: at.y };
+                    })()}
                     onMouseDown={(event) => event.stopPropagation()}
                   >
                     <li>
@@ -3308,6 +3325,55 @@ function App() {
                         onClick={run(() => void handleTrash(target))}
                       >
                         ゴミ箱へ移動
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              );
+            })()}
+          {trashMenu !== null &&
+            (() => {
+              const target = trashMenu.path;
+              const run = (action: () => void) => () => {
+                setTrashMenu(null);
+                action();
+              };
+              return (
+                <div
+                  className="menu-backdrop"
+                  onMouseDown={() => setTrashMenu(null)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setTrashMenu(null);
+                  }}
+                >
+                  <ul
+                    className="context-menu"
+                    style={(() => {
+                      const at = menuPosition(
+                        trashMenu,
+                        { width: 180, height: 84 },
+                        {
+                          width: window.innerWidth,
+                          height: window.innerHeight,
+                        },
+                      );
+                      return { left: at.x, top: at.y };
+                    })()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <li>
+                      <button onClick={run(() => void handleRestore(target))}>
+                        元に戻す
+                      </button>
+                    </li>
+                    <li className="separator" />
+                    <li>
+                      <button
+                        className="danger"
+                        onClick={run(() => void handleDeleteForever(target))}
+                      >
+                        完全に削除
                       </button>
                     </li>
                   </ul>
