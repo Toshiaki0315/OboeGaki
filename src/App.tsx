@@ -2037,6 +2037,29 @@ function App() {
           } as CSSProperties
         }
         data-spacing={settings.lineSpacing}
+        // **窓ぜんぶで「動かす」として受けておく。** WebView（wry）は
+        // 画面が「受けない」と答えた場所を **Copy に読み替える**ので、
+        // macOS が緑の ＋ を出してしまう（wry 0.55.1 の
+        // wkwebview/drag_drop.rs: None を NSDragOperation::Copy にする）。
+        // 実際に動かすのはフォルダの行だけで、ここは受けるふりに徹する
+        onDragEnter={(event) => {
+          if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
+          event.preventDefault();
+        }}
+        onDragOver={(event) => {
+          if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(event) => {
+          // フォルダの行で受けたものはそこで処理済み。ここへ来るのは
+          // 落とし先でない場所なので、静かに捨てる（本文に文字を
+          // 落とさない）
+          if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
+          event.preventDefault();
+          draggingNote.current = null;
+          setDropFolder(null);
+        }}
       >
         <div
           className={

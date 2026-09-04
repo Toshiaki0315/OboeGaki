@@ -65,3 +65,33 @@ Tauri の設定の説明は「HTML5 の drag&drop を使うには Windows では
 - `docs/manual_test.md` に「Finder から画像を落として貼り込める」を追加
 - 将来 Tauri のネイティブな file drop を使いたくなったら、この ADR ごと
   見直す（画面の中の drag&drop と両立しない）
+
+## 追記（2026-09-04）: 緑の ＋ が消えない
+
+`dragDropEnabled: false` にしても、掴んでいる間ずっと macOS のコピーの印
+（緑の ＋）が出るという報告があった。掴んだものから素の文字を外しても
+消えない。
+
+wry の同じファイルにもう 1 か所あった（`drag_drop.rs:62-76`）:
+
+```rust
+let os_operation = objc2::msg_send![super(this), draggingUpdated: drag_info];
+if os_operation == NSDragOperation::None {
+    // 0 will be returned for a drop on any arbitrary location on the webview.
+    // We'll override that with NSDragOperationCopy.
+    NSDragOperation::Copy
+} else {
+    os_operation
+}
+```
+
+`draggingUpdated:` は**設定に関わらず常に載っている**（ハンドラを切ると
+`Box::new(|_| false)` が入るだけ。`wkwebview/mod.rs:304`）。つまり
+**画面が「ここでは受けない」と答えた場所を、wry が Copy に読み替える。**
+落とし先でないところ ＝ 窓のほとんどでコピーの印が出ることになる。
+
+Rust 側からは動かせないので、**画面側で「受けない」と答えないようにする**:
+窓の一番外側で、ノートの落下だけを `dropEffect = "move"` で受ける。実際に
+動かすのはフォルダの行だけで、外側は受けるふりに徹して静かに捨てる。
+
+副産物として、本文の上に落として題名の文字が紛れ込むこともなくなる。
