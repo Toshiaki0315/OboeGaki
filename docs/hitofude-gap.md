@@ -31,9 +31,9 @@
 | タグ補完（`#` 入力中に候補、↑↓ / Enter / Tab 選択）        | C-4, H-3, tags.prefix_at                           | 未実装                                    |
 | ノートリンク補完（`[[` で候補）                            | core/notelink.py                                   | 未実装                                    |
 | コードフェンスの言語補完                                   | core/code_langs.py                                 | 未実装                                    |
-| 見出しサイクル（段落→H1→H2→H3→段落のボタン）               | B-1, commands.cycle_heading                        | 未実装（Cmd+Ctrl+↑↓ の増減はある）        |
-| 複数行選択の行単位トグル（箇条書き / 番号 / 引用を揃える） | B-1, toggle_bullet / toggle_ordered / toggle_quote | 未実装（カーソル行の単発トグルのみ）      |
-| 書式ツールバー                                             | B-1, ui/format_toolbar.py                          | 未実装（メニュー + ショートカットで代替） |
+| 見出しサイクル（段落→H1→H2→H3→段落のボタン）               | B-1, commands.cycle_heading                        | 実装済み（TASKS 2-7 / ツールバーの H1）   |
+| 複数行選択の行単位トグル（箇条書き / 番号 / 引用を揃える） | B-1, toggle_bullet / toggle_ordered / toggle_quote | 実装済み（TASKS 2-7）                     |
+| 書式ツールバー                                             | B-1, ui/format_toolbar.py                          | 実装済み（本文の上・アイコンのみ + Tips） |
 | プレーンテキストとしてコピー（Cmd+Shift+C）                | §5.4                                               | 未実装                                    |
 
 ## 3. ノート管理・vault

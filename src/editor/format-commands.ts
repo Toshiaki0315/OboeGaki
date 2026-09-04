@@ -334,15 +334,59 @@ export function linesCommand(
   };
 }
 
-/// spec §5.4 の書式ショートカット。
+/// 書式の種類。**入口はショートカット・メニュー・ツールバーの 3 つあるが、
+/// 変換は 1 つ**（参照実装 ui/format_toolbar.py の言）。ここが台帳。
+export const FORMAT_KINDS = [
+  "strong",
+  "emphasis",
+  "strike",
+  "code",
+  "highlight",
+  "heading",
+  "bullet",
+  "ordered",
+  "checkbox",
+  "quote",
+  "link",
+] as const;
+
+export type FormatKind = (typeof FORMAT_KINDS)[number];
+
+export const FORMAT_COMMANDS: Record<FormatKind, StateCommand> = {
+  strong: wrapCommand("**"),
+  emphasis: wrapCommand("*"),
+  strike: wrapCommand("~~"),
+  code: wrapCommand("`"),
+  highlight: wrapCommand("::"),
+  // 見出しは循環（段落 → H1 → H2 → H3 → 段落）。押すたびに 1 段深くなる
+  heading: linesCommand((lines) => lines.map(cycleHeading)),
+  bullet: linesCommand(toggleBullet),
+  ordered: linesCommand(toggleOrdered),
+  checkbox: lineCommand(toggleCheckbox),
+  quote: linesCommand(toggleQuote),
+  link: linkCommand,
+};
+
+/// 割り当てているショートカット。**登録できる形で持つ**（`Mod-b`）。
+/// 見せる形（`⌘B`）に直すのは format-toolbar の仕事 — 2 通りの書き方を
+/// 台帳に置くと、片方だけ直したときに食い違う（参照実装で踏んだ）。
+export const FORMAT_KEYS: Partial<Record<FormatKind, string>> = {
+  strong: "Mod-b",
+  emphasis: "Mod-i",
+  strike: "Mod-Shift-x",
+  code: "Mod-e",
+  highlight: "Mod-Shift-h",
+  checkbox: "Mod-Shift-t",
+  link: "Mod-k",
+};
+
+/// spec §5.4 の書式ショートカット。**台帳から作る**（登録漏れが起きない）。
 export const formatKeymap = keymap.of([
-  { key: "Mod-b", run: wrapCommand("**") },
-  { key: "Mod-i", run: wrapCommand("*") },
-  { key: "Mod-Shift-x", run: wrapCommand("~~") },
-  { key: "Mod-e", run: wrapCommand("`") },
-  { key: "Mod-Shift-h", run: wrapCommand("::") },
-  { key: "Mod-k", run: linkCommand },
+  ...Object.entries(FORMAT_KEYS).map(([kind, key]) => ({
+    key,
+    run: FORMAT_COMMANDS[kind as FormatKind],
+  })),
+  // 見出しの上げ下げだけはツールバーに出さない（循環のボタンで足りる）
   { key: "Mod-Ctrl-ArrowDown", run: lineCommand((l) => shiftHeading(l, 1)) },
   { key: "Mod-Ctrl-ArrowUp", run: lineCommand((l) => shiftHeading(l, -1)) },
-  { key: "Mod-Shift-t", run: lineCommand(toggleCheckbox) },
 ]);

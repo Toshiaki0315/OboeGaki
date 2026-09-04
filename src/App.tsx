@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -10,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
@@ -1669,10 +1671,10 @@ function App() {
       changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
     "toggle-notes": () =>
       changeSettings({ notesVisible: !settingsRef.current.notesVisible }),
-    "format-heading": () => editorRef.current?.applyLineFormat("heading"),
-    "format-bullet": () => editorRef.current?.applyLineFormat("bullet"),
-    "format-ordered": () => editorRef.current?.applyLineFormat("ordered"),
-    "format-quote": () => editorRef.current?.applyLineFormat("quote"),
+    "format-heading": () => editorRef.current?.applyFormat("heading"),
+    "format-bullet": () => editorRef.current?.applyFormat("bullet"),
+    "format-ordered": () => editorRef.current?.applyFormat("ordered"),
+    "format-quote": () => editorRef.current?.applyFormat("quote"),
     extract: () => void handleExtract(),
     "link-graph": () => void showLinkGraph(DEFAULT_DEPTH),
     "insert-table": () => {
@@ -2560,6 +2562,55 @@ function App() {
                       </svg>
                     </button>
                   </div>
+                </div>
+                {/* 書式ツールバー（B-1）。ショートカットを覚えていなくても
+                  押せるようにする。**アイコンだけ**なので、呼び名と
+                  ショートカットは Tips（title）が担う */}
+                <div
+                  className="format-toolbar"
+                  role="toolbar"
+                  aria-label="書式"
+                >
+                  {FORMAT_TOOLBAR.map((group, index) => (
+                    <Fragment key={group[0].kind}>
+                      {index > 0 && (
+                        <span
+                          className="toolbar-separator"
+                          aria-hidden="true"
+                        />
+                      )}
+                      {group.map((item) => (
+                        <button
+                          key={item.kind}
+                          title={formatHint(item)}
+                          aria-label={item.label}
+                          // **押しても本文の選択を外さない。** 外すと囲む
+                          // ものが無くなって空振りする（参照実装が
+                          // NoFocus で守っていたのと同じ勘所）
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() =>
+                            item.kind === "table"
+                              ? setTableDialog(true)
+                              : editorRef.current?.applyFormat(item.kind)
+                          }
+                        >
+                          <svg viewBox="0 0 16 16" aria-hidden="true">
+                            {item.paths.map((d) => (
+                              <path
+                                key={d}
+                                d={d}
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            ))}
+                          </svg>
+                        </button>
+                      ))}
+                    </Fragment>
+                  ))}
                 </div>
                 <Editor
                   key={currentPath}

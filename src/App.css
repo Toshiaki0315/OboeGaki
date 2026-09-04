@@ -1513,3 +1513,55 @@ button.danger {
   background: #0a84ff;
   color: #fff;
 }
+
+/* 書式ツールバー（B-1）。題名の行と本文のあいだ。参照実装 format_toolbar.py
+   と同じ並び（文字の装飾 → 行の書式 → 差し込むもの）。
+   **アイコンだけ**にして、呼び名は Tips に持たせる */
+.format-toolbar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.3rem 0.9rem;
+  border-bottom: 1px solid var(--pane-line);
+}
+
+.format-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  color: inherit;
+  background: none;
+  /* 押せる場所がどこまでか分かるように薄い枠を付ける（参照実装と同じ判断）。
+     色は区切り線と同じものを使う — 同じ役目の線に色を増やさない */
+  border: 1px solid var(--pane-line);
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.format-toolbar button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 1;
+}
+
+.format-toolbar button:active {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.format-toolbar svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* 群の切れ目。ボタンより少し低くして、線が主張しすぎないようにする */
+.toolbar-separator {
+  width: 1px;
+  height: 1.1rem;
+  margin: 0 0.3rem;
+  background: var(--pane-line);
+}

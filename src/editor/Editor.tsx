@@ -18,12 +18,9 @@ import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { inputAssist } from "./input-assist";
 import {
-  cycleHeading,
+  FORMAT_COMMANDS,
+  type FormatKind,
   formatKeymap,
-  linesCommand,
-  toggleBullet,
-  toggleOrdered,
-  toggleQuote,
 } from "./format-commands";
 import { editorModes, toggleFocus, toggleTypewriter } from "./modes";
 import {
@@ -84,8 +81,8 @@ export type EditorHandle = {
   toggleTypewriterMode: () => void;
   /** キャレット位置に空の表を差し込む（rows は見出しを除いた行数） */
   insertTable: (rows: number, columns: number) => void;
-  /** 行単位の書式（メニューの書式サブメニューから） */
-  applyLineFormat: (kind: "heading" | "bullet" | "ordered" | "quote") => void;
+  /** 書式を当てる（メニュー・ツールバーの両方から呼ぶ。中身は 1 つ） */
+  applyFormat: (kind: FormatKind) => void;
 };
 
 type Props = {
@@ -225,18 +222,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       toggleTypewriterMode() {
         if (view.current) toggleTypewriter(view.current);
       },
-      applyLineFormat(kind) {
+      applyFormat(kind) {
         const current = view.current;
         if (!current) return;
-        const command =
-          kind === "heading"
-            ? linesCommand((lines) => lines.map(cycleHeading))
-            : kind === "bullet"
-              ? linesCommand(toggleBullet)
-              : kind === "ordered"
-                ? linesCommand(toggleOrdered)
-                : linesCommand(toggleQuote);
-        command(current);
+        FORMAT_COMMANDS[kind](current);
+        // 押したあとは本文へ戻す。ボタンからでも打ち続けられるように
         current.focus();
       },
       insertTable(rows: number, columns: number) {

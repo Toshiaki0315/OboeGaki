@@ -1,7 +1,12 @@
 // 書式トグル（spec §5.4）の検証。分岐が本体なのでここで網羅する。
 
 import { describe, expect, test } from "vitest";
+import { EditorState } from "@codemirror/state";
 import {
+  FORMAT_COMMANDS,
+  FORMAT_KEYS,
+  FORMAT_KINDS,
+  type FormatKind,
   insertLink,
   shiftHeading,
   toggleCheckbox,
@@ -230,5 +235,57 @@ describe("toggleQuote", () => {
 
   test("test_入れ子は作らない", () => {
     expect(toggleQuote(["> a", "b"])).toEqual(["> a", "> b"]);
+  });
+});
+
+// ------------------------------------------------------------ 入口の一本化
+
+describe("FORMAT_COMMANDS", () => {
+  // ツールバー・メニュー・ショートカットの 3 つの入口が同じ変換を呼ぶこと。
+  // 中身が 1 つなら食い違わない（参照実装 format_toolbar.py の言）
+  function run(kind: FormatKind, doc: string, from: number, to = from) {
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: from, head: to },
+    });
+    let next = state;
+    const handled = FORMAT_COMMANDS[kind]({
+      state,
+      dispatch: (tr) => void (next = tr.state),
+    });
+    return { handled, doc: next.doc.toString() };
+  }
+
+  test("文字の装飾は選択を囲む", () => {
+    expect(run("strong", "あい", 0, 2).doc).toBe("**あい**");
+    expect(run("emphasis", "あい", 0, 2).doc).toBe("*あい*");
+    expect(run("strike", "あい", 0, 2).doc).toBe("~~あい~~");
+    expect(run("code", "あい", 0, 2).doc).toBe("`あい`");
+    expect(run("highlight", "あい", 0, 2).doc).toBe("::あい::");
+  });
+
+  test("行の書式は行頭に付ける", () => {
+    expect(run("bullet", "あい", 0).doc).toBe("- あい");
+    expect(run("ordered", "あい", 0).doc).toBe("1. あい");
+    expect(run("quote", "あい", 0).doc).toBe("> あい");
+    expect(run("heading", "あい", 0).doc).toBe("# あい");
+    expect(run("checkbox", "- あい", 0).doc).toBe("- [ ] あい");
+  });
+
+  test("リンクは選択を題名にして URL を待つ", () => {
+    expect(run("link", "覚書", 0, 2).doc).toBe("[覚書]()");
+  });
+
+  test("すべての書式に入口がある（台帳の穴を塞ぐ）", () => {
+    for (const kind of FORMAT_KINDS) {
+      expect(typeof FORMAT_COMMANDS[kind]).toBe("function");
+    }
+  });
+
+  test("ショートカットの登録は台帳から作る", () => {
+    // 登録の形（Mod-b）だけを持ち、見せる形はツールバー側で作る
+    expect(FORMAT_KEYS.strong).toBe("Mod-b");
+    expect(FORMAT_KEYS.emphasis).toBe("Mod-i");
+    expect(FORMAT_KEYS.heading).toBeUndefined(); // 見出しは循環なので割り当てない
   });
 });
