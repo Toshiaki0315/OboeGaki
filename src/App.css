@@ -1820,3 +1820,69 @@ fieldset.preferences-fields:disabled {
   flex: none;
   text-align: center;
 }
+
+/* 横に開いたノート（U-1）。**読むだけ**のペイン。幅はアウトライン・
+   アシスタントと同じ枠を使う（右に出るのは常に 1 つなので） */
+.reference-pane {
+  border-left: 1px solid var(--pane-line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.reference-pane header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--pane-line);
+  flex: none;
+}
+
+/* どのノートを見ているかが分からないと参照にならない */
+.reference-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.reference-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.reference-close:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 1;
+}
+
+.reference-close svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* 中の本文。**幅は目一杯に使う** — 狭いペインで 46rem に絞ると読めない */
+.reference-pane .editor-host {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+}

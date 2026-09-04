@@ -43,6 +43,7 @@ import {
   type MermaidTheme,
 } from "./editor/mermaid";
 import {
+  referenceLives,
   restoreRightPane,
   RIGHT_PANE_KEY,
   type RightPane,
@@ -474,6 +475,12 @@ function App() {
   /// 本文まで一緒に動く（実機で発覚 2026-09-04）
   const dragGhost = useRef<HTMLElement | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
+  const [reference, setReference] = useState<{
+    path: string;
+    title: string;
+    text: string;
+  } | null>(null);
   // フォントの候補。**入っていないものは出さない**（要望 2026-09-04）。
   // Web からは端末のフォント一覧を列挙できないので、名前を挙げて 1 つずつ
   // 「その名前で組めるか」を幅で測る
@@ -1614,6 +1621,40 @@ function App() {
   }
 
   /// タグで一覧を絞る（null で解除）。検索とは排他。
+  /// ノートを横に開く（U-1）。**本文は入れ替えない** — 書いているノートを
+  /// 奪わずに、もう 1 枚を並べるための道。読むだけなので保存も監視も繋がない。
+  async function openBeside(path: string) {
+    if (!vaultRoot) return;
+    try {
+      const text = await readNote(vaultRoot, path);
+      setReference({ path, title: noteStem(path), text });
+      setRightPane("reference");
+    } catch (error) {
+      setStatus(`横に開けませんでした: ${String(error)}`);
+    }
+  }
+
+  /// 横のペインを閉じる。**本文は触らない。**
+  function closeReference() {
+    setReference(null);
+    setRightPane("none");
+  }
+
+  // 横に出したノートが消えていたら畳む（参照実装 _forget_gone_reference）。
+  // **もう無いものを読ませ続けない** — 直したつもりの内容を読み違える
+  useEffect(() => {
+    if (!reference) return;
+    if (
+      referenceLives(
+        reference.path,
+        notes.map((entry) => entry.path),
+      )
+    )
+      return;
+    setReference(null);
+    setRightPane((pane) => (pane === "reference" ? "none" : pane));
+  }, [notes, reference]);
+
   /// 本文の切り取り・コピー・貼り付け（右クリックのメニューから）。
   ///
   /// **クリップボードは Rust 側から触る。** WebView の
@@ -2306,7 +2347,7 @@ function App() {
       >
         <div
           className={
-            `app-split${outlineOpen || assistantOpen ? " with-outline" : ""}` +
+            `app-split${rightPane !== "none" ? " with-outline" : ""}` +
             (leftVisible ? "" : " no-list")
           }
         >
@@ -2736,7 +2777,7 @@ function App() {
               onPointerDown={(event) => startResize(event, "listWidth", 1)}
             />
           )}
-          {(outlineOpen || assistantOpen) && (
+          {rightPane !== "none" && (
             <div
               className="pane-resizer outline"
               title="幅を変える"
@@ -3777,6 +3818,14 @@ function App() {
                       </button>
                     </li>
                     <li>
+                      {/* **本文を入れ替える「開く」とは別の道**（U-1）。
+                        書いているノートを奪わずに、もう 1 枚を並べる */}
+                      <button onClick={run(() => void openBeside(target))}>
+                        <MenuIcon name="beside" />
+                        横に開く
+                      </button>
+                    </li>
+                    <li>
                       <button onClick={run(() => void handleDuplicate(target))}>
                         <MenuIcon name="copy" />
                         複製
@@ -4613,6 +4662,42 @@ function App() {
                   </ul>
                 </div>
               )}
+            </aside>
+          )}
+          {rightPane === "reference" && reference && (
+            // 横に開いたノート（U-1）。**読むだけ** — 保存も監視も繋がない
+            <aside className="reference-pane">
+              <header>
+                {/* どのノートを見ているかが分からないと参照にならない */}
+                <span className="reference-title">{reference.title}</span>
+                <button
+                  className="reference-close"
+                  title="閉じる"
+                  aria-label="閉じる"
+                  onClick={closeReference}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path
+                      d="M4 4l8 8M12 4l-8 8"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </header>
+              {/* **本文と同じエディタを読み取り専用で使う**（別の描き方を
+                用意すると、帯や折りたたみが 2 系統になる） */}
+              <Editor
+                key={reference.path}
+                readOnly
+                initialDoc={reference.text}
+                resolveImage={(url) => imageSource(vaultRoot, url)}
+                diagramTheme={diagramTheme}
+                tabWidth={settings.tabWidth}
+                indentedCode={settings.indentedCode}
+              />
             </aside>
           )}
           {outlineOpen && (

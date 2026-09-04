@@ -22,7 +22,8 @@ export type MenuIconName =
   | "cut"
   | "paste"
   | "preferences"
-  | "table";
+  | "table"
+  | "beside";
 
 export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   // ピン留め（一覧の上のボタンと同じ絵）
@@ -93,6 +94,13 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   preferences: [
     "M12.4 8h2M11.11 11.11l1.42 1.42M8 12.4v2M4.89 11.11l-1.42 1.42M3.6 8h-2M4.89 4.89 3.47 3.47M8 3.6v-2M11.11 4.89l1.42-1.42",
     "M8 5.4a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z",
+  ],
+  // 横に開く（U-1）。**本文を入れ替える「開く」とは別の絵**にする —
+  // 2 枚に分かれた枠で、右側（横のペイン）を塗る
+  beside: [
+    "M2 3.4h12a.6.6 0 0 1 .6.6v8a.6.6 0 0 1-.6.6H2a.6.6 0 0 1-.6-.6V4a.6.6 0 0 1 .6-.6z",
+    "M9.6 3.4v9.2",
+    "M11 6h2.2M11 8h2.2M11 10h2.2",
   ],
   // 表（書式ツールバーと同じ絵）
   table: ["M2.5 3.5h11v9h-11z", "M2.5 6.5h11M6.2 6.5v6M9.8 6.5v6"],

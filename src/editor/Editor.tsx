@@ -124,6 +124,9 @@ type Props = {
   diagramTheme?: MermaidTheme;
   /** 開いた時点の表示モード（ソースモードはノートを跨いで続く） */
   sourceMode?: boolean;
+  /** 読むだけにする（横に開く参照ペイン = U-1）。**同じ描き方を使い回す**
+      ためのもので、別のプレビューを用意しない */
+  readOnly?: boolean;
   /** 表示モードが変わったら呼ぶ（`Cmd+/` でも切り替わるため） */
   onSourceModeChanged?: (source: boolean) => void;
 };
@@ -145,6 +148,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     diagramTheme,
     sourceMode,
     onSourceModeChanged,
+    readOnly,
   },
   ref,
 ) {
@@ -306,6 +310,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               : (frontMatterRange(initialDoc)?.bodyStart ?? 0),
         },
         extensions: [
+          // 読むだけのペイン（U-1）。**同じ拡張のまま編集だけ止める** —
+          // 別の描き方を用意すると、帯や折りたたみが 2 系統になる
+          ...(readOnly
+            ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+            : []),
           tabSize.current.of(EditorState.tabSize.of(tabWidth ?? 4)),
           frontMatterHide,
           diagramThemeField.init(() => diagramTheme ?? "light"),
