@@ -39,6 +39,10 @@ body {
 
 .app {
   height: 100vh;
+  /* グリッド（ペイン群）+ 全幅のステータスバー、の縦積み */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .app-empty {
@@ -55,8 +59,9 @@ body {
   grid-template-columns: var(--list-width, 240px) 1fr;
   /* ペインごとに独立してスクロールさせる。grid の子は既定で内容より
      縮めない（min-height: auto）ので、明示しないと窓全体が 1 本の
-     スクロールになる */
-  height: 100vh;
+     スクロールになる。高さはステータスバーを除いた残り全部 */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -116,28 +121,6 @@ body {
   padding: 0.25rem 0.5rem 0.75rem;
   border-bottom: 1px solid var(--pane-line);
   margin-bottom: 0.5rem;
-}
-
-/* 環境設定（歯車）。ヘッダの右端に寄せる */
-.note-list header .settings-button {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  padding: 0;
-  background: none;
-  opacity: 0.75;
-}
-.note-list header .settings-button:hover {
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  opacity: 1;
-}
-.note-list header .settings-button svg {
-  /* Slack / Gmail の歯車と並べても読める大きさに（実機報告） */
-  width: 1.3rem;
-  height: 1.3rem;
 }
 
 .note-list ul {
@@ -207,16 +190,42 @@ body {
 .status-bar {
   border-top: 1px solid var(--pane-line);
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.3rem 1rem;
+  align-items: center;
+  gap: 0.6rem;
+  /* 右端ぴったりだと窓の丸い角に最後の文字が欠ける（参照実装の実測） */
+  padding: 0.15rem 14px 0.15rem 8px;
   font-size: 12px;
-  opacity: 0.7;
-  min-height: 1.2em;
+  min-height: 1.8rem;
+  flex: none;
+}
+
+.status-bar .settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0.75;
+  flex: none;
+}
+.status-bar .settings-button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 1;
+}
+.status-bar .settings-button svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .status-message {
+  flex: 1 1 auto;
+  opacity: 0.7;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -226,8 +235,8 @@ body {
 /* 数字は幅が動くと目が引っ張られるので等幅に固定する */
 .status-stats {
   flex: none;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.85;
+  white-space: nowrap;
+  opacity: 0.7;
 }
 
 /* 通常表示 / ソース表示の切り替え。macOS のセグメントに寄せる */

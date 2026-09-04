@@ -1969,10 +1969,7 @@ function App() {
   return (
     <>
       <main
-        className={
-          `app app-split${outlineOpen || assistantOpen ? " with-outline" : ""}` +
-          (leftVisible ? "" : " no-list")
-        }
+        className="app"
         style={
           {
             "--editor-font-px": `${fontSize}px`,
@@ -1986,1596 +1983,1624 @@ function App() {
         }
         data-spacing={settings.lineSpacing}
       >
-        {leftVisible && (
-          <aside className="note-list">
-            <header>
-              <button onClick={() => void handleCreate()}>＋ 新規</button>
-              <button onClick={() => void chooseVault()}>フォルダ変更</button>
-              {/* 設定への入口を窓の中にも置く（メニューバーだけだと
-                  気づけない — 参照実装 O-2 の教訓と同じ） */}
-              <button
-                className="settings-button"
-                title="環境設定（Cmd+,）"
-                aria-label="環境設定"
-                onClick={openPreferences}
-              >
-                {/* 歯車は参照実装 ui/icons.py の _draw_gear を写した形
-                   （輪 + 太い短線の歯 8 枚 + 軸穴。細い線だとトゲに見えて
-                    歯車に読めない、という向こうでの学びごと持ってくる） */}
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path
-                    d="M12.4 8h2M11.11 11.11l1.42 1.42M8 12.4v2M4.89 11.11l-1.42 1.42M3.6 8h-2M4.89 4.89 3.47 3.47M8 3.6v-2M11.11 4.89l1.42-1.42"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="1.2"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                  />
-                </svg>
-              </button>
-            </header>
-            {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
-            {settings.notesVisible && (
-              <input
-                ref={searchInputRef}
-                className="search-input"
-                type="search"
-                placeholder="検索"
-                value={query}
-                onChange={(event) =>
-                  handleQueryChanged(event.currentTarget.value)
-                }
-              />
-            )}
-            {!settings.notesVisible ? null : query.trim() ? (
-              <ul className="note-scroll">
-                {hits.map((hit) => (
-                  <li key={hit.path}>
-                    <button
-                      className="search-hit"
-                      onClick={() => void openNote(`${vaultRoot}/${hit.path}`)}
-                    >
-                      <span className="hit-title">{hit.title}</span>
-                      <span className="hit-snippet">{hit.snippet}</span>
-                    </button>
-                  </li>
-                ))}
-                {hits.length === 0 && (
-                  <li className="no-hits">見つかりません</li>
-                )}
-              </ul>
-            ) : (
-              <div className="note-scroll">
-                {tagFilter && (
-                  <div className="tag-filter-row">
-                    <span className="tag-filter-name">#{tagFilter}</span>
-                    <button
-                      className="tag-filter-clear"
-                      onClick={() => filterByTag(null)}
-                      title="絞り込みを解除"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-                {folderFilter !== null && (
-                  <div className="tag-filter-row">
-                    <span className="tag-filter-name">
-                      {folderFilter || "直下"}
-                    </span>
-                    <button
-                      className="tag-filter-clear"
-                      onClick={() => filterByFolder(null)}
-                      title="絞り込みを解除"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-                <div className="sort-row">
-                  <select
-                    value={sortOrder}
-                    onChange={(event) =>
-                      changeSort(event.currentTarget.value as SortOrder)
-                    }
-                  >
-                    <option value="modified">更新順</option>
-                    <option value="title">名前順</option>
-                  </select>
-                </div>
-                <ul>
-                  {(tagFilter || folderFilter !== null) &&
-                    sortedNotes.length === 0 && (
-                      <li className="no-hits">
-                        {tagFilter
-                          ? "このタグのノートはありません"
-                          : "このフォルダにノートはありません"}
-                      </li>
-                    )}
-                  {sortedNotes.map((entry) => (
-                    <li key={entry.path}>
+        <div
+          className={
+            `app-split${outlineOpen || assistantOpen ? " with-outline" : ""}` +
+            (leftVisible ? "" : " no-list")
+          }
+        >
+          {leftVisible && (
+            <aside className="note-list">
+              <header>
+                <button onClick={() => void handleCreate()}>＋ 新規</button>
+                <button onClick={() => void chooseVault()}>フォルダ変更</button>
+              </header>
+              {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
+              {settings.notesVisible && (
+                <input
+                  ref={searchInputRef}
+                  className="search-input"
+                  type="search"
+                  placeholder="検索"
+                  value={query}
+                  onChange={(event) =>
+                    handleQueryChanged(event.currentTarget.value)
+                  }
+                />
+              )}
+              {!settings.notesVisible ? null : query.trim() ? (
+                <ul className="note-scroll">
+                  {hits.map((hit) => (
+                    <li key={hit.path}>
                       <button
-                        className={`note-row${entry.path === currentPath ? " selected" : ""}`}
-                        onClick={() => void openNote(entry.path)}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          setNoteMenu({
-                            path: entry.path,
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
-                        }}
+                        className="search-hit"
+                        onClick={() =>
+                          void openNote(`${vaultRoot}/${hit.path}`)
+                        }
                       >
-                        <span className="note-row-title">
-                          {entry.pinned && <span className="pin-mark">📌</span>}
-                          {entry.label}
-                        </span>
-                        {entry.preview && (
-                          <span className="note-row-preview">
-                            {entry.preview}
-                          </span>
-                        )}
-                        <span className="note-row-stamp">
-                          {formatStamp(entry.mtimeMs)}
-                        </span>
+                        <span className="hit-title">{hit.title}</span>
+                        <span className="hit-snippet">{hit.snippet}</span>
                       </button>
                     </li>
                   ))}
+                  {hits.length === 0 && (
+                    <li className="no-hits">見つかりません</li>
+                  )}
                 </ul>
-              </div>
-            )}
-            {settings.treesVisible && searches.length > 0 && (
-              <details className="search-section" open>
-                <summary>保存した検索（{searches.length}）</summary>
-                <ul>
-                  {searches.map((entry) => (
-                    <li key={entry.name}>
+              ) : (
+                <div className="note-scroll">
+                  {tagFilter && (
+                    <div className="tag-filter-row">
+                      <span className="tag-filter-name">#{tagFilter}</span>
                       <button
-                        className="saved-search-row"
-                        title={entry.query}
-                        onClick={() => {
-                          // 結果は一覧ペイン側に出る。閉じたままだと
-                          // 押しても無反応に見える（レビュー 2026-09-04）
-                          if (!settingsRef.current.notesVisible) {
-                            changeSettings({ notesVisible: true });
-                          }
-                          handleQueryChanged(entry.query);
-                        }}
-                      >
-                        <span className="saved-search-name">{entry.name}</span>
-                      </button>
-                      <button
-                        className="saved-search-remove"
-                        title="この検索を外す"
-                        onClick={() =>
-                          keepSearches(removeSearch(searches, entry.name))
-                        }
+                        className="tag-filter-clear"
+                        onClick={() => filterByTag(null)}
+                        title="絞り込みを解除"
                       >
                         ✕
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {settings.treesVisible && (
-              <details className="folder-section" open={sideOpen === "folders"}>
-                <summary
-                  onClick={(event) => {
-                    event.preventDefault(); // 開閉はこちらで持つ（タグと排他）
-                    toggleSide("folders");
-                  }}
-                >
-                  フォルダ（{folders.length - 1}）
-                  <button
-                    className="folder-add"
-                    title={
-                      folderFilter
-                        ? `「${folderFilter}」の中に作る`
-                        : "保管フォルダの直下に作る"
-                    }
-                    onClick={(event) => {
-                      event.preventDefault(); // summary の開閉を巻き込まない
-                      event.stopPropagation();
-                      setFolderDialog({
-                        kind: "create",
-                        folder: folderFilter ?? "",
-                      });
-                    }}
-                  >
-                    ＋
-                  </button>
-                </summary>
-                <ul>
-                  {folders.map(({ folder, count }) => (
-                    <li key={folder || "."}>
+                    </div>
+                  )}
+                  {folderFilter !== null && (
+                    <div className="tag-filter-row">
+                      <span className="tag-filter-name">
+                        {folderFilter || "直下"}
+                      </span>
                       <button
-                        className={`folder-row${folder === folderFilter ? " selected" : ""}`}
-                        style={{
-                          paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
-                        }}
-                        onClick={() =>
-                          filterByFolder(
-                            folder === folderFilter ? null : folder,
-                          )
-                        }
+                        className="tag-filter-clear"
+                        onClick={() => filterByFolder(null)}
+                        title="絞り込みを解除"
                       >
-                        <span className="folder-name">
-                          {folderLabel(folder)}
-                        </span>
-                        <span className="folder-count">{count}</span>
+                        ✕
                       </button>
-                      {folder !== "" && folder === folderFilter && (
-                        <span className="folder-actions">
-                          <button
-                            onClick={() =>
-                              setFolderDialog({ kind: "rename", folder })
-                            }
-                          >
-                            名前を変更
-                          </button>
-                          <button
-                            onClick={() => void handleDeleteFolder(folder)}
-                          >
-                            削除
-                          </button>
-                        </span>
+                    </div>
+                  )}
+                  <div className="sort-row">
+                    <select
+                      value={sortOrder}
+                      onChange={(event) =>
+                        changeSort(event.currentTarget.value as SortOrder)
+                      }
+                    >
+                      <option value="modified">更新順</option>
+                      <option value="title">名前順</option>
+                    </select>
+                  </div>
+                  <ul>
+                    {(tagFilter || folderFilter !== null) &&
+                      sortedNotes.length === 0 && (
+                        <li className="no-hits">
+                          {tagFilter
+                            ? "このタグのノートはありません"
+                            : "このフォルダにノートはありません"}
+                        </li>
                       )}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {settings.treesVisible && tags.length > 0 && (
-              <details className="tag-section" open={sideOpen === "tags"}>
-                <summary
-                  onClick={(event) => {
-                    event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
-                    toggleSide("tags");
-                  }}
-                >
-                  タグ（{tags.length}）
-                </summary>
-                <ul>
-                  {tags.map(({ tag, count }) => (
-                    <li key={tag}>
-                      <button
-                        className={`tag-row${tag === tagFilter ? " selected" : ""}`}
-                        onClick={() =>
-                          filterByTag(tag === tagFilter ? null : tag)
-                        }
-                      >
-                        <span className="tag-name">#{tag}</span>
-                        <span className="tag-count">{count}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {settings.treesVisible && trashNotes.length > 0 && (
-              <details className="trash-section">
-                <summary>ゴミ箱（{trashNotes.length}）</summary>
-                <ul>
-                  {trashNotes.map((path) => (
-                    <li key={path} className="trash-item">
-                      <span>{trashLabel(vaultRoot, path)}</span>
-                      <button onClick={() => void handleRestore(path)}>
-                        戻す
-                      </button>
-                      <button
-                        className="danger"
-                        title="完全に削除"
-                        onClick={() => void handleDeleteForever(path)}
-                      >
-                        削除
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  className="danger trash-empty"
-                  onClick={() => void handleEmptyTrash()}
-                >
-                  ゴミ箱を空にする
-                </button>
-              </details>
-            )}
-          </aside>
-        )}
-        {/* 幅を掴む帯（spec §5.1）。**ペインの外に置く** — 中に入れると
-          一覧のスクロールに乗って、下までスクロールすると掴めなくなる */}
-        {leftVisible && (
-          <div
-            className="pane-resizer list"
-            title="幅を変える"
-            onPointerDown={(event) => startResize(event, "listWidth", 1)}
-          />
-        )}
-        {(outlineOpen || assistantOpen) && (
-          <div
-            className="pane-resizer outline"
-            title="幅を変える"
-            onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
-          />
-        )}
-        {headings !== null &&
-          (() => {
-            // クイックオープンと同じ絞り方（入口が増えても操作を覚え直さない）
-            // 空の見出し（`##` だけの行）も選べるようにする
-            const labels = headings.map(
-              (item) => item.text || "（無題の見出し）",
-            );
-            const ranked = rankCandidates(headingQuery, labels).slice(0, 30);
-            return (
-              <div
-                className="palette-backdrop"
-                onMouseDown={() => setHeadings(null)}
-              >
-                <div
-                  className="palette"
-                  onMouseDown={(event) => event.stopPropagation()}
-                >
-                  <input
-                    autoFocus
-                    className="palette-input"
-                    placeholder="見出しへ飛ぶ"
-                    value={headingQuery}
-                    onChange={(event) => {
-                      setHeadingQuery(event.currentTarget.value);
-                      setHeadingIndex(0);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") setHeadings(null);
-                      else if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        setHeadingIndex((i) =>
-                          Math.min(i + 1, ranked.length - 1),
-                        );
-                      } else if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        setHeadingIndex((i) => Math.max(i - 1, 0));
-                      } else if (event.key === "Enter") {
-                        event.preventDefault();
-                        jumpToHeading(headings[ranked[headingIndex] ?? -1]);
-                      }
-                    }}
-                  />
-                  <ul>
-                    {ranked.map((headingIdx, rankedIndex) => (
-                      <li key={`${headings[headingIdx].from}`}>
+                    {sortedNotes.map((entry) => (
+                      <li key={entry.path}>
                         <button
-                          className={
-                            rankedIndex === headingIndex ? "selected" : ""
-                          }
-                          // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
-                          style={{
-                            paddingLeft: `${0.5 + (headings[headingIdx].level - 1) * 0.9}rem`,
+                          className={`note-row${entry.path === currentPath ? " selected" : ""}`}
+                          onClick={() => void openNote(entry.path)}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setNoteMenu({
+                              path: entry.path,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
                           }}
-                          onMouseEnter={() => setHeadingIndex(rankedIndex)}
-                          onClick={() => jumpToHeading(headings[headingIdx])}
                         >
-                          {labels[headingIdx]}
-                        </button>
-                      </li>
-                    ))}
-                    {ranked.length === 0 && (
-                      <li className="no-hits">見つかりません</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            );
-          })()}
-        {quickOpen &&
-          (() => {
-            const labels = notes.map((entry) => entry.label);
-            const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
-            const choose = (rankedIndex: number) => {
-              const noteIndex = ranked[rankedIndex];
-              if (noteIndex === undefined) return;
-              setQuickOpen(false);
-              void openNote(notes[noteIndex].path);
-            };
-            return (
-              <div
-                className="palette-backdrop"
-                onMouseDown={() => setQuickOpen(false)}
-              >
-                <div
-                  className="palette"
-                  onMouseDown={(event) => event.stopPropagation()}
-                >
-                  <input
-                    autoFocus
-                    className="palette-input"
-                    placeholder="ノート名で開く"
-                    value={paletteQuery}
-                    onChange={(event) => {
-                      setPaletteQuery(event.currentTarget.value);
-                      setPaletteIndex(0);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") setQuickOpen(false);
-                      else if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        setPaletteIndex((i) =>
-                          Math.min(i + 1, ranked.length - 1),
-                        );
-                      } else if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        setPaletteIndex((i) => Math.max(i - 1, 0));
-                      } else if (event.key === "Enter") {
-                        event.preventDefault();
-                        choose(paletteIndex);
-                      }
-                    }}
-                  />
-                  <ul>
-                    {ranked.map((noteIndex, rankedIndex) => (
-                      <li key={notes[noteIndex].path}>
-                        <button
-                          className={
-                            rankedIndex === paletteIndex ? "selected" : ""
-                          }
-                          onMouseEnter={() => setPaletteIndex(rankedIndex)}
-                          onClick={() => choose(rankedIndex)}
-                        >
-                          {labels[noteIndex]}
-                        </button>
-                      </li>
-                    ))}
-                    {ranked.length === 0 && (
-                      <li className="no-hits">見つかりません</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            );
-          })()}
-        <section className="editor-pane">
-          {doc !== null && currentPath !== null ? (
-            <>
-              {/* 題名の行は本文と同じ幅で中央に置くので、区切り線は
-                  外側の帯に引く（線だけが短いと途中で切れて見える） */}
-              <div className="note-header-bar">
-                <header className="note-header">
-                  <input
-                    key={currentPath}
-                    className="title-input"
-                    defaultValue={noteStem(currentPath)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
-                        event.currentTarget.blur();
-                      }
-                    }}
-                    onBlur={(event) =>
-                      void handleRename(event.currentTarget.value)
-                    }
-                  />
-                </header>
-                {/* 操作はアイコンでペインの右端に寄せる（題名の 46rem 幅とは
-                    独立。ユーザー要望 2026-09-04）。並びは
-                    ピン → 書き出し → 履歴 → ゴミ箱 → ソース表示切替 */}
-                <div
-                  className="note-actions"
-                  role="group"
-                  aria-label="ノートの操作"
-                >
-                  {(() => {
-                    const pinned = notes.find(
-                      (entry) => entry.path === currentPath,
-                    )?.pinned;
-                    return (
-                      <button
-                        className={pinned ? "selected" : ""}
-                        title={
-                          pinned ? "ピンを外す" : "ピン留め（一覧の先頭に固定）"
-                        }
-                        aria-pressed={pinned}
-                        onClick={() => void handlePin()}
-                      >
-                        <svg viewBox="0 0 16 16" aria-hidden="true">
-                          <path
-                            d="M9.5 2 14 6.5l-3 1-2.5 4.5L4 7.5 8.5 5l1-3Z"
-                            fill={pinned ? "currentColor" : "none"}
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M6 10 2.5 13.5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </button>
-                    );
-                  })()}
-                  <button
-                    title="HTML に書き出し"
-                    onClick={() => void handleExport()}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M8 10V2.5M5 5l3-3 3 3M3 9.5v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  <button title="版の履歴" onClick={() => void openHistory()}>
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle
-                        cx="8"
-                        cy="8"
-                        r="5.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                      />
-                      <path
-                        d="M8 5v3.2l2.2 1.4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    title="ゴミ箱へ移動"
-                    onClick={() => void handleTrash()}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M3 4.5h10M6.5 4.5v-1a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M4.5 4.5l.7 8a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8M6.7 7v4M9.3 7v4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    className={sourceMode ? "selected" : ""}
-                    title={
-                      sourceMode
-                        ? "通常表示に戻す（Cmd+/）"
-                        : "ソース表示（Cmd+/）"
-                    }
-                    aria-pressed={sourceMode}
-                    onClick={() =>
-                      editorRef.current?.setSourceMode(!sourceMode)
-                    }
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <Editor
-                key={currentPath}
-                ref={editorRef}
-                initialDoc={doc}
-                onDocChanged={handleDocChanged}
-                resolveImage={(url) => imageSource(vaultRoot, url)}
-                onActivate={(action) => void handleActivate(action)}
-                onCursorChanged={(pos) => {
-                  if (outlineOpenRef.current) setCursorPos(pos);
-                }}
-                saveAttachment={(data, name) =>
-                  saveAttachment(vaultRoot, data, name)
-                }
-                // 索引の持つタグを補完に出す。ストアから直に読む（tags を
-                // props で渡すと、タグが増えるたびにエディタが作り直される）
-                knownTags={() =>
-                  useAppStore.getState().tags.map((entry) => entry.tag)
-                }
-                // `[[` 補完の候補。題名はファイル名の幹（ADR-0005）なので
-                // 一覧から作れる（打鍵ごとに Rust を呼ばない）
-                knownNotes={() =>
-                  useAppStore
-                    .getState()
-                    .notes.map((entry) => noteStem(entry.path))
-                }
-                initialCursor={initialCursor}
-                diagramTheme={diagramTheme}
-                sourceMode={sourceMode}
-                onSourceModeChanged={setSourceMode}
-              />
-            </>
-          ) : (
-            <p className="placeholder">ノートを選んでください</p>
-          )}
-          {backlinks.length > 0 && (
-            <details className="backlink-bar">
-              <summary>バックリンク（{backlinks.length}）</summary>
-              <ul>
-                {backlinks.map((entry) => (
-                  <li key={entry.path}>
-                    <button
-                      onClick={() =>
-                        void openNote(`${vaultRoot}/${entry.path}`)
-                      }
-                    >
-                      <span className="backlink-title">
-                        {entry.title}
-                        {/* 続柄（M-3）。付いているものだけ出す */}
-                        {entry.relation && (
-                          <span className="backlink-relation">
-                            {entry.relation}
+                          <span className="note-row-title">
+                            {entry.pinned && (
+                              <span className="pin-mark">📌</span>
+                            )}
+                            {entry.label}
                           </span>
-                        )}
-                      </span>
-                      <span className="backlink-context">{entry.context}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-          <footer className="status-bar">
-            <span className="status-message">{status}</span>
-            <span className="status-stats">
-              {stats.characters} 文字 / {stats.lines} 行
-              {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
-            </span>
-          </footer>
-        </section>
-        {templates !== null && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setTemplates(null)}
-          >
-            <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setTemplates(null);
-                else if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setTemplateIndex((i) =>
-                    Math.min(i + 1, templates.length - 1),
-                  );
-                } else if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setTemplateIndex((i) => Math.max(i - 1, 0));
-                } else if (event.key === "Enter") {
-                  event.preventDefault();
-                  const chosen = templates[templateIndex];
-                  if (chosen) void handleCreateFromTemplate(chosen);
-                }
-              }}
-            >
-              <header className="palette-title">テンプレートを選ぶ</header>
-              <ul>
-                {templates.map((path, index) => (
-                  <li key={path}>
-                    <button
-                      autoFocus={index === 0}
-                      className={index === templateIndex ? "selected" : ""}
-                      onMouseEnter={() => setTemplateIndex(index)}
-                      onClick={() => void handleCreateFromTemplate(path)}
-                    >
-                      {noteStem(path)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-        {folderDialog !== null && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setFolderDialog(null)}
-          >
-            <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">
-                {folderDialog.kind === "create"
-                  ? folderDialog.folder
-                    ? `「${folderDialog.folder}」の中に新しいフォルダ`
-                    : "新しいフォルダ"
-                  : `「${folderDialog.folder}」の名前を変更`}
-              </header>
-              <div className="table-dialog-fields">
-                <label>
-                  名前
-                  <input
-                    ref={folderName}
-                    autoFocus
-                    defaultValue={
-                      folderDialog.kind === "rename"
-                        ? folderLabel(folderDialog.folder)
-                        : ""
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void confirmFolderName();
-                      else if (event.key === "Escape") setFolderDialog(null);
-                    }}
-                  />
-                </label>
-              </div>
-              <div className="conflict-actions">
-                <button onClick={() => setFolderDialog(null)}>やめる</button>
-                <button onClick={() => void confirmFolderName()}>決定</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {moveOpen && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setMoveOpen(false)}
-          >
-            <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">フォルダへ移動</header>
-              <ul>
-                {folders.map(({ folder }) => (
-                  <li key={folder || "."}>
-                    <button
-                      style={{
-                        paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
-                      }}
-                      onClick={() => void handleMoveNote(folder)}
-                    >
-                      {folderLabel(folder)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-        {preferences && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setPreferences(false)}
-          >
-            <div
-              className="palette preferences"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">環境設定</header>
-              <div
-                className="pref-tabs"
-                role="tablist"
-                aria-label="設定のページ"
-              >
-                <button
-                  role="tab"
-                  aria-selected={prefTab === "general"}
-                  className={prefTab === "general" ? "selected" : ""}
-                  onClick={() => setPrefTab("general")}
-                >
-                  一般
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={prefTab === "assistant"}
-                  className={prefTab === "assistant" ? "selected" : ""}
-                  onClick={() => setPrefTab("assistant")}
-                >
-                  アシスタント
-                </button>
-              </div>
-              {prefTab === "general" ? (
-                <div className="pref-page">
-                  <h3 className="pref-section">本文の見え方</h3>
-                  <p className="pref-note">
-                    エディタに出る文字の形と幅。開いているノートにすぐ反映されます。
-                  </p>
-                  <div className="preferences-fields">
-                    <label>
-                      <span>本文フォント</span>
-                      <input
-                        list="body-fonts"
-                        value={settings.bodyFont}
-                        placeholder="システムの既定"
-                        onChange={(event) =>
-                          changeSettings({
-                            bodyFont: event.currentTarget.value,
-                          })
-                        }
-                      />
-                      <datalist id="body-fonts">
-                        {BODY_FONT_CHOICES.map((font) => (
-                          <option key={font} value={font} />
-                        ))}
-                      </datalist>
-                    </label>
-                    <label>
-                      <span>文字サイズ</span>
-                      <span className="pref-unit-row">
-                        <input
-                          type="number"
-                          min={MIN_FONT_PX}
-                          max={MAX_FONT_PX}
-                          value={fontSize}
-                          onChange={(event) =>
-                            changeFontSize(Number(event.currentTarget.value))
-                          }
-                        />
-                        <span className="pref-unit">px</span>
-                      </span>
-                    </label>
-                    <label>
-                      <span>等幅フォント</span>
-                      <input
-                        list="mono-fonts"
-                        value={settings.monoFont}
-                        placeholder="既定の等幅"
-                        onChange={(event) =>
-                          changeSettings({
-                            monoFont: event.currentTarget.value,
-                          })
-                        }
-                      />
-                      <datalist id="mono-fonts">
-                        {MONO_FONT_CHOICES.map((font) => (
-                          <option key={font} value={font} />
-                        ))}
-                      </datalist>
-                    </label>
-                    <label>
-                      <span>本文の幅</span>
-                      <select
-                        value={settings.contentWidth}
-                        onChange={(event) =>
-                          changeSettings({
-                            contentWidth: event.currentTarget
-                              .value as ContentWidth,
-                          })
-                        }
-                      >
-                        {CONTENT_WIDTHS.map((width) => (
-                          <option key={width} value={width}>
-                            {WIDTH_LABELS[width]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>タブ幅</span>
-                      <span className="pref-unit-row">
-                        <select
-                          value={settings.tabWidth}
-                          onChange={(event) =>
-                            changeSettings({
-                              tabWidth: Number(event.currentTarget.value),
-                            })
-                          }
-                        >
-                          {TAB_WIDTHS.map((width) => (
-                            <option key={width} value={width}>
-                              {width}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="pref-unit">文字</span>
-                      </span>
-                    </label>
-                    <label>
-                      <span>字下げ</span>
-                      <span className="pref-check">
-                        <input
-                          type="checkbox"
-                          checked={settings.indentedCode}
-                          onChange={(event) =>
-                            changeSettings({
-                              indentedCode: event.currentTarget.checked,
-                            })
-                          }
-                        />
-                        4 文字の字下げでコードブロックとする
-                      </span>
-                    </label>
-                  </div>
-                  <h3 className="pref-section">ウィンドウ</h3>
-                  <p className="pref-note">
-                    アプリ全体の配色と、一覧やサイドバーの詰まり具合。
-                  </p>
-                  <div className="preferences-fields">
-                    <label>
-                      <span>テーマ</span>
-                      <select
-                        value={settings.theme}
-                        onChange={(event) =>
-                          changeSettings({
-                            theme: event.currentTarget.value as Theme,
-                          })
-                        }
-                      >
-                        {THEMES.map((theme) => (
-                          <option key={theme} value={theme}>
-                            {THEME_LABELS[theme]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>行間</span>
-                      <select
-                        value={settings.lineSpacing}
-                        onChange={(event) =>
-                          changeSettings({
-                            lineSpacing: event.currentTarget
-                              .value as LineSpacing,
-                          })
-                        }
-                      >
-                        {LINE_SPACINGS.map((spacing) => (
-                          <option key={spacing} value={spacing}>
-                            {SPACING_LABELS[spacing]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <h3 className="pref-section">ノートの置き場所</h3>
-                  <p className="pref-note">
-                    .md
-                    ファイルを読み書きするフォルダ。変えても中のファイルは移動しません。
-                  </p>
-                  <div className="preferences-fields">
-                    <label>
-                      <span>保管フォルダ</span>
-                      <span className="pref-vault-row">
-                        <input value={vaultRoot ?? ""} readOnly />
-                        <button onClick={() => void chooseVault()}>
-                          変更…
+                          {entry.preview && (
+                            <span className="note-row-preview">
+                              {entry.preview}
+                            </span>
+                          )}
+                          <span className="note-row-stamp">
+                            {formatStamp(entry.mtimeMs)}
+                          </span>
                         </button>
-                      </span>
-                    </label>
-                    <label>
-                      <span>ゴミ箱の保持</span>
-                      <span className="pref-unit-row">
-                        <input
-                          type="number"
-                          min={MIN_TRASH_DAYS}
-                          max={MAX_TRASH_DAYS}
-                          value={settings.trashDays}
-                          onChange={(event) =>
-                            changeSettings({
-                              trashDays: Number(event.currentTarget.value),
-                            })
-                          }
-                        />
-                        <span className="pref-unit">日</span>
-                      </span>
-                    </label>
-                    <label>
-                      <span>履歴を残す間隔</span>
-                      <select
-                        value={settings.historyMinutes}
-                        onChange={(event) =>
-                          changeSettings({
-                            historyMinutes: Number(event.currentTarget.value),
-                          })
-                        }
-                      >
-                        {HISTORY_CHOICES.map((minutes) => (
-                          <option key={minutes} value={minutes}>
-                            {minutes === 0 ? "なし" : `${minutes} 分`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>履歴の使用量</span>
-                      <span className="pref-static">
-                        {historyUsage === null
-                          ? "計算中…"
-                          : formatBytes(historyUsage)}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <div className="pref-page">
-                  <h3 className="pref-section">ローカルLLM</h3>
-                  <p className="pref-note">
-                    Ollama に繋いで、要約やレビューを頼みます。送り先は
-                    127.0.0.1 に固定です（ノートは外へ出ません）。
-                  </p>
-                  <div className="preferences-fields">
-                    <label>
-                      <span>モデル</span>
-                      <input
-                        value={settings.llmModel}
-                        placeholder="gemma3:4b"
-                        onChange={(event) =>
-                          changeSettings({
-                            llmModel: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>ポート</span>
-                      <span className="pref-unit-row">
-                        <input
-                          type="number"
-                          min={1}
-                          max={65535}
-                          value={settings.llmPort}
-                          onChange={(event) =>
-                            changeSettings({
-                              llmPort: Number(event.currentTarget.value),
-                            })
-                          }
-                        />
-                        <span className="pref-unit">
-                          （送り先は 127.0.0.1 に固定）
-                        </span>
-                      </span>
-                    </label>
-                    <label>
-                      <span>一度に渡す量</span>
-                      <select
-                        value={settings.llmContext}
-                        onChange={(event) =>
-                          changeSettings({
-                            llmContext: Number(event.currentTarget.value),
-                          })
-                        }
-                      >
-                        {CONTEXT_CHOICES.map((tokens) => (
-                          <option key={tokens} value={tokens}>
-                            {tokens / 1024}k トークン
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>応答待ち時間</span>
-                      <span className="pref-unit-row">
-                        <input
-                          type="number"
-                          min={1}
-                          max={60}
-                          value={settings.llmTimeoutMinutes}
-                          onChange={(event) =>
-                            changeSettings({
-                              llmTimeoutMinutes: Number(
-                                event.currentTarget.value,
-                              ),
-                            })
-                          }
-                        />
-                        <span className="pref-unit">分</span>
-                      </span>
-                    </label>
-                    <label>
-                      <span>モデルを残す時間</span>
-                      <select
-                        value={settings.llmKeepAlive}
-                        onChange={(event) =>
-                          changeSettings({
-                            llmKeepAlive: event.currentTarget.value,
-                          })
-                        }
-                      >
-                        {KEEP_ALIVE_CHOICES.map((value) => (
-                          <option key={value} value={value}>
-                            {value === "0"
-                              ? "すぐ降ろす"
-                              : value.replace("m", " 分")}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <h3 className="pref-section">画像とPDF</h3>
-                  <p className="pref-note">
-                    取り込んだ画像や PDF
-                    から、絵の中の文字を起こすときに使うもの。
-                  </p>
-                  <div className="preferences-fields">
-                    <label>
-                      <span>文字の読み取り</span>
-                      <select value="mac" onChange={() => {}}>
-                        <option value="mac">macOS（デフォルト）</option>
-                      </select>
-                    </label>
-                  </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-              <div className="pref-actions">
-                <button onClick={resetPreferences}>デフォルトに戻す</button>
-                <span className="pref-actions-right">
-                  <button onClick={cancelPreferences}>キャンセル</button>
-                  <button
-                    className="primary"
-                    onClick={() => setPreferences(false)}
-                  >
-                    OK
-                  </button>
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-        {tableDialog && (
-          <div
-            className="palette-backdrop"
-            onClick={() => setTableDialog(false)}
-          >
-            <div
-              className="palette"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">表を挿入</header>
-              <div className="table-dialog-fields">
-                <label>
-                  行（見出しを除く）
-                  <input
-                    ref={tableRows}
-                    type="number"
-                    min={1}
-                    max={50}
-                    defaultValue={2}
-                  />
-                </label>
-                <label>
-                  列
-                  <input
-                    ref={tableColumns}
-                    type="number"
-                    min={1}
-                    max={20}
-                    defaultValue={2}
-                  />
-                </label>
-              </div>
-              <div className="conflict-actions">
-                <button onClick={() => setTableDialog(false)}>やめる</button>
-                <button onClick={confirmInsertTable}>挿入</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {recovery > 0 && (
-          <div className="palette-backdrop">
-            <div className="palette">
-              <header className="palette-title">
-                保存されていない変更が見つかりました
-              </header>
-              <p className="dialog-text">
-                前回終了したときに保存されていない変更が {recovery} 件あります。
-                別のファイルとして復元しますか？（今あるノートは書き換えません）
-              </p>
-              <div className="conflict-actions">
-                <button onClick={() => void handleRecovery(false)}>
-                  復元しない
-                </button>
-                <button onClick={() => void handleRecovery(true)}>
-                  復元する
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {noteMenu !== null &&
-          (() => {
-            const target = noteMenu.path;
-            const pinned = notes.find((entry) => entry.path === target)?.pinned;
-            const run = (action: () => void) => () => {
-              setNoteMenu(null);
-              action();
-            };
-            return (
-              <div
-                className="menu-backdrop"
-                onMouseDown={() => setNoteMenu(null)}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setNoteMenu(null);
-                }}
-              >
-                <ul
-                  className="context-menu"
-                  // 窓の端で押されても外へはみ出さない（下の行が多い）
-                  style={{
-                    left: Math.min(noteMenu.x, window.innerWidth - 220),
-                    top: Math.min(noteMenu.y, window.innerHeight - 280),
-                  }}
-                  onMouseDown={(event) => event.stopPropagation()}
+              {settings.treesVisible && searches.length > 0 && (
+                <details className="search-section" open>
+                  <summary>保存した検索（{searches.length}）</summary>
+                  <ul>
+                    {searches.map((entry) => (
+                      <li key={entry.name}>
+                        <button
+                          className="saved-search-row"
+                          title={entry.query}
+                          onClick={() => {
+                            // 結果は一覧ペイン側に出る。閉じたままだと
+                            // 押しても無反応に見える（レビュー 2026-09-04）
+                            if (!settingsRef.current.notesVisible) {
+                              changeSettings({ notesVisible: true });
+                            }
+                            handleQueryChanged(entry.query);
+                          }}
+                        >
+                          <span className="saved-search-name">
+                            {entry.name}
+                          </span>
+                        </button>
+                        <button
+                          className="saved-search-remove"
+                          title="この検索を外す"
+                          onClick={() =>
+                            keepSearches(removeSearch(searches, entry.name))
+                          }
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {settings.treesVisible && (
+                <details
+                  className="folder-section"
+                  open={sideOpen === "folders"}
                 >
-                  <li>
-                    <button onClick={run(() => void handlePin(target))}>
-                      {pinned ? "ピンを外す" : "ピン留め"}
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => void handleDuplicate(target))}>
-                      複製
-                    </button>
-                  </li>
-                  <li>
+                  <summary
+                    onClick={(event) => {
+                      event.preventDefault(); // 開閉はこちらで持つ（タグと排他）
+                      toggleSide("folders");
+                    }}
+                  >
+                    フォルダ（{folders.length - 1}）
                     <button
-                      onClick={run(() => {
-                        setMoveTarget(target);
-                        setMoveOpen(true);
-                      })}
-                    >
-                      フォルダへ移動…
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => setTemplateName(target))}>
-                      テンプレートに登録…
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  <li>
-                    <button onClick={run(() => void copyNoteLink(target))}>
-                      リンクをコピー
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => void revealItemInDir(target))}>
-                      Finder で表示
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  <li>
-                    {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
-                    <button
-                      className="danger"
-                      disabled={pinned}
+                      className="folder-add"
                       title={
-                        pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
+                        folderFilter
+                          ? `「${folderFilter}」の中に作る`
+                          : "保管フォルダの直下に作る"
                       }
-                      onClick={run(() => void handleTrash(target))}
-                    >
-                      ゴミ箱へ移動
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            );
-          })()}
-        {styleFindings !== null && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setStyleFindings(null)}
-          >
-            <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">
-                文体を見る（{styleFindings.length} 件）
-              </header>
-              <ul>
-                {styleFindings.map((found) => (
-                  <li key={`${found.start}-${found.kind}`}>
-                    <button
-                      onClick={() => {
-                        setStyleFindings(null);
-                        editorRef.current?.revealPos(found.start);
+                      onClick={(event) => {
+                        event.preventDefault(); // summary の開閉を巻き込まない
+                        event.stopPropagation();
+                        setFolderDialog({
+                          kind: "create",
+                          folder: folderFilter ?? "",
+                        });
                       }}
                     >
-                      <span className="style-text">
-                        {(editorRef.current?.getText() ?? "").slice(
-                          found.start,
-                          found.start + found.length,
-                        ) || "（空白）"}
-                      </span>
-                      {/* **どう書けるか**を出す（何が悪いかだけでは動けない） */}
-                      <span className="style-message">{found.message}</span>
+                      ＋
                     </button>
-                  </li>
-                ))}
-              </ul>
-              <p className="dialog-text">
-                指摘するだけで、直しはしません。書き換えるかどうかは
-                書いた人が決めます。
-              </p>
-            </div>
-          </div>
-        )}
-        {graph !== null && (
-          <div className="palette-backdrop" onMouseDown={() => setGraph(null)}>
-            <div
-              className="palette graph-dialog"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">リンクの図</header>
-              <div
-                className="graph-canvas"
-                dangerouslySetInnerHTML={{ __html: graph.svg }}
-              />
-              <p className="dialog-text">
-                {/* **黙って減らさない**（上限で落ちたぶんを言う） */}
-                {graph.dropped > 0
-                  ? `多いので ${graph.dropped} 件を省いています。`
-                  : "開いているノートから辿れる範囲です。"}
-              </p>
-              <div className="conflict-actions">
-                <button
-                  disabled={graphDepth <= 1}
-                  onClick={() => void showLinkGraph(graphDepth - 1)}
-                >
-                  狭く
-                </button>
-                <button
-                  disabled={graphDepth >= 4}
-                  onClick={() => void showLinkGraph(graphDepth + 1)}
-                >
-                  広く（{graphDepth} 段）
-                </button>
-                <button onClick={() => setGraph(null)}>閉じる</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {savingSearch !== null && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setSavingSearch(null)}
-          >
-            <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">検索を保存</header>
-              <div className="table-dialog-fields">
-                <label>
-                  サイドバーに出す名前
-                  <input
-                    ref={searchName}
-                    autoFocus
-                    // 既定は式そのもの（短い式ならそのまま通せる）
-                    defaultValue={savingSearch}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") confirmSaveSearch();
-                      else if (event.key === "Escape") setSavingSearch(null);
+                  </summary>
+                  <ul>
+                    {folders.map(({ folder, count }) => (
+                      <li key={folder || "."}>
+                        <button
+                          className={`folder-row${folder === folderFilter ? " selected" : ""}`}
+                          style={{
+                            paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                          }}
+                          onClick={() =>
+                            filterByFolder(
+                              folder === folderFilter ? null : folder,
+                            )
+                          }
+                        >
+                          <span className="folder-name">
+                            {folderLabel(folder)}
+                          </span>
+                          <span className="folder-count">{count}</span>
+                        </button>
+                        {folder !== "" && folder === folderFilter && (
+                          <span className="folder-actions">
+                            <button
+                              onClick={() =>
+                                setFolderDialog({ kind: "rename", folder })
+                              }
+                            >
+                              名前を変更
+                            </button>
+                            <button
+                              onClick={() => void handleDeleteFolder(folder)}
+                            >
+                              削除
+                            </button>
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {settings.treesVisible && tags.length > 0 && (
+                <details className="tag-section" open={sideOpen === "tags"}>
+                  <summary
+                    onClick={(event) => {
+                      event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
+                      toggleSide("tags");
                     }}
-                  />
-                </label>
-              </div>
-              <p className="dialog-text">検索式: {savingSearch}</p>
-              <div className="conflict-actions">
-                <button onClick={() => setSavingSearch(null)}>やめる</button>
-                <button onClick={confirmSaveSearch}>保存</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {templateName !== null && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setTemplateName(null)}
-          >
+                  >
+                    タグ（{tags.length}）
+                  </summary>
+                  <ul>
+                    {tags.map(({ tag, count }) => (
+                      <li key={tag}>
+                        <button
+                          className={`tag-row${tag === tagFilter ? " selected" : ""}`}
+                          onClick={() =>
+                            filterByTag(tag === tagFilter ? null : tag)
+                          }
+                        >
+                          <span className="tag-name">#{tag}</span>
+                          <span className="tag-count">{count}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {settings.treesVisible && trashNotes.length > 0 && (
+                <details className="trash-section">
+                  <summary>ゴミ箱（{trashNotes.length}）</summary>
+                  <ul>
+                    {trashNotes.map((path) => (
+                      <li key={path} className="trash-item">
+                        <span>{trashLabel(vaultRoot, path)}</span>
+                        <button onClick={() => void handleRestore(path)}>
+                          戻す
+                        </button>
+                        <button
+                          className="danger"
+                          title="完全に削除"
+                          onClick={() => void handleDeleteForever(path)}
+                        >
+                          削除
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className="danger trash-empty"
+                    onClick={() => void handleEmptyTrash()}
+                  >
+                    ゴミ箱を空にする
+                  </button>
+                </details>
+              )}
+            </aside>
+          )}
+          {/* 幅を掴む帯（spec §5.1）。**ペインの外に置く** — 中に入れると
+          一覧のスクロールに乗って、下までスクロールすると掴めなくなる */}
+          {leftVisible && (
             <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">テンプレートに登録</header>
-              <div className="table-dialog-fields">
-                <label>
-                  名前
-                  <input
-                    ref={templateInput}
-                    autoFocus
-                    defaultValue={noteStem(templateName)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void confirmRegisterTemplate();
-                      else if (event.key === "Escape") setTemplateName(null);
-                    }}
-                  />
-                </label>
-              </div>
-              <p className="dialog-text">
-                見出しは {"{{title}}"} に置き換わります（この雛形から作った
-                ノートには新しい題名が入ります）。
-              </p>
-              <div className="conflict-actions">
-                <button onClick={() => setTemplateName(null)}>やめる</button>
-                <button onClick={() => void confirmRegisterTemplate()}>
-                  登録
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {deleted !== null && (
-          <div className="palette-backdrop">
-            <div className="palette">
-              <header className="palette-title">
-                ファイルが削除されました
-              </header>
-              <p className="dialog-text">
-                「{noteStem(deleted)}」は外部で削除されました。
-                編集中の内容で作り直しますか？
-              </p>
-              <div className="conflict-actions">
-                <button onClick={closeDeleted}>閉じる</button>
-                <button onClick={() => void recreateDeleted()}>作り直す</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {conflict !== null && (
-          <div className="palette-backdrop">
-            <div className="palette">
-              <header className="palette-title">
-                このノートは外部でも変更されています。どうしますか？
-              </header>
-              <div className="conflict-actions">
-                <button onClick={() => void resolveConflict("external")}>
-                  外部の変更を採用（自分の編集を捨てる）
-                </button>
-                <button onClick={() => void resolveConflict("mine")}>
-                  自分の版で上書き（外部の変更を捨てる）
-                </button>
-                <button onClick={() => void resolveConflict("both")}>
-                  両方残す（自分の版を「名前 (競合 日付)」に保存）
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {historyEntries !== null && (
-          <div
-            className="palette-backdrop"
-            onMouseDown={() => setHistoryEntries(null)}
-          >
+              className="pane-resizer list"
+              title="幅を変える"
+              onPointerDown={(event) => startResize(event, "listWidth", 1)}
+            />
+          )}
+          {(outlineOpen || assistantOpen) && (
             <div
-              className="palette"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <header className="palette-title">
-                版の履歴（新しい順・戻す前に今の内容も残ります）
-              </header>
-              <ul>
-                {historyEntries.map((entry) => (
-                  <li key={entry.path} className="history-row">
-                    <span>{entry.stamp}</span>
-                    <button onClick={() => void restoreVersion(entry)}>
-                      戻す
+              className="pane-resizer outline"
+              title="幅を変える"
+              onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
+            />
+          )}
+          {headings !== null &&
+            (() => {
+              // クイックオープンと同じ絞り方（入口が増えても操作を覚え直さない）
+              // 空の見出し（`##` だけの行）も選べるようにする
+              const labels = headings.map(
+                (item) => item.text || "（無題の見出し）",
+              );
+              const ranked = rankCandidates(headingQuery, labels).slice(0, 30);
+              return (
+                <div
+                  className="palette-backdrop"
+                  onMouseDown={() => setHeadings(null)}
+                >
+                  <div
+                    className="palette"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      autoFocus
+                      className="palette-input"
+                      placeholder="見出しへ飛ぶ"
+                      value={headingQuery}
+                      onChange={(event) => {
+                        setHeadingQuery(event.currentTarget.value);
+                        setHeadingIndex(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setHeadings(null);
+                        else if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          setHeadingIndex((i) =>
+                            Math.min(i + 1, ranked.length - 1),
+                          );
+                        } else if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          setHeadingIndex((i) => Math.max(i - 1, 0));
+                        } else if (event.key === "Enter") {
+                          event.preventDefault();
+                          jumpToHeading(headings[ranked[headingIndex] ?? -1]);
+                        }
+                      }}
+                    />
+                    <ul>
+                      {ranked.map((headingIdx, rankedIndex) => (
+                        <li key={`${headings[headingIdx].from}`}>
+                          <button
+                            className={
+                              rankedIndex === headingIndex ? "selected" : ""
+                            }
+                            // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
+                            style={{
+                              paddingLeft: `${0.5 + (headings[headingIdx].level - 1) * 0.9}rem`,
+                            }}
+                            onMouseEnter={() => setHeadingIndex(rankedIndex)}
+                            onClick={() => jumpToHeading(headings[headingIdx])}
+                          >
+                            {labels[headingIdx]}
+                          </button>
+                        </li>
+                      ))}
+                      {ranked.length === 0 && (
+                        <li className="no-hits">見つかりません</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })()}
+          {quickOpen &&
+            (() => {
+              const labels = notes.map((entry) => entry.label);
+              const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
+              const choose = (rankedIndex: number) => {
+                const noteIndex = ranked[rankedIndex];
+                if (noteIndex === undefined) return;
+                setQuickOpen(false);
+                void openNote(notes[noteIndex].path);
+              };
+              return (
+                <div
+                  className="palette-backdrop"
+                  onMouseDown={() => setQuickOpen(false)}
+                >
+                  <div
+                    className="palette"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      autoFocus
+                      className="palette-input"
+                      placeholder="ノート名で開く"
+                      value={paletteQuery}
+                      onChange={(event) => {
+                        setPaletteQuery(event.currentTarget.value);
+                        setPaletteIndex(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setQuickOpen(false);
+                        else if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          setPaletteIndex((i) =>
+                            Math.min(i + 1, ranked.length - 1),
+                          );
+                        } else if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          setPaletteIndex((i) => Math.max(i - 1, 0));
+                        } else if (event.key === "Enter") {
+                          event.preventDefault();
+                          choose(paletteIndex);
+                        }
+                      }}
+                    />
+                    <ul>
+                      {ranked.map((noteIndex, rankedIndex) => (
+                        <li key={notes[noteIndex].path}>
+                          <button
+                            className={
+                              rankedIndex === paletteIndex ? "selected" : ""
+                            }
+                            onMouseEnter={() => setPaletteIndex(rankedIndex)}
+                            onClick={() => choose(rankedIndex)}
+                          >
+                            {labels[noteIndex]}
+                          </button>
+                        </li>
+                      ))}
+                      {ranked.length === 0 && (
+                        <li className="no-hits">見つかりません</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })()}
+          <section className="editor-pane">
+            {doc !== null && currentPath !== null ? (
+              <>
+                {/* 題名の行は本文と同じ幅で中央に置くので、区切り線は
+                  外側の帯に引く（線だけが短いと途中で切れて見える） */}
+                <div className="note-header-bar">
+                  <header className="note-header">
+                    <input
+                      key={currentPath}
+                      className="title-input"
+                      defaultValue={noteStem(currentPath)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onBlur={(event) =>
+                        void handleRename(event.currentTarget.value)
+                      }
+                    />
+                  </header>
+                  {/* 操作はアイコンでペインの右端に寄せる（題名の 46rem 幅とは
+                    独立。ユーザー要望 2026-09-04）。並びは
+                    ピン → 書き出し → 履歴 → ゴミ箱 → ソース表示切替 */}
+                  <div
+                    className="note-actions"
+                    role="group"
+                    aria-label="ノートの操作"
+                  >
+                    {(() => {
+                      const pinned = notes.find(
+                        (entry) => entry.path === currentPath,
+                      )?.pinned;
+                      return (
+                        <button
+                          className={pinned ? "selected" : ""}
+                          title={
+                            pinned
+                              ? "ピンを外す"
+                              : "ピン留め（一覧の先頭に固定）"
+                          }
+                          aria-pressed={pinned}
+                          onClick={() => void handlePin()}
+                        >
+                          <svg viewBox="0 0 16 16" aria-hidden="true">
+                            <path
+                              d="M9.5 2 14 6.5l-3 1-2.5 4.5L4 7.5 8.5 5l1-3Z"
+                              fill={pinned ? "currentColor" : "none"}
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M6 10 2.5 13.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </button>
+                      );
+                    })()}
+                    <button
+                      title="HTML に書き出し"
+                      onClick={() => void handleExport()}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M8 10V2.5M5 5l3-3 3 3M3 9.5v3a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     </button>
-                  </li>
-                ))}
-                {historyEntries.length === 0 && (
-                  <li className="no-hits">
-                    まだ版がありません（保存から 60 分間隔で残ります）
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
-        )}
-        {assistantOpen && (
-          <aside className="assistant-pane">
-            <header>アシスタント</header>
-            {/* 関連するノートは索引から出す。**Ollama が無くても出る** */}
-            {related.length > 0 && (
-              <div className="related-notes">
-                <div className="related-title">関連するノート</div>
+                    <button title="版の履歴" onClick={() => void openHistory()}>
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="5.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                        />
+                        <path
+                          d="M8 5v3.2l2.2 1.4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      title="ゴミ箱へ移動"
+                      onClick={() => void handleTrash()}
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M3 4.5h10M6.5 4.5v-1a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M4.5 4.5l.7 8a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8M6.7 7v4M9.3 7v4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      className={sourceMode ? "selected" : ""}
+                      title={
+                        sourceMode
+                          ? "通常表示に戻す（Cmd+/）"
+                          : "ソース表示（Cmd+/）"
+                      }
+                      aria-pressed={sourceMode}
+                      onClick={() =>
+                        editorRef.current?.setSourceMode(!sourceMode)
+                      }
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <Editor
+                  key={currentPath}
+                  ref={editorRef}
+                  initialDoc={doc}
+                  onDocChanged={handleDocChanged}
+                  resolveImage={(url) => imageSource(vaultRoot, url)}
+                  onActivate={(action) => void handleActivate(action)}
+                  onCursorChanged={(pos) => {
+                    if (outlineOpenRef.current) setCursorPos(pos);
+                  }}
+                  saveAttachment={(data, name) =>
+                    saveAttachment(vaultRoot, data, name)
+                  }
+                  // 索引の持つタグを補完に出す。ストアから直に読む（tags を
+                  // props で渡すと、タグが増えるたびにエディタが作り直される）
+                  knownTags={() =>
+                    useAppStore.getState().tags.map((entry) => entry.tag)
+                  }
+                  // `[[` 補完の候補。題名はファイル名の幹（ADR-0005）なので
+                  // 一覧から作れる（打鍵ごとに Rust を呼ばない）
+                  knownNotes={() =>
+                    useAppStore
+                      .getState()
+                      .notes.map((entry) => noteStem(entry.path))
+                  }
+                  initialCursor={initialCursor}
+                  diagramTheme={diagramTheme}
+                  sourceMode={sourceMode}
+                  onSourceModeChanged={setSourceMode}
+                />
+              </>
+            ) : (
+              <p className="placeholder">ノートを選んでください</p>
+            )}
+            {backlinks.length > 0 && (
+              <details className="backlink-bar">
+                <summary>バックリンク（{backlinks.length}）</summary>
                 <ul>
-                  {related.map((entry) => (
+                  {backlinks.map((entry) => (
                     <li key={entry.path}>
                       <button
                         onClick={() =>
                           void openNote(`${vaultRoot}/${entry.path}`)
                         }
                       >
-                        <span className="related-name">{entry.title}</span>
-                        {/* **理由をそのまま出す**（読めないと確かめようがない） */}
-                        <span className="related-reason">
-                          {entry.reasons.join(" / ")}
+                        <span className="backlink-title">
+                          {entry.title}
+                          {/* 続柄（M-3）。付いているものだけ出す */}
+                          {entry.relation && (
+                            <span className="backlink-relation">
+                              {entry.relation}
+                            </span>
+                          )}
+                        </span>
+                        <span className="backlink-context">
+                          {entry.context}
                         </span>
                       </button>
                     </li>
                   ))}
                 </ul>
+              </details>
+            )}
+          </section>
+          {templates !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setTemplates(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setTemplates(null);
+                  else if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setTemplateIndex((i) =>
+                      Math.min(i + 1, templates.length - 1),
+                    );
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setTemplateIndex((i) => Math.max(i - 1, 0));
+                  } else if (event.key === "Enter") {
+                    event.preventDefault();
+                    const chosen = templates[templateIndex];
+                    if (chosen) void handleCreateFromTemplate(chosen);
+                  }
+                }}
+              >
+                <header className="palette-title">テンプレートを選ぶ</header>
+                <ul>
+                  {templates.map((path, index) => (
+                    <li key={path}>
+                      <button
+                        autoFocus={index === 0}
+                        className={index === templateIndex ? "selected" : ""}
+                        onMouseEnter={() => setTemplateIndex(index)}
+                        onClick={() => void handleCreateFromTemplate(path)}
+                      >
+                        {noteStem(path)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            )}
-            {llmReady === false ? (
-              // **押してから断らない**（G-3 のゴミ箱と同じ作法）
-              <p className="assistant-note">
-                ローカルLLM（Ollama）が動いていません。
-                <br />
-                ollama.com から入れて `ollama serve` で動かすと使えます。
-                <br />
-                送り先は 127.0.0.1 に固定されています（ノートは外へ出ません）。
-              </p>
-            ) : (
-              <>
-                <div className="assistant-actions">
+            </div>
+          )}
+          {folderDialog !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setFolderDialog(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">
+                  {folderDialog.kind === "create"
+                    ? folderDialog.folder
+                      ? `「${folderDialog.folder}」の中に新しいフォルダ`
+                      : "新しいフォルダ"
+                    : `「${folderDialog.folder}」の名前を変更`}
+                </header>
+                <div className="table-dialog-fields">
+                  <label>
+                    名前
+                    <input
+                      ref={folderName}
+                      autoFocus
+                      defaultValue={
+                        folderDialog.kind === "rename"
+                          ? folderLabel(folderDialog.folder)
+                          : ""
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void confirmFolderName();
+                        else if (event.key === "Escape") setFolderDialog(null);
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="conflict-actions">
+                  <button onClick={() => setFolderDialog(null)}>やめる</button>
+                  <button onClick={() => void confirmFolderName()}>決定</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {moveOpen && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setMoveOpen(false)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">フォルダへ移動</header>
+                <ul>
+                  {folders.map(({ folder }) => (
+                    <li key={folder || "."}>
+                      <button
+                        style={{
+                          paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                        }}
+                        onClick={() => void handleMoveNote(folder)}
+                      >
+                        {folderLabel(folder)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {preferences && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setPreferences(false)}
+            >
+              <div
+                className="palette preferences"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">環境設定</header>
+                <div
+                  className="pref-tabs"
+                  role="tablist"
+                  aria-label="設定のページ"
+                >
                   <button
-                    disabled={thinking || !currentPath}
-                    onClick={() => void askAssistant("summary")}
+                    role="tab"
+                    aria-selected={prefTab === "general"}
+                    className={prefTab === "general" ? "selected" : ""}
+                    onClick={() => setPrefTab("general")}
                   >
-                    要約
+                    一般
                   </button>
                   <button
-                    disabled={thinking || !currentPath}
-                    onClick={() => void askAssistant("review")}
+                    role="tab"
+                    aria-selected={prefTab === "assistant"}
+                    className={prefTab === "assistant" ? "selected" : ""}
+                    onClick={() => setPrefTab("assistant")}
                   >
-                    レビュー
-                  </button>
-                  <button
-                    disabled={thinking || !currentPath}
-                    onClick={() => void askAssistant("questions")}
-                  >
-                    質問を出す
+                    アシスタント
                   </button>
                 </div>
-                <p className="assistant-note">
-                  このノートだけを読んで答えます（送り先は 127.0.0.1）。
-                  本文は書き換えません。
+                {prefTab === "general" ? (
+                  <div className="pref-page">
+                    <h3 className="pref-section">本文の見え方</h3>
+                    <p className="pref-note">
+                      エディタに出る文字の形と幅。開いているノートにすぐ反映されます。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>本文フォント</span>
+                        <input
+                          list="body-fonts"
+                          value={settings.bodyFont}
+                          placeholder="システムの既定"
+                          onChange={(event) =>
+                            changeSettings({
+                              bodyFont: event.currentTarget.value,
+                            })
+                          }
+                        />
+                        <datalist id="body-fonts">
+                          {BODY_FONT_CHOICES.map((font) => (
+                            <option key={font} value={font} />
+                          ))}
+                        </datalist>
+                      </label>
+                      <label>
+                        <span>文字サイズ</span>
+                        <span className="pref-unit-row">
+                          <input
+                            type="number"
+                            min={MIN_FONT_PX}
+                            max={MAX_FONT_PX}
+                            value={fontSize}
+                            onChange={(event) =>
+                              changeFontSize(Number(event.currentTarget.value))
+                            }
+                          />
+                          <span className="pref-unit">px</span>
+                        </span>
+                      </label>
+                      <label>
+                        <span>等幅フォント</span>
+                        <input
+                          list="mono-fonts"
+                          value={settings.monoFont}
+                          placeholder="既定の等幅"
+                          onChange={(event) =>
+                            changeSettings({
+                              monoFont: event.currentTarget.value,
+                            })
+                          }
+                        />
+                        <datalist id="mono-fonts">
+                          {MONO_FONT_CHOICES.map((font) => (
+                            <option key={font} value={font} />
+                          ))}
+                        </datalist>
+                      </label>
+                      <label>
+                        <span>本文の幅</span>
+                        <select
+                          value={settings.contentWidth}
+                          onChange={(event) =>
+                            changeSettings({
+                              contentWidth: event.currentTarget
+                                .value as ContentWidth,
+                            })
+                          }
+                        >
+                          {CONTENT_WIDTHS.map((width) => (
+                            <option key={width} value={width}>
+                              {WIDTH_LABELS[width]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>タブ幅</span>
+                        <span className="pref-unit-row">
+                          <select
+                            value={settings.tabWidth}
+                            onChange={(event) =>
+                              changeSettings({
+                                tabWidth: Number(event.currentTarget.value),
+                              })
+                            }
+                          >
+                            {TAB_WIDTHS.map((width) => (
+                              <option key={width} value={width}>
+                                {width}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="pref-unit">文字</span>
+                        </span>
+                      </label>
+                      <label>
+                        <span>字下げ</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={settings.indentedCode}
+                            onChange={(event) =>
+                              changeSettings({
+                                indentedCode: event.currentTarget.checked,
+                              })
+                            }
+                          />
+                          4 文字の字下げでコードブロックとする
+                        </span>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">ウィンドウ</h3>
+                    <p className="pref-note">
+                      アプリ全体の配色と、一覧やサイドバーの詰まり具合。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>テーマ</span>
+                        <select
+                          value={settings.theme}
+                          onChange={(event) =>
+                            changeSettings({
+                              theme: event.currentTarget.value as Theme,
+                            })
+                          }
+                        >
+                          {THEMES.map((theme) => (
+                            <option key={theme} value={theme}>
+                              {THEME_LABELS[theme]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>行間</span>
+                        <select
+                          value={settings.lineSpacing}
+                          onChange={(event) =>
+                            changeSettings({
+                              lineSpacing: event.currentTarget
+                                .value as LineSpacing,
+                            })
+                          }
+                        >
+                          {LINE_SPACINGS.map((spacing) => (
+                            <option key={spacing} value={spacing}>
+                              {SPACING_LABELS[spacing]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">ノートの置き場所</h3>
+                    <p className="pref-note">
+                      .md
+                      ファイルを読み書きするフォルダ。変えても中のファイルは移動しません。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>保管フォルダ</span>
+                        <span className="pref-vault-row">
+                          <input value={vaultRoot ?? ""} readOnly />
+                          <button onClick={() => void chooseVault()}>
+                            変更…
+                          </button>
+                        </span>
+                      </label>
+                      <label>
+                        <span>ゴミ箱の保持</span>
+                        <span className="pref-unit-row">
+                          <input
+                            type="number"
+                            min={MIN_TRASH_DAYS}
+                            max={MAX_TRASH_DAYS}
+                            value={settings.trashDays}
+                            onChange={(event) =>
+                              changeSettings({
+                                trashDays: Number(event.currentTarget.value),
+                              })
+                            }
+                          />
+                          <span className="pref-unit">日</span>
+                        </span>
+                      </label>
+                      <label>
+                        <span>履歴を残す間隔</span>
+                        <select
+                          value={settings.historyMinutes}
+                          onChange={(event) =>
+                            changeSettings({
+                              historyMinutes: Number(event.currentTarget.value),
+                            })
+                          }
+                        >
+                          {HISTORY_CHOICES.map((minutes) => (
+                            <option key={minutes} value={minutes}>
+                              {minutes === 0 ? "なし" : `${minutes} 分`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>履歴の使用量</span>
+                        <span className="pref-static">
+                          {historyUsage === null
+                            ? "計算中…"
+                            : formatBytes(historyUsage)}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pref-page">
+                    <h3 className="pref-section">ローカルLLM</h3>
+                    <p className="pref-note">
+                      Ollama に繋いで、要約やレビューを頼みます。送り先は
+                      127.0.0.1 に固定です（ノートは外へ出ません）。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>モデル</span>
+                        <input
+                          value={settings.llmModel}
+                          placeholder="gemma3:4b"
+                          onChange={(event) =>
+                            changeSettings({
+                              llmModel: event.currentTarget.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>ポート</span>
+                        <span className="pref-unit-row">
+                          <input
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={settings.llmPort}
+                            onChange={(event) =>
+                              changeSettings({
+                                llmPort: Number(event.currentTarget.value),
+                              })
+                            }
+                          />
+                          <span className="pref-unit">
+                            （送り先は 127.0.0.1 に固定）
+                          </span>
+                        </span>
+                      </label>
+                      <label>
+                        <span>一度に渡す量</span>
+                        <select
+                          value={settings.llmContext}
+                          onChange={(event) =>
+                            changeSettings({
+                              llmContext: Number(event.currentTarget.value),
+                            })
+                          }
+                        >
+                          {CONTEXT_CHOICES.map((tokens) => (
+                            <option key={tokens} value={tokens}>
+                              {tokens / 1024}k トークン
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>応答待ち時間</span>
+                        <span className="pref-unit-row">
+                          <input
+                            type="number"
+                            min={1}
+                            max={60}
+                            value={settings.llmTimeoutMinutes}
+                            onChange={(event) =>
+                              changeSettings({
+                                llmTimeoutMinutes: Number(
+                                  event.currentTarget.value,
+                                ),
+                              })
+                            }
+                          />
+                          <span className="pref-unit">分</span>
+                        </span>
+                      </label>
+                      <label>
+                        <span>モデルを残す時間</span>
+                        <select
+                          value={settings.llmKeepAlive}
+                          onChange={(event) =>
+                            changeSettings({
+                              llmKeepAlive: event.currentTarget.value,
+                            })
+                          }
+                        >
+                          {KEEP_ALIVE_CHOICES.map((value) => (
+                            <option key={value} value={value}>
+                              {value === "0"
+                                ? "すぐ降ろす"
+                                : value.replace("m", " 分")}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">画像とPDF</h3>
+                    <p className="pref-note">
+                      取り込んだ画像や PDF
+                      から、絵の中の文字を起こすときに使うもの。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>文字の読み取り</span>
+                        <select value="mac" onChange={() => {}}>
+                          <option value="mac">macOS（デフォルト）</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                )}
+                <div className="pref-actions">
+                  <button onClick={resetPreferences}>デフォルトに戻す</button>
+                  <span className="pref-actions-right">
+                    <button onClick={cancelPreferences}>キャンセル</button>
+                    <button
+                      className="primary"
+                      onClick={() => setPreferences(false)}
+                    >
+                      OK
+                    </button>
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          {tableDialog && (
+            <div
+              className="palette-backdrop"
+              onClick={() => setTableDialog(false)}
+            >
+              <div
+                className="palette"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">表を挿入</header>
+                <div className="table-dialog-fields">
+                  <label>
+                    行（見出しを除く）
+                    <input
+                      ref={tableRows}
+                      type="number"
+                      min={1}
+                      max={50}
+                      defaultValue={2}
+                    />
+                  </label>
+                  <label>
+                    列
+                    <input
+                      ref={tableColumns}
+                      type="number"
+                      min={1}
+                      max={20}
+                      defaultValue={2}
+                    />
+                  </label>
+                </div>
+                <div className="conflict-actions">
+                  <button onClick={() => setTableDialog(false)}>やめる</button>
+                  <button onClick={confirmInsertTable}>挿入</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {recovery > 0 && (
+            <div className="palette-backdrop">
+              <div className="palette">
+                <header className="palette-title">
+                  保存されていない変更が見つかりました
+                </header>
+                <p className="dialog-text">
+                  前回終了したときに保存されていない変更が {recovery}{" "}
+                  件あります。
+                  別のファイルとして復元しますか？（今あるノートは書き換えません）
                 </p>
-                <div className="assistant-answer">
-                  {answer || (thinking ? "考えています…" : "")}
-                </div>
-              </>
-            )}
-          </aside>
-        )}
-        {outlineOpen && (
-          <aside className="outline-pane">
-            <header>目次</header>
-            <ul>
-              {outlineItems.map((item, index) => (
-                <li key={`${item.from}-${item.text}`}>
-                  <button
-                    className={index === currentOutlineIndex ? "current" : ""}
-                    style={{
-                      paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem`,
-                    }}
-                    onClick={() => editorRef.current?.revealPos(item.from)}
-                  >
-                    {item.text}
+                <div className="conflict-actions">
+                  <button onClick={() => void handleRecovery(false)}>
+                    復元しない
                   </button>
-                </li>
-              ))}
-              {outlineItems.length === 0 && (
-                <li className="no-hits">見出しがありません</li>
+                  <button onClick={() => void handleRecovery(true)}>
+                    復元する
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {noteMenu !== null &&
+            (() => {
+              const target = noteMenu.path;
+              const pinned = notes.find(
+                (entry) => entry.path === target,
+              )?.pinned;
+              const run = (action: () => void) => () => {
+                setNoteMenu(null);
+                action();
+              };
+              return (
+                <div
+                  className="menu-backdrop"
+                  onMouseDown={() => setNoteMenu(null)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setNoteMenu(null);
+                  }}
+                >
+                  <ul
+                    className="context-menu"
+                    // 窓の端で押されても外へはみ出さない（下の行が多い）
+                    style={{
+                      left: Math.min(noteMenu.x, window.innerWidth - 220),
+                      top: Math.min(noteMenu.y, window.innerHeight - 280),
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <li>
+                      <button onClick={run(() => void handlePin(target))}>
+                        {pinned ? "ピンを外す" : "ピン留め"}
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(() => void handleDuplicate(target))}>
+                        複製
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={run(() => {
+                          setMoveTarget(target);
+                          setMoveOpen(true);
+                        })}
+                      >
+                        フォルダへ移動…
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(() => setTemplateName(target))}>
+                        テンプレートに登録…
+                      </button>
+                    </li>
+                    <li className="separator" />
+                    <li>
+                      <button onClick={run(() => void copyNoteLink(target))}>
+                        リンクをコピー
+                      </button>
+                    </li>
+                    <li>
+                      <button onClick={run(() => void revealItemInDir(target))}>
+                        Finder で表示
+                      </button>
+                    </li>
+                    <li className="separator" />
+                    <li>
+                      {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
+                      <button
+                        className="danger"
+                        disabled={pinned}
+                        title={
+                          pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
+                        }
+                        onClick={run(() => void handleTrash(target))}
+                      >
+                        ゴミ箱へ移動
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              );
+            })()}
+          {styleFindings !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setStyleFindings(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">
+                  文体を見る（{styleFindings.length} 件）
+                </header>
+                <ul>
+                  {styleFindings.map((found) => (
+                    <li key={`${found.start}-${found.kind}`}>
+                      <button
+                        onClick={() => {
+                          setStyleFindings(null);
+                          editorRef.current?.revealPos(found.start);
+                        }}
+                      >
+                        <span className="style-text">
+                          {(editorRef.current?.getText() ?? "").slice(
+                            found.start,
+                            found.start + found.length,
+                          ) || "（空白）"}
+                        </span>
+                        {/* **どう書けるか**を出す（何が悪いかだけでは動けない） */}
+                        <span className="style-message">{found.message}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="dialog-text">
+                  指摘するだけで、直しはしません。書き換えるかどうかは
+                  書いた人が決めます。
+                </p>
+              </div>
+            </div>
+          )}
+          {graph !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setGraph(null)}
+            >
+              <div
+                className="palette graph-dialog"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">リンクの図</header>
+                <div
+                  className="graph-canvas"
+                  dangerouslySetInnerHTML={{ __html: graph.svg }}
+                />
+                <p className="dialog-text">
+                  {/* **黙って減らさない**（上限で落ちたぶんを言う） */}
+                  {graph.dropped > 0
+                    ? `多いので ${graph.dropped} 件を省いています。`
+                    : "開いているノートから辿れる範囲です。"}
+                </p>
+                <div className="conflict-actions">
+                  <button
+                    disabled={graphDepth <= 1}
+                    onClick={() => void showLinkGraph(graphDepth - 1)}
+                  >
+                    狭く
+                  </button>
+                  <button
+                    disabled={graphDepth >= 4}
+                    onClick={() => void showLinkGraph(graphDepth + 1)}
+                  >
+                    広く（{graphDepth} 段）
+                  </button>
+                  <button onClick={() => setGraph(null)}>閉じる</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {savingSearch !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setSavingSearch(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">検索を保存</header>
+                <div className="table-dialog-fields">
+                  <label>
+                    サイドバーに出す名前
+                    <input
+                      ref={searchName}
+                      autoFocus
+                      // 既定は式そのもの（短い式ならそのまま通せる）
+                      defaultValue={savingSearch}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") confirmSaveSearch();
+                        else if (event.key === "Escape") setSavingSearch(null);
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="dialog-text">検索式: {savingSearch}</p>
+                <div className="conflict-actions">
+                  <button onClick={() => setSavingSearch(null)}>やめる</button>
+                  <button onClick={confirmSaveSearch}>保存</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {templateName !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setTemplateName(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">テンプレートに登録</header>
+                <div className="table-dialog-fields">
+                  <label>
+                    名前
+                    <input
+                      ref={templateInput}
+                      autoFocus
+                      defaultValue={noteStem(templateName)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter")
+                          void confirmRegisterTemplate();
+                        else if (event.key === "Escape") setTemplateName(null);
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="dialog-text">
+                  見出しは {"{{title}}"} に置き換わります（この雛形から作った
+                  ノートには新しい題名が入ります）。
+                </p>
+                <div className="conflict-actions">
+                  <button onClick={() => setTemplateName(null)}>やめる</button>
+                  <button onClick={() => void confirmRegisterTemplate()}>
+                    登録
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {deleted !== null && (
+            <div className="palette-backdrop">
+              <div className="palette">
+                <header className="palette-title">
+                  ファイルが削除されました
+                </header>
+                <p className="dialog-text">
+                  「{noteStem(deleted)}」は外部で削除されました。
+                  編集中の内容で作り直しますか？
+                </p>
+                <div className="conflict-actions">
+                  <button onClick={closeDeleted}>閉じる</button>
+                  <button onClick={() => void recreateDeleted()}>
+                    作り直す
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {conflict !== null && (
+            <div className="palette-backdrop">
+              <div className="palette">
+                <header className="palette-title">
+                  このノートは外部でも変更されています。どうしますか？
+                </header>
+                <div className="conflict-actions">
+                  <button onClick={() => void resolveConflict("external")}>
+                    外部の変更を採用（自分の編集を捨てる）
+                  </button>
+                  <button onClick={() => void resolveConflict("mine")}>
+                    自分の版で上書き（外部の変更を捨てる）
+                  </button>
+                  <button onClick={() => void resolveConflict("both")}>
+                    両方残す（自分の版を「名前 (競合 日付)」に保存）
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {historyEntries !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setHistoryEntries(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">
+                  版の履歴（新しい順・戻す前に今の内容も残ります）
+                </header>
+                <ul>
+                  {historyEntries.map((entry) => (
+                    <li key={entry.path} className="history-row">
+                      <span>{entry.stamp}</span>
+                      <button onClick={() => void restoreVersion(entry)}>
+                        戻す
+                      </button>
+                    </li>
+                  ))}
+                  {historyEntries.length === 0 && (
+                    <li className="no-hits">
+                      まだ版がありません（保存から 60 分間隔で残ります）
+                    </li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          )}
+          {assistantOpen && (
+            <aside className="assistant-pane">
+              <header>アシスタント</header>
+              {/* 関連するノートは索引から出す。**Ollama が無くても出る** */}
+              {related.length > 0 && (
+                <div className="related-notes">
+                  <div className="related-title">関連するノート</div>
+                  <ul>
+                    {related.map((entry) => (
+                      <li key={entry.path}>
+                        <button
+                          onClick={() =>
+                            void openNote(`${vaultRoot}/${entry.path}`)
+                          }
+                        >
+                          <span className="related-name">{entry.title}</span>
+                          {/* **理由をそのまま出す**（読めないと確かめようがない） */}
+                          <span className="related-reason">
+                            {entry.reasons.join(" / ")}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
-            </ul>
-          </aside>
-        )}
+              {llmReady === false ? (
+                // **押してから断らない**（G-3 のゴミ箱と同じ作法）
+                <p className="assistant-note">
+                  ローカルLLM（Ollama）が動いていません。
+                  <br />
+                  ollama.com から入れて `ollama serve` で動かすと使えます。
+                  <br />
+                  送り先は 127.0.0.1
+                  に固定されています（ノートは外へ出ません）。
+                </p>
+              ) : (
+                <>
+                  <div className="assistant-actions">
+                    <button
+                      disabled={thinking || !currentPath}
+                      onClick={() => void askAssistant("summary")}
+                    >
+                      要約
+                    </button>
+                    <button
+                      disabled={thinking || !currentPath}
+                      onClick={() => void askAssistant("review")}
+                    >
+                      レビュー
+                    </button>
+                    <button
+                      disabled={thinking || !currentPath}
+                      onClick={() => void askAssistant("questions")}
+                    >
+                      質問を出す
+                    </button>
+                  </div>
+                  <p className="assistant-note">
+                    このノートだけを読んで答えます（送り先は 127.0.0.1）。
+                    本文は書き換えません。
+                  </p>
+                  <div className="assistant-answer">
+                    {answer || (thinking ? "考えています…" : "")}
+                  </div>
+                </>
+              )}
+            </aside>
+          )}
+          {outlineOpen && (
+            <aside className="outline-pane">
+              <header>目次</header>
+              <ul>
+                {outlineItems.map((item, index) => (
+                  <li key={`${item.from}-${item.text}`}>
+                    <button
+                      className={index === currentOutlineIndex ? "current" : ""}
+                      style={{
+                        paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem`,
+                      }}
+                      onClick={() => editorRef.current?.revealPos(item.from)}
+                    >
+                      {item.text}
+                    </button>
+                  </li>
+                ))}
+                {outlineItems.length === 0 && (
+                  <li className="no-hits">見出しがありません</li>
+                )}
+              </ul>
+            </aside>
+          )}
+        </div>
+        {/* ステータスバーはウィンドウの全幅（参照実装と同じ）。
+            左端に設定の歯車 — hitofude の置き場所に合わせる */}
+        <footer className="status-bar">
+          <button
+            className="settings-button"
+            title="環境設定（Cmd+,）"
+            aria-label="環境設定"
+            onClick={openPreferences}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M12.4 8h2M11.11 11.11l1.42 1.42M8 12.4v2M4.89 11.11l-1.42 1.42M3.6 8h-2M4.89 4.89 3.47 3.47M8 3.6v-2M11.11 4.89l1.42-1.42"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+              />
+              <circle
+                cx="8"
+                cy="8"
+                r="3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+              />
+              <circle
+                cx="8"
+                cy="8"
+                r="1.2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+              />
+            </svg>
+          </button>
+          <span className="status-message">{status}</span>
+          <span className="status-stats">
+            {currentPath !== null &&
+              `${stats.characters} 文字 / ${stats.lines} 行`}
+            {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
+          </span>
+        </footer>
       </main>
       {/* 印刷用（ADR-0038）。画面では隠れていて、紙にはここだけが出る。
           中身は書き出しと同じ本文（markdown-it が組んだもの） */}
