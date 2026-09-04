@@ -88,6 +88,27 @@ pub fn keep(
     Ok(Some(target))
 }
 
+/// 履歴フォルダ全体が使っているバイト数（設定画面の「履歴の使用量」）。
+/// 読めないものは 0 と数える — 表示のための概算で、正確さより落ちないこと。
+pub fn usage(root: &Path) -> u64 {
+    let mut total = 0;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if let Ok(meta) = fs::metadata(&path) {
+                total += meta.len();
+            }
+        }
+    }
+    total
+}
+
 /// 残っている版を新しい順に返す。読めないもの・変な名前は飛ばす。
 pub fn versions(root: &Path, key: &str) -> Vec<Version> {
     versions_in(root, &folder_name(key))
@@ -214,6 +235,17 @@ mod tests {
             .unwrap()
             .and_hms_opt(h, mi, 0)
             .unwrap()
+    }
+
+    #[test]
+    fn test_usage_履歴フォルダの合計バイト数を返す() {
+        let root = TempDir::new().unwrap();
+        let folder = root.path().join(folder_name("path:a.md"));
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("2026-09-04T10-00-00.md"), "12345").unwrap();
+        fs::write(folder.join("2026-09-04T11-00-00.md"), "abc").unwrap();
+        assert_eq!(usage(root.path()), 8);
+        assert_eq!(usage(&root.path().join("無い")), 0);
     }
 
     #[test]

@@ -1286,7 +1286,7 @@ const style = HighlightStyle.define([
   },
   {
     tag: tags.monospace,
-    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+    fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.9em",
     backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
     borderRadius: "3px",
@@ -1348,7 +1348,7 @@ const blockTheme = EditorView.baseTheme({
   },
   ".cm-codeblock-line": {
     backgroundColor: "color-mix(in srgb, currentColor 6%, transparent)",
-    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+    fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.9em",
   },
   // 帯の内側に余白を作る（文字が縁にくっつくと窮屈に見える）
@@ -1408,7 +1408,7 @@ const blockTheme = EditorView.baseTheme({
     borderRadius: "2px",
   },
   ".cm-table-widget .cell-code": {
-    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+    fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.9em",
     backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
     borderRadius: "3px",
@@ -1431,7 +1431,7 @@ const blockTheme = EditorView.baseTheme({
   },
   ".cm-code-filename": {
     display: "inline-block",
-    fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
+    fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.75em",
     padding: "0.1em 0.7em",
     borderRadius: "4px",

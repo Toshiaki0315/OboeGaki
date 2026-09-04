@@ -66,17 +66,22 @@ import {
 } from "./lib/saved-searches";
 import {
   clampPaneWidth,
+  CONTEXT_CHOICES,
   contentWidthCss,
   CONTENT_WIDTHS,
+  DEFAULT_SETTINGS,
   HISTORY_CHOICES,
   KEEP_ALIVE_CHOICES,
+  LINE_SPACINGS,
   loadSettings,
   MAX_TRASH_DAYS,
   MIN_TRASH_DAYS,
   resolveTheme,
   saveSettings,
+  TAB_WIDTHS,
   THEMES,
   type ContentWidth,
+  type LineSpacing,
   type Settings,
   type Theme,
 } from "./lib/settings";
@@ -159,6 +164,38 @@ const THEME_LABELS: Record<Theme, string> = {
   light: "ライト",
   dark: "ダーク",
 };
+
+const SPACING_LABELS: Record<LineSpacing, string> = {
+  tight: "詰めて",
+  normal: "ふつう",
+  relaxed: "ゆったり",
+};
+
+// フォントの候補（datalist）。Web からは端末のフォント一覧を列挙できない
+// ので、macOS 標準のよく使うものを置き、それ以外は手打ちで受ける
+const BODY_FONT_CHOICES = [
+  "Hiragino Sans",
+  "Hiragino Maru Gothic ProN",
+  "Hiragino Mincho ProN",
+  "Yu Gothic",
+  "Yu Mincho",
+  "SF Pro",
+  "Helvetica Neue",
+];
+const MONO_FONT_CHOICES = [
+  "SF Mono",
+  "Menlo",
+  "Monaco",
+  "Courier New",
+  "Osaka-Mono",
+];
+
+/// バイト数の見せ方（設定画面の「履歴の使用量」）。
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 const WIDTH_LABELS: Record<ContentWidth, string> = {
   standard: "標準",
@@ -294,6 +331,60 @@ function App() {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [preferences, setPreferences] = useState(false);
+  const [prefTab, setPrefTab] = useState<"general" | "assistant">("general");
+  const [historyUsage, setHistoryUsage] = useState<number | null>(null);
+  // キャンセルで戻すためのスナップショット（開いた瞬間の設定と文字サイズ）
+  const prefSnapshot = useRef<{ settings: Settings; fontSize: number } | null>(
+    null,
+  );
+
+  function openPreferences() {
+    prefSnapshot.current = {
+      settings: settingsRef.current,
+      fontSize: fontSizeRef.current,
+    };
+    setHistoryUsage(null);
+    setPreferences(true);
+    const root = vaultRootRef.current;
+    if (root) {
+      invoke<number>("history_usage", { root })
+        .then((bytes) => setHistoryUsage(bytes))
+        .catch(() => setHistoryUsage(0));
+    } else {
+      setHistoryUsage(0);
+    }
+  }
+
+  function cancelPreferences() {
+    const kept = prefSnapshot.current;
+    if (kept) {
+      changeSettings(kept.settings);
+      changeFontSize(kept.fontSize);
+    }
+    setPreferences(false);
+  }
+
+  function resetPreferences() {
+    // ダイアログに出ている項目だけを既定へ（ペイン幅や開閉は触らない）
+    changeSettings({
+      theme: DEFAULT_SETTINGS.theme,
+      contentWidth: DEFAULT_SETTINGS.contentWidth,
+      bodyFont: DEFAULT_SETTINGS.bodyFont,
+      monoFont: DEFAULT_SETTINGS.monoFont,
+      tabWidth: DEFAULT_SETTINGS.tabWidth,
+      indentedCode: DEFAULT_SETTINGS.indentedCode,
+      lineSpacing: DEFAULT_SETTINGS.lineSpacing,
+      historyMinutes: DEFAULT_SETTINGS.historyMinutes,
+      trashDays: DEFAULT_SETTINGS.trashDays,
+      llmModel: DEFAULT_SETTINGS.llmModel,
+      llmPort: DEFAULT_SETTINGS.llmPort,
+      llmContext: DEFAULT_SETTINGS.llmContext,
+      llmTimeoutMinutes: DEFAULT_SETTINGS.llmTimeoutMinutes,
+      llmKeepAlive: DEFAULT_SETTINGS.llmKeepAlive,
+      ocrEngine: DEFAULT_SETTINGS.ocrEngine,
+    });
+    changeFontSize(DEFAULT_FONT_PX);
+  }
 
   /// 左のペインは、中身が 1 つも無ければ畳む（空の帯を残さない）
   const leftVisible = settings.notesVisible || settings.treesVisible;
@@ -1543,7 +1634,7 @@ function App() {
       if (currentPathRef.current) setMoveOpen(true);
     },
     "place-manual": () => void handlePlaceManual(),
-    preferences: () => setPreferences(true),
+    preferences: openPreferences,
     "open-vault": () => void chooseVault(),
     resync: () => void handleSync(false),
     "rebuild-index": () => void handleSync(true),
@@ -1888,8 +1979,12 @@ function App() {
             "--content-width": contentWidthCss(settings.contentWidth),
             "--list-width": `${settings.listWidth}px`,
             "--outline-width": `${settings.outlineWidth}px`,
+            // フォントは空なら既定（システム / 既定の等幅スタック）のまま
+            ...(settings.bodyFont ? { "--body-font": settings.bodyFont } : {}),
+            ...(settings.monoFont ? { "--mono-font": settings.monoFont } : {}),
           } as CSSProperties
         }
+        data-spacing={settings.lineSpacing}
       >
         {leftVisible && (
           <aside className="note-list">
@@ -1902,7 +1997,7 @@ function App() {
                 className="settings-button"
                 title="環境設定（Cmd+,）"
                 aria-label="環境設定"
-                onClick={() => setPreferences(true)}
+                onClick={openPreferences}
               >
                 {/* 歯車は参照実装 ui/icons.py の _draw_gear を写した形
                    （輪 + 太い短線の歯 8 枚 + 軸穴。細い線だとトゲに見えて
@@ -2679,152 +2774,361 @@ function App() {
               onMouseDown={(event) => event.stopPropagation()}
             >
               <header className="palette-title">環境設定</header>
-              <div className="preferences-fields">
-                <label>
-                  <span>テーマ</span>
-                  <select
-                    value={settings.theme}
-                    onChange={(event) =>
-                      changeSettings({
-                        theme: event.currentTarget.value as Theme,
-                      })
-                    }
-                  >
-                    {THEMES.map((theme) => (
-                      <option key={theme} value={theme}>
-                        {THEME_LABELS[theme]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>文字サイズ</span>
-                  <input
-                    type="number"
-                    min={MIN_FONT_PX}
-                    max={MAX_FONT_PX}
-                    value={fontSize}
-                    onChange={(event) =>
-                      changeFontSize(Number(event.currentTarget.value))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>本文の幅</span>
-                  <select
-                    value={settings.contentWidth}
-                    onChange={(event) =>
-                      changeSettings({
-                        contentWidth: event.currentTarget.value as ContentWidth,
-                      })
-                    }
-                  >
-                    {CONTENT_WIDTHS.map((width) => (
-                      <option key={width} value={width}>
-                        {WIDTH_LABELS[width]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>履歴を残す間隔</span>
-                  <select
-                    value={settings.historyMinutes}
-                    onChange={(event) =>
-                      changeSettings({
-                        historyMinutes: Number(event.currentTarget.value),
-                      })
-                    }
-                  >
-                    {HISTORY_CHOICES.map((minutes) => (
-                      <option key={minutes} value={minutes}>
-                        {minutes === 0 ? "なし" : `${minutes} 分`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>LLM のモデル</span>
-                  <input
-                    value={settings.llmModel}
-                    placeholder="gemma3:4b"
-                    onChange={(event) =>
-                      changeSettings({ llmModel: event.currentTarget.value })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>LLM のポート</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    value={settings.llmPort}
-                    onChange={(event) =>
-                      changeSettings({
-                        llmPort: Number(event.currentTarget.value),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>答えを待つ上限（分）</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={settings.llmTimeoutMinutes}
-                    onChange={(event) =>
-                      changeSettings({
-                        llmTimeoutMinutes: Number(event.currentTarget.value),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>モデルを残す時間</span>
-                  <select
-                    value={settings.llmKeepAlive}
-                    onChange={(event) =>
-                      changeSettings({
-                        llmKeepAlive: event.currentTarget.value,
-                      })
-                    }
-                  >
-                    {KEEP_ALIVE_CHOICES.map((value) => (
-                      <option key={value} value={value}>
-                        {value === "0"
-                          ? "すぐ降ろす"
-                          : value.replace("m", " 分")}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>ゴミ箱の保持</span>
-                  <input
-                    type="number"
-                    min={MIN_TRASH_DAYS}
-                    max={MAX_TRASH_DAYS}
-                    value={settings.trashDays}
-                    onChange={(event) =>
-                      changeSettings({
-                        trashDays: Number(event.currentTarget.value),
-                      })
-                    }
-                  />
-                </label>
+              <div
+                className="pref-tabs"
+                role="tablist"
+                aria-label="設定のページ"
+              >
+                <button
+                  role="tab"
+                  aria-selected={prefTab === "general"}
+                  className={prefTab === "general" ? "selected" : ""}
+                  onClick={() => setPrefTab("general")}
+                >
+                  一般
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={prefTab === "assistant"}
+                  className={prefTab === "assistant" ? "selected" : ""}
+                  onClick={() => setPrefTab("assistant")}
+                >
+                  アシスタント
+                </button>
               </div>
-              <p className="dialog-text">
-                ローカルLLM の**送り先は 127.0.0.1 に固定**です（ノートは
-                外へ出ません）。ポートは同じ機械の別の窓口を指すだけです。
-                「履歴を残す間隔」は「戻す」ために残す版の間隔です。本文の保存は
-                打ち終わって 0.8 秒後で、ここでは変わりません。「なし」は
-                自分で保存したときだけ残します。ゴミ箱の日数は次に保管フォルダを
-                開いたときから効きます。
-              </p>
-              <div className="conflict-actions">
-                <button onClick={() => setPreferences(false)}>閉じる</button>
+              {prefTab === "general" ? (
+                <div className="pref-page">
+                  <h3 className="pref-section">本文の見え方</h3>
+                  <p className="pref-note">
+                    エディタに出る文字の形と幅。開いているノートにすぐ反映されます。
+                  </p>
+                  <div className="preferences-fields">
+                    <label>
+                      <span>本文フォント</span>
+                      <input
+                        list="body-fonts"
+                        value={settings.bodyFont}
+                        placeholder="システムの既定"
+                        onChange={(event) =>
+                          changeSettings({
+                            bodyFont: event.currentTarget.value,
+                          })
+                        }
+                      />
+                      <datalist id="body-fonts">
+                        {BODY_FONT_CHOICES.map((font) => (
+                          <option key={font} value={font} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label>
+                      <span>文字サイズ</span>
+                      <span className="pref-unit-row">
+                        <input
+                          type="number"
+                          min={MIN_FONT_PX}
+                          max={MAX_FONT_PX}
+                          value={fontSize}
+                          onChange={(event) =>
+                            changeFontSize(Number(event.currentTarget.value))
+                          }
+                        />
+                        <span className="pref-unit">px</span>
+                      </span>
+                    </label>
+                    <label>
+                      <span>等幅フォント</span>
+                      <input
+                        list="mono-fonts"
+                        value={settings.monoFont}
+                        placeholder="既定の等幅"
+                        onChange={(event) =>
+                          changeSettings({
+                            monoFont: event.currentTarget.value,
+                          })
+                        }
+                      />
+                      <datalist id="mono-fonts">
+                        {MONO_FONT_CHOICES.map((font) => (
+                          <option key={font} value={font} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label>
+                      <span>本文の幅</span>
+                      <select
+                        value={settings.contentWidth}
+                        onChange={(event) =>
+                          changeSettings({
+                            contentWidth: event.currentTarget
+                              .value as ContentWidth,
+                          })
+                        }
+                      >
+                        {CONTENT_WIDTHS.map((width) => (
+                          <option key={width} value={width}>
+                            {WIDTH_LABELS[width]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>タブ幅</span>
+                      <span className="pref-unit-row">
+                        <select
+                          value={settings.tabWidth}
+                          onChange={(event) =>
+                            changeSettings({
+                              tabWidth: Number(event.currentTarget.value),
+                            })
+                          }
+                        >
+                          {TAB_WIDTHS.map((width) => (
+                            <option key={width} value={width}>
+                              {width}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="pref-unit">文字</span>
+                      </span>
+                    </label>
+                    <label>
+                      <span>字下げ</span>
+                      <span className="pref-check">
+                        <input
+                          type="checkbox"
+                          checked={settings.indentedCode}
+                          onChange={(event) =>
+                            changeSettings({
+                              indentedCode: event.currentTarget.checked,
+                            })
+                          }
+                        />
+                        4 文字の字下げでコードブロックとする
+                      </span>
+                    </label>
+                  </div>
+                  <h3 className="pref-section">ウィンドウ</h3>
+                  <p className="pref-note">
+                    アプリ全体の配色と、一覧やサイドバーの詰まり具合。
+                  </p>
+                  <div className="preferences-fields">
+                    <label>
+                      <span>テーマ</span>
+                      <select
+                        value={settings.theme}
+                        onChange={(event) =>
+                          changeSettings({
+                            theme: event.currentTarget.value as Theme,
+                          })
+                        }
+                      >
+                        {THEMES.map((theme) => (
+                          <option key={theme} value={theme}>
+                            {THEME_LABELS[theme]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>行間</span>
+                      <select
+                        value={settings.lineSpacing}
+                        onChange={(event) =>
+                          changeSettings({
+                            lineSpacing: event.currentTarget
+                              .value as LineSpacing,
+                          })
+                        }
+                      >
+                        {LINE_SPACINGS.map((spacing) => (
+                          <option key={spacing} value={spacing}>
+                            {SPACING_LABELS[spacing]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <h3 className="pref-section">ノートの置き場所</h3>
+                  <p className="pref-note">
+                    .md
+                    ファイルを読み書きするフォルダ。変えても中のファイルは移動しません。
+                  </p>
+                  <div className="preferences-fields">
+                    <label>
+                      <span>保管フォルダ</span>
+                      <span className="pref-vault-row">
+                        <input value={vaultRoot ?? ""} readOnly />
+                        <button onClick={() => void chooseVault()}>
+                          変更…
+                        </button>
+                      </span>
+                    </label>
+                    <label>
+                      <span>ゴミ箱の保持</span>
+                      <span className="pref-unit-row">
+                        <input
+                          type="number"
+                          min={MIN_TRASH_DAYS}
+                          max={MAX_TRASH_DAYS}
+                          value={settings.trashDays}
+                          onChange={(event) =>
+                            changeSettings({
+                              trashDays: Number(event.currentTarget.value),
+                            })
+                          }
+                        />
+                        <span className="pref-unit">日</span>
+                      </span>
+                    </label>
+                    <label>
+                      <span>履歴を残す間隔</span>
+                      <select
+                        value={settings.historyMinutes}
+                        onChange={(event) =>
+                          changeSettings({
+                            historyMinutes: Number(event.currentTarget.value),
+                          })
+                        }
+                      >
+                        {HISTORY_CHOICES.map((minutes) => (
+                          <option key={minutes} value={minutes}>
+                            {minutes === 0 ? "なし" : `${minutes} 分`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>履歴の使用量</span>
+                      <span className="pref-static">
+                        {historyUsage === null
+                          ? "計算中…"
+                          : formatBytes(historyUsage)}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className="pref-page">
+                  <h3 className="pref-section">ローカルLLM</h3>
+                  <p className="pref-note">
+                    Ollama に繋いで、要約やレビューを頼みます。送り先は
+                    127.0.0.1 に固定です（ノートは外へ出ません）。
+                  </p>
+                  <div className="preferences-fields">
+                    <label>
+                      <span>モデル</span>
+                      <input
+                        value={settings.llmModel}
+                        placeholder="gemma3:4b"
+                        onChange={(event) =>
+                          changeSettings({
+                            llmModel: event.currentTarget.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>ポート</span>
+                      <span className="pref-unit-row">
+                        <input
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={settings.llmPort}
+                          onChange={(event) =>
+                            changeSettings({
+                              llmPort: Number(event.currentTarget.value),
+                            })
+                          }
+                        />
+                        <span className="pref-unit">
+                          （送り先は 127.0.0.1 に固定）
+                        </span>
+                      </span>
+                    </label>
+                    <label>
+                      <span>一度に渡す量</span>
+                      <select
+                        value={settings.llmContext}
+                        onChange={(event) =>
+                          changeSettings({
+                            llmContext: Number(event.currentTarget.value),
+                          })
+                        }
+                      >
+                        {CONTEXT_CHOICES.map((tokens) => (
+                          <option key={tokens} value={tokens}>
+                            {tokens / 1024}k トークン
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>応答待ち時間</span>
+                      <span className="pref-unit-row">
+                        <input
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={settings.llmTimeoutMinutes}
+                          onChange={(event) =>
+                            changeSettings({
+                              llmTimeoutMinutes: Number(
+                                event.currentTarget.value,
+                              ),
+                            })
+                          }
+                        />
+                        <span className="pref-unit">分</span>
+                      </span>
+                    </label>
+                    <label>
+                      <span>モデルを残す時間</span>
+                      <select
+                        value={settings.llmKeepAlive}
+                        onChange={(event) =>
+                          changeSettings({
+                            llmKeepAlive: event.currentTarget.value,
+                          })
+                        }
+                      >
+                        {KEEP_ALIVE_CHOICES.map((value) => (
+                          <option key={value} value={value}>
+                            {value === "0"
+                              ? "すぐ降ろす"
+                              : value.replace("m", " 分")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <h3 className="pref-section">画像とPDF</h3>
+                  <p className="pref-note">
+                    取り込んだ画像や PDF
+                    から、絵の中の文字を起こすときに使うもの。
+                  </p>
+                  <div className="preferences-fields">
+                    <label>
+                      <span>文字の読み取り</span>
+                      <select value="mac" onChange={() => {}}>
+                        <option value="mac">macOS（デフォルト）</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              )}
+              <div className="pref-actions">
+                <button onClick={resetPreferences}>デフォルトに戻す</button>
+                <span className="pref-actions-right">
+                  <button onClick={cancelPreferences}>キャンセル</button>
+                  <button
+                    className="primary"
+                    onClick={() => setPreferences(false)}
+                  >
+                    OK
+                  </button>
+                </span>
               </div>
             </div>
           </div>

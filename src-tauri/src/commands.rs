@@ -1137,6 +1137,12 @@ pub fn note_pin(
     Ok(updated)
 }
 
+/// 履歴フォルダの使用量（バイト）。設定画面の表示用。
+#[tauri::command]
+pub async fn history_usage(root: String) -> Result<u64, String> {
+    Ok(history::usage(&history_root(&root)))
+}
+
 /// ゴミ箱の 1 件を完全に消す（G-3）。ゴミ箱の外は消さない。
 #[tauri::command]
 pub fn trash_delete(root: String, path: String) -> Result<(), String> {

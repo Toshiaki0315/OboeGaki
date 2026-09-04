@@ -260,6 +260,7 @@ pub fn run() {
             commands::trash_list,
             commands::note_restore,
             commands::note_pin,
+            commands::history_usage,
             commands::trash_delete,
             commands::trash_empty,
             commands::note_search,

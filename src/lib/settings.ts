@@ -12,6 +12,11 @@ type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 export const SETTINGS_KEY = "oboegaki.settings";
 
 export type Theme = "system" | "light" | "dark";
+/// 一覧とサイドバーの行間（参照実装 LineSpacing）。px では持たない —
+/// 名前で選ばせて、実際の余白は対応表が決める。
+export type LineSpacing = "tight" | "normal" | "relaxed";
+/// 文字の読み取り（OCR）。今は macOS の Vision だけ（ADR-0041）。
+export type OcrEngine = "mac";
 /// 本文の横幅（ADR-0018）。**px では持たない** — 名前で選ばせて、実際の
 /// 幅は対応表が決める。
 export type ContentWidth = "standard" | "wide" | "full";
@@ -19,6 +24,18 @@ export type ContentWidth = "standard" | "wide" | "full";
 export type Settings = {
   theme: Theme;
   contentWidth: ContentWidth;
+  /// 本文のフォント。空 = システムの既定のまま。
+  bodyFont: string;
+  /// 等幅フォント（コード・表の整形）。空 = 既定の等幅スタック。
+  monoFont: string;
+  /// タブを何文字ぶんの幅で見せるか。書いた文字は変わらない。
+  tabWidth: number;
+  /// 4 文字の字下げをコードブロックとして扱うか（ADR-0033）。既定は入り。
+  indentedCode: boolean;
+  /// 一覧とサイドバーの行間。本文には効かない。
+  lineSpacing: LineSpacing;
+  /// 文字の読み取りに使うもの。
+  ocrEngine: OcrEngine;
   /// 版を残す間隔（分）。**本文の保存とは別**（本文は打ち終わって 0.8 秒）。
   /// 0 は「なし」= 自分で保存したときだけ残す。
   historyMinutes: number;
@@ -47,6 +64,9 @@ export type Settings = {
 };
 
 export const THEMES: Theme[] = ["system", "light", "dark"];
+export const LINE_SPACINGS: LineSpacing[] = ["tight", "normal", "relaxed"];
+export const TAB_WIDTHS = [2, 4, 8];
+export const CONTEXT_CHOICES = [4096, 8192, 16384, 32768];
 export const CONTENT_WIDTHS: ContentWidth[] = ["standard", "wide", "full"];
 export const HISTORY_CHOICES = [0, 15, 30, 60, 120];
 export const MIN_TRASH_DAYS = 1;
@@ -57,6 +77,12 @@ export const MAX_PANE_WIDTH = 520;
 export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   contentWidth: "standard",
+  bodyFont: "",
+  monoFont: "",
+  tabWidth: 4,
+  indentedCode: true,
+  lineSpacing: "normal",
+  ocrEngine: "mac",
   historyMinutes: 60, // Rust 側 history::DEFAULT_INTERVAL_MINUTES と同じ
   trashDays: 30, // spec §7.6
   listWidth: 240, // App.css の従来値
@@ -113,6 +139,16 @@ export function loadSettings(storage: StorageLike): Settings {
   const stored = parsed as Partial<Record<keyof Settings, unknown>>;
   return {
     theme: pick(stored.theme, THEMES, DEFAULT_SETTINGS.theme),
+    bodyFont: typeof stored.bodyFont === "string" ? stored.bodyFont : "",
+    monoFont: typeof stored.monoFont === "string" ? stored.monoFont : "",
+    tabWidth: pick(stored.tabWidth, TAB_WIDTHS, DEFAULT_SETTINGS.tabWidth),
+    indentedCode: readFlag(stored.indentedCode, DEFAULT_SETTINGS.indentedCode),
+    lineSpacing: pick(
+      stored.lineSpacing,
+      LINE_SPACINGS,
+      DEFAULT_SETTINGS.lineSpacing,
+    ),
+    ocrEngine: "mac",
     contentWidth: pick(
       stored.contentWidth,
       CONTENT_WIDTHS,

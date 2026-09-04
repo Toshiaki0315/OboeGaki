@@ -1,6 +1,6 @@
 // 環境設定（TASKS 3-9）。置き場は 1-1 / 1-5 と同じ localStorage。
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   clampPaneWidth,
   contentWidthCss,
@@ -135,5 +135,50 @@ describe("contentWidthCss", () => {
     expect(contentWidthCss("wide")).toBe("56rem");
     // 0 ではなく none。CSS の max-width にそのまま渡せる形で持つ
     expect(contentWidthCss("full")).toBe("none");
+  });
+});
+
+describe("hitofude と揃える追加項目（2026-09-04）", () => {
+  test("test_既定値", () => {
+    expect(DEFAULT_SETTINGS.bodyFont).toBe("");
+    expect(DEFAULT_SETTINGS.monoFont).toBe("");
+    expect(DEFAULT_SETTINGS.tabWidth).toBe(4);
+    expect(DEFAULT_SETTINGS.indentedCode).toBe(true);
+    expect(DEFAULT_SETTINGS.lineSpacing).toBe("normal");
+    expect(DEFAULT_SETTINGS.ocrEngine).toBe("mac");
+  });
+
+  test("test_保存して読み戻せる", () => {
+    const storage = fakeStorage();
+    saveSettings(storage, {
+      ...DEFAULT_SETTINGS,
+      bodyFont: "Hiragino Maru Gothic ProN",
+      monoFont: "Menlo",
+      tabWidth: 8,
+      indentedCode: false,
+      lineSpacing: "relaxed",
+    });
+    const loaded = loadSettings(storage);
+    expect(loaded.bodyFont).toBe("Hiragino Maru Gothic ProN");
+    expect(loaded.monoFont).toBe("Menlo");
+    expect(loaded.tabWidth).toBe(8);
+    expect(loaded.indentedCode).toBe(false);
+    expect(loaded.lineSpacing).toBe("relaxed");
+  });
+
+  test("test_壊れた値は既定へ", () => {
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: JSON.stringify({
+        tabWidth: 99,
+        lineSpacing: "huge",
+        indentedCode: "yes",
+        bodyFont: 5,
+      }),
+    });
+    const loaded = loadSettings(storage);
+    expect(loaded.tabWidth).toBe(4);
+    expect(loaded.lineSpacing).toBe("normal");
+    expect(loaded.indentedCode).toBe(true);
+    expect(loaded.bodyFont).toBe("");
   });
 });
