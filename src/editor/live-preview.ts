@@ -616,16 +616,25 @@ export function previewDecorations(
           // Mermaid の図は blockWidgetField が作る（行をまたぐ装飾は
           // plugin 由来では効かない）。ここでは背景とフェンス隠しだけ
           if (mermaidCode(state, node.node) !== null) return false;
+          // ` ```python:aaa.py ` のファイル名は画面にも出す（ADR-0008）
+          const info = node.node.getChild("CodeInfo");
+          const fileName = info
+            ? splitFenceInfo(state.sliceDoc(info.from, info.to)).fileName
+            : null;
           // **帯を掛けるのは中身の行だけ。** フェンス（```）は書き方であって
-          // 中身ではない（`:::note` と同じ扱いに揃えた。実機報告 2026-09-04）
+          // 中身ではない（`:::note` と同じ扱いに揃えた。実機報告 2026-09-04）。
+          // ただしファイル名があるときは開きフェンスの行も帯に入れる —
+          // ラベルが帯の外に浮くと、どのブロックの名前か結び付かない
+          // （Qiita 風の収まり。実機報告 2026-09-04）
           const fenceFirst = state.doc.lineAt(node.from);
           const fenceLast = state.doc.lineAt(node.to);
-          if (fenceLast.from > fenceFirst.to) {
+          const bandFrom = fileName ? fenceFirst.from : fenceFirst.to + 1;
+          if (fenceLast.from > fenceFirst.to || fileName) {
             pushLineClass(
               out,
               state,
-              fenceFirst.to + 1,
-              Math.max(fenceFirst.to + 1, fenceLast.from - 1),
+              bandFrom,
+              Math.max(bandFrom, fenceLast.from - 1),
               "cm-codeblock-line",
             );
           }
@@ -635,12 +644,6 @@ export function previewDecorations(
           if (touchesSelection(state, node.from, node.to)) return false;
           const first = state.doc.lineAt(node.from);
           const last = state.doc.lineAt(node.to);
-          // ` ```python:aaa.py ` のファイル名は画面にも出す（ADR-0008）。
-          // 無ければ今まで通りフェンス行ごと隠す
-          const info = node.node.getChild("CodeInfo");
-          const fileName = info
-            ? splitFenceInfo(state.sliceDoc(info.from, info.to)).fileName
-            : null;
           out.push(
             Decoration.replace(
               fileName ? { widget: new FileNameWidget(fileName) } : {},

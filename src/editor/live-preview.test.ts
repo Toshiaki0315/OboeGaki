@@ -148,6 +148,31 @@ describe("previewDecorations（ブロック系）", () => {
     expect(hasLineClass(decos, fenceOpen, "cm-codeblock-line")).toBe(false);
   });
 
+  test("ファイル名があるときはラベルの行もブロックの中に入れる（Qiita風）", () => {
+    // ラベルが帯の外に浮くと、どのブロックの名前か一目で結び付かない
+    // （実機報告 2026-09-04）。ラベル行を帯の上端にしてブロックへ収める
+    const doc = "本文\n\n```python:aaa.py\nx = 1\n```\n\nあと";
+    const decos = decorationsOf(doc, 0);
+    const fenceOpen = doc.indexOf("```python");
+    const codeLine = doc.indexOf("x = 1");
+    expect(hasLineClass(decos, fenceOpen, "cm-codeblock-line")).toBe(true);
+    expect(hasLineClass(decos, fenceOpen, "cm-codeblock-line-first")).toBe(
+      true,
+    );
+    // 中身の行は上端ではなくなる（余白と角丸はラベル行が持つ）
+    expect(hasLineClass(decos, codeLine, "cm-codeblock-line")).toBe(true);
+    expect(hasLineClass(decos, codeLine, "cm-codeblock-line-first")).toBe(
+      false,
+    );
+  });
+
+  test("ファイル名が無ければフェンス行は今まで通り帯の外", () => {
+    const doc = "本文\n\n```js\nconst a = 1;\n```\n\nあと";
+    const decos = decorationsOf(doc, 0);
+    const fenceOpen = doc.indexOf("```js");
+    expect(hasLineClass(decos, fenceOpen, "cm-codeblock-line")).toBe(false);
+  });
+
   test("水平線は線の描画に置き換え、カーソルが乗ると原文を見せる", () => {
     const doc = "a\n\n---\n\nb";
     const hrFrom = doc.indexOf("---");
