@@ -2208,8 +2208,9 @@ function App() {
           {leftVisible && (
             <aside className="note-list">
               <header>
+                {/* 保管フォルダの変更は環境設定にある（要望 2026-09-04）。
+                  同じことをする入口を一覧の上にも置かない */}
                 <button onClick={() => void handleCreate()}>＋ 新規</button>
-                <button onClick={() => void chooseVault()}>フォルダ変更</button>
               </header>
               {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
               {settings.notesVisible && (
