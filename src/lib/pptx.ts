@@ -12,7 +12,14 @@
 //
 // pptxgenjs は大きいので動的 import にする（図 = ADR-0037 と同じ）。
 
-import type { Deck, Run, SlideBlock } from "./slides";
+import {
+  cardsOf,
+  type Card,
+  type Deck,
+  type Run,
+  type SlideBlock,
+} from "./slides";
+import { DEFAULT_SLIDE_THEME, type SlideTheme } from "./slide-theme";
 
 // スライドの大きさ（16:9）。既定の 4:3 は今どき狭い
 const LAYOUT = { name: "OBOEGAKI_16x9", width: 13.333, height: 7.5 };
@@ -24,8 +31,6 @@ const TITLE_POINTS = 30;
 const BODY_POINTS = 17;
 const HEADING_POINTS = 19;
 const CODE_POINTS = 13;
-/// コードとインラインコードの書体。**画面と同じ系統**にする
-const MONO_FONT = "Menlo";
 const TABLE_POINTS = 13;
 /// PowerPoint の箇条書きは 0〜8 段
 const MAX_LEVEL = 8;
@@ -40,11 +45,17 @@ export type ImageResolver = (url: string) => Promise<string | null>;
 export async function buildPptx(
   deck: Deck,
   resolveImage: ImageResolver,
+  /// ノートの front matter から読んだ見た目（TASKS 5-5）
+  theme: SlideTheme = DEFAULT_SLIDE_THEME,
 ): Promise<string> {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
   pptx.defineLayout(LAYOUT);
   pptx.layout = LAYOUT.name;
+  // 書体は全体の既定に置く（枠ごとに書くと、あとで足した枠で付け忘れる）
+  if (theme.font) {
+    pptx.theme = { headFontFace: theme.font, bodyFontFace: theme.font };
+  }
   // 共通の体裁（TASKS 5-3）。**ページ番号とフッタは全部の枚に要る** —
   // 手で足すと抜けが出る。pptxgenjs はテンプレートの .pptx を読めないので、
   // マスタはここで組む（ADR-0039 の道具立ての制約）
@@ -136,6 +147,7 @@ export async function buildPptx(
       h: 0.9,
       fontSize: TITLE_POINTS,
       bold: true,
+      color: theme.accent,
     });
     // 画像があるスライドは本文を左半分へ寄せる（画像と重ならないように）
     const images = await embedImages(slide.images, resolveImage);
@@ -144,7 +156,10 @@ export async function buildPptx(
         ? LAYOUT.width * BODY_RATIO_WITH_IMAGE
         : LAYOUT.width) -
       MARGIN * 2;
-    placeBlocks(page, slide.blocks, bodyWidth);
+    // 小見出しが 2 つ以上あれば横並びの箱にする（TASKS 5-4）
+    const cards = images.length === 0 ? cardsOf(slide.blocks) : null;
+    if (cards) placeCards(page, cards, theme);
+    else placeBlocks(page, slide.blocks, bodyWidth, theme);
     placeImages(page, images, bodyWidth);
     if (slide.notes) page.addNotes(slide.notes);
   }
@@ -173,7 +188,7 @@ declare function pageType(): Promise<
 ///
 /// **書いた装飾をそのまま渡す。** 素の文字にすると、書いた人が PowerPoint
 /// 側で付け直すことになる。等幅はインラインコードの印。
-function textRun(run: Run, base: object) {
+function textRun(run: Run, base: object, theme: SlideTheme) {
   return {
     text: run.text,
     options: {
@@ -181,13 +196,92 @@ function textRun(run: Run, base: object) {
       ...(run.bold ? { bold: true } : {}),
       ...(run.italic ? { italic: true } : {}),
       ...(run.strike ? { strike: true } : {}),
-      ...(run.code ? { fontFace: MONO_FONT } : {}),
+      ...(run.code ? { fontFace: theme.mono } : {}),
       ...(run.link ? { hyperlink: { url: run.link } } : {}),
     },
   };
 }
 
-function placeBlocks(page: Page, blocks: SlideBlock[], width: number): void {
+/// 横並びの箱（TASKS 5-4）。**箱は同じ幅で割る** — 中身の量で幅を変えると、
+/// 資料ごとに並びが揺れて落ち着かない。
+function placeCards(page: Page, cards: Card[], theme: SlideTheme): void {
+  const gap = 0.3;
+  const width =
+    (LAYOUT.width - MARGIN * 2 - gap * (cards.length - 1)) / cards.length;
+  const height = LAYOUT.height - BODY_TOP - MARGIN - 0.4;
+  cards.forEach((card, index) => {
+    const left = MARGIN + (width + gap) * index;
+    page.addShape("roundRect", {
+      x: left,
+      y: BODY_TOP,
+      w: width,
+      h: height,
+      fill: { color: "F5F5F7" },
+      line: { color: "D9D9D9", width: 0.75 },
+      rectRadius: 0.08,
+    });
+    page.addText(
+      card.heading.map((run, at) =>
+        textRun(
+          run,
+          {
+            fontSize: HEADING_POINTS,
+            bold: true,
+            color: theme.accent,
+            ...(at === card.heading.length - 1 ? { breakLine: true } : {}),
+          },
+          theme,
+        ),
+      ),
+      {
+        x: left + 0.2,
+        y: BODY_TOP + 0.18,
+        w: width - 0.4,
+        h: 0.5,
+        valign: "top",
+      },
+    );
+    const body = flowRuns(card.blocks, theme);
+    if (body.length > 0) {
+      page.addText(body, {
+        x: left + 0.2,
+        y: BODY_TOP + 0.75,
+        w: width - 0.4,
+        h: height - 0.95,
+        valign: "top",
+      });
+    }
+  });
+}
+
+/// 文章・箇条書き・小見出しを 1 つの枠に流す形に直す。
+function flowRuns(blocks: readonly SlideBlock[], theme: SlideTheme) {
+  return blocks.flatMap((block) => {
+    if (block.kind === "code" || block.kind === "table") return [];
+    const heading = block.kind === "heading";
+    return block.runs.map((run, index) =>
+      textRun(
+        run,
+        {
+          fontSize: heading ? HEADING_POINTS : BODY_POINTS,
+          ...(heading ? { bold: true, color: theme.accent } : {}),
+          ...(index === 0 && block.kind === "bullet"
+            ? { bullet: true, indentLevel: Math.min(block.level, MAX_LEVEL) }
+            : {}),
+          ...(index === block.runs.length - 1 ? { breakLine: true } : {}),
+        },
+        theme,
+      ),
+    );
+  });
+}
+
+function placeBlocks(
+  page: Page,
+  blocks: SlideBlock[],
+  width: number,
+  theme: SlideTheme,
+): void {
   // 文章・箇条書き・小見出しは 1 つの枠にまとめる（段落として流す）。
   // コードと表は入らないので別の図形にする
   const flow = blocks.filter(
@@ -195,28 +289,13 @@ function placeBlocks(page: Page, blocks: SlideBlock[], width: number): void {
   );
   let top = BODY_TOP;
   if (flow.length > 0) {
-    page.addText(
-      flow.flatMap((block) => {
-        const heading = block.kind === "heading";
-        return block.runs.map((run, index) =>
-          textRun(run, {
-            fontSize: heading ? HEADING_POINTS : BODY_POINTS,
-            ...(heading ? { bold: true } : {}),
-            // 箇条書きの印と段は**行の頭にだけ**付ける（走りごとに
-            // 付けると、装飾の切れ目で点が増える）
-            ...(index === 0 && block.kind === "bullet"
-              ? {
-                  bullet: true,
-                  indentLevel: Math.min(block.level, MAX_LEVEL),
-                }
-              : {}),
-            // 改行は行の終わりにだけ
-            ...(index === block.runs.length - 1 ? { breakLine: true } : {}),
-          }),
-        );
-      }),
-      { x: MARGIN, y: top, w: width, h: 4.4, valign: "top" },
-    );
+    page.addText(flowRuns(flow, theme), {
+      x: MARGIN,
+      y: top,
+      w: width,
+      h: 4.4,
+      valign: "top",
+    });
     top += 4.6;
   }
   for (const block of blocks) {
@@ -227,7 +306,7 @@ function placeBlocks(page: Page, blocks: SlideBlock[], width: number): void {
         w: width,
         h: 1.6,
         fontSize: CODE_POINTS,
-        fontFace: MONO_FONT,
+        fontFace: theme.mono,
         fill: { color: "F5F5F7" },
         color: "1F1F1F",
         valign: "top",
@@ -251,7 +330,7 @@ function placeBlocks(page: Page, blocks: SlideBlock[], width: number): void {
           text: cell,
           options:
             index === 0
-              ? { bold: true, color: "FFFFFF", fill: { color: "44546A" } }
+              ? { bold: true, color: "FFFFFF", fill: { color: theme.accent } }
               : index % 2 === 0
                 ? { fill: { color: "F2F2F2" } } // 縞にして行を追いやすく
                 : {},

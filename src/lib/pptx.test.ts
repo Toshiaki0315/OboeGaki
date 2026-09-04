@@ -7,9 +7,14 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { buildPptx } from "./pptx";
 import { splitDeck } from "./slides";
+import { readSlideTheme } from "./slide-theme";
 
 async function open(markdown: string) {
-  const base64 = await buildPptx(splitDeck(markdown), async () => null);
+  const base64 = await buildPptx(
+    splitDeck(markdown),
+    async () => null,
+    readSlideTheme(markdown),
+  );
   const zip = await JSZip.loadAsync(base64, { base64: true });
   const slide = async (index: number) =>
     (await zip.file(`ppt/slides/slide${index}.xml`)?.async("string")) ?? "";
@@ -63,5 +68,41 @@ describe("buildPptx", () => {
     );
     expect(master.length + layouts.length).toBeGreaterThan(0);
     expect(await deck.slide(1)).toContain("slidenum");
+  });
+});
+
+describe("見た目とカード（TASKS 5-4 / 5-5）", () => {
+  it("test_小見出しが2つあれば箱が並ぶ", async () => {
+    const deck = await open("## A\n\n### 前\n\nx\n\n### 後\n\ny\n");
+    const xml = await deck.slide(1);
+    // 角丸の箱が 2 つ（`roundRect` は prstGeom で出る）
+    expect(xml.match(/roundRect/g)?.length).toBe(2);
+  });
+
+  it("test_箱にできないスライドは今までどおり縦に流す", async () => {
+    const deck = await open("## A\n\n### 前\n\nx\n");
+    expect(await deck.slide(1)).not.toContain("roundRect");
+  });
+
+  it("test_front_matter の色と書体が載る", async () => {
+    const deck = await open(
+      [
+        "---",
+        "slide-accent: '#0A84FF'",
+        "slide-mono: Courier New",
+        "---",
+        "",
+        "## A",
+        "",
+        "`コード` と本文",
+        "",
+        "| a |",
+        "| --- |",
+        "| 1 |",
+      ].join("\n"),
+    );
+    const xml = await deck.slide(1);
+    expect(xml).toContain("0A84FF"); // 題と表の見出し
+    expect(xml).toContain("Courier New"); // インラインコードの書体
   });
 });

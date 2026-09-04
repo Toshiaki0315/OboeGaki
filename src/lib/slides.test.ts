@@ -2,7 +2,7 @@
 // 区切りは参照実装 core/slides.py と同じ（ユーザーと決めた並べ方）。
 
 import { describe, expect, test } from "vitest";
-import { plainText, splitDeck, type SlideBlock } from "./slides";
+import { cardsOf, plainText, splitDeck, type SlideBlock } from "./slides";
 
 /// 本文だけを見たいテスト用（装飾は runs が持つ）
 const said = (block: SlideBlock) =>
@@ -10,6 +10,7 @@ const said = (block: SlideBlock) =>
 
 /// 装飾ごと見たいテスト用（コード・表には runs が無い）
 const runsOf = (block: SlideBlock) => ("runs" in block ? block.runs : []);
+const plainOf = (block: SlideBlock) => plainText(runsOf(block));
 
 describe("splitDeck", () => {
   test("`#` は表紙。その前後の段落が副題になる", () => {
@@ -135,6 +136,46 @@ describe("splitDeck", () => {
       { text: "強い", bold: true },
       { text: "項目" },
     ]);
+  });
+
+  // --- 段組み / カード（TASKS 5-4） ---
+
+  test("test_小見出しが2つ以上あれば横並びの箱にする", () => {
+    const deck = splitDeck("## A\n\n### 前\n\n落ちる\n\n### 後\n\n残る\n");
+    const cards = cardsOf(deck.slides[0].blocks);
+    expect(cards?.map((card) => plainText(card.heading))).toEqual(["前", "後"]);
+    expect(cards?.map((card) => card.blocks.map(plainOf))).toEqual([
+      ["落ちる"],
+      ["残る"],
+    ]);
+  });
+
+  test("test_小見出しが1つだけなら箱にしない", () => {
+    // 1 つを箱にしても段組みにならない。今までどおり縦に流す
+    const deck = splitDeck("## A\n\n### 見出し\n\n本文\n");
+    expect(cardsOf(deck.slides[0].blocks)).toBeNull();
+  });
+
+  test("test_小見出しの前に本文があれば箱にしない", () => {
+    // 箱に入らない文が浮く。**迷ったら今までの並べ方に倒す**
+    const deck = splitDeck("## A\n\n前置き\n\n### 前\n\nx\n\n### 後\n\ny\n");
+    expect(cardsOf(deck.slides[0].blocks)).toBeNull();
+  });
+
+  test("test_コードや表があれば箱にしない", () => {
+    // 幅が要るものは横に割ると読めなくなる
+    const deck = splitDeck(
+      "## A\n\n### 前\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n### 後\n\ny\n",
+    );
+    expect(cardsOf(deck.slides[0].blocks)).toBeNull();
+  });
+
+  test("test_箱は4つまで（5つ以上は縦に流す）", () => {
+    const many = [
+      "## A",
+      ...Array.from({ length: 5 }, (_, i) => `### ${i}\n\nx`),
+    ].join("\n\n");
+    expect(cardsOf(splitDeck(many).slides[0].blocks)).toBeNull();
   });
 
   // --- スライドの体裁（TASKS 5-3） ---

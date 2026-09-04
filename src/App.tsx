@@ -64,6 +64,7 @@ import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
 import { buildPptx } from "./lib/pptx";
+import { readSlideTheme } from "./lib/slide-theme";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
 import { OCR_THRESHOLD, pdfPageImage, pdfPages } from "./lib/pdf-import";
@@ -776,8 +777,11 @@ function App() {
     if (!target) return;
     setStatus("PowerPoint を組んでいます…");
     try {
-      const data = await buildPptx(splitDeck(text), (url) =>
-        imageSource(vaultRoot, url),
+      // 見た目はノートの front matter から（TASKS 5-5）
+      const data = await buildPptx(
+        splitDeck(text),
+        (url) => imageSource(vaultRoot, url),
+        readSlideTheme(text),
       );
       await invoke("export_write_binary", { path: target, data });
       setStatus(`書き出しました: ${target}`);

@@ -177,6 +177,41 @@ export function splitDeck(text: string): Deck {
   return deck;
 }
 
+/// 横並びの箱（TASKS 5-4）。小見出しごとに 1 つ。
+export type Card = { heading: Run[]; blocks: SlideBlock[] };
+
+/// 箱にできる数の上限。**5 つ以上は細すぎて読めない**（横幅の割り算）。
+const MAX_CARDS = 4;
+
+/// スライドを横並びの箱に割る。割らないほうがよければ null。
+///
+/// **新しい記法を作らない。** 小見出し（`###`）がそのまま箱になる。書く側は
+/// 今までどおりの書き方で、段組みが要るときだけ小見出しを 2 つ以上置く。
+///
+/// 割らない場合:
+/// - 小見出しが 1 つだけ（横に並ばない）
+/// - 小見出しの前に本文がある（箱に入らない文が浮く）
+/// - コードや表がある（幅が要るものを横に割ると読めない）
+/// - 箱が 5 つ以上（細すぎる）
+///
+/// **迷ったら今までの並べ方に倒す。** 崩れた段組みより、縦に流れるほうがよい。
+export function cardsOf(blocks: readonly SlideBlock[]): Card[] | null {
+  if (blocks.some((block) => block.kind === "code" || block.kind === "table")) {
+    return null;
+  }
+  if (blocks.length === 0 || blocks[0].kind !== "heading") return null;
+  const cards: Card[] = [];
+  for (const block of blocks) {
+    if (block.kind === "heading") {
+      cards.push({ heading: block.runs, blocks: [] });
+    } else {
+      cards[cards.length - 1].blocks.push(block);
+    }
+  }
+  if (cards.length < 2 || cards.length > MAX_CARDS) return null;
+  return cards;
+}
+
 /// 箇条書きの項目を階層ごとに平らに並べる。
 function listItems(
   list: SyntaxNode,
