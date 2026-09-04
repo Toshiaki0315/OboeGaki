@@ -7,25 +7,12 @@ import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import {
-  displayWidth,
   formatTable,
   formatTableChange,
   insertTableAt,
   newTable,
   splitCells,
 } from "./table-format";
-
-describe("displayWidth", () => {
-  test.each([
-    ["半角のみ", "abc", 3],
-    ["全角は2桁", "日本語", 6],
-    ["混在", "列A", 3],
-    ["かな", "ぱぴぷ", 6],
-    ["エスケープしたパイプは1桁", "a\\|b", 3],
-  ])("test_%s", (_label, text, width) => {
-    expect(displayWidth(text)).toBe(width);
-  });
-});
 
 describe("splitCells", () => {
   test("test_エスケープしたパイプは区切りにしない", () => {
@@ -34,12 +21,23 @@ describe("splitCells", () => {
 });
 
 describe("formatTable", () => {
-  test("test_全角混じりで縦線が揃う", () => {
-    const lines = ["| 列A | b |", "| --- | --- |", "| 値 | 長い値です |"];
+  test("test_桁は揃えない_区切りを整えるだけ", () => {
+    // **文字の幅で揃えない**（ADR-0044）。揃うかどうかは表示に使う
+    // フォント次第で、こちらからは決められない
+    const lines = ["|列A|b|", "| --- | --- |", "|  値   | 長い値です|"];
     expect(formatTable(lines)).toEqual([
-      "| 列A | b          |",
-      "| --- | ---------- |",
-      "| 値  | 長い値です |",
+      "| 列A | b |",
+      "| --- | --- |",
+      "| 値 | 長い値です |",
+    ]);
+  });
+
+  test("test_空のセルも形を保つ", () => {
+    const lines = ["| a | b |", "| --- | --- |", "| | 2 |"];
+    expect(formatTable(lines)).toEqual([
+      "| a | b |",
+      "| --- | --- |",
+      "|  | 2 |",
     ]);
   });
 
@@ -47,8 +45,8 @@ describe("formatTable", () => {
     // 期待値は参照実装 format_table の実出力（オラクル）
     const lines = ["| a | b |", "| --- |", "| 1 | 2 | 3 |"];
     expect(formatTable(lines)).toEqual([
-      "| a | b |   |",
-      "| - | - | - |",
+      "| a | b |  |",
+      "| --- | --- | --- |",
       "| 1 | 2 | 3 |",
     ]);
   });
@@ -58,9 +56,15 @@ describe("formatTable", () => {
     const lines = ["| a | b | c |", "| :-- | :-: | --: |", "| 1 | 2 | 3 |"];
     expect(formatTable(lines)).toEqual([
       "| a | b | c |",
-      "| :- | :-: | -: |",
+      "| :-- | :-: | --: |",
       "| 1 | 2 | 3 |",
     ]);
+  });
+
+  test("test_二度整えても変わらない", () => {
+    // 表を離れるたびに走るので、変わり続けると保存が止まらなくなる
+    const once = formatTable(["|列A|b|", "|-|--|", "|  値 |長い値です|"])!;
+    expect(formatTable(once)).toEqual(once);
   });
 
   test("test_区切り行が無ければ表ではない", () => {
@@ -106,15 +110,18 @@ const LANG = markdown({
 });
 
 describe("formatTableChange", () => {
-  const doc = "前\n\n| 列A | b |\n| --- | --- |\n| 値 | 長い値です |\n\n後";
+  // 区切りが揃っていない・空白が余っている表（＝整える対象）
+  const doc = "前\n\n|列A|b|\n|-|----|\n|  値 |長い値です|\n\n後";
 
   test("test_崩れた表の置き換えを作る", () => {
     const state = EditorState.create({ doc, extensions: [LANG] });
-    const from = doc.indexOf("| 列A");
-    const to = doc.indexOf("です |") + 4;
+    const from = doc.indexOf("|列A");
+    const to = doc.indexOf("長い値です|") + 6;
     const change = formatTableChange(state, { from, to });
     expect(change).not.toBeNull();
-    expect(change!.insert).toContain("| 列A | b          |");
+    expect(change!.insert).toBe(
+      "| 列A | b |\n| --- | --- |\n| 値 | 長い値です |",
+    );
   });
 
   test("test_既に揃っている表には何もしない", () => {

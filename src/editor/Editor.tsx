@@ -345,7 +345,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           }),
           syntaxHighlighting(codeHighlight),
           livePreview,
-          tableAutoFormat, // 表を離れたら桁揃え（ADR-0003 決定 4）
+          tableAutoFormat, // 表を離れたら整える（ADR-0003 決定 4 / ADR-0044）
           headingFolding, // 見出しの折りたたみ（ADR-0019）
           editorModes,
           imageResolver.of(resolveImage ?? (async () => null)),

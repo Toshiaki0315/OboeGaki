@@ -18,7 +18,7 @@
 | 裸 URL の装飾と Cmd+クリック                                                             | inline_scanner の AUTOLINK / BARE_URL                       | 部分実装（`<url>` 形式のみ。裸 URL は素通し） |
 | 本文幅の設定・「どこまで書けるか」の可視化                                               | ADR-0016 / ADR-0018, Q-1 / Q-2                              | 未実装（46rem 固定）                          |
 | 文字サイズ変更（Cmd+±）・等幅フォント設定                                                | §5.2, editor_widget.set_base_point_size                     | 未実装                                        |
-| 表: エディタを離れたときのソース整形（桁揃え）                                           | ADR-0003 決定 4, core/table.format_table                    | 未実装（描画はするがソースは整形しない）      |
+| 表: エディタを離れたときのソース整形                                                     | ADR-0003 決定 4, core/table.format_table                    | 実装済み（桁揃えは ADR-0044 でやめた）        |
 | 表の挿入コマンド（行 × 列を指定して雛形を差し込む）                                      | commands.insert_table                                       | 未実装                                        |
 | 表セル内の改行（`<br>`）                                                                 | ADR-0028                                                    | 未実装                                        |
 

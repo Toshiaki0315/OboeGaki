@@ -3,6 +3,11 @@
 // 整形は「エディタで表を離れたとき」に走る（ADR-0003 決定 4）。
 // 列数が足りない行は空セルで埋め、多い行は捨てずに残す —
 // 書いた内容を失わないほうを優先する。
+//
+// **桁は揃えない**（ADR-0044）。空白を詰めて縦線を揃えるには「全角:半角 =
+// 2:1 の等幅フォントで表示される」ことが前提になるが、本文のフォントは
+// 設定で変えられるし、既定のプロポーショナルでは揃わない。揃わない前提で
+// 空白を詰めても、ソースが長くなって差分が読みにくくなるだけ。
 
 import type { EditorState } from "@codemirror/state";
 import { Transaction } from "@codemirror/state";
@@ -11,25 +16,19 @@ import { syntaxTree } from "@codemirror/language";
 import type { Replacement } from "./format-commands";
 
 const ESCAPED_PIPE = "\\|";
-const MIN_DELIMITER_WIDTH = 1;
 const PREFIX_RE = /^(?:[ \t]*>[ \t]?)*[ \t]*/;
 const DELIMITER_CELL_RE = /^:?-+:?$/;
 
-// East Asian Width の W / F に相当する範囲（全角 = 2 桁）。
-// Python の unicodedata.east_asian_width の代わり。曖昧幅（A）は 1 桁
-const WIDE_RE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/;
-
 type Alignment = "left" | "right" | "center" | "none";
 
-/// 等幅フォントで占める桁数。全角は 2、半角は 1。
-/// `\|` は 2 文字だが画面には 1 文字として出るので 1 桁。
-export function displayWidth(text: string): number {
-  let width = 0;
-  for (const char of text.split(ESCAPED_PIPE).join("|")) {
-    width += WIDE_RE.test(char) ? 2 : 1;
-  }
-  return width;
-}
+/// 区切り行のセル。**幅を持たせない** — 揃えないので 3 文字で足りる
+/// （`---` は Markdown の書き手にいちばん見慣れた形）。
+const DELIMITER_CELLS: Record<Alignment, string> = {
+  left: ":--",
+  right: "--:",
+  center: ":-:",
+  none: "---",
+};
 
 /// 行の中身をセルに割る。`\|` は区切りにしない（GFM のリテラルなパイプ）。
 export function splitCells(body: string): string[] {
@@ -84,34 +83,7 @@ function alignmentOf(cell: string): Alignment {
   return "none";
 }
 
-function pad(text: string, width: number, alignment: Alignment): string {
-  const space = Math.max(0, width - displayWidth(text));
-  switch (alignment) {
-    case "right":
-      return " ".repeat(space) + text;
-    case "center": {
-      const left = Math.floor(space / 2);
-      return " ".repeat(left) + text + " ".repeat(space - left);
-    }
-    default:
-      return text + " ".repeat(space);
-  }
-}
-
-function delimiterCell(width: number, alignment: Alignment): string {
-  switch (alignment) {
-    case "left":
-      return ":" + "-".repeat(Math.max(MIN_DELIMITER_WIDTH, width - 1));
-    case "right":
-      return "-".repeat(Math.max(MIN_DELIMITER_WIDTH, width - 1)) + ":";
-    case "center":
-      return ":" + "-".repeat(Math.max(MIN_DELIMITER_WIDTH, width - 2)) + ":";
-    default:
-      return "-".repeat(Math.max(MIN_DELIMITER_WIDTH, width));
-  }
-}
-
-/// 表のソースを桁揃えする。表でなければ null。
+/// 表のソースを整える（区切りと列数だけ。**桁は揃えない**）。表でなければ null。
 export function formatTable(lines: readonly string[]): string[] | null {
   if (lines.length < 2) return null;
   const delimiterIndex = lines.findIndex(isDelimiter);
@@ -122,22 +94,14 @@ export function formatTable(lines: readonly string[]): string[] | null {
   const alignments = rows[delimiterIndex].cells.map(alignmentOf);
   while (alignments.length < columns) alignments.push("none");
 
-  const widths = new Array<number>(columns).fill(MIN_DELIMITER_WIDTH);
-  rows.forEach((row, index) => {
-    if (index === delimiterIndex) return;
-    row.cells.forEach((cell, column) => {
-      widths[column] = Math.max(widths[column], displayWidth(cell));
-    });
-  });
-
   return rows.map((row, index) => {
     let cells: string[];
     if (index === delimiterIndex) {
-      cells = widths.map((width, c) => delimiterCell(width, alignments[c]));
+      cells = alignments.map((alignment) => DELIMITER_CELLS[alignment]);
     } else {
-      const padded = [...row.cells];
-      while (padded.length < columns) padded.push("");
-      cells = padded.map((cell, c) => pad(cell, widths[c], alignments[c]));
+      cells = [...row.cells];
+      // 足りない列は空セルで埋める（多い行はそのまま残す）
+      while (cells.length < columns) cells.push("");
     }
     return `${row.prefix}| ` + cells.join(" | ") + " |";
   });
@@ -146,7 +110,7 @@ export function formatTable(lines: readonly string[]): string[] | null {
 export const HEADER_PLACEHOLDER = "見出し";
 
 /// 空の表を作る。`rows` は見出しを除いた本体の行数。整形済みで返すので、
-/// 作った直後に表を離れても縦線は動かない。
+/// 作った直後に表を離れてもソースは動かない。
 export function newTable(rows: number, columns: number): string[] {
   const bodyRows = Math.max(1, rows);
   const bodyColumns = Math.max(1, columns);
@@ -221,7 +185,7 @@ function tableAt(
   return null;
 }
 
-/// キャレットが表を離れたら、そのソースを桁揃えする（ADR-0003 決定 4）。
+/// キャレットが表を離れたら、そのソースを整える（ADR-0003 決定 4 / ADR-0044）。
 export const tableAutoFormat = ViewPlugin.fromClass(
   class {
     constructor(readonly view: EditorView) {}
@@ -250,7 +214,7 @@ export const tableAutoFormat = ViewPlugin.fromClass(
           changes: change,
           userEvent: "format.table",
           // Undo を 1 段消費させない（レビュー 2026-09-04: 表を離れる
-          // たびに「桁揃えの取り消し」が履歴に積まれ、Cmd+Z の 1 回目が
+          // たびに「整形の取り消し」が履歴に積まれ、Cmd+Z の 1 回目が
           // 直前の入力に戻らなくなっていた）
           annotations: Transaction.addToHistory.of(false),
         });
