@@ -1,5 +1,11 @@
 :root {
   color-scheme: light dark;
+  /* アイコンの大きさ。**1 か所に持つ** — 一覧の上・書式ツールバー・
+     アシスタントで別々に書くと、直すときに片方だけ残る（参照実装が
+     TOOLBAR_SCALE を 1 か所に置いているのと同じ判断）。
+     要望 2026-09-04 で一回り大きくした（1rem / 1.85rem → 1.2 倍） */
+  --icon-size: 1.2rem;
+  --icon-button: 2.2rem;
   /* ペインや帯の区切り線。**1 か所に置く** — 濃さを揃えたいときに
      ここだけを触ればよい（要望 2026-09-04） */
   --pane-line: color-mix(in srgb, currentColor 8%, transparent);
@@ -304,8 +310,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: var(--icon-button);
+  height: var(--icon-button);
   padding: 0;
   color: inherit;
   background: none;
@@ -326,8 +332,8 @@ body {
 }
 
 .note-actions svg {
-  width: 1rem;
-  height: 1rem;
+  width: var(--icon-size);
+  height: var(--icon-size);
 }
 
 .title-input {
@@ -597,8 +603,8 @@ body.resizing {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
+  width: var(--icon-button);
+  height: var(--icon-button);
   padding: 0;
   color: inherit;
   background: none;
@@ -616,8 +622,8 @@ body.resizing {
 
 .assistant-actions svg,
 .assistant-ask svg {
-  width: 1rem;
-  height: 1rem;
+  width: var(--icon-size);
+  height: var(--icon-size);
 }
 
 .assistant-actions button:disabled {
@@ -1640,8 +1646,8 @@ button.danger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
+  width: var(--icon-button);
+  height: var(--icon-button);
   padding: 0;
   color: inherit;
   background: none;
@@ -1663,14 +1669,15 @@ button.danger {
 }
 
 .format-toolbar svg {
-  width: 1rem;
-  height: 1rem;
+  width: var(--icon-size);
+  height: var(--icon-size);
 }
 
 /* 群の切れ目。ボタンより少し低くして、線が主張しすぎないようにする */
 .toolbar-separator {
   width: 1px;
-  height: 1.1rem;
+  /* ボタンより少し低くして、線が主張しすぎないようにする */
+  height: calc(var(--icon-button) * 0.6);
   margin: 0 0.3rem;
   background: var(--pane-line);
 }
