@@ -152,12 +152,17 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden; /* スクロールは中の editor-host が持つ */
+  /* **本文の左右（書けない場所）を沈める**（参照実装 theme.page_background
+     と同じ判断）。紙の幅が目で分かり、どこからが本文か迷わない */
+  background: var(--page-bg);
 }
 
 .editor-host {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 書ける場所（紙）。沈めた余白から浮かせる */
+  background: var(--app-bg);
   /* 本文の幅は環境設定（ADR-0018）。既定は従来と同じ 46rem */
   max-width: var(--content-width, 46rem);
   width: 100%;
@@ -245,6 +250,8 @@ body {
    途中で切れて見える） */
 .note-header-bar {
   flex: none;
+  /* 帯は沈めない（余白の色は本文の左右だけ。参照実装も帯は地の色） */
+  background: var(--app-bg);
   border-bottom: 1px solid var(--pane-line);
   /* 題名（46rem 中央）と操作アイコン（右端）を横に並べる */
   display: flex;
@@ -1223,6 +1230,8 @@ button.danger {
    ダークは github-dark 系。参照実装 core/html.py と同じ組*/
 :root {
   --app-bg: #ffffff;
+  /* 本文の左右の余白。白より少し沈める（Qiita の地のような濃さ） */
+  --page-bg: #f2f2f5;
   --code-name-bg: #63636b; /* フェンスのファイル名ラベル（ADR-0008） */
   --code-name-fg: #ffffff;
   --code-keyword: #007020;
@@ -1239,6 +1248,7 @@ button.danger {
      TASKS 3-9）。CSS 側にも @media を置くと 2 か所で決まってずれる */
   color-scheme: dark;
   --app-bg: #1e1e1e;
+  --page-bg: #161618; /* 本文よりさらに沈める */
   --code-name-bg: #5a5a63;
   --code-name-fg: #f5f5f7;
   --code-keyword: #ff7b72;
@@ -1280,6 +1290,7 @@ button.danger {
    1 行の見出しに件数を出せば「繋がりがある」ことは伝わる */
 .backlink-bar {
   flex: none;
+  background: var(--app-bg);
   max-height: 40%;
   overflow-y: auto;
   border-top: 1px solid var(--pane-line);
@@ -1519,6 +1530,7 @@ button.danger {
    **アイコンだけ**にして、呼び名は Tips に持たせる */
 .format-toolbar {
   flex: none;
+  background: var(--app-bg);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
