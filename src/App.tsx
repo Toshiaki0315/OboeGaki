@@ -16,6 +16,7 @@ import { menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
+import { ASK_ACTION, ASSISTANT_ACTIONS } from "./lib/assistant-actions";
 import { packSources, pickSources } from "./lib/sources";
 import {
   availableFonts,
@@ -1061,6 +1062,15 @@ function App() {
     });
   }
 
+  /// 押すたびに画面を空にする（要望 2026-09-04）。**前の答えを残さない** —
+  /// 残っていると、新しい問いの答えが出るまでのあいだ、前の答えを新しい
+  /// ものと読み違える。
+  function clearAssistant() {
+    setAnswer("");
+    setSources([]);
+    setRelatedShown(false);
+  }
+
   /// 走っている生成を止める（L-1）。**受け取ったぶんは消さない。**
   function stopAssistant() {
     void invoke("llm_stop").catch(() => {});
@@ -1069,6 +1079,7 @@ function App() {
   /// 関連するノートを出す（L-3）。**モデルを通さない** — 関係の根拠は
   /// 索引の中にある（同じタグ・`[[…]]` の指し合い・題名の言及）。
   function showRelated() {
+    clearAssistant();
     setRelatedShown(true);
   }
 
@@ -1079,8 +1090,7 @@ function App() {
   async function askQuestion() {
     const asked = question.trim();
     if (!vaultRoot || !asked || thinking) return;
-    setAnswer("");
-    setSources([]);
+    clearAssistant();
     // **質問をそのまま探さない。** 全文検索は打った通りの並びを探すので、
     // 「予算について何が決まった？」ではどこにも当たらない（lib/keywords）
     const words = terms(asked);
@@ -1130,7 +1140,7 @@ function App() {
     if (!vaultRoot || !currentPath) return;
     await autosave.flush(); // 打ちかけを書き切ってから読ませる
     const text = editorRef.current?.getText() ?? "";
-    setAnswer("");
+    clearAssistant();
     setThinking(true);
     const started = await startGeneration({
       task,
@@ -4014,30 +4024,46 @@ function App() {
               {/* 並びは参照実装（ui/assistant_pane.py）と同じ。
                 **ボタンの列は Ollama が無くても出す** — 「関連」は索引を
                 引くだけで、モデルを通さない（L-3） */}
-              <div className="assistant-actions">
-                <button
-                  disabled={thinking || !currentPath || llmReady === false}
-                  onClick={() => void askAssistant("summary")}
-                >
-                  要約
-                </button>
-                <button
-                  disabled={thinking || !currentPath || llmReady === false}
-                  onClick={() => void askAssistant("review")}
-                >
-                  レビュー
-                </button>
-                <button disabled={!currentPath} onClick={showRelated}>
-                  関連
-                </button>
-                {/* 走っている間だけ意味を持つので右端に離す */}
-                <button
-                  className="assistant-stop"
-                  disabled={!thinking}
-                  onClick={stopAssistant}
-                >
-                  止める
-                </button>
+              <div
+                className="assistant-actions"
+                role="group"
+                aria-label="アシスタント"
+              >
+                {ASSISTANT_ACTIONS.map((action) => (
+                  <button
+                    key={action.id}
+                    className={action.id === "stop" ? "assistant-stop" : ""}
+                    title={action.hint}
+                    aria-label={action.label}
+                    disabled={
+                      action.id === "stop"
+                        ? !thinking
+                        : action.id === "related"
+                          ? // **索引を引くだけ。** Ollama が無くても押せる（L-3）
+                            !currentPath
+                          : thinking || !currentPath || llmReady === false
+                    }
+                    onClick={() => {
+                      if (action.id === "stop") stopAssistant();
+                      else if (action.id === "related") showRelated();
+                      else void askAssistant(action.id);
+                    }}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      {action.paths.map((d) => (
+                        <path
+                          key={d}
+                          d={d}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      ))}
+                    </svg>
+                  </button>
+                ))}
               </div>
               {llmReady === false ? (
                 // **押してから断らない**（G-3 のゴミ箱と同じ作法）
@@ -4069,10 +4095,24 @@ function App() {
                     />
                     {/* 空の質問では押せない（押しても何も起きないボタンを押させない） */}
                     <button
+                      title={ASK_ACTION.hint}
+                      aria-label={ASK_ACTION.label}
                       disabled={thinking || !question.trim()}
                       onClick={() => void askQuestion()}
                     >
-                      質問
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        {ASK_ACTION.paths.map((d) => (
+                          <path
+                            key={d}
+                            d={d}
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        ))}
+                      </svg>
                     </button>
                   </div>
                   <p className="assistant-note">

@@ -590,15 +590,34 @@ body.resizing {
   padding: 0 0.5rem 0.4rem;
 }
 
-.assistant-actions button {
-  font: inherit;
-  font-size: 0.8rem;
+/* アイコンだけのボタン（要望 2026-09-04）。寸法と枠は書式ツールバーに
+   揃える — 同じ「押せるアイコン」が場所ごとに違う形だと目が慣れない */
+.assistant-actions button,
+.assistant-ask button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
   color: inherit;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  border: none;
-  border-radius: 6px;
-  padding: 0.25rem 0.6rem;
+  background: none;
+  border: 1px solid var(--pane-line);
+  border-radius: 5px;
   cursor: pointer;
+  opacity: 0.75;
+}
+
+.assistant-actions button:hover:not(:disabled),
+.assistant-ask button:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 1;
+}
+
+.assistant-actions svg,
+.assistant-ask svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .assistant-actions button:disabled {
@@ -1743,14 +1762,6 @@ button.danger {
 
 .assistant-ask button {
   flex: none;
-  font: inherit;
-  font-size: 0.8rem;
-  color: inherit;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  border: none;
-  border-radius: 6px;
-  padding: 0.25rem 0.7rem;
-  cursor: pointer;
 }
 
 .assistant-ask button:disabled {
