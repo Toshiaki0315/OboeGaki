@@ -24,6 +24,7 @@ import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
 import { ASK_ACTION, ASSISTANT_ACTIONS } from "./lib/assistant-actions";
+import { MENU_ICONS, type MenuIconName } from "./lib/menu-icons";
 import { packSources, pickSources } from "./lib/sources";
 import {
   availableFonts,
@@ -194,6 +195,25 @@ const SPACING_LABELS: Record<LineSpacing, string> = {
   normal: "ふつう",
   relaxed: "ゆったり",
 };
+
+/// メニューの項目に添える絵。**名前で引く**（同じ言葉には同じ絵）。
+function MenuIcon({ name }: { name: MenuIconName }) {
+  return (
+    <svg className="menu-icon" viewBox="0 0 16 16" aria-hidden="true">
+      {MENU_ICONS[name].map((d) => (
+        <path
+          key={d}
+          d={d}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
+    </svg>
+  );
+}
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
 function formatBytes(bytes: number): string {
@@ -3752,11 +3772,13 @@ function App() {
                   >
                     <li>
                       <button onClick={run(() => void handlePin(target))}>
+                        <MenuIcon name="pin" />
                         {pinned ? "ピンを外す" : "ピン留め"}
                       </button>
                     </li>
                     <li>
                       <button onClick={run(() => void handleDuplicate(target))}>
+                        <MenuIcon name="copy" />
                         複製
                       </button>
                     </li>
@@ -3767,22 +3789,26 @@ function App() {
                           setMoveOpen(true);
                         })}
                       >
+                        <MenuIcon name="move" />
                         フォルダへ移動…
                       </button>
                     </li>
                     <li>
                       <button onClick={run(() => setTemplateName(target))}>
+                        <MenuIcon name="template" />
                         テンプレートに登録…
                       </button>
                     </li>
                     <li className="separator" />
                     <li>
                       <button onClick={run(() => void copyNoteLink(target))}>
+                        <MenuIcon name="link" />
                         リンクをコピー
                       </button>
                     </li>
                     <li>
                       <button onClick={run(() => void revealItemInDir(target))}>
+                        <MenuIcon name="finder" />
                         Finder で表示
                       </button>
                     </li>
@@ -3797,6 +3823,7 @@ function App() {
                         }
                         onClick={run(() => void handleTrash(target))}
                       >
+                        <MenuIcon name="trash" />
                         ゴミ箱へ移動
                       </button>
                     </li>
@@ -3811,15 +3838,38 @@ function App() {
                 setEditorMenu(null);
                 action();
               };
-              const format = (kind: FormatKind, label: string) => (
-                <li key={kind}>
-                  <button
-                    onClick={run(() => editorRef.current?.applyFormat(kind))}
-                  >
-                    {label}
-                  </button>
-                </li>
-              );
+              // 書式の絵は**ツールバーと同じもの**を引く（同じ言葉に同じ絵）
+              const format = (kind: FormatKind, label: string) => {
+                const item = FORMAT_TOOLBAR.flat().find(
+                  (found) => found.kind === kind,
+                );
+                return (
+                  <li key={kind}>
+                    <button
+                      onClick={run(() => editorRef.current?.applyFormat(kind))}
+                    >
+                      <svg
+                        className="menu-icon"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                      >
+                        {(item?.paths ?? []).map((d) => (
+                          <path
+                            key={d}
+                            d={d}
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        ))}
+                      </svg>
+                      {label}
+                    </button>
+                  </li>
+                );
+              };
               return (
                 <div
                   className="menu-backdrop"
@@ -3851,6 +3901,7 @@ function App() {
                         disabled={!selected}
                         onClick={run(() => void editorClipboard("cut"))}
                       >
+                        <MenuIcon name="cut" />
                         切り取り
                       </button>
                     </li>
@@ -3859,6 +3910,7 @@ function App() {
                         disabled={!selected}
                         onClick={run(() => void editorClipboard("copy"))}
                       >
+                        <MenuIcon name="copy" />
                         コピー
                       </button>
                     </li>
@@ -3866,6 +3918,7 @@ function App() {
                       <button
                         onClick={run(() => void editorClipboard("paste"))}
                       >
+                        <MenuIcon name="paste" />
                         貼り付け
                       </button>
                     </li>
@@ -3881,6 +3934,7 @@ function App() {
                     <li className="separator" />
                     <li>
                       <button onClick={run(() => setTableDialog(true))}>
+                        <MenuIcon name="table" />
                         表を挿入…
                       </button>
                     </li>
@@ -3925,7 +3979,10 @@ function App() {
                     onMouseDown={(event) => event.stopPropagation()}
                   >
                     <li>
-                      <button onClick={run(openPreferences)}>環境設定…</button>
+                      <button onClick={run(openPreferences)}>
+                        <MenuIcon name="preferences" />
+                        環境設定…
+                      </button>
                     </li>
                     <li className="separator" />
                     <li>
@@ -4016,12 +4073,14 @@ function App() {
                       {/* 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
                         検索へ回す（同じ書き方が検索欄でも効く） */}
                       <button onClick={run(() => searchByTag(target))}>
+                        <MenuIcon name="search" />
                         このタグで全ノート検索
                       </button>
                     </li>
                     <li className="separator" />
                     <li>
                       <button onClick={run(() => void copyTag(target))}>
+                        <MenuIcon name="copy" />
                         タグ名をコピー
                       </button>
                     </li>
@@ -4084,6 +4143,7 @@ function App() {
                               }),
                             )}
                           >
+                            <MenuIcon name="rename" />
                             名前を変更…
                           </button>
                         </li>
@@ -4092,6 +4152,7 @@ function App() {
                             className="danger"
                             onClick={run(() => void handleDeleteFolder(target))}
                           >
+                            <MenuIcon name="trash" />
                             削除
                           </button>
                         </li>
@@ -4140,6 +4201,7 @@ function App() {
                           className="danger"
                           onClick={run(() => void handleEmptyTrash())}
                         >
+                          <MenuIcon name="trash" />
                           ゴミ箱を空にする…
                         </button>
                       </li>
@@ -4149,6 +4211,7 @@ function App() {
                           <button
                             onClick={run(() => void handleRestore(target))}
                           >
+                            <MenuIcon name="restore" />
                             元に戻す
                           </button>
                         </li>
@@ -4160,6 +4223,7 @@ function App() {
                               () => void handleDeleteForever(target),
                             )}
                           >
+                            <MenuIcon name="trash" />
                             完全に削除
                           </button>
                         </li>

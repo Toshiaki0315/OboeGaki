@@ -1207,7 +1207,11 @@ body.resizing {
 }
 
 .context-menu button {
-  display: block;
+  /* 絵と字を横に並べる（要望 2026-09-04）。**絵の幅は固定** — 絵の無い
+     項目とも頭が揃うように、印（.menu-check）と同じ幅にする */
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   width: 100%;
   font: inherit;
   color: inherit;
@@ -1217,6 +1221,13 @@ body.resizing {
   border-radius: 5px;
   padding: 0.3rem 0.5rem;
   cursor: pointer;
+}
+
+.menu-icon {
+  width: 1.2em;
+  height: 1.2em;
+  flex: none;
+  opacity: 0.75;
 }
 
 .context-menu button:hover:not(:disabled) {
@@ -1806,4 +1817,6 @@ fieldset.preferences-fields:disabled {
 .menu-check {
   display: inline-block;
   width: 1.2em;
+  flex: none;
+  text-align: center;
 }
