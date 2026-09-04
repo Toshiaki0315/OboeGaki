@@ -292,4 +292,27 @@ mod tests {
     fn test_テスト基盤が動く() {
         assert_eq!(1 + 1, 2);
     }
+
+    /// **ドラッグの横取りを切っておく。**
+    ///
+    /// wry の macOS 実装は drag&drop のハンドラが入っていると
+    /// `draggingEntered` / `draggingUpdated` / `performDragOperation` を
+    /// 横取りし、**ハンドラが受けたら WebKit へ渡さない**
+    /// （wry 0.55.1 の wkwebview/drag_drop.rs）。Tauri 側のハンドラは
+    /// 常に `true` を返す（tauri-runtime-wry 2.11.4 の lib.rs）ので、
+    /// 入れたままだと画面の中の Drag & Drop が丸ごと死ぬ:
+    /// 掴めるのにどこにも落とせない（実機で発覚 2026-09-04）。
+    ///
+    /// 切ると WebKit が自前で捌くので、画面の中の落下も、Finder からの
+    /// 画像の落とし込み（`dataTransfer.files` を editor/attachments が
+    /// 読む）も生きる。
+    #[test]
+    fn test_設定でドラッグの横取りを切ってある() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(
+            config["app"]["windows"][0]["dragDropEnabled"],
+            serde_json::Value::Bool(false),
+        );
+    }
 }
