@@ -1249,6 +1249,23 @@ function App() {
     return () => media.removeEventListener("change", apply);
   }, [settings.theme]);
 
+  // 開いた vault の**一番上のノートを開く**（要望 2026-09-04）。
+  //
+  // **vault ごとに一度だけ。** 一覧が変わるたびに開き直すと、ノートを
+  // 捨てたり絞り込んだりしたときに、勝手に別のノートへ飛んでしまう。
+  // 既に何か開いていれば触らない（復元や引き継ぎを上書きしない）。
+  const openedFirstFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!vaultRoot || currentPath) return;
+    if (openedFirstFor.current === vaultRoot) return;
+    const first = sortedNotes[0];
+    if (!first) return; // 空の vault では何もしない
+    openedFirstFor.current = vaultRoot;
+    void openNote(first.path);
+    // openNote は毎描画で作り直されるが、開くかどうかは上の条件で決まる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultRoot, currentPath, sortedNotes]);
+
   // 前回の vault を開き直す（TASKS 1-1）。開けなければ黙って選択画面のまま
   useEffect(() => {
     if (vaultRootRef.current) return;
