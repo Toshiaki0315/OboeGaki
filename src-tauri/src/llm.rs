@@ -42,12 +42,12 @@ impl std::fmt::Display for LlmError {
 
 /// Ollama が動いているか。
 pub fn available(port: u16) -> bool {
-    request(port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| {}).is_ok()
+    request(port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| true).is_ok()
 }
 
 /// 入っているモデルの名前。動いていなければ空。
 pub fn models(port: u16) -> Vec<String> {
-    let Ok(body) = request(port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| {}) else {
+    let Ok(body) = request(port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| true) else {
         return Vec::new();
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) else {
@@ -69,24 +69,39 @@ pub fn models(port: u16) -> Vec<String> {
 /// 載っていなければ「読み込んでいます…」と言えるようにするためのもの。
 /// **6 分の沈黙は壊れて見える**（ADR-0025 追記）。
 pub fn is_loaded(port: u16, model: &str) -> bool {
-    let Ok(body) = request(port, "GET", "/api/ps", None, PROBE_TIMEOUT, |_| {}) else {
+    let Ok(body) = request(port, "GET", "/api/ps", None, PROBE_TIMEOUT, |_| true) else {
         return false;
     };
     body.contains(model)
 }
 
+/// 1 回の生成の注文。**まとめて渡す** — 数が増えると呼ぶ側で順番を
+/// 取り違える（port と context がどちらも数）。
+pub struct Generation<'a> {
+    pub port: u16,
+    pub model: &'a str,
+    pub prompt: &'a str,
+    pub context: u32,
+    pub timeout: Duration,
+    /// 答えたあとモデルをメモリに残す長さ（`"5m"` など）
+    pub keep_alive: &'a str,
+}
+
 /// 生成する。流れてきたぶんは `on_chunk` へ渡す（**黙って待たせない**）。
-///
-/// `keep_alive` は答えたあとモデルをメモリに残す長さ（`"5m"` など）。
+/// `should_stop` が真を返したら、そこまでで切り上げる（L-1「止める」）。
 pub fn generate(
-    port: u16,
-    model: &str,
-    prompt: &str,
-    context: u32,
-    timeout: Duration,
-    keep_alive: &str,
+    order: Generation<'_>,
     mut on_chunk: impl FnMut(&str),
+    should_stop: impl Fn() -> bool,
 ) -> Result<String, LlmError> {
+    let Generation {
+        port,
+        model,
+        prompt,
+        context,
+        timeout,
+        keep_alive,
+    } = order;
     let body = serde_json::json!({
         "model": model,
         "prompt": prompt,
@@ -109,6 +124,9 @@ pub fn generate(
                     on_chunk(piece);
                 }
             }
+            // **受け取ったぶんは捨てない。** 途中まででも読める答えが
+            // 出ていることがある（L-1「止める」）
+            !should_stop()
         },
     )?;
     Ok(answer)
@@ -129,7 +147,7 @@ pub fn unload(port: u16, model: &str) -> Result<(), LlmError> {
         "/api/generate",
         Some(&body),
         PROBE_TIMEOUT,
-        |_| {},
+        |_| true,
     )?;
     Ok(())
 }
@@ -144,13 +162,14 @@ const MAX_BODY_BYTES: usize = 8 * 1024 * 1024; // 全体 8MB
 const MAX_TOTAL: Duration = Duration::from_secs(30 * 60);
 
 /// HTTP の 1 往復。行が届くたびに `on_line` を呼び、本文全体も返す。
+/// `on_line` が `false` を返したら、そこで読むのをやめる。
 fn request(
     port: u16,
     method: &str,
     path: &str,
     body: Option<&str>,
     timeout: Duration,
-    mut on_line: impl FnMut(&str),
+    mut on_line: impl FnMut(&str) -> bool,
 ) -> Result<String, LlmError> {
     let address = format!("{HOST}:{port}");
     let stream = TcpStream::connect(&address).map_err(|_| LlmError::NotRunning)?;
@@ -194,10 +213,13 @@ fn request(
         if trimmed.is_empty() || !trimmed.starts_with('{') {
             continue;
         }
-        on_line(trimmed);
+        let keep_reading = on_line(trimmed);
         if collected.len() + trimmed.len() < MAX_BODY_BYTES {
             collected.push_str(trimmed);
             collected.push('\n');
+        }
+        if !keep_reading {
+            break;
         }
     }
     Ok(collected)
@@ -279,6 +301,30 @@ pub fn prompt_for(task: &str, title: &str, body: &str) -> String {
     )
 }
 
+/// vault 全体への質問（L-2 / ADR-0025）。材料は**呼ぶ側が選んで渡す**。
+///
+/// **モデルに探させない。** 探す道具（索引）はこちら側にあり、どのノートを
+/// 見たかを画面に出せるのもこちらだけ。出典を作文させない。
+/// 材料が無ければ `None`（材料の無い問いに答えさせると作り話が出る）。
+pub fn question_prompt(question: &str, sources: &[(String, String)]) -> Option<String> {
+    let asked = question.trim();
+    if asked.is_empty() || sources.is_empty() {
+        return None;
+    }
+    let excerpts = sources
+        .iter()
+        .map(|(title, body)| format!("## {title}\n{body}"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    Some(format!(
+        "あなたは日本語で答える調べ物の助手です。**次の抜粋だけを使って**質問に\
+         答えてください。抜粋に書かれていないことは推測せず、\
+         「ノートには書かれていません」と答えてください。\
+         どのノートに基づくかを本文中で題名で示してください。\n\n\
+         ---\n{excerpts}\n---\n\n質問: {asked}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,13 +395,16 @@ mod tests {
         let (port, received) = stub(response);
         let mut pieces = Vec::new();
         let answer = generate(
-            port,
-            "gemma3:4b",
-            "こんにちは",
-            8192,
-            Duration::from_secs(5),
-            "5m",
+            Generation {
+                port,
+                model: "gemma3:4b",
+                prompt: "こんにちは",
+                context: 8192,
+                timeout: Duration::from_secs(5),
+                keep_alive: "5m",
+            },
             |piece| pieces.push(piece.to_string()),
+            || false,
         )
         .unwrap();
 
@@ -368,6 +417,65 @@ mod tests {
     }
 
     #[test]
+    fn test_question_prompt_渡した抜粋だけで答えさせる() {
+        // vault 全体への質問（L-2）。**モデルに探させない** — 探す道具
+        // （索引）はこちら側にあり、どのノートを見たかを画面に出せるのも
+        // こちらだけ。出典を作文させない
+        let prompt = question_prompt(
+            "予算はどうなった？",
+            &[
+                ("会議".to_string(), "予算は据え置き。".to_string()),
+                ("メモ".to_string(), "来期に見直す。".to_string()),
+            ],
+        )
+        .unwrap();
+
+        assert!(prompt.contains("## 会議\n予算は据え置き。"));
+        assert!(prompt.contains("## メモ\n来期に見直す。"));
+        assert!(prompt.contains("質問: 予算はどうなった？"));
+        // 抜粋の外を答えさせない
+        assert!(prompt.contains("書かれていません"));
+    }
+
+    #[test]
+    fn test_question_prompt_材料が無ければ読ませない() {
+        // 材料の無い問いに答えさせると作り話が出る。GPU を回す意味もない
+        assert!(question_prompt("予算は？", &[]).is_none());
+        assert!(question_prompt("  ", &[("会議".into(), "本文".into())]).is_none());
+    }
+
+    #[test]
+    fn test_generate_止められたら途中で切り上げる() {
+        // 「止める」（L-1）。**受け取ったぶんは捨てない** — 途中まででも
+        // 読める答えが出ていることがある
+        let response = "HTTP/1.1 200 OK\r\n\r\n\
+            {\"response\":\"これは\"}\n{\"response\":\"答え\"}\n{\"response\":\"です\"}\n";
+        let (port, _received) = stub(response);
+        let seen = std::cell::Cell::new(0);
+        let mut pieces = Vec::new();
+
+        let answer = generate(
+            Generation {
+                port,
+                model: "gemma3:4b",
+                prompt: "こんにちは",
+                context: 8192,
+                timeout: Duration::from_secs(5),
+                keep_alive: "5m",
+            },
+            |piece| {
+                pieces.push(piece.to_string());
+                seen.set(seen.get() + 1);
+            },
+            || seen.get() >= 1, // 1 つ受け取ったら止める
+        )
+        .unwrap();
+
+        assert_eq!(answer, "これは");
+        assert_eq!(pieces, vec!["これは"]);
+    }
+
+    #[test]
     fn test_generate_モデルが無いときは404の言い分ごと返す() {
         // 「HTTP 404」だけでは、設定のモデル名の打ち間違いに気づけない
         // （実機で「読み込んでいます…」のまま止まって見えた）
@@ -375,13 +483,16 @@ mod tests {
             {\"error\":\"model \\\"gemma3:4b\\\" not found, try pulling it first\"}";
         let (port, _received) = stub(response);
         let error = generate(
-            port,
-            "gemma3:4b",
-            "p",
-            8192,
-            Duration::from_secs(5),
-            "5m",
+            Generation {
+                port,
+                model: "gemma3:4b",
+                prompt: "p",
+                context: 8192,
+                timeout: Duration::from_secs(5),
+                keep_alive: "5m",
+            },
             |_| {},
+            || false,
         )
         .unwrap_err();
         assert_eq!(
@@ -394,7 +505,19 @@ mod tests {
 
     #[test]
     fn test_generate_動いていなければ_not_running() {
-        let error = generate(1, "m", "p", 8192, Duration::from_secs(1), "5m", |_| {}).unwrap_err();
+        let error = generate(
+            Generation {
+                port: 1,
+                model: "m",
+                prompt: "p",
+                context: 8192,
+                timeout: Duration::from_secs(1),
+                keep_alive: "5m",
+            },
+            |_| {},
+            || false,
+        )
+        .unwrap_err();
         assert_eq!(error, LlmError::NotRunning);
     }
 
@@ -429,13 +552,16 @@ mod tests {
         let mut pieces = 0;
         let started = std::time::Instant::now();
         let answer = generate(
-            PORT,
-            &model,
-            &prompt_for("summary", "覚書", "覚書は Markdown のエディタです。"),
-            8192,
-            Duration::from_secs(120),
-            "1m",
+            Generation {
+                port: PORT,
+                model: &model,
+                prompt: &prompt_for("summary", "覚書", "覚書は Markdown のエディタです。"),
+                context: 8192,
+                timeout: Duration::from_secs(120),
+                keep_alive: "1m",
+            },
             |_| pieces += 1,
+            || false,
         )
         .expect("生成できなかった");
         println!(
@@ -461,13 +587,16 @@ mod tests {
 
         // 一度読ませて載せる
         generate(
-            PORT,
-            &model,
-            "こんにちは",
-            2048,
-            Duration::from_secs(120),
-            "30m",
+            Generation {
+                port: PORT,
+                model: &model,
+                prompt: "こんにちは",
+                context: 2048,
+                timeout: Duration::from_secs(120),
+                keep_alive: "30m",
+            },
             |_| {},
+            || false,
         )
         .unwrap();
         assert!(is_loaded(PORT, &model), "載っていない");
@@ -498,13 +627,16 @@ mod tests {
             .repeat(6);
         let started = std::time::Instant::now();
         let answer = generate(
-            PORT,
-            model,
-            &prompt_for("summary", "会議メモ", &body),
-            8192,
-            Duration::from_secs(300),
-            "1m",
+            Generation {
+                port: PORT,
+                model: model,
+                prompt: &prompt_for("summary", "会議メモ", &body),
+                context: 8192,
+                timeout: Duration::from_secs(300),
+                keep_alive: "1m",
+            },
             |_| {},
+            || false,
         )
         .expect("生成できなかった");
         println!(

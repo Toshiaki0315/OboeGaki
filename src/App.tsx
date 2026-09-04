@@ -15,6 +15,8 @@ import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
+import { terms } from "./lib/keywords";
+import { packSources, pickSources } from "./lib/sources";
 import {
   availableFonts,
   BODY_FONTS,
@@ -965,10 +967,14 @@ function App() {
 
   // 関連するノート（L-3）。**モデルは通さない**ので、Ollama が無くても出る
   const [related, setRelated] = useState<RelatedNote[]>([]);
+  const [relatedShown, setRelatedShown] = useState(false);
+  // vault 全体への質問（L-2）と、そのとき渡した材料
+  const [question, setQuestion] = useState("");
+  const [sources, setSources] = useState<SearchHit[]>([]);
 
   // 開いているノートが変わったら引き直す（索引が更新されたときも）
   useEffect(() => {
-    if (!assistantOpen || !vaultRoot || !currentPath) {
+    if (!assistantOpen || !vaultRoot || !currentPath || !relatedShown) {
       setRelated([]);
       return;
     }
@@ -983,7 +989,13 @@ function App() {
     return () => {
       alive = false;
     };
-  }, [assistantOpen, vaultRoot, currentPath, notes]);
+  }, [assistantOpen, vaultRoot, currentPath, notes, relatedShown]);
+
+  // 別のノートに移ったら畳む（前のノートの関連が残っていると読み違える）
+  useEffect(() => {
+    setRelatedShown(false);
+    setSources([]);
+  }, [currentPath]);
 
   // 開いたときだけ動いているか確かめる（**押してから断らない**）
   useEffect(() => {
@@ -1030,6 +1042,89 @@ function App() {
     };
   }, []);
 
+  /// 生成を始める。**入口を 1 つにする** — 要約・レビュー・質問で
+  /// 送るものは違っても、設定の渡し方と断り方は同じ。
+  async function startGeneration(order: {
+    task: string;
+    title: string;
+    body: string;
+    question?: string;
+    sources?: [string, string][];
+  }): Promise<boolean> {
+    return invoke<boolean>("llm_generate", {
+      port: settings.llmPort,
+      model: settings.llmModel,
+      context: settings.llmContext,
+      timeoutMinutes: settings.llmTimeoutMinutes,
+      keepAlive: settings.llmKeepAlive,
+      ...order,
+    });
+  }
+
+  /// 走っている生成を止める（L-1）。**受け取ったぶんは消さない。**
+  function stopAssistant() {
+    void invoke("llm_stop").catch(() => {});
+  }
+
+  /// 関連するノートを出す（L-3）。**モデルを通さない** — 関係の根拠は
+  /// 索引の中にある（同じタグ・`[[…]]` の指し合い・題名の言及）。
+  function showRelated() {
+    setRelatedShown(true);
+  }
+
+  /// vault 全体に質問する（L-2 / ADR-0025）。
+  ///
+  /// **材料はこちらが選ぶ。** 索引で候補を引き、その本文を渡す。渡した
+  /// ノートを画面に出せるのはこちら側だけなので、出典を作文させない。
+  async function askQuestion() {
+    const asked = question.trim();
+    if (!vaultRoot || !asked || thinking) return;
+    setAnswer("");
+    setSources([]);
+    // **質問をそのまま探さない。** 全文検索は打った通りの並びを探すので、
+    // 「予算について何が決まった？」ではどこにも当たらない（lib/keywords）
+    const words = terms(asked);
+    const hits: SearchHit[] = [];
+    for (const word of words.length > 0 ? words : [asked]) {
+      try {
+        const outcome = await searchNotes(vaultRoot, word);
+        hits.push(...outcome.hits);
+      } catch {
+        // 1 語探せなくても、残りの語で続ける
+      }
+    }
+    const picked = pickSources(hits);
+    if (picked.length === 0) {
+      // 材料の無い問いに答えさせない（作り話が出る）
+      setAnswer(
+        "材料になるノートが見つかりませんでした。言葉を変えて試してください。",
+      );
+      return;
+    }
+    // **出典は答えより先に出す。** 待っている間、何を見ているのか分かる
+    setSources(picked);
+    const bodies = await Promise.all(
+      picked.map((hit) =>
+        readNote(vaultRoot, `${vaultRoot}/${hit.path}`).catch(() => ""),
+      ),
+    );
+    const packed = packSources(
+      picked.map((hit, index) => ({ title: hit.title, body: bodies[index] })),
+    );
+    setThinking(true);
+    const started = await startGeneration({
+      task: "question",
+      title: "",
+      body: "",
+      question: asked,
+      sources: packed,
+    });
+    if (!started) {
+      setThinking(false);
+      setAnswer("いま考えています。終わるまでお待ちください。");
+    }
+  }
+
   /// ノートを読ませる。**本文は書き換えない**（答えは横に出すだけ）。
   async function askAssistant(task: string) {
     if (!vaultRoot || !currentPath) return;
@@ -1037,15 +1132,10 @@ function App() {
     const text = editorRef.current?.getText() ?? "";
     setAnswer("");
     setThinking(true);
-    const started = await invoke<boolean>("llm_generate", {
-      port: settings.llmPort,
-      model: settings.llmModel,
+    const started = await startGeneration({
       task,
       title: noteStem(currentPath),
       body: text,
-      context: settings.llmContext,
-      timeoutMinutes: settings.llmTimeoutMinutes,
-      keepAlive: settings.llmKeepAlive,
     });
     if (!started) {
       setThinking(false);
@@ -3921,8 +4011,101 @@ function App() {
           {assistantOpen && (
             <aside className="assistant-pane">
               <header>アシスタント</header>
-              {/* 関連するノートは索引から出す。**Ollama が無くても出る** */}
-              {related.length > 0 && (
+              {/* 並びは参照実装（ui/assistant_pane.py）と同じ。
+                **ボタンの列は Ollama が無くても出す** — 「関連」は索引を
+                引くだけで、モデルを通さない（L-3） */}
+              <div className="assistant-actions">
+                <button
+                  disabled={thinking || !currentPath || llmReady === false}
+                  onClick={() => void askAssistant("summary")}
+                >
+                  要約
+                </button>
+                <button
+                  disabled={thinking || !currentPath || llmReady === false}
+                  onClick={() => void askAssistant("review")}
+                >
+                  レビュー
+                </button>
+                <button disabled={!currentPath} onClick={showRelated}>
+                  関連
+                </button>
+                {/* 走っている間だけ意味を持つので右端に離す */}
+                <button
+                  className="assistant-stop"
+                  disabled={!thinking}
+                  onClick={stopAssistant}
+                >
+                  止める
+                </button>
+              </div>
+              {llmReady === false ? (
+                // **押してから断らない**（G-3 のゴミ箱と同じ作法）
+                <p className="assistant-note">
+                  ローカルLLM（Ollama）が動いていません。
+                  <br />
+                  ollama.com から入れて `ollama serve` で動かすと使えます。
+                  <br />
+                  送り先は 127.0.0.1
+                  に固定されています（ノートは外へ出ません）。
+                </p>
+              ) : (
+                <>
+                  {/* vault 全体への質問（L-2）。打って Enter が自然（検索欄と同じ） */}
+                  <div className="assistant-ask">
+                    <input
+                      value={question}
+                      placeholder="ノート全体に質問する"
+                      onChange={(event) =>
+                        setQuestion(event.currentTarget.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter" &&
+                          !event.nativeEvent.isComposing
+                        )
+                          void askQuestion();
+                      }}
+                    />
+                    {/* 空の質問では押せない（押しても何も起きないボタンを押させない） */}
+                    <button
+                      disabled={thinking || !question.trim()}
+                      onClick={() => void askQuestion()}
+                    >
+                      質問
+                    </button>
+                  </div>
+                  <p className="assistant-note">
+                    要約とレビューはこのノートだけを読みます。質問は索引で
+                    材料を探して読ませます（送り先は 127.0.0.1）。
+                    本文は書き換えません。
+                  </p>
+                  {/* **渡した材料をそのまま出す。** 出典を作文させない */}
+                  {sources.length > 0 && (
+                    <div className="related-notes">
+                      <div className="related-title">読んだノート</div>
+                      <ul>
+                        {sources.map((hit) => (
+                          <li key={hit.path}>
+                            <button
+                              onClick={() =>
+                                void openNote(`${vaultRoot}/${hit.path}`)
+                              }
+                            >
+                              <span className="related-name">{hit.title}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="assistant-answer">
+                    {answer || (thinking ? "考えています…" : "")}
+                  </div>
+                </>
+              )}
+              {/* 関連は索引から出す。**Ollama が無くても出る**（L-3） */}
+              {relatedShown && (
                 <div className="related-notes">
                   <div className="related-title">関連するノート</div>
                   <ul>
@@ -3941,49 +4124,14 @@ function App() {
                         </button>
                       </li>
                     ))}
+                    {related.length === 0 && (
+                      <li className="no-hits">
+                        関連するノートはありません。タグを付けるか
+                        `[[ノート名]]` で結ぶと出ます。
+                      </li>
+                    )}
                   </ul>
                 </div>
-              )}
-              {llmReady === false ? (
-                // **押してから断らない**（G-3 のゴミ箱と同じ作法）
-                <p className="assistant-note">
-                  ローカルLLM（Ollama）が動いていません。
-                  <br />
-                  ollama.com から入れて `ollama serve` で動かすと使えます。
-                  <br />
-                  送り先は 127.0.0.1
-                  に固定されています（ノートは外へ出ません）。
-                </p>
-              ) : (
-                <>
-                  <div className="assistant-actions">
-                    <button
-                      disabled={thinking || !currentPath}
-                      onClick={() => void askAssistant("summary")}
-                    >
-                      要約
-                    </button>
-                    <button
-                      disabled={thinking || !currentPath}
-                      onClick={() => void askAssistant("review")}
-                    >
-                      レビュー
-                    </button>
-                    <button
-                      disabled={thinking || !currentPath}
-                      onClick={() => void askAssistant("questions")}
-                    >
-                      質問を出す
-                    </button>
-                  </div>
-                  <p className="assistant-note">
-                    このノートだけを読んで答えます（送り先は 127.0.0.1）。
-                    本文は書き換えません。
-                  </p>
-                  <div className="assistant-answer">
-                    {answer || (thinking ? "考えています…" : "")}
-                  </div>
-                </>
               )}
             </aside>
           )}

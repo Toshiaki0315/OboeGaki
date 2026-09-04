@@ -46,6 +46,8 @@ pub struct WatchState {
     /// 生成が走っているか（TASKS 4-8）。**答えの途中でモデルを降ろさない**
     /// ためと、二重に始めないため
     generating: Arc<std::sync::atomic::AtomicBool>,
+    /// 「止める」が押されたか（L-1）。生成を始めるたびに下ろす
+    stop_generating: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for WatchState {
@@ -57,6 +59,7 @@ impl Default for WatchState {
             syncing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             sync_gate: Arc::new(Mutex::new(())),
             generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            stop_generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -670,6 +673,17 @@ pub async fn llm_loaded(port: u16, model: String) -> bool {
     crate::llm::is_loaded(port, &model)
 }
 
+/// 走っている生成を止める（L-1）。**受け取ったぶんはそのまま残す** —
+/// 途中まででも読める答えが出ていることがある。
+///
+/// 止まるのは次の一片が届いたとき。Ollama は細かく流してくるので、
+/// 押してすぐ止まる。
+#[tauri::command]
+pub fn llm_stop(state: tauri::State<'_, WatchState>) {
+    use std::sync::atomic::Ordering;
+    state.stop_generating.store(true, Ordering::SeqCst);
+}
+
 /// モデルをメモリから降ろす。**答えの途中では降ろさない**（走っている
 /// 生成を壊す）ので、走っている間は断る。
 #[tauri::command]
@@ -701,6 +715,10 @@ pub fn llm_generate(
     task: String,
     title: String,
     body: String,
+    // vault 全体への質問（L-2）。`task` が `question` のときだけ使う。
+    // 材料（題名, 本文）を**探すのは画面側**（索引を引く）
+    question: Option<String>,
+    sources: Option<Vec<(String, String)>>,
     context: u32,
     timeout_minutes: u64,
     keep_alive: String,
@@ -709,23 +727,42 @@ pub fn llm_generate(
     if state.generating.swap(true, Ordering::SeqCst) {
         return Ok(false);
     }
+    state.stop_generating.store(false, Ordering::SeqCst);
     let generating = state.generating.clone();
+    let stop = state.stop_generating.clone();
     std::thread::spawn(move || {
         use tauri::Emitter;
         let _flag = FlagGuard(generating); // パニックしても必ず降ろす
-        let prompt = crate::llm::prompt_for(&task, &title, &body);
+        let prompt = if task == "question" {
+            // 材料が無ければ読ませない（作り話が出るし、GPU を回す意味もない）
+            match crate::llm::question_prompt(
+                &question.unwrap_or_default(),
+                &sources.unwrap_or_default(),
+            ) {
+                Some(prompt) => prompt,
+                None => {
+                    let _ = app.emit("llm-failed", "材料になるノートがありません");
+                    return;
+                }
+            }
+        } else {
+            crate::llm::prompt_for(&task, &title, &body)
+        };
         // 分は 1〜120 に丸める（極端な値の乗算パニックと「実質無限」を防ぐ）
         let minutes = timeout_minutes.clamp(1, 120);
         let outcome = crate::llm::generate(
-            port,
-            &model,
-            &prompt,
-            context,
-            std::time::Duration::from_secs(minutes * 60),
-            &keep_alive,
+            crate::llm::Generation {
+                port,
+                model: &model,
+                prompt: &prompt,
+                context,
+                timeout: std::time::Duration::from_secs(minutes * 60),
+                keep_alive: &keep_alive,
+            },
             |piece| {
                 let _ = app.emit("llm-chunk", piece);
             },
+            || stop.load(Ordering::SeqCst),
         );
         match outcome {
             Ok(answer) => {

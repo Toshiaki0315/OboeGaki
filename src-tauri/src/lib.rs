@@ -277,6 +277,7 @@ pub fn run() {
             commands::llm_models,
             commands::llm_loaded,
             commands::llm_unload,
+            commands::llm_stop,
             commands::llm_generate,
             commands::conflict_copy,
             commands::startup_elapsed_ms,

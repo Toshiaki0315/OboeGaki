@@ -1721,3 +1721,45 @@ button.danger {
   font-size: 0.8rem;
   opacity: 0.55;
 }
+
+/* vault 全体への質問（L-2）。打って Enter が自然（検索欄と同じ） */
+.assistant-ask {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0 0.5rem 0.5rem;
+}
+
+.assistant-ask input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: Canvas;
+  color: CanvasText;
+}
+
+.assistant-ask button {
+  flex: none;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: none;
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+}
+
+.assistant-ask button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 「止める」は右端に離す。走っている間だけ意味を持つもので、
+   書式のボタンのように並べると押す対象に見えてしまう */
+.assistant-actions .assistant-stop {
+  margin-left: auto;
+}
