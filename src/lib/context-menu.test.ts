@@ -1,8 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { menuPosition } from "./context-menu";
+import { anchorAbove, menuPosition } from "./context-menu";
 
 const viewport = { width: 1000, height: 800 };
 const size = { width: 200, height: 120 };
+
+describe("anchorAbove", () => {
+  const box = { left: 8, top: 760, height: 24 };
+
+  it("test_押したものの真上に出す（高さを見積もらない）", () => {
+    // **見積もりで置かない。** 実際が見積もりより短いと、押したものとの
+    // 間に隙間が空く（実機報告 2026-09-04: 歯車から離れて出た）
+    expect(anchorAbove(box, 230, viewport)).toEqual({
+      left: 8,
+      bottom: 800 - 760 + 6,
+    });
+  });
+
+  it("test_右端で押されたら左へ寄せる", () => {
+    expect(anchorAbove({ ...box, left: 950 }, 230, viewport).left).toBe(762);
+  });
+
+  it("test_画面より広いメニューは左端に貼り付ける", () => {
+    expect(anchorAbove(box, 1200, viewport).left).toBe(8);
+  });
+});
 
 describe("menuPosition", () => {
   it("test_収まるならクリックした場所に出す", () => {

@@ -13,7 +13,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
-import { menuPosition } from "./lib/context-menu";
+import { anchorAbove, menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
@@ -478,9 +478,11 @@ function App() {
     x: number;
     y: number;
   } | null>(null);
-  const [gearMenu, setGearMenu] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  // 歯車のメニューは**押したものの真上**に出す（下端にあるので上へ伸びる）
+  const [gearMenu, setGearMenu] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [editorMenu, setEditorMenu] = useState<{
     x: number;
     y: number;
@@ -3884,17 +3886,13 @@ function App() {
                 >
                   <ul
                     className="context-menu"
-                    style={(() => {
-                      const at = menuPosition(
-                        gearMenu,
-                        { width: 230, height: 300 },
-                        {
-                          width: window.innerWidth,
-                          height: window.innerHeight,
-                        },
-                      );
-                      return { left: at.x, top: at.y };
-                    })()}
+                    // **下端を歯車に合わせ、上へは中身なりに伸ばす。**
+                    // 高さを見積もって上端を決めると、実際が短いときに
+                    // 歯車から離れて浮く（実機報告 2026-09-04）
+                    style={anchorAbove(gearMenu, 230, {
+                      width: window.innerWidth,
+                      height: window.innerHeight,
+                    })}
                     onMouseDown={(event) => event.stopPropagation()}
                   >
                     <li>
@@ -4556,9 +4554,8 @@ function App() {
             title="メニュー"
             aria-label="メニュー"
             onClick={(event) => {
-              // 押した場所から出す（下端なので上へ伸びる。menuPosition が丸める）
               const box = event.currentTarget.getBoundingClientRect();
-              setGearMenu({ x: box.left, y: box.top });
+              setGearMenu({ left: box.left, top: box.top });
             }}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
