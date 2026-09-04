@@ -14,6 +14,7 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
+import { canDropInto } from "./lib/note-drop";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
@@ -446,6 +447,10 @@ function App() {
   fontSizeRef.current = fontSize;
 
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
+  // 掴んでいるノートのパス。**ref で持つ** — dragover は毎フレーム飛ぶので、
+  // 掴んだものまで state にすると打鍵と同じだけ再描画が走る
+  const draggingNote = useRef<string | null>(null);
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [folderMenu, setFolderMenu] = useState<{
     folder: string;
     x: number;
@@ -1251,6 +1256,28 @@ function App() {
       if (folderFilter === folder) setFolderFilter(null);
       await refresh();
       setStatus(`フォルダ「${folder}」を削除しました`);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  /// フォルダの行へ落とされたノートを移す（要望 2026-09-04）。
+  ///
+  /// **メニューの「フォルダへ移動…」と同じ道を通す**（`moveNote`）。
+  /// 落としたのが開いているノートなら、動いた先を開き直す。
+  async function handleDropOnFolder(path: string, folder: string) {
+    if (!vaultRoot || !canDropInto(vaultRoot, path, folder)) return;
+    const open = path === currentPath;
+    if (open) await autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    try {
+      const moved = await moveNote(vaultRoot, path, folder);
+      await refresh();
+      if (open) await openNote(moved);
+      setStatus(
+        folder
+          ? `「${noteStem(path)}」を「${folder}」へ移しました`
+          : `「${noteStem(path)}」を直下へ移しました`,
+      );
     } catch (error) {
       setStatus(String(error));
     }
@@ -2089,6 +2116,20 @@ function App() {
                       <li key={entry.path}>
                         <button
                           className={`note-row${entry.path === currentPath ? " selected" : ""}`}
+                          // フォルダへ落として移す（要望 2026-09-04）
+                          draggable
+                          onDragStart={(event) => {
+                            draggingNote.current = entry.path;
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              entry.path,
+                            );
+                          }}
+                          onDragEnd={() => {
+                            draggingNote.current = null;
+                            setDropFolder(null);
+                          }}
                           onClick={() => void openNote(entry.path)}
                           onContextMenu={(event) => {
                             event.preventDefault();
@@ -2190,11 +2231,14 @@ function App() {
                     {folders.map(({ folder, count }) => (
                       <li key={folder || "."}>
                         <button
-                          className={`folder-row${folder === folderFilter ? " selected" : ""}`}
+                          className={
+                            `folder-row${folder === folderFilter ? " selected" : ""}` +
+                            (folder === dropFolder ? " drop-target" : "")
+                          }
                           style={{
                             paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
                           }}
-                          title="右クリックで作る・名前を変える・消す"
+                          title="右クリックで作る・名前を変える・消す（ノートを落とすと移せます）"
                           onClick={() =>
                             filterByFolder(
                               folder === folderFilter ? null : folder,
@@ -2207,6 +2251,32 @@ function App() {
                               x: event.clientX,
                               y: event.clientY,
                             });
+                          }}
+                          onDragOver={(event) => {
+                            const dragged = draggingNote.current;
+                            // **落とせないところでは受けない。** 受けると
+                            // 何も起きないのに「移しました」と出る
+                            if (!dragged) return;
+                            if (!canDropInto(vaultRoot, dragged, folder))
+                              return;
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                            setDropFolder(folder);
+                          }}
+                          onDragLeave={() =>
+                            setDropFolder((current) =>
+                              current === folder ? null : current,
+                            )
+                          }
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            const dragged =
+                              draggingNote.current ||
+                              event.dataTransfer.getData("text/plain");
+                            draggingNote.current = null;
+                            setDropFolder(null);
+                            if (dragged)
+                              void handleDropOnFolder(dragged, folder);
                           }}
                         >
                           <span className="folder-name">
