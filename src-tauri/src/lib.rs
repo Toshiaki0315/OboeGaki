@@ -49,8 +49,14 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         builder.build(handle)
     };
 
+    // 「覚書について」に出す絵（要望 2026-09-04）。**こちらから渡す** —
+    // 束ねる前（`cargo tauri dev`）は .app の中に居らず、OS にはアプリの絵が
+    // 分からないので、書類フォルダの絵が出てしまう
+    let about = tauri::menu::AboutMetadataBuilder::new()
+        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png")).ok())
+        .build();
     let application = SubmenuBuilder::new(handle, "覚書")
-        .about(None)
+        .about(Some(about))
         .separator()
         .item(&item("preferences", "環境設定…", Some("CmdOrCtrl+,"))?)
         .separator()
@@ -310,6 +316,16 @@ mod tests {
     /// 切ると WebKit が自前で捌くので、画面の中の落下も、Finder からの
     /// 画像の落とし込み（`dataTransfer.files` を editor/attachments が
     /// 読む）も生きる。
+    /// 「覚書について」に出す絵（要望 2026-09-04）。
+    ///
+    /// 束ねる前（`cargo tauri dev`）は .app の中に居ないので、OS には
+    /// アプリの絵が分からず、書類フォルダの絵が出る。**こちらから渡す。**
+    #[test]
+    fn test_aboutに渡す絵が読める() {
+        let image = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png"));
+        assert!(image.is_ok());
+    }
+
     #[test]
     fn test_設定でドラッグの横取りを切ってある() {
         let config: serde_json::Value =
