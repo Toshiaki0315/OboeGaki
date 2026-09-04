@@ -27,9 +27,11 @@ describe("ASSISTANT_ACTIONS", () => {
     }
   });
 
-  it("test_関連はモデルを通さないと説明に書く", () => {
-    // Ollama が無くても押せる理由が、押す前に分かるようにする（L-3）
-    const related = ASSISTANT_ACTIONS.find((action) => action.id === "related");
-    expect(related?.hint).toContain("索引");
+  it("test_説明は短く保つ", () => {
+    // **守れない約束や長い説明を書かない**（要望 2026-09-04: 「要約」の
+    // Tips に「3 行にまとめる」と書いていたが、そうならなかった）
+    for (const action of ASSISTANT_ACTIONS) {
+      expect([...action.hint].length).toBeLessThanOrEqual(20);
+    }
   });
 });

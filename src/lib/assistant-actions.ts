@@ -28,7 +28,7 @@ export const ASSISTANT_ACTIONS: readonly AssistantAction[] = [
   {
     id: "review",
     label: "レビュー",
-    hint: "レビュー（直したほうがよいところを挙げる。書き換えはしない）",
+    hint: "レビュー",
     // 吹き出し = 指摘。**直した文は書かない**という約束の絵
     paths: [
       "M2.5 3h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5l-3.5 2.5V11h-1.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z",
@@ -38,7 +38,7 @@ export const ASSISTANT_ACTIONS: readonly AssistantAction[] = [
   {
     id: "related",
     label: "関連",
-    hint: "関連するノート（索引を引くだけ。Ollama が無くても出る）",
+    hint: "関連（関連ノートの一覧）",
     // 結ばれた点 = 関係。リンクの図と同じ言い回し
     paths: [
       "M4.4 6.2 10 4M4.6 9.4l5.2 2.2",
