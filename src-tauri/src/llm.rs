@@ -173,7 +173,7 @@ fn request(
     let mut reader = BufReader::new(stream);
     let status = read_status(&mut reader)?;
     if !(200..300).contains(&status) {
-        return Err(LlmError::Failed(format!("HTTP {status}")));
+        return Err(LlmError::Failed(http_failure(status, &mut reader)));
     }
 
     let mut collected = String::new();
@@ -201,6 +201,32 @@ fn request(
         }
     }
     Ok(collected)
+}
+
+/// 2xx 以外の本文から Ollama の言い分（`{"error":"…"}`）を拾う。
+/// 「HTTP 404」だけでは、設定のモデル名の打ち間違いに気づけない。
+fn http_failure(status: u16, reader: &mut BufReader<TcpStream>) -> String {
+    let mut body = String::new();
+    let _ = reader
+        .by_ref()
+        .take(MAX_LINE_BYTES)
+        .read_to_string(&mut body);
+    // chunked のときは長さの行が挟まるので、JSON の行だけを見る
+    let detail = body.lines().find_map(|line| {
+        let line = line.trim();
+        if !line.starts_with('{') {
+            return None;
+        }
+        serde_json::from_str::<serde_json::Value>(line)
+            .ok()?
+            .get("error")?
+            .as_str()
+            .map(str::to_string)
+    });
+    match detail {
+        Some(message) => format!("HTTP {status}: {message}"),
+        None => format!("HTTP {status}"),
+    }
 }
 
 fn read_status(reader: &mut BufReader<TcpStream>) -> Result<u16, LlmError> {
@@ -339,6 +365,31 @@ mod tests {
         assert!(sent.contains("\"model\":\"gemma3:4b\""));
         assert!(sent.contains("\"num_ctx\":8192"));
         assert!(sent.contains("\"keep_alive\":\"5m\""));
+    }
+
+    #[test]
+    fn test_generate_モデルが無いときは404の言い分ごと返す() {
+        // 「HTTP 404」だけでは、設定のモデル名の打ち間違いに気づけない
+        // （実機で「読み込んでいます…」のまま止まって見えた）
+        let response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n\
+            {\"error\":\"model \\\"gemma3:4b\\\" not found, try pulling it first\"}";
+        let (port, _received) = stub(response);
+        let error = generate(
+            port,
+            "gemma3:4b",
+            "p",
+            8192,
+            Duration::from_secs(5),
+            "5m",
+            |_| {},
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            LlmError::Failed(
+                "HTTP 404: model \"gemma3:4b\" not found, try pulling it first".into()
+            )
+        );
     }
 
     #[test]

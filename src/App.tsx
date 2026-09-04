@@ -27,6 +27,7 @@ import {
   togglePane,
 } from "./lib/right-pane";
 import { safeSubscribe } from "./lib/subscribe";
+import { appendChunk, llmErrorText, loadingNotice } from "./lib/assistant-text";
 import { createDebouncer } from "./lib/debounce";
 import {
   codeKey,
@@ -205,19 +206,6 @@ const WIDTH_LABELS: Record<ContentWidth, string> = {
   full: "最大（ウィンドウ幅）",
 };
 
-/// ローカルLLM の断りを、画面に出す言葉にする（ADR-0025 追記）。
-/// **動いているのに「動いているか確かめて」は嘘になる**ので、時間切れは
-/// 別の言葉にする。
-function llmErrorText(code: string, minutes: number): string {
-  if (code.startsWith("not-running")) {
-    return "Ollama が動いていません。`ollama serve` で動かすか、https://ollama.com から入れてください。";
-  }
-  if (code.startsWith("timed-out")) {
-    return `${minutes} 分待っても答えが返りませんでした。大きいモデルは読み込みだけで数分かかります（設定で延ばせます）。`;
-  }
-  return `答えを受け取れませんでした: ${code}`;
-}
-
 /// 保存時刻（時:分）。日付は出さない — 開いている間に保存した時刻なので、
 /// 日付まで出すと情報が増えるだけで読み取りが遅くなる。
 function clockOf(at: number): string {
@@ -335,6 +323,8 @@ function App() {
   const [preferences, setPreferences] = useState(false);
   const [prefTab, setPrefTab] = useState<"general" | "assistant">("general");
   const [historyUsage, setHistoryUsage] = useState<number | null>(null);
+  // Ollama に入っているモデル（設定のモデル欄の選択肢）。無ければ空
+  const [installedModels, setInstalledModels] = useState<string[]>([]);
   // キャンセルで戻すためのスナップショット（開いた瞬間の設定と文字サイズ）
   const prefSnapshot = useRef<{ settings: Settings; fontSize: number } | null>(
     null,
@@ -355,6 +345,11 @@ function App() {
     } else {
       setHistoryUsage(0);
     }
+    // モデル欄の選択肢。**入っていない名前を打たせない**ためのもの
+    // （名前違いの 404 で「返ってこない」ように見えた実機の事故から）
+    invoke<string[]>("llm_models", { port: settingsRef.current.llmPort })
+      .then((found) => setInstalledModels(found))
+      .catch(() => setInstalledModels([]));
   }
 
   function cancelPreferences() {
@@ -985,7 +980,7 @@ function App() {
   useEffect(() => {
     const chunks = safeSubscribe(() =>
       listen<string>("llm-chunk", (event) => {
-        setAnswer((current) => current + event.payload);
+        setAnswer((current) => appendChunk(current, event.payload));
       }),
     );
     const done = safeSubscribe(() =>
@@ -995,7 +990,11 @@ function App() {
       listen<string>("llm-failed", (event) => {
         setThinking(false);
         setAnswer(
-          llmErrorText(event.payload, settingsRef.current.llmTimeoutMinutes),
+          llmErrorText(
+            event.payload,
+            settingsRef.current.llmTimeoutMinutes,
+            settingsRef.current.llmModel,
+          ),
         );
       }),
     );
@@ -1028,12 +1027,14 @@ function App() {
       setAnswer("いま考えています。終わるまでお待ちください。");
       return;
     }
-    // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）
+    // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）。
+    // **先に届いた断りや答えを上書きしない**（loadingNotice が判断する）—
+    // モデル名の間違いの 404 は、この確認より速く返ることがある
     const loaded = await invoke<boolean>("llm_loaded", {
       port: settings.llmPort,
       model: settings.llmModel,
     });
-    if (!loaded) setAnswer("モデルを読み込んでいます…");
+    if (!loaded) setAnswer(loadingNotice);
   }
 
   async function handleUnloadModel() {
@@ -3041,15 +3042,29 @@ function App() {
                     <div className="preferences-fields">
                       <label>
                         <span>モデル</span>
-                        <input
-                          value={settings.llmModel}
-                          placeholder="gemma3:4b"
-                          onChange={(event) =>
-                            changeSettings({
-                              llmModel: event.currentTarget.value,
-                            })
-                          }
-                        />
+                        <span className="pref-unit-row">
+                          <input
+                            value={settings.llmModel}
+                            placeholder="gemma3:4b"
+                            list="llm-model-choices"
+                            onChange={(event) =>
+                              changeSettings({
+                                llmModel: event.currentTarget.value,
+                              })
+                            }
+                          />
+                          <datalist id="llm-model-choices">
+                            {installedModels.map((model) => (
+                              <option key={model} value={model} />
+                            ))}
+                          </datalist>
+                          {installedModels.length > 0 &&
+                          !installedModels.includes(settings.llmModel) ? (
+                            <span className="pref-unit">
+                              （Ollama に入っていません）
+                            </span>
+                          ) : null}
+                        </span>
                       </label>
                       <label>
                         <span>ポート</span>
