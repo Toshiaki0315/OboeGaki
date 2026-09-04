@@ -25,6 +25,11 @@ describe("readSlideTheme", () => {
     });
   });
 
+  it("test_既定はテーマの色を指す（ADR-0045）", () => {
+    // 生の値だと、テンプレートを当ててもここだけ変わらない
+    expect(DEFAULT_SLIDE_THEME.accent).toBe("accent1");
+  });
+
   it("test_色は_なしでも読む", () => {
     expect(readSlideTheme("---\nslide-accent: 44546A\n---\n").accent).toBe(
       "44546A",

@@ -63,7 +63,7 @@ import { splitDeck } from "./lib/slides";
 import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
-import { buildPptx } from "./lib/pptx";
+import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme } from "./lib/slide-theme";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
@@ -782,6 +782,7 @@ function App() {
         splitDeck(text),
         (url) => imageSource(vaultRoot, url),
         readSlideTheme(text),
+        await borrowedTheme(),
       );
       await invoke("export_write_binary", { path: target, data });
       setStatus(`書き出しました: ${target}`);
@@ -1625,6 +1626,36 @@ function App() {
   }
 
   /// タグで一覧を絞る（null で解除）。検索とは排他。
+  /// テンプレートから借りる配色と書体（TASKS 5-6）。**読めなければ null** —
+  /// テンプレートが壊れていても書き出しは止めない。
+  async function borrowedTheme() {
+    const path = settingsRef.current.slideTemplate;
+    if (!path) return null;
+    try {
+      const base64 = await invoke<string>("import_read", { path });
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const parts = await readTemplateTheme(bytes);
+      if (!parts)
+        setStatus("テンプレートを読めませんでした（既定の見た目で出します）");
+      return parts;
+    } catch {
+      setStatus("テンプレートを開けませんでした（既定の見た目で出します）");
+      return null;
+    }
+  }
+
+  /// PowerPoint のテンプレートを選ぶ（TASKS 5-6）。
+  /// **場所を覚えるだけ** — 中身は書き出すときに読む（選んだあとに
+  /// 差し替えられても、そのときの中身が使われる）。
+  async function chooseSlideTemplate() {
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "PowerPoint", extensions: ["pptx"] }],
+    });
+    if (typeof picked !== "string") return;
+    changeSettings({ slideTemplate: picked });
+  }
+
   /// ノートを横に開く（U-1）。**本文は入れ替えない** — 書いているノートを
   /// 奪わずに、もう 1 枚を並べるための道。読むだけなので保存も監視も繋がない。
   async function openBeside(path: string) {
@@ -3687,6 +3718,35 @@ function App() {
                         </select>
                       </label>
                     </fieldset>
+                    <h3 className="pref-section">PowerPoint</h3>
+                    <p className="pref-note">
+                      書き出すスライドの配色と書体を、選んだテンプレートに
+                      合わせます（背景の飾りやロゴは入りません）。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>テンプレート</span>
+                        <span className="pref-vault-row">
+                          <input
+                            value={settings.slideTemplate}
+                            readOnly
+                            placeholder="選んでいません（既定の見た目）"
+                          />
+                          <button onClick={() => void chooseSlideTemplate()}>
+                            選ぶ…
+                          </button>
+                          {settings.slideTemplate && (
+                            <button
+                              onClick={() =>
+                                changeSettings({ slideTemplate: "" })
+                              }
+                            >
+                              外す
+                            </button>
+                          )}
+                        </span>
+                      </label>
+                    </div>
                     <h3 className="pref-section">画像とPDF</h3>
                     <p className="pref-note">
                       取り込んだ画像や PDF

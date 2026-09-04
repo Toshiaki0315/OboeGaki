@@ -111,6 +111,16 @@ describe("ローカルLLM の設定（ADR-0025）", () => {
     expect(found.llmTimeoutMinutes).toBe(DEFAULT_SETTINGS.llmTimeoutMinutes);
   });
 
+  it("test_PowerPoint のテンプレートの場所を覚える", () => {
+    expect(DEFAULT_SETTINGS.slideTemplate).toBe("");
+    const stored = loadSettings(
+      fakeStorage({
+        [SETTINGS_KEY]: JSON.stringify({ slideTemplate: "/v/社内.pptx" }),
+      }),
+    );
+    expect(stored.slideTemplate).toBe("/v/社内.pptx");
+  });
+
   it("test_アシスタントを使うかを覚える（既定は使う）", () => {
     // 切っておくと設定も畳み、Cmd+6 でも出さない（要望 2026-09-04）
     expect(DEFAULT_SETTINGS.assistantEnabled).toBe(true);

@@ -20,6 +20,7 @@ import {
   type SlideBlock,
 } from "./slides";
 import { DEFAULT_SLIDE_THEME, type SlideTheme } from "./slide-theme";
+import { applyThemeParts, themeParts, type ThemeParts } from "./slide-template";
 
 // スライドの大きさ（16:9）。既定の 4:3 は今どき狭い
 const LAYOUT = { name: "OBOEGAKI_16x9", width: 13.333, height: 7.5 };
@@ -47,6 +48,8 @@ export async function buildPptx(
   resolveImage: ImageResolver,
   /// ノートの front matter から読んだ見た目（TASKS 5-5）
   theme: SlideTheme = DEFAULT_SLIDE_THEME,
+  /// テンプレートから借りた配色と書体（TASKS 5-6 / ADR-0045 案 A）
+  borrowed: ThemeParts | null = null,
 ): Promise<string> {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
@@ -68,7 +71,7 @@ export async function buildPptx(
           y: LAYOUT.height - 0.55,
           w: LAYOUT.width - MARGIN * 2,
           h: 0,
-          line: { color: "D9D9D9", width: 0.75 },
+          line: { color: "bg2", width: 0.75 },
         },
       },
       ...(deck.title
@@ -82,7 +85,7 @@ export async function buildPptx(
                   w: LAYOUT.width / 2,
                   h: 0.3,
                   fontSize: 10,
-                  color: "7F7F7F",
+                  color: "tx2",
                 },
               },
             },
@@ -96,7 +99,7 @@ export async function buildPptx(
       h: 0.3,
       align: "right",
       fontSize: 10,
-      color: "7F7F7F",
+      color: "tx2",
     },
   });
 
@@ -117,7 +120,7 @@ export async function buildPptx(
         w: LAYOUT.width - MARGIN * 2,
         h: 0.8,
         fontSize: 20,
-        color: "595959",
+        color: "tx2", // テーマの副色（テンプレートに追従する）
       });
     }
   }
@@ -163,8 +166,45 @@ export async function buildPptx(
     placeImages(page, images, bodyWidth);
     if (slide.notes) page.addNotes(slide.notes);
   }
-  return (await pptx.write({ outputType: "base64" })) as string;
+  const built = (await pptx.write({ outputType: "base64" })) as string;
+  return borrowed ? await paintWith(built, borrowed) : built;
 }
+
+/// 出来上がった `.pptx` の `theme1.xml` を、借りた配色と書体で塗り替える。
+///
+/// **後段で入れ替える。** pptxgenjs には配色を入れる口が無い
+/// （`pptx.theme` は書体だけ。ADR-0045 の実測）。
+/// 失敗したら**そのまま返す** — テンプレートが読めないだけで書き出せなく
+/// なるほうが困る。
+async function paintWith(base64: string, parts: ThemeParts): Promise<string> {
+  try {
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const file = zip.file(THEME_PATH);
+    if (!file) return base64;
+    zip.file(THEME_PATH, applyThemeParts(await file.async("string"), parts));
+    return await zip.generateAsync({ type: "base64" });
+  } catch {
+    return base64;
+  }
+}
+
+/// テンプレート（`.pptx` の中身）から借りるところを読む。読めなければ null。
+export async function readTemplateTheme(
+  bytes: Uint8Array,
+): Promise<ThemeParts | null> {
+  try {
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(bytes);
+    const file = zip.file(THEME_PATH);
+    if (!file) return null;
+    return themeParts(await file.async("string"));
+  } catch {
+    return null; // zip ですらない・壊れている
+  }
+}
+
+const THEME_PATH = "ppt/theme/theme1.xml";
 
 /// 読めた画像だけを返す（読めないものは飛ばす。書き出しは止めない）。
 async function embedImages(
@@ -216,8 +256,7 @@ function placeCards(page: Page, cards: Card[], theme: SlideTheme): void {
       y: BODY_TOP,
       w: width,
       h: height,
-      fill: { color: "F5F5F7" },
-      line: { color: "D9D9D9", width: 0.75 },
+      fill: { color: "bg2" },
       rectRadius: 0.08,
     });
     page.addText(
@@ -307,12 +346,11 @@ function placeBlocks(
         h: 1.6,
         fontSize: CODE_POINTS,
         fontFace: theme.mono,
-        fill: { color: "F5F5F7" },
-        color: "1F1F1F",
+        fill: { color: "bg2" },
+        color: "tx1",
         valign: "top",
         // 字が縁にくっつくと窮屈に見える（画面の帯と同じ考え方）
         margin: 8,
-        line: { color: "E0E0E0", width: 0.75 },
       });
       top += 1.8;
     } else if (block.kind === "table") {
@@ -330,9 +368,9 @@ function placeBlocks(
           text: cell,
           options:
             index === 0
-              ? { bold: true, color: "FFFFFF", fill: { color: theme.accent } }
+              ? { bold: true, color: "bg1", fill: { color: theme.accent } }
               : index % 2 === 0
-                ? { fill: { color: "F2F2F2" } } // 縞にして行を追いやすく
+                ? { fill: { color: "bg2" } } // 縞にして行を追いやすく
                 : {},
         })),
       );
@@ -341,7 +379,7 @@ function placeBlocks(
         y: top,
         w: width,
         fontSize: TABLE_POINTS,
-        border: { pt: 0.5, color: "BFBFBF" },
+        border: { pt: 0.5, color: "bg2" },
         autoPage: false,
       });
       top += 0.4 * rows.length + 0.3;

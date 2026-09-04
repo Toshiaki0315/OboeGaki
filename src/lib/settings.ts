@@ -50,6 +50,9 @@ export type Settings = {
   notesVisible: boolean;
   /// フォルダ・タグ・ゴミ箱の並び（サイドバー相当）を出すか（Cmd+1）。
   treesVisible: boolean;
+  /// PowerPoint のテンプレート（`.pptx`）の場所。空なら既定の見た目。
+  /// **借りるのは配色と書体だけ**（ADR-0045 案 A）。
+  slideTemplate: string;
   /// アシスタントを使うか（要望 2026-09-04）。**切ったら丸ごと畳む** —
   /// 設定も押せなくし、`Cmd+6` でも出さない。使わない人の画面に、使えない
   /// ものを置いておかない。
@@ -97,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // 次の起動が真っ白な窓になった（実測）
   notesVisible: true,
   treesVisible: true,
+  slideTemplate: "",
   assistantEnabled: true, // 今までどおり使える状態から始める
   llmModel: "gemma3:4b", // ADR-0025 の既定（1b は日本語が壊れる）
   llmPort: 11434,
@@ -173,6 +177,8 @@ export function loadSettings(storage: StorageLike): Settings {
     ),
     notesVisible: readFlag(stored.notesVisible, DEFAULT_SETTINGS.notesVisible),
     treesVisible: readFlag(stored.treesVisible, DEFAULT_SETTINGS.treesVisible),
+    slideTemplate:
+      typeof stored.slideTemplate === "string" ? stored.slideTemplate : "",
     assistantEnabled: readFlag(
       stored.assistantEnabled,
       DEFAULT_SETTINGS.assistantEnabled,

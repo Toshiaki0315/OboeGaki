@@ -21,14 +21,17 @@ export type SlideTheme = {
   font: string;
   /// コードの書体
   mono: string;
-  /// 見出しと表の見出しの色（`RRGGBB`。pptxgenjs は `#` を付けない）
+  /// 見出しと表の見出しの色。**既定はテーマ参照**（`accent1`）で、
+  /// front matter に色を書いたときだけ生の値になる（ADR-0045 案 A）
   accent: string;
 };
 
 export const DEFAULT_SLIDE_THEME: SlideTheme = {
   font: "",
   mono: "Menlo",
-  accent: "44546A",
+  // **テーマの色を指す。** 生の値で書くと、テンプレートを当てても
+  // ここだけ変わらない。PowerPoint 側でテーマを替えたときも追従する
+  accent: "accent1",
 };
 
 const COLOR = /^#?([0-9a-fA-F]{6})$/;
