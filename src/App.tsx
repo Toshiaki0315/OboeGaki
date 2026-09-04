@@ -3366,10 +3366,13 @@ function App() {
                   </div>
                 ) : (
                   <div className="pref-page">
-                    <h3 className="pref-section">ローカルLLM</h3>
+                    <h3 className="pref-section">アシスタント</h3>
+                    {/* **数字や記号で説明しない**（要望 2026-09-04）。
+                      127.0.0.1 と書いても伝わらない。約束の中身
+                      （外へ出ない）は変えず、言い方だけ変える */}
                     <p className="pref-note">
-                      Ollama に繋いで、要約やレビューを頼みます。送り先は
-                      127.0.0.1 に固定です（ノートは外へ出ません）。
+                      Ollama に繋いで、要約やレビューを頼みます。やり取りは
+                      このパソコンの中だけで行われ、ノートは外へ出ません。
                     </p>
                     <div className="preferences-fields">
                       <label>
@@ -3413,7 +3416,7 @@ function App() {
                             }
                           />
                           <span className="pref-unit">
-                            （送り先は 127.0.0.1 に固定）
+                            （このパソコンの中だけ）
                           </span>
                         </span>
                       </label>
@@ -4068,12 +4071,11 @@ function App() {
               {llmReady === false ? (
                 // **押してから断らない**（G-3 のゴミ箱と同じ作法）
                 <p className="assistant-note">
-                  ローカルLLM（Ollama）が動いていません。
+                  アシスタントを使うには Ollama という無料のソフトが要ります。
                   <br />
-                  ollama.com から入れて `ollama serve` で動かすと使えます。
+                  ollama.com から入れて動かすと、ここで使えるようになります。
                   <br />
-                  送り先は 127.0.0.1
-                  に固定されています（ノートは外へ出ません）。
+                  読ませたノートはこのパソコンの中だけで扱われ、外へは出ません。
                 </p>
               ) : (
                 <>
