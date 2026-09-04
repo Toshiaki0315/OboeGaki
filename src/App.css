@@ -1653,3 +1653,21 @@ button.danger {
   font-size: 0.9rem;
   pointer-events: none;
 }
+
+/* ノートを落とせるゴミ箱（要望 2026-09-04）。フォルダの行と同じ光り方に
+   揃える（落とせる場所の見え方を 1 つに保つ） */
+.trash-section summary.drop-target {
+  background: color-mix(in srgb, #0a84ff 18%, transparent);
+  outline: 1px solid color-mix(in srgb, #0a84ff 55%, transparent);
+  outline-offset: -1px;
+  border-radius: 6px;
+  opacity: 1;
+}
+
+/* 空のゴミ箱の案内。**欄自体は畳まない** — 落とし先が消えると、
+   捨てたあとにもう 1 枚捨てられなくなる */
+.trash-note {
+  margin: 0.1rem 0.5rem 0.4rem;
+  font-size: 0.8rem;
+  opacity: 0.55;
+}

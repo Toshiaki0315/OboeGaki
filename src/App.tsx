@@ -455,6 +455,7 @@ function App() {
   /// 本文まで一緒に動く（実機で発覚 2026-09-04）
   const dragGhost = useRef<HTMLElement | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const [dropTrash, setDropTrash] = useState(false);
   const [folderMenu, setFolderMenu] = useState<{
     folder: string;
     x: number;
@@ -2380,10 +2381,40 @@ function App() {
                   </ul>
                 </details>
               )}
-              {settings.treesVisible && trashNotes.length > 0 && (
-                <details className="trash-section">
+              {settings.treesVisible && (
+                // **空でも畳まない。** 落とし先が消えると、捨てたあとに
+                // もう 1 枚捨てられなくなる（要望 2026-09-04）
+                <details
+                  className="trash-section"
+                  onDragEnter={(event) => {
+                    if (!isNoteDrag(Array.from(event.dataTransfer.types)))
+                      return;
+                    event.preventDefault();
+                    setDropTrash(true);
+                  }}
+                  onDragOver={(event) => {
+                    if (!isNoteDrag(Array.from(event.dataTransfer.types)))
+                      return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    setDropTrash(true);
+                  }}
+                  onDragLeave={() => setDropTrash(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const dragged =
+                      draggingNote.current ||
+                      event.dataTransfer.getData(NOTE_DRAG_TYPE);
+                    draggingNote.current = null;
+                    setDropTrash(false);
+                    // ピン留めの断りと確認は handleTrash が持っている
+                    // （メニューの「ゴミ箱へ移動」と同じ道）
+                    if (dragged) void handleTrash(dragged);
+                  }}
+                >
                   <summary
-                    title="右クリックで空にできます"
+                    className={dropTrash ? "drop-target" : ""}
+                    title="右クリックで空にできます（ノートを落とすと捨てます）"
                     onContextMenu={(event) => {
                       event.preventDefault();
                       // path が無いときは「ゴミ箱そのもの」への操作
@@ -2396,6 +2427,11 @@ function App() {
                   >
                     ゴミ箱（{trashNotes.length}）
                   </summary>
+                  {trashNotes.length === 0 && (
+                    <p className="trash-note">
+                      空です。捨てたノートは {settings.trashDays} 日残ります
+                    </p>
+                  )}
                   <ul>
                     {trashNotes.map((entry) => {
                       const { name, folder } = trashParts(
