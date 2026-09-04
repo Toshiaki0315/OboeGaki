@@ -1896,6 +1896,32 @@ function App() {
             <header>
               <button onClick={() => void handleCreate()}>＋ 新規</button>
               <button onClick={() => void chooseVault()}>フォルダ変更</button>
+              {/* 設定への入口を窓の中にも置く（メニューバーだけだと
+                  気づけない — 参照実装 O-2 の教訓と同じ） */}
+              <button
+                className="settings-button"
+                title="環境設定（Cmd+,）"
+                aria-label="環境設定"
+                onClick={() => setPreferences(true)}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="2.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  />
+                  <path
+                    d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
             </header>
             {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
             {settings.notesVisible && (
