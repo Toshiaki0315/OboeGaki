@@ -287,7 +287,13 @@ fn failed(error: std::io::Error) -> LlmError {
 /// 補わせない — 根拠を確かめられない答えは使えない。
 pub fn prompt_for(task: &str, title: &str, body: &str) -> String {
     let instruction = match task {
-        "summary" => "次のノートを日本語で 3 行にまとめてください。",
+        // **短く頼むだけでは足りない。** 小さいモデルは要約を頼まれても
+        // 評価を書く（実機報告 2026-09-04: 「素晴らしい！非常に詳細で…」）。
+        // 書かないでほしいものを名指しする
+        "summary" => {
+            "次のノートを日本語で 3 行以内にまとめてください。\n\
+             **評価や感想は書かず**、書かれている事実だけを短く並べてください。"
+        }
         "review" => {
             "次のノートを読んで、直したほうがよいところを箇条書きで挙げてください。\n\
              **直した文は書かず、指摘だけ**にしてください。"
@@ -653,6 +659,15 @@ mod tests {
         assert!(prompt.contains("渡したノートだけを見て答えてください"));
         assert!(prompt.contains("# 会議メモ"));
         assert!(prompt.contains("本文"));
+    }
+
+    #[test]
+    fn test_prompt_要約は感想を書かせない() {
+        // 実機報告 2026-09-04: 「素晴らしい！非常に詳細で…」と評価を書き、
+        // 3 行にもならなかった（gemma3）。**短く頼むだけでは足りない**
+        let prompt = prompt_for("summary", "t", "b");
+        assert!(prompt.contains("3 行"));
+        assert!(prompt.contains("感想"));
     }
 
     #[test]

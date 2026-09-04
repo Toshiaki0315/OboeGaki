@@ -18,7 +18,10 @@ export const ASSISTANT_ACTIONS: readonly AssistantAction[] = [
   {
     id: "summary",
     label: "要約",
-    hint: "要約（このノートだけを読んで 3 行にまとめる）",
+    // **できることだけを書く。** 「3 行にまとめる」と書いていたが、
+    // モデルが従うとは限らない（実機報告 2026-09-04）。守れない約束を
+    // Tips に書かない
+    hint: "要約",
     // 行が短くなっていく = まとめる
     paths: ["M2.5 4h11M2.5 8h11M2.5 12h5.5"],
   },
