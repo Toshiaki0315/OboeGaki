@@ -15,6 +15,14 @@ import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { menuPosition } from "./lib/context-menu";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
+import {
+  availableFonts,
+  BODY_FONTS,
+  FONT_SAMPLE,
+  fontStack,
+  type Measure,
+  MONO_FONTS,
+} from "./lib/fonts";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
@@ -176,25 +184,6 @@ const SPACING_LABELS: Record<LineSpacing, string> = {
   normal: "ふつう",
   relaxed: "ゆったり",
 };
-
-// フォントの候補（datalist）。Web からは端末のフォント一覧を列挙できない
-// ので、macOS 標準のよく使うものを置き、それ以外は手打ちで受ける
-const BODY_FONT_CHOICES = [
-  "Hiragino Sans",
-  "Hiragino Maru Gothic ProN",
-  "Hiragino Mincho ProN",
-  "Yu Gothic",
-  "Yu Mincho",
-  "SF Pro",
-  "Helvetica Neue",
-];
-const MONO_FONT_CHOICES = [
-  "SF Mono",
-  "Menlo",
-  "Monaco",
-  "Courier New",
-  "Osaka-Mono",
-];
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
 function formatBytes(bytes: number): string {
@@ -455,6 +444,25 @@ function App() {
   /// 本文まで一緒に動く（実機で発覚 2026-09-04）
   const dragGhost = useRef<HTMLElement | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  // フォントの候補。**入っていないものは出さない**（要望 2026-09-04）。
+  // Web からは端末のフォント一覧を列挙できないので、名前を挙げて 1 つずつ
+  // 「その名前で組めるか」を幅で測る
+  const measureFont = useMemo<Measure | null>(() => {
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) return null;
+    return (spec) => {
+      context.font = spec;
+      return context.measureText(FONT_SAMPLE).width;
+    };
+  }, []);
+  const bodyFontChoices = useMemo(
+    () => availableFonts(BODY_FONTS, measureFont),
+    [measureFont],
+  );
+  const monoFontChoices = useMemo(
+    () => availableFonts(MONO_FONTS, measureFont),
+    [measureFont],
+  );
   const [dropTrash, setDropTrash] = useState(false);
   const [folderMenu, setFolderMenu] = useState<{
     folder: string;
@@ -2033,8 +2041,19 @@ function App() {
             "--list-width": `${settings.listWidth}px`,
             "--outline-width": `${settings.outlineWidth}px`,
             // フォントは空なら既定（システム / 既定の等幅スタック）のまま
-            ...(settings.bodyFont ? { "--body-font": settings.bodyFont } : {}),
-            ...(settings.monoFont ? { "--mono-font": settings.monoFont } : {}),
+            // **後ろに逃げ道を足す**（lib/fonts）。別の Mac で開いたときに
+            // 無いフォントを指したままだと、本文が既定のセリフ体になる
+            ...(settings.bodyFont
+              ? { "--body-font": fontStack(settings.bodyFont) }
+              : {}),
+            ...(settings.monoFont
+              ? {
+                  "--mono-font": fontStack(
+                    settings.monoFont,
+                    "ui-monospace, Menlo, monospace",
+                  ),
+                }
+              : {}),
           } as CSSProperties
         }
         data-spacing={settings.lineSpacing}
@@ -3041,8 +3060,12 @@ function App() {
                           }
                         />
                         <datalist id="body-fonts">
-                          {BODY_FONT_CHOICES.map((font) => (
-                            <option key={font} value={font} />
+                          {bodyFontChoices.map((font) => (
+                            <option
+                              key={font.family}
+                              value={font.family}
+                              label={font.label}
+                            />
                           ))}
                         </datalist>
                       </label>
@@ -3074,8 +3097,12 @@ function App() {
                           }
                         />
                         <datalist id="mono-fonts">
-                          {MONO_FONT_CHOICES.map((font) => (
-                            <option key={font} value={font} />
+                          {monoFontChoices.map((font) => (
+                            <option
+                              key={font.family}
+                              value={font.family}
+                              label={font.label}
+                            />
                           ))}
                         </datalist>
                       </label>
