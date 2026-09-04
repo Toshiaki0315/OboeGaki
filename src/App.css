@@ -1078,25 +1078,6 @@ body.resizing {
   font-variant-numeric: tabular-nums;
 }
 
-/* 選んでいるフォルダにだけ出す操作。常に出すと行が賑やかになりすぎる */
-.folder-actions {
-  display: flex;
-  gap: 0.4rem;
-  padding: 0.1rem 0.5rem 0.3rem 1.2rem;
-}
-
-.folder-actions button {
-  font: inherit;
-  font-size: 0.75rem;
-  color: inherit;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  border: none;
-  border-radius: 5px;
-  padding: 0.1rem 0.4rem;
-  cursor: pointer;
-  opacity: 0.8;
-}
-
 .tag-section {
   margin-top: 1rem;
   padding-top: 0.5rem;

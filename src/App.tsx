@@ -446,6 +446,11 @@ function App() {
   fontSizeRef.current = fontSize;
 
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
+  const [folderMenu, setFolderMenu] = useState<{
+    folder: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [trashMenu, setTrashMenu] = useState<{
     /// null なら「ゴミ箱そのもの」への操作（空にする）
     path: string | null;
@@ -2189,33 +2194,26 @@ function App() {
                           style={{
                             paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
                           }}
+                          title="右クリックで作る・名前を変える・消す"
                           onClick={() =>
                             filterByFolder(
                               folder === folderFilter ? null : folder,
                             )
                           }
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setFolderMenu({
+                              folder,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
                         >
                           <span className="folder-name">
                             {folderLabel(folder)}
                           </span>
                           <span className="folder-count">{count}</span>
                         </button>
-                        {folder !== "" && folder === folderFilter && (
-                          <span className="folder-actions">
-                            <button
-                              onClick={() =>
-                                setFolderDialog({ kind: "rename", folder })
-                              }
-                            >
-                              名前を変更
-                            </button>
-                            <button
-                              onClick={() => void handleDeleteFolder(folder)}
-                            >
-                              削除
-                            </button>
-                          </span>
-                        )}
                       </li>
                     ))}
                   </ul>
@@ -3345,6 +3343,78 @@ function App() {
                         ゴミ箱へ移動
                       </button>
                     </li>
+                  </ul>
+                </div>
+              );
+            })()}
+          {folderMenu !== null &&
+            (() => {
+              // 空文字は保管フォルダの直下（「直下」の行）。名前も変えられ
+              // ないし消せないので、作る項目だけ出す
+              const target = folderMenu.folder;
+              const isRoot = target === "";
+              const run = (action: () => void) => () => {
+                setFolderMenu(null);
+                action();
+              };
+              return (
+                <div
+                  className="menu-backdrop"
+                  onMouseDown={() => setFolderMenu(null)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setFolderMenu(null);
+                  }}
+                >
+                  <ul
+                    className="context-menu"
+                    style={(() => {
+                      const at = menuPosition(
+                        folderMenu,
+                        { width: 200, height: isRoot ? 44 : 120 },
+                        {
+                          width: window.innerWidth,
+                          height: window.innerHeight,
+                        },
+                      );
+                      return { left: at.x, top: at.y };
+                    })()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <li>
+                      <button
+                        onClick={run(() =>
+                          setFolderDialog({ kind: "create", folder: target }),
+                        )}
+                      >
+                        {isRoot ? "新規フォルダ…" : "この中に新規フォルダ…"}
+                      </button>
+                    </li>
+                    {!isRoot && (
+                      <>
+                        <li className="separator" />
+                        <li>
+                          <button
+                            onClick={run(() =>
+                              setFolderDialog({
+                                kind: "rename",
+                                folder: target,
+                              }),
+                            )}
+                          >
+                            名前を変更…
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            className="danger"
+                            onClick={run(() => void handleDeleteFolder(target))}
+                          >
+                            削除
+                          </button>
+                        </li>
+                      </>
+                    )}
                   </ul>
                 </div>
               );
