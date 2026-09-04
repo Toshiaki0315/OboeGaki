@@ -73,7 +73,8 @@ export type EditorHandle = {
   getText: () => string;
   /// 選んでいる文字（無ければ空）。仮身化（M-1）で使う
   getSelection: () => string;
-  /// 選んでいる範囲を差し替える（仮身化が `[[題名]]` を残す）
+  /// 選んでいる範囲を差し替える。**選んでいなければキャレットの位置へ
+  /// 差し込む**（貼り付けの 2 回目以降は選択が無い）
   replaceSelection: (text: string) => void;
   /// 指定位置へキャレットを置いてスクロールする（アウトラインのジャンプ）
   revealPos: (pos: number) => void;
@@ -202,7 +203,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         const current = view.current;
         if (!current) return;
         const { from, to } = current.state.selection.main;
-        if (from === to) return; // 選んでいなければ何もしない
+        // **選んでいなくても差し込む。** 貼り付けは 2 回目以降が選択なしで
+        // 来る（実機報告 2026-09-04: 1 回目しか効かなかった）。選んだ範囲を
+        // 使い切る仮身化は、呼ぶ前に選択を確かめている
         current.dispatch({
           changes: { from, to, insert: text },
           selection: { anchor: from + text.length },
