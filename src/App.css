@@ -947,15 +947,20 @@ body.resizing {
 }
 
 .folder-section summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  /* display を flex にすると summary の既定（list-item）が消えて
+     開閉の三角が出なくなる（実機報告 2026-09-04）。タグと同じ
+     ネイティブの三角を残し、＋ は絶対配置で右へ寄せる */
+  position: relative;
   cursor: pointer;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 2rem 0.3rem 0.5rem;
   opacity: 0.7;
 }
 
 .folder-add {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
   font: inherit;
   color: inherit;
   background: none;
