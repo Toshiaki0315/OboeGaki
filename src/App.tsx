@@ -3873,7 +3873,12 @@ function App() {
                 setGearMenu(null);
                 action();
               };
-              const check = (on: boolean) => (on ? "✓ " : "　");
+              // **印は幅を持つ枠に入れる。** 全角の空白で字下げすると、
+              // JSX が行頭の空白を落として揃わない（実機報告 2026-09-04）。
+              // 印と字の幅が違っても、枠が同じなら頭は揃う
+              const check = (on: boolean) => (
+                <span className="menu-check">{on ? "✓" : ""}</span>
+              );
               const menu = menuActions.current;
               return (
                 <div
@@ -3930,12 +3935,12 @@ function App() {
                     </li>
                     <li>
                       <button onClick={run(() => menu["focus-mode"]?.())}>
-                        　フォーカスモード
+                        {check(false)}フォーカスモード
                       </button>
                     </li>
                     <li>
                       <button onClick={run(() => menu.typewriter?.())}>
-                        　タイプライタモード
+                        {check(false)}タイプライタモード
                       </button>
                     </li>
                   </ul>

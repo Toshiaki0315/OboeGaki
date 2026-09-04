@@ -1800,3 +1800,10 @@ fieldset.preferences-fields:disabled {
   margin: 0 0 0.4rem;
   font-weight: 500;
 }
+
+/* メニューの左の印（✓）。**幅を持つ枠に入れる** — 空白で字下げすると
+   字の幅の違いで頭が揃わないし、JSX が行頭の空白を落とす */
+.menu-check {
+  display: inline-block;
+  width: 1.2em;
+}
