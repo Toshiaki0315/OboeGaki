@@ -13,6 +13,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { menuPosition } from "./lib/context-menu";
+import { trashLabel, trashParts } from "./lib/trash-label";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
 import type { TextStats } from "./editor/stats";
@@ -224,12 +225,6 @@ function folderLabel(folder: string): string {
 /// 階層の深さ（直下は 0）。ツリーの字下げに使う。
 function folderDepth(folder: string): number {
   return folder ? folder.split("/").length : 0;
-}
-
-function trashLabel(root: string, path: string): string {
-  const prefix = `${root}/.trash/`;
-  const relative = path.startsWith(prefix) ? path.slice(prefix.length) : path;
-  return relative.replace(/\.(md|markdown)$/i, "");
 }
 
 function App() {
@@ -2256,25 +2251,40 @@ function App() {
                 <details className="trash-section">
                   <summary>ゴミ箱（{trashNotes.length}）</summary>
                   <ul>
-                    {trashNotes.map((path) => (
-                      /* 操作は右クリックへ（要望 2026-09-04）。ボタンを
-                        並べると題名が押し出されて読めなくなる */
-                      <li
-                        key={path}
-                        className="trash-item"
-                        title="右クリックで戻す・削除"
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          setTrashMenu({
-                            path,
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
-                        }}
-                      >
-                        <span>{trashLabel(vaultRoot, path)}</span>
-                      </li>
-                    ))}
+                    {trashNotes.map((entry) => {
+                      const { name, folder } = trashParts(
+                        vaultRoot,
+                        entry.path,
+                      );
+                      return (
+                        /* 操作は右クリックへ（要望 2026-09-04）。ボタンを
+                          並べると題名が押し出されて読めなくなる */
+                        <li
+                          key={entry.path}
+                          className="trash-item"
+                          title={`${trashLabel(vaultRoot, entry.path)}（右クリックで戻す・削除）`}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setTrashMenu({
+                              path: entry.path,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
+                        >
+                          <span className="trash-name">{name}</span>
+                          <span className="trash-meta">
+                            {/* 元の場所。直下のノートには出さない */}
+                            {folder && (
+                              <span className="trash-folder">{folder}</span>
+                            )}
+                            <span className="trash-stamp">
+                              {formatStamp(entry.trashedMs)}
+                            </span>
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                   <button
                     className="danger trash-empty"

@@ -1104,12 +1104,23 @@ pub fn note_trash(
 }
 
 #[tauri::command]
-pub fn trash_list(root: String) -> Result<Vec<String>, String> {
+pub fn trash_list(root: String) -> Result<Vec<TrashItem>, String> {
     Ok(Vault::new(&root)
-        .trash_list()
+        .trash_entries()
         .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
+        .map(|entry| TrashItem {
+            path: entry.path.to_string_lossy().into_owned(),
+            trashed_ms: entry.trashed_ms,
+        })
         .collect())
+}
+
+/// ゴミ箱の 1 件（画面へ渡す形）。
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct TrashItem {
+    pub path: String,
+    /// 捨てた時刻。ミリ秒（JS の Date と突き合わせやすい単位）
+    pub trashed_ms: i64,
 }
 
 /// ピン留めを付け外しする（spec §7.3）。front matter の `pinned: true` に

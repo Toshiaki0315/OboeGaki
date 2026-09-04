@@ -1034,6 +1034,22 @@ impl Vault {
         found
     }
 
+    /// ゴミ箱の中身を**捨てた新しい順**で返す（一覧の見やすさ）。
+    ///
+    /// 直前に捨てたものを戻すことが多いので、それを上に置く。
+    pub fn trash_entries(&self) -> Vec<TrashEntry> {
+        let mut entries: Vec<TrashEntry> = self
+            .trash_list()
+            .into_iter()
+            .map(|path| TrashEntry {
+                trashed_ms: trashed_ms(&path),
+                path,
+            })
+            .collect();
+        sort_by_trashed(&mut entries);
+        entries
+    }
+
     /// ゴミ箱から元のフォルダへ戻す（参照実装 K-5）。
     ///
     /// `.trash/` の中の位置がそのまま元の位置。フォルダが消えていたら
@@ -1359,6 +1375,38 @@ pub fn contains(root: &Path, candidate: &Path) -> bool {
         Ok(resolved) => resolved.starts_with(&root),
         Err(_) => false,
     }
+}
+
+/// ゴミ箱の 1 件。
+#[derive(Debug, PartialEq)]
+pub struct TrashEntry {
+    pub path: PathBuf,
+    /// 捨てた時刻（ミリ秒）。読めなければ 0。
+    pub trashed_ms: i64,
+}
+
+/// 捨てた時刻。**mtime をそのまま読む。**
+///
+/// rename は mtime を保つので `trash()` が捨てるときに今へ刻み直している
+/// （`test_trash_捨てた直後のmtimeは今になる`）。期限切れの掃除
+/// （`purge_trash`）も同じ mtime で測るため、ここで見せる時刻と
+/// 「いつ消えるか」がずれない。
+fn trashed_ms(path: &Path) -> i64 {
+    fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|since| since.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// 捨てた新しい順。同じ時刻ならパス順（並びが日によって入れ替わらない）。
+fn sort_by_trashed(entries: &mut [TrashEntry]) {
+    entries.sort_by(|a, b| {
+        b.trashed_ms
+            .cmp(&a.trashed_ms)
+            .then_with(|| a.path.cmp(&b.path))
+    });
 }
 
 #[cfg(test)]
@@ -1978,6 +2026,50 @@ mod tests {
         note(root.path(), "生きている.md"); // ゴミ箱の外は入らない
 
         assert_eq!(vault.trash_list(), vec![a, inner]);
+    }
+
+    #[test]
+    fn test_trash_entries_捨てた時刻を読む() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let moved = vault.trash(&note(root.path(), "a.md")).unwrap();
+
+        let entries = vault.trash_entries();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, moved);
+        // 捨てた時刻が読めている（0 のままなら metadata を見ていない）
+        assert!(entries[0].trashed_ms > 0);
+    }
+
+    #[test]
+    fn test_捨てた新しい順に並ぶ_同じ時刻ならパス順() {
+        // **中身の更新時刻ではなく、捨てた順。** 直前に捨てたものを戻す
+        // ことが多いので、それが上に来る
+        let entry = |path: &str, ms: i64| TrashEntry {
+            path: PathBuf::from(path),
+            trashed_ms: ms,
+        };
+        let mut entries = vec![
+            entry("古い.md", 100),
+            entry("b.md", 300),
+            entry("新しい.md", 500),
+            entry("a.md", 300),
+        ];
+
+        sort_by_trashed(&mut entries);
+
+        let order: Vec<_> = entries.iter().map(|e| e.path.clone()).collect();
+        assert_eq!(
+            order,
+            vec![
+                PathBuf::from("新しい.md"),
+                PathBuf::from("a.md"),
+                PathBuf::from("b.md"),
+                PathBuf::from("古い.md"),
+            ]
+        );
     }
 
     #[test]

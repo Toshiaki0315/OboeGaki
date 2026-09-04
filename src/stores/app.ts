@@ -13,6 +13,10 @@ type NoteMeta = {
   pinned: boolean;
 };
 
+type TrashMeta = { path: string; trashed_ms: number };
+/// ゴミ箱の 1 件。**捨てた新しい順**で並んで届く（Rust 側が並べる）
+export type TrashEntry = { path: string; trashedMs: number };
+
 export type TagCount = { tag: string; count: number };
 /// フォルダと**直下の**ノート件数。`folder` が空文字なら保管フォルダ直下。
 export type FolderCount = { folder: string; count: number };
@@ -22,7 +26,7 @@ type AppState = {
   notes: NoteEntry[];
   tags: TagCount[];
   folders: FolderCount[];
-  trashNotes: string[];
+  trashNotes: TrashEntry[];
   currentPath: string | null;
   /// `trashDays` は環境設定のゴミ箱の日数（省くと Rust 側の既定）
   openVault: (root: string, trashDays?: number) => Promise<void>;
@@ -52,7 +56,11 @@ async function fetchLists(root: string) {
     folder,
     count,
   }));
-  const trashNotes = await invoke<string[]>("trash_list", { root });
+  const trashed = await invoke<TrashMeta[]>("trash_list", { root });
+  const trashNotes: TrashEntry[] = trashed.map((entry) => ({
+    path: entry.path,
+    trashedMs: entry.trashed_ms,
+  }));
   return { notes, tags, folders, trashNotes };
 }
 
