@@ -1904,21 +1904,32 @@ function App() {
                 aria-label="環境設定"
                 onClick={() => setPreferences(true)}
               >
+                {/* 歯車は参照実装 ui/icons.py の _draw_gear を写した形
+                   （輪 + 太い短線の歯 8 枚 + 軸穴。細い線だとトゲに見えて
+                    歯車に読めない、という向こうでの学びごと持ってくる） */}
                 <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M11.25 8H12.5M10.3 10.3l.88.88M8 11.25v1.25M5.7 10.3l-.88.88M4.75 8H3.5M5.7 5.7l-.88-.88M8 4.75V3.5M10.3 5.7l.88-.88"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
                   <circle
                     cx="8"
                     cy="8"
-                    r="2.2"
+                    r="2.75"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="1.4"
+                    strokeWidth="1.25"
                   />
-                  <path
-                    d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="1"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
+                    strokeWidth="1.25"
                   />
                 </svg>
               </button>
