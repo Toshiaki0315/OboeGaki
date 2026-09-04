@@ -2138,16 +2138,15 @@ function App() {
                           draggable
                           onDragStart={(event) => {
                             draggingNote.current = entry.path;
+                            // 動かすのであって写しではない（緑の + を出さない）
                             event.dataTransfer.effectAllowed = "move";
+                            // **載せるのは目印だけ。** 素の文字を載せると
+                            // 本文や入力欄が「文字のコピー」として受け、
+                            // 緑の + が付くうえ、落とすと題名が本文に入る
+                            // （実機報告 2026-09-04）
                             event.dataTransfer.setData(
                               NOTE_DRAG_TYPE,
                               entry.path,
-                            );
-                            // 目印だけでは掴んだ絵が出ない環境があるので
-                            // 素の文字も載せる（外へ落としたときは題名）
-                            event.dataTransfer.setData(
-                              "text/plain",
-                              noteStem(entry.path),
                             );
                             // 画面の外で作った札を絵にする。**画面に載って
                             // いないと写し取ってもらえない**ので、消すのは
