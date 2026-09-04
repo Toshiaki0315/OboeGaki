@@ -1774,3 +1774,22 @@ button.danger {
 .assistant-actions .assistant-stop {
   margin-left: auto;
 }
+
+/* 設定の欄をまとめて押せなくするための fieldset。**見た目は div のまま**
+   （枠と余白が付くと、そこだけ囲まれて見える） */
+fieldset.preferences-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+fieldset.preferences-fields:disabled {
+  opacity: 0.45;
+}
+
+/* 節の一番上に置く入り切りのチェック（アシスタントを使うか） */
+.pref-toggle {
+  margin: 0 0 0.4rem;
+  font-weight: 500;
+}

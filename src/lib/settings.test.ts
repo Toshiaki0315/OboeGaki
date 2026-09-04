@@ -111,6 +111,20 @@ describe("ローカルLLM の設定（ADR-0025）", () => {
     expect(found.llmTimeoutMinutes).toBe(DEFAULT_SETTINGS.llmTimeoutMinutes);
   });
 
+  it("test_アシスタントを使うかを覚える（既定は使う）", () => {
+    // 切っておくと設定も畳み、Cmd+6 でも出さない（要望 2026-09-04）
+    expect(DEFAULT_SETTINGS.assistantEnabled).toBe(true);
+    const stored = (value: unknown) =>
+      loadSettings(
+        fakeStorage({
+          [SETTINGS_KEY]: JSON.stringify({ assistantEnabled: value }),
+        }),
+      ).assistantEnabled;
+    expect(stored(false)).toBe(false);
+    // 壊れた値は既定へ（設定が読めないだけで機能が消えない）
+    expect(stored("yes")).toBe(true);
+  });
+
   it("test_送り先の設定は持たない（外へ出す道を作らない）", () => {
     // ADR-0025 決定 3。ここに host が生えたら設計が変わったということ
     expect(Object.keys(DEFAULT_SETTINGS)).not.toContain("llmHost");

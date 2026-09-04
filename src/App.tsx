@@ -962,6 +962,11 @@ function App() {
 
   // アシスタント（TASKS 4-8 / ADR-0025）。**無ければ機能ごと畳む**
   const assistantOpen = rightPane === "assistant";
+
+  // 設定で切られたら、開いていても閉じる（切ったのに出たままにしない）
+  useEffect(() => {
+    if (!settings.assistantEnabled && assistantOpen) setRightPane("none");
+  }, [settings.assistantEnabled, assistantOpen]);
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [answer, setAnswer] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -1163,6 +1168,11 @@ function App() {
   }
 
   async function handleUnloadModel() {
+    // 使わない設定なら、載っているモデルも無い（触りに行かない）
+    if (!settings.assistantEnabled) {
+      setStatus("アシスタントは環境設定で切ってあります");
+      return;
+    }
     const done = await invoke<boolean>("llm_unload", {
       port: settings.llmPort,
       model: settings.llmModel,
@@ -1825,7 +1835,15 @@ function App() {
       setSavingSearch(typed);
     },
     outline: toggleOutline,
-    assistant: () => setRightPane((pane) => togglePane(pane, "assistant")),
+    assistant: () => {
+      // **切ってあるときは出さない**（要望 2026-09-04）。ただし黙って
+      // 無視すると壊れて見えるので、どこで戻せるかを言う
+      if (!settings.assistantEnabled) {
+        setStatus("アシスタントは環境設定で切ってあります（Cmd+, で戻せます）");
+        return;
+      }
+      setRightPane((pane) => togglePane(pane, "assistant"));
+    },
     "llm-unload": () => void handleUnloadModel(),
     "heading-palette": openHeadingPalette,
     "style-check": checkStyleNow,
@@ -3370,11 +3388,30 @@ function App() {
                     {/* **数字や記号で説明しない**（要望 2026-09-04）。
                       127.0.0.1 と書いても伝わらない。約束の中身
                       （外へ出ない）は変えず、言い方だけ変える */}
+                    {/* **一番上に置く**（要望 2026-09-04）。切ってあるときは
+                      以下を丸ごと押せなくし、Cmd+6 でも出さない */}
+                    <label className="pref-check pref-toggle">
+                      <input
+                        type="checkbox"
+                        checked={settings.assistantEnabled}
+                        onChange={(event) =>
+                          changeSettings({
+                            assistantEnabled: event.currentTarget.checked,
+                          })
+                        }
+                      />
+                      AI アシスタントを使う
+                    </label>
                     <p className="pref-note">
                       Ollama に繋いで、要約やレビューを頼みます。やり取りは
                       このパソコンの中だけで行われ、ノートは外へ出ません。
                     </p>
-                    <div className="preferences-fields">
+                    {/* **まとめて押せなくする。** 1 つずつ disabled を付けると、
+                      あとで足した欄に付け忘れる */}
+                    <fieldset
+                      className="preferences-fields"
+                      disabled={!settings.assistantEnabled}
+                    >
                       <label>
                         <span>モデル</span>
                         <span className="pref-unit-row">
@@ -3475,7 +3512,7 @@ function App() {
                           ))}
                         </select>
                       </label>
-                    </div>
+                    </fieldset>
                     <h3 className="pref-section">画像とPDF</h3>
                     <p className="pref-note">
                       取り込んだ画像や PDF

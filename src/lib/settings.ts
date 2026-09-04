@@ -50,7 +50,11 @@ export type Settings = {
   notesVisible: boolean;
   /// フォルダ・タグ・ゴミ箱の並び（サイドバー相当）を出すか（Cmd+1）。
   treesVisible: boolean;
-  /// ローカルLLM のモデル名（ADR-0025。**空にはできない** — 空のまま
+  /// アシスタントを使うか（要望 2026-09-04）。**切ったら丸ごと畳む** —
+  /// 設定も押せなくし、`Cmd+6` でも出さない。使わない人の画面に、使えない
+  /// ものを置いておかない。
+  assistantEnabled: boolean;
+  /// アシスタントのモデル名（ADR-0025。**空にはできない** — 空のまま
   /// 保存できると、押しても何も起きないアプリになる）。
   llmModel: string;
   /// Ollama のポート。**送り先は 127.0.0.1 に固定**で、これは同じ機械の
@@ -93,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // 次の起動が真っ白な窓になった（実測）
   notesVisible: true,
   treesVisible: true,
+  assistantEnabled: true, // 今までどおり使える状態から始める
   llmModel: "gemma3:4b", // ADR-0025 の既定（1b は日本語が壊れる）
   llmPort: 11434,
   llmContext: 8192, // 既定の 4k では長いノートが黙って切れる
@@ -168,6 +173,10 @@ export function loadSettings(storage: StorageLike): Settings {
     ),
     notesVisible: readFlag(stored.notesVisible, DEFAULT_SETTINGS.notesVisible),
     treesVisible: readFlag(stored.treesVisible, DEFAULT_SETTINGS.treesVisible),
+    assistantEnabled: readFlag(
+      stored.assistantEnabled,
+      DEFAULT_SETTINGS.assistantEnabled,
+    ),
     // 空のモデル名は既定へ戻す（押しても何も起きないアプリにしない）
     llmModel:
       typeof stored.llmModel === "string" && stored.llmModel.trim()
