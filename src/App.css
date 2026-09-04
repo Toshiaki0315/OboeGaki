@@ -1415,9 +1415,59 @@ button.danger {
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.85rem;
+  /* 名前の欄は窓いっぱいまで伸ばす（要望 2026-09-04: 狭い） */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .table-dialog-fields input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: Canvas;
+  color: CanvasText;
+}
+/* 数を入れる欄（表の行と列）だけは短いまま。伸ばしても読みやすくならない */
+.table-dialog-fields input[type="number"] {
   width: 6rem;
+}
+
+/* 窓の下の [やめる][決定]。**縦に積んで幅いっぱいに伸ばさない**
+   （要望 2026-09-04）。積むのは選択肢が文になっている窓（競合・復元）の
+   ためのやり方で、短い操作 2 つには大きすぎる */
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.2rem 1rem 0.8rem;
+}
+
+.dialog-actions button {
+  font: inherit;
+  font-size: 0.9rem;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 1.2rem;
+  min-width: 5rem;
+  cursor: pointer;
+}
+
+.dialog-actions button:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* 押すことになるほうを目立たせる（Enter でも同じところへ進む） */
+.dialog-actions button.primary {
+  background: #0a84ff;
+  color: #fff;
+}
+
+.dialog-actions button.primary:hover {
+  background: #0b76e0;
 }
 
 /* 一覧とサイドバーの行間（環境設定。本文には効かない — 参照実装と同じ） */

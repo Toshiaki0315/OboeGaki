@@ -2950,9 +2950,14 @@ function App() {
                     />
                   </label>
                 </div>
-                <div className="conflict-actions">
+                <div className="dialog-actions">
                   <button onClick={() => setFolderDialog(null)}>やめる</button>
-                  <button onClick={() => void confirmFolderName()}>決定</button>
+                  <button
+                    className="primary"
+                    onClick={() => void confirmFolderName()}
+                  >
+                    決定
+                  </button>
                 </div>
               </div>
             </div>
@@ -3399,9 +3404,11 @@ function App() {
                     />
                   </label>
                 </div>
-                <div className="conflict-actions">
+                <div className="dialog-actions">
                   <button onClick={() => setTableDialog(false)}>やめる</button>
-                  <button onClick={confirmInsertTable}>挿入</button>
+                  <button className="primary" onClick={confirmInsertTable}>
+                    挿入
+                  </button>
                 </div>
               </div>
             </div>
@@ -3761,9 +3768,11 @@ function App() {
                   </label>
                 </div>
                 <p className="dialog-text">検索式: {savingSearch}</p>
-                <div className="conflict-actions">
+                <div className="dialog-actions">
                   <button onClick={() => setSavingSearch(null)}>やめる</button>
-                  <button onClick={confirmSaveSearch}>保存</button>
+                  <button className="primary" onClick={confirmSaveSearch}>
+                    保存
+                  </button>
                 </div>
               </div>
             </div>
@@ -3797,9 +3806,12 @@ function App() {
                   見出しは {"{{title}}"} に置き換わります（この雛形から作った
                   ノートには新しい題名が入ります）。
                 </p>
-                <div className="conflict-actions">
+                <div className="dialog-actions">
                   <button onClick={() => setTemplateName(null)}>やめる</button>
-                  <button onClick={() => void confirmRegisterTemplate()}>
+                  <button
+                    className="primary"
+                    onClick={() => void confirmRegisterTemplate()}
+                  >
                     登録
                   </button>
                 </div>
