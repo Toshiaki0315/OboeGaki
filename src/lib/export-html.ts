@@ -11,6 +11,7 @@
 import MarkdownIt from "markdown-it";
 import container from "markdown-it-container";
 import { mathSpanAt, renderMath } from "../editor/math";
+import { frontMatterRange } from "../editor/frontmatter";
 import { splitFenceInfo } from "../editor/code-blocks";
 import {
   DEFAULT_NOTE_KIND,
@@ -233,6 +234,10 @@ export function codeKey(info: string, code: string): string {
 ///
 /// 書き出しと**同じ文字列**を作る（経路を分けると片方だけ直す事故が起きる
 /// = ADR-0007 の判断）。
+///
+/// **front matter は落とす**（参照実装 core/html.py と同じ）。`id` や
+/// `modified` はアプリの管理情報で、読む人には意味がない。画面にも
+/// 出していないもの（frontMatterHide）を、紙や配布物にだけ出さない。
 export function renderBody(
   markdownText: string,
   diagrams?: Map<string, string>,
@@ -265,7 +270,8 @@ export function renderBody(
       ? `<div class="code-block"><div class="code-name">${escapeHtml(fileName)}</div>${body}</div>\n`
       : body;
   };
-  return md.render(markdownText);
+  const range = frontMatterRange(markdownText);
+  return md.render(range ? markdownText.slice(range.bodyStart) : markdownText);
 }
 
 /// 完結した HTML 文書を返す。

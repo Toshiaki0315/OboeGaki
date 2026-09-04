@@ -4,6 +4,24 @@ import { describe, expect, test } from "vitest";
 import { codeKey, collectCodeBlocks, renderHtml } from "./export-html";
 
 describe("renderHtml", () => {
+  test("test_front_matter は出さない（アプリの管理情報）", () => {
+    // 実機報告 2026-09-04: 書き出した HTML の頭に created / id / pinned が
+    // 大きく出ていた。**画面には出ていないもの**を紙や配布物に出さない
+    const text =
+      "---\ncreated: 2026-08-28T22:51:36+09:00\nid: 01M14\npinned: true\n---\n\n# 覚書の使い方\n\n本文です。\n";
+    const html = renderHtml(text, "覚書の使い方");
+    expect(html).not.toContain("created:");
+    expect(html).not.toContain("01M14");
+    expect(html).toContain("覚書の使い方");
+    expect(html).toContain("本文です。");
+  });
+
+  test("test_閉じていない区切りは本文として出す（front matter ではない）", () => {
+    // `---` で始まるだけの本文まで落とすと、書いたものが消える
+    const html = renderHtml("---\n\n本文だけ\n", "t");
+    expect(html).toContain("本文だけ");
+  });
+
   test("完結した HTML 文書になり、題名はエスケープされる", () => {
     const html = renderHtml("# 見出し\n", "<危ない>題名");
     expect(html).toContain("<!doctype html>");
