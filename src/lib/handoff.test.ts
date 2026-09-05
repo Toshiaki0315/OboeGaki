@@ -4,7 +4,13 @@
 // 渡すのは選んだところだけ。
 
 import { describe, expect, it } from "vitest";
-import { confirmMessage, HANDOFFS, needsConfirm, searchUrl } from "./handoff";
+import {
+  confirmMessage,
+  HANDOFFS,
+  handoffUrl,
+  needsConfirm,
+  searchUrl,
+} from "./handoff";
 
 describe("HANDOFFS", () => {
   it("test_並びは生成AIのあとに検索", () => {
@@ -48,6 +54,27 @@ describe("needsConfirm", () => {
 
   it("test_検索は確認しない（設定は生成AI向け）", () => {
     expect(needsConfirm(google, true)).toBe(false);
+  });
+});
+
+describe("handoffUrl", () => {
+  const claude = HANDOFFS.find((entry) => entry.id === "claude")!;
+  const gemini = HANDOFFS.find((entry) => entry.id === "gemini")!;
+
+  it("test_Claude には直接渡せる（貼り付けが要らない）", () => {
+    // アプリの中の URL の口を見て決めた（claude://claude.ai/new?q=…）
+    expect(handoffUrl(claude, "予算はどうなった？")).toBe(
+      "claude://claude.ai/new?q=%E4%BA%88%E7%AE%97%E3%81%AF%E3%81%A9%E3%81%86%E3%81%AA%E3%81%A3%E3%81%9F%EF%BC%9F",
+    );
+  });
+
+  it("test_口の無いアプリは null（クリップボード経由に倒す）", () => {
+    expect(handoffUrl(gemini, "本文")).toBeNull();
+  });
+
+  it("test_長すぎるときも null（URL に載せきれない）", () => {
+    // 日本語は 1 文字が 9 文字に膨らむ。載せきれないぶんは貼り付けで渡す
+    expect(handoffUrl(claude, "あ".repeat(3000))).toBeNull();
   });
 });
 

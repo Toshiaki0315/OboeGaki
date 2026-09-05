@@ -15,11 +15,20 @@ export type Handoff = {
   app?: string;
   /// 検索など、URL で開くもの
   search?: true;
+  /// 文字ごと渡せる URL の頭。**アプリが受け取れると分かったものだけ**
+  /// （Claude の中に `claude://claude.ai/new?q=…` を読む口がある。
+  /// 2026-09-05 に実物で確認）
+  deepLink?: string;
 };
 
 /// 渡し先。生成 AI を並べ、そのあとに検索を置く。
 export const HANDOFFS: readonly Handoff[] = [
-  { id: "claude", label: "Claude に渡す", app: "Claude" },
+  {
+    id: "claude",
+    label: "Claude に渡す",
+    app: "Claude",
+    deepLink: "claude://claude.ai/new?q=",
+  },
   { id: "gemini", label: "Gemini に渡す", app: "Gemini" },
   { id: "chatgpt", label: "ChatGPT に渡す", app: "ChatGPT" },
   { id: "copilot", label: "Copilot に渡す", app: "Copilot" },
@@ -30,6 +39,18 @@ export const HANDOFFS: readonly Handoff[] = [
 /// 同じ操作なので、毎回聞くと邪魔になる）。
 export function needsConfirm(handoff: Handoff, confirmAi: boolean): boolean {
   return confirmAi && handoff.app !== undefined;
+}
+
+/// URL に載せられる長さの上限。**日本語は 1 文字が 9 文字に膨らむ**
+/// （`%E3%81%82`）ので、字数ではなく組んだ URL の長さで見る。
+/// 載せきれないぶんはクリップボード経由に倒す。
+const MAX_URL = 16000;
+
+/// 文字ごと渡せる URL。渡せないアプリ・長すぎる文字は null。
+export function handoffUrl(handoff: Handoff, text: string): string | null {
+  if (!handoff.deepLink) return null;
+  const url = handoff.deepLink + encodeURIComponent(text);
+  return url.length <= MAX_URL ? url : null;
 }
 
 /// Google で探す URL。

@@ -23,6 +23,7 @@ import { anchorAbove, menuPosition } from "./lib/context-menu";
 import {
   confirmMessage,
   HANDOFFS,
+  handoffUrl,
   needsConfirm,
   searchUrl,
   type Handoff,
@@ -1734,8 +1735,14 @@ function App() {
         await openUrl(searchUrl(selected));
         return;
       }
-      // **クリップボードに入れてから開く。** アプリごとに受け取り方が
-      // 違う（Gemini には URL の口が無い）ので、どれでも同じ操作にする
+      // 文字ごと渡せるアプリには直接渡す（貼り付けが要らない）。
+      // 渡せないアプリと、URL に載せきれない長さは**クリップボードに倒す**
+      const direct = handoffUrl(handoff, selected);
+      if (direct) {
+        await invoke("open_handoff_url", { url: direct });
+        setStatus(`${handoff.app} に渡しました`);
+        return;
+      }
       await writeClipboard(selected);
       await invoke("open_handoff_app", { app: handoff.app });
       setStatus(

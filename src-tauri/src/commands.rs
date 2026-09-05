@@ -826,6 +826,30 @@ pub fn open_handoff_app(app: String) -> Result<(), String> {
 /// 開いてよいアプリ。`src/lib/handoff.ts` の並びと同じもの。
 pub const HANDOFF_APPS: [&str; 4] = ["Claude", "Gemini", "ChatGPT", "Copilot"];
 
+/// 文字ごと渡してよい URL の頭。**ここも決め打ち** — 画面から来た URL を
+/// そのまま開くと、`file://` でも何でも開けてしまう。
+pub const HANDOFF_URLS: [&str; 1] = ["claude://claude.ai/new?q="];
+
+/// 文字ごと渡す（貼り付けが要らないアプリ用。要望 2026-09-05）。
+///
+/// Claude は URL に文字を載せて渡せる（アプリの中に `q` を読む口がある。
+/// 実物で確認）。載せられない長さのものは画面側がクリップボードに倒す。
+#[tauri::command]
+pub fn open_handoff_url(url: String) -> Result<(), String> {
+    if !HANDOFF_URLS.iter().any(|head| url.starts_with(head)) {
+        return Err("渡せない URL です".into());
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg(&url)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("渡せませんでした（アプリが入っていますか？）".into())
+    }
+}
+
 /// PDF のページ数（TASKS 4-6）。読めなければ 0。
 #[tauri::command]
 pub async fn pdf_page_count(data: String) -> Result<usize, String> {
@@ -1298,6 +1322,14 @@ pub fn note_restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_渡せる_URL_も決め打ち() {
+        // 画面から来た URL をそのまま開かない（file:// でも開けてしまう）
+        assert!(open_handoff_url("file:///etc/passwd".into()).is_err());
+        assert!(open_handoff_url("https://example.com".into()).is_err());
+        assert!(HANDOFF_URLS[0].starts_with("claude://"));
+    }
 
     #[test]
     fn test_渡せる先は決め打ち() {
