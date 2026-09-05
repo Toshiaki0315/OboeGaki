@@ -7,7 +7,7 @@
 
 import type { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
+import { treeOf } from "./parse-tree";
 import { frontMatterRange } from "./frontmatter";
 
 // 落とすマーカーのノード名。URL は残す（リンク先も文章の一部）
@@ -33,7 +33,7 @@ export function plainTextOf(
   // 長いノートでは届いていないところの記号がそのまま残る（実測 2026-09-05:
   // 3,000 行のノートで末尾の `**` が消えなかった）。待てなければ、
   // 届いているところだけでも外す（何もしないよりまし）
-  const tree = ensureSyntaxTree(state, to, PARSE_WAIT_MS) ?? syntaxTree(state);
+  const tree = treeOf(state, to);
   tree.iterate({
     from,
     to,
@@ -83,6 +83,3 @@ export const copyPlainText = (view: EditorView): boolean => {
 export const plainCopyKeymap = keymap.of([
   { key: "Mod-Shift-c", run: copyPlainText },
 ]);
-
-/// 木ができるのを待つ上限（ミリ秒）。打鍵の経路ではないので、少し待てる。
-const PARSE_WAIT_MS = 1000;

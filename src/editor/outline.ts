@@ -2,7 +2,7 @@
 // Lezer の木から取るので、コードフェンス内の `#` を拾わない性質はただで付く。
 
 import type { EditorState } from "@codemirror/state";
-import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
+import { treeOf } from "./parse-tree";
 
 export type OutlineItem = {
   level: number;
@@ -17,9 +17,7 @@ export function outlineOf(state: EditorState): OutlineItem[] {
   // **木ができ切るまで待つ。** `syntaxTree` は時間で打ち切られるので、
   // 長いノートでは後ろの見出しが目次から落ちる（実測 2026-09-05）。
   // 待てなければ、届いているぶんだけ出す（次に呼ばれたときに増える）
-  const tree =
-    ensureSyntaxTree(state, state.doc.length, PARSE_WAIT_MS) ??
-    syntaxTree(state);
+  const tree = treeOf(state);
   tree.iterate({
     enter: (node) => {
       const heading = HEADING_RE.exec(node.name);
@@ -41,7 +39,3 @@ export function outlineOf(state: EditorState): OutlineItem[] {
   });
   return items;
 }
-
-/// 木ができるのを待つ上限（ミリ秒）。**呼ぶのは打鍵のたびではない**
-/// （開いたときと打ち終わってから = ADR-0022）ので、少し待てる。
-const PARSE_WAIT_MS = 1000;

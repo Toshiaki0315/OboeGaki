@@ -52,6 +52,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     snippet: ":::note info\n${}\n:::",
   },
   {
+    id: "details",
+    label: "折りたたみ",
+    hint: "畳んでおける囲みを入れます",
+    snippet: ":::details ${呼び名}\n${}\n:::",
+  },
+  {
     id: "table",
     label: "表",
     hint: "2 列 2 行の表を入れます",

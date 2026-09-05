@@ -164,6 +164,36 @@ describe("collectCodeBlocks", () => {
     expect(html).toContain("<strong>強調</strong>");
   });
 
+  test("test_:::details が本物の折りたたみになる（6-2）", () => {
+    const md = ":::details 詳しく\n中身の **強調**\n:::\n";
+    const html = renderHtml(md, "折りたたみ");
+    // **開いた形で出す**（畳んだまま出すと印刷で中身が消える）
+    expect(html).toContain("<details open>");
+    expect(html).toContain("<summary>詳しく</summary>");
+    expect(html).toContain("<strong>強調</strong>");
+    expect(html).toContain("</details>");
+  });
+
+  test("test_呼び名を書いていなければ既定の呼び名", () => {
+    expect(renderHtml(":::details\n中身\n:::\n", "x")).toContain(
+      "<summary>詳細</summary>",
+    );
+  });
+
+  test("test_呼び名の記号はそのまま出さない（そのまま書ける）", () => {
+    // `<` を書いても壊れない。囲みの呼び名は文字として出す
+    expect(renderHtml(":::details a<b\n中身\n:::\n", "x")).toContain(
+      "<summary>a&lt;b</summary>",
+    );
+  });
+
+  test("test_Qiita から貼った <details> も畳めるまま出す（読むときだけ受ける）", () => {
+    const pasted = "<details><summary>詳しく</summary>\n\n中身\n\n</details>\n";
+    const html = renderHtml(pasted, "貼り付け");
+    expect(html).toContain("<summary>詳しく</summary>");
+    expect(html).not.toContain("&lt;details&gt;");
+  });
+
   test("種類を省いたら info、知らない綴りは別扱い", () => {
     expect(renderHtml(":::note\n本文\n:::\n", "x")).toContain("note-info");
     // **info に寄せない**（間違いに気づけなくなる）

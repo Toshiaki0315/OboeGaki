@@ -60,6 +60,7 @@ function simplify(range: Range<Decoration>): Deco {
       url?: string;
       mathml?: string;
       code?: string;
+      summary?: string;
     };
   };
   let kind = "hide";
@@ -71,6 +72,8 @@ function simplify(range: Range<Decoration>): Deco {
   else if (spec.widget?.url !== undefined) kind = `image:${spec.widget.url}`;
   else if (spec.widget?.mathml !== undefined) kind = "math";
   else if (spec.widget?.code !== undefined) kind = "mermaid";
+  else if (spec.widget?.summary !== undefined)
+    kind = `summary:${spec.widget.summary}`;
   else if (spec.widget) kind = "hr";
   return { from: range.from, to: range.to, kind };
 }
@@ -629,6 +632,56 @@ describe("`:::note` の囲み（B-3）", () => {
     const marks = decorationsOf(bold, 0).filter((deco) => deco.kind === "hide");
     // `**` の開きと閉じが隠れている
     expect(marks.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("折りたたみ（6-2）", () => {
+  const doc = "前\n\n:::details 詳しく\n中身\n:::\n\n後";
+
+  test("test_呼び名の行を差し替え、中身に線を引き、閉じを隠す", () => {
+    const found = blocksOf(doc, 0);
+    expect(found).toContainEqual({
+      from: doc.indexOf(":::details"),
+      to: doc.indexOf(":::details") + ":::details 詳しく".length,
+      kind: "summary:詳しく",
+    });
+    expect(hasLineClass(found, doc.indexOf("中身"), "cm-details-line")).toBe(
+      true,
+    );
+    expect(found.filter((deco) => deco.kind === "hide")).toHaveLength(1);
+  });
+
+  test("test_Qiita から貼った HTML も同じ見た目になる", () => {
+    const pasted =
+      "前\n\n<details><summary>詳しく</summary>\n中身\n</details>\n\n後";
+    const found = blocksOf(pasted, 0);
+    expect(found.some((deco) => deco.kind === "summary:詳しく")).toBe(true);
+    expect(hasLineClass(found, pasted.indexOf("中身"), "cm-details-line")).toBe(
+      true,
+    );
+  });
+
+  test("test_呼び名が無ければ既定の呼び名を見せる", () => {
+    const bare = "前\n\n:::details\n中身\n:::\n";
+    expect(blocksOf(bare, 0).some((deco) => deco.kind === "summary:詳細")).toBe(
+      true,
+    );
+  });
+
+  test("test_キャレットが触れている間は生のまま", () => {
+    const inside = doc.indexOf("中身");
+    const found = blocksOf(doc, inside);
+    expect(found.some((deco) => deco.kind.startsWith("summary:"))).toBe(false);
+    expect(found.filter((deco) => deco.kind === "hide")).toHaveLength(0);
+    // 中身の線は触れていても残す（`:::note` の帯と同じ作法）
+    expect(hasLineClass(found, inside, "cm-details-line")).toBe(true);
+  });
+
+  test("test_コードフェンスの中では効かない", () => {
+    const fenced = "```\n:::details 例\n中身\n:::\n```\n";
+    expect(
+      blocksOf(fenced, 0).some((deco) => deco.kind.startsWith("summary:")),
+    ).toBe(false);
   });
 });
 

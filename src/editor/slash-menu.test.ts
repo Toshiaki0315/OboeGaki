@@ -65,6 +65,12 @@ describe("SLASH_COMMANDS", () => {
     }
   });
 
+  test("test_折りたたみは覚書の記法で入れる（生の HTML は書かせない）", () => {
+    const details = SLASH_COMMANDS.find((command) => command.id === "details");
+    expect(details?.snippet).toContain(":::details");
+    expect(details?.snippet).not.toContain("<details>");
+  });
+
   test("test_囲みは覚書の記法で入れる", () => {
     const alert = SLASH_COMMANDS.find((command) => command.id === "alert");
     expect(alert?.snippet).toContain(":::note alert");

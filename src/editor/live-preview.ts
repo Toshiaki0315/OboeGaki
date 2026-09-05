@@ -45,6 +45,7 @@ import {
   noteContainers,
   UNKNOWN_NOTE_KIND,
 } from "./note-container";
+import { detailsContainers, type DetailsContainer } from "./details-container";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
@@ -137,6 +138,25 @@ class BulletWidget extends WidgetType {
     const span = document.createElement("span");
     span.className = "cm-list-bullet";
     span.textContent = this.glyph;
+    return span;
+  }
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/// 折りたたみの見出し（6-2）。`:::details 呼び名` の行をこれに差し替える。
+class SummaryWidget extends WidgetType {
+  constructor(readonly summary: string) {
+    super();
+  }
+  eq(other: SummaryWidget): boolean {
+    return other.summary === this.summary;
+  }
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-details-summary";
+    span.textContent = this.summary;
     return span;
   }
   ignoreEvent(): boolean {
@@ -843,7 +863,7 @@ type NearTr = Parameters<typeof editNearMarker>[1];
 const editNearTables = (tr: NearTr) => editNearMarker(/\|/, tr);
 // 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる
 const editNearBlockWidgets = (tr: NearTr) =>
-  editNearMarker(/\$\$|```|~~~|:::/, tr);
+  editNearMarker(/\$\$|```|~~~|:::|<\/?details>/, tr);
 
 /// ```mermaid のフェンスなら中身。違えば null。
 function mermaidCode(state: EditorState, node: SyntaxNode): string | null {
@@ -882,15 +902,16 @@ function fencedRanges(state: EditorState): { from: number; to: number }[] {
   return out;
 }
 
-/// フェンスの中の `:::` はコード例であって囲みではない（レビュー 2026-09-04）。
-function outsideFences(
-  notes: NoteContainer[],
+/// フェンスの中の `:::` や `<details>` はコード例であって囲みではない
+/// （レビュー 2026-09-04）。
+function outsideFences<T extends { from: number; to: number }>(
+  blocks: T[],
   fences: { from: number; to: number }[],
-): NoteContainer[] {
-  if (fences.length === 0) return notes;
-  return notes.filter(
-    (note) =>
-      !fences.some((fence) => note.from < fence.to && note.to > fence.from),
+): T[] {
+  if (fences.length === 0) return blocks;
+  return blocks.filter(
+    (block) =>
+      !fences.some((fence) => block.from < fence.to && block.to > fence.from),
   );
 }
 
@@ -927,6 +948,33 @@ function noteZoneDecorations(
   }
   out.push(Decoration.replace({}).range(note.open.from, note.open.to));
   out.push(Decoration.replace({}).range(note.close.from, note.close.to));
+}
+
+/// 折りたたみ 1 つぶんの装飾（6-2）。
+///
+/// **畳むのは CM6 の折りたたみに任せる**（ガターの ▾ / ▸）。ここは
+/// 見た目だけ — 呼び名の行を差し替え、中身に左の線を引き、閉じを隠す。
+function detailsZoneDecorations(
+  state: EditorState,
+  entry: DetailsContainer,
+  out: Range<Decoration>[],
+): void {
+  const body = {
+    from: state.doc.lineAt(entry.open.to).to + 1,
+    to: state.doc.lineAt(entry.close.from).from - 1,
+  };
+  if (body.to >= body.from) {
+    pushLineClass(out, state, body.from, body.to, "cm-details-line");
+  }
+  // 触れている間は生のまま（他のブロックと同じ作法）
+  if (touchesSelection(state, entry.from, entry.to)) return;
+  out.push(
+    Decoration.replace({ widget: new SummaryWidget(entry.summary) }).range(
+      entry.open.from,
+      entry.open.to,
+    ),
+  );
+  out.push(Decoration.replace({}).range(entry.close.from, entry.close.to));
 }
 
 /// 1 つの数式ブロックの装飾（触れていなければ絵に置き換える）。
@@ -980,12 +1028,20 @@ export function blockWidgetDecorations(
     noteContainers(state.doc),
     fencedRanges(state),
   ),
+  details: DetailsContainer[] = outsideFences(
+    detailsContainers(state.doc),
+    fencedRanges(state),
+  ),
 ): Range<Decoration>[] {
   if (state.field(sourceModeField, false)) return [];
   const out: Range<Decoration>[] = [];
   // `:::note` の囲み（B-3）。行の装飾なので木のノードは要らない
   for (const note of notes) {
     noteZoneDecorations(state, note, out);
+  }
+  // 折りたたみ（6-2）。こちらも行の並びだけで見つける
+  for (const entry of details) {
+    detailsZoneDecorations(state, entry, out);
   }
   const theme = state.field(diagramThemeField, false) ?? "light";
   syntaxTree(state).iterate({
@@ -1012,12 +1068,18 @@ function zoneDecorations(
   state: EditorState,
   zone: { from: number; to: number },
   notes: NoteContainer[],
+  details: DetailsContainer[],
 ): Range<Decoration>[] {
   const out: Range<Decoration>[] = [];
   if (state.field(sourceModeField, false)) return out;
   const note = notes.find((n) => n.from === zone.from && n.to === zone.to);
   if (note) {
     noteZoneDecorations(state, note, out);
+    return out;
+  }
+  const entry = details.find((d) => d.from === zone.from && d.to === zone.to);
+  if (entry) {
+    detailsZoneDecorations(state, entry, out);
     return out;
   }
   let node = syntaxTree(state).resolveInner(
@@ -1044,10 +1106,14 @@ function zoneDecorations(
 function blockWidgetZones(
   state: EditorState,
   notes: NoteContainer[],
+  details: DetailsContainer[],
 ): { from: number; to: number }[] {
   const zones: { from: number; to: number }[] = [];
   for (const note of notes) {
     zones.push({ from: note.from, to: note.to });
+  }
+  for (const entry of details) {
+    zones.push({ from: entry.from, to: entry.to });
   }
   syntaxTree(state).iterate({
     enter: (node) => {
@@ -1073,6 +1139,8 @@ type BlockWidgetMeta = {
   zones: { from: number; to: number }[];
   /// ゾーン単位の差分更新（リビール切替）に使うノートの控え
   notes: NoteContainer[];
+  /// 同じく折りたたみの控え（6-2）
+  details: DetailsContainer[];
   revealKey: string;
   /// 計算した時点で構文解析が届いていた位置。ここより先へ解析が進んだら
   /// 数え直す（オブジェクト同一性で見ると打鍵のたびに全再計算になる —
@@ -1083,16 +1151,43 @@ const blockWidgetMeta = new WeakMap<DecorationSet, BlockWidgetMeta>();
 
 function computeBlockWidgetSet(state: EditorState): DecorationSet {
   // 全行走査（noteContainers）は 1 回だけ。装飾とゾーンで共有する
-  const notes = outsideFences(noteContainers(state.doc), fencedRanges(state));
-  const set = RangeSet.of(blockWidgetDecorations(state, notes), true);
-  const zones = blockWidgetZones(state, notes);
+  const fences = fencedRanges(state);
+  const notes = outsideFences(noteContainers(state.doc), fences);
+  const details = outsideFences(detailsContainers(state.doc), fences);
+  const set = RangeSet.of(blockWidgetDecorations(state, notes, details), true);
+  const zones = blockWidgetZones(state, notes, details);
   blockWidgetMeta.set(set, {
     zones,
     notes,
+    details,
     revealKey: revealKeyOf(state, zones),
     parsedTo: syntaxTree(state).length,
   });
   return set;
+}
+
+/// 位置だけを写す（囲みの控えを編集に追従させる）。
+function mapContainer<
+  T extends {
+    from: number;
+    to: number;
+    open: { from: number; to: number };
+    close: { from: number; to: number };
+  },
+>(block: T, changes: { mapPos: (pos: number, assoc: number) => number }): T {
+  return {
+    ...block,
+    from: changes.mapPos(block.from, 1),
+    to: changes.mapPos(block.to, -1),
+    open: {
+      from: changes.mapPos(block.open.from, 1),
+      to: changes.mapPos(block.open.to, -1),
+    },
+    close: {
+      from: changes.mapPos(block.close.from, 1),
+      to: changes.mapPos(block.close.to, -1),
+    },
+  };
 }
 
 /// リビール状態が**変わったゾーンだけ**を filter + add で差し替える。
@@ -1110,7 +1205,7 @@ function refreshZones(
       filterFrom: zone.from,
       filterTo: zone.to,
       filter: () => false,
-      add: zoneDecorations(state, zone, meta.notes),
+      add: zoneDecorations(state, zone, meta.notes, meta.details),
       sort: true,
     });
   }
@@ -1150,30 +1245,27 @@ export const blockWidgetField = StateField.define<DecorationSet>({
         from: tr.changes.mapPos(zone.from, 1),
         to: tr.changes.mapPos(zone.to, -1),
       }));
-      const notes = meta.notes.map((note) => ({
-        ...note,
-        from: tr.changes.mapPos(note.from, 1),
-        to: tr.changes.mapPos(note.to, -1),
-        open: {
-          from: tr.changes.mapPos(note.open.from, 1),
-          to: tr.changes.mapPos(note.open.to, -1),
-        },
-        close: {
-          from: tr.changes.mapPos(note.close.from, 1),
-          to: tr.changes.mapPos(note.close.to, -1),
-        },
-      }));
+      const notes = meta.notes.map((note) => mapContainer(note, tr.changes));
+      const details = meta.details.map((entry) =>
+        mapContainer(entry, tr.changes),
+      );
       const revealKey = revealKeyOf(tr.state, zones);
       const mapped = value.map(tr.changes);
       if (revealKey !== meta.revealKey) {
         return refreshZones(
           tr.state,
           mapped,
-          { zones, notes, revealKey, parsedTo },
+          { zones, notes, details, revealKey, parsedTo },
           changedZones(meta.revealKey, revealKey),
         );
       }
-      blockWidgetMeta.set(mapped, { zones, notes, revealKey, parsedTo });
+      blockWidgetMeta.set(mapped, {
+        zones,
+        notes,
+        details,
+        revealKey,
+        parsedTo,
+      });
       return mapped;
     }
     if (parsed > meta.parsedTo) return computeBlockWidgetSet(tr.state); // 解析が進んだ
@@ -1338,6 +1430,15 @@ const blockTheme = EditorView.baseTheme({
   ".cm-note-unknown": {
     "--note-line": "color-mix(in srgb, currentColor 40%, transparent)",
     "--note-bg": "color-mix(in srgb, currentColor 6%, transparent)",
+  },
+  // 折りたたみ（6-2）。呼び名は畳んでも見えるので**太字で見出しらしく**、
+  // 中身は左の線で「この中」と分かるようにする（`:::note` と同じ作法）
+  ".cm-details-summary": {
+    fontWeight: "600",
+  },
+  ".cm-details-line": {
+    paddingLeft: "10px",
+    borderLeft: "3px solid color-mix(in srgb, currentColor 25%, transparent)",
   },
   // 数式（ADR-0036）。ディスプレイ数式は行として中央に置く
   ".cm-math-block": {

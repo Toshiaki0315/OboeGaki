@@ -6,18 +6,12 @@
 // 開き直せば全部開く — EditorView がノートごとに作り直されるため）。
 
 import type { EditorState } from "@codemirror/state";
-import {
-  ensureSyntaxTree,
-  foldGutter,
-  foldService,
-  syntaxTree,
-} from "@codemirror/language";
+import { foldGutter, foldService } from "@codemirror/language";
+import { treeOf } from "./parse-tree";
+
+import { detailsSection } from "./details-container";
 
 const HEADING_RE = /^ATXHeading(\d)$/;
-
-/// 木の解析を待つ上限。畳む印はガターを描くたびに要るので短くする
-/// （spec §6.6 の 16ms を壊さない。間に合わなければ印を出さないだけ）。
-const PARSE_WAIT_MS = 50;
 
 /// 見出し行が畳む範囲（見出しの行末から、同じか浅い次の見出しの手前まで）。
 /// 見出しでない・中身が無いときは null。
@@ -28,9 +22,7 @@ export function headingSection(
   const line = state.doc.lineAt(lineStart);
   // **木を待つ。** `syntaxTree` は時間で打ち切られるので、長いノートでは
   // 見出しに届かないまま返り、畳む印が消える
-  const tree =
-    ensureSyntaxTree(state, state.doc.length, PARSE_WAIT_MS) ??
-    syntaxTree(state);
+  const tree = treeOf(state);
   // 行頭の見出しノードを取る。resolve だと Document に丸められることが
   // あるので、行頭位置を含む最小ノードから親へ辿る
   let heading = tree.resolveInner(line.from, 1);
@@ -64,6 +56,8 @@ export function headingSection(
 
 export const headingFolding = [
   foldService.of((state, lineStart) => headingSection(state, lineStart)),
+  // 折りたたみの囲み（6-2）。行の並びだけで決まるので木は要らない
+  foldService.of((state, lineStart) => detailsSection(state.doc, lineStart)),
   foldGutter({
     openText: "▾",
     closedText: "▸",

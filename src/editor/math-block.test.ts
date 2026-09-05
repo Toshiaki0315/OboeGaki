@@ -8,7 +8,7 @@ import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import { blockWidgetDecorations } from "./live-preview";
@@ -21,7 +21,10 @@ const LANG = markdown({
 function nodesOf(doc: string): string[] {
   const state = EditorState.create({ doc, extensions: [LANG] });
   const names: string[] = [];
-  syntaxTree(state).iterate({
+  // **木を待つ。** `syntaxTree` は時間で打ち切られるので、全体を回すと
+  // 木が未完成のまま返り、後ろのノードが落ちる（2026-09-05）
+  const tree = ensureSyntaxTree(state, doc.length, 1000) ?? syntaxTree(state);
+  tree.iterate({
     enter(node) {
       names.push(node.name);
     },

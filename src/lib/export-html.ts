@@ -13,6 +13,7 @@ import container from "markdown-it-container";
 import { mathSpanAt, renderMath } from "../editor/math";
 import { frontMatterRange } from "../editor/frontmatter";
 import { splitFenceInfo } from "../editor/code-blocks";
+import { DEFAULT_SUMMARY } from "../editor/details-container";
 import {
   DEFAULT_NOTE_KIND,
   NOTE_KINDS,
@@ -112,6 +113,57 @@ const mathBlockRule = (
   return true;
 };
 
+/// Qiita から貼った `<details><summary>…</summary>` … `</details>` を
+/// 本物の折りたたみとして通す（TASKS 6-2 の「読むときだけ受ける」）。
+///
+/// **通すのはこの形だけ。** `html: false` は変えない — ここで開けると
+/// 貼り付けた本文の中の任意のタグが素通りする。開き・閉じ・呼び名以外は
+/// ふつうの Markdown として組む。
+const detailsHtmlRule = (
+  state: Parameters<Parameters<Md["block"]["ruler"]["before"]>[2]>[0],
+  startLine: number,
+  endLine: number,
+  silent: boolean,
+): boolean => {
+  const lineAt = (index: number) =>
+    state.src.slice(
+      state.bMarks[index] + state.tShift[index],
+      state.eMarks[index],
+    );
+  const opened = DETAILS_HTML_OPEN.exec(lineAt(startLine).trim());
+  if (!opened) return false;
+  let line = startLine + 1;
+  while (line < endLine && !DETAILS_HTML_CLOSE.test(lineAt(line).trim())) {
+    line++;
+  }
+  if (line >= endLine) return false; // 閉じが無い
+  if (silent) return true;
+  const open = state.push("details_open", "details", 1);
+  open.block = true;
+  open.info = opened[1]?.trim() ?? "";
+  open.map = [startLine, line + 1];
+  // 中身はふつうの Markdown（囲みと同じ）
+  const lineMax = state.lineMax;
+  state.lineMax = line;
+  state.md.block.tokenize(state, startLine + 1, line);
+  state.lineMax = lineMax;
+  const close = state.push("details_close", "details", -1);
+  close.block = true;
+  state.line = line + 1;
+  return true;
+};
+
+const DETAILS_HTML_OPEN = /^<details>[ \t]*(?:<summary>(.*?)<\/summary>)?$/;
+const DETAILS_HTML_CLOSE = /^<\/details>$/;
+
+/// 折りたたみの開きのタグ。呼び名は文字として出す（`<` を書いても壊れない）。
+///
+/// **書き出しでは開いた形で出す**（`open`）。畳んだまま出すと、印刷したときに
+/// その中身が紙から丸ごと消える。読む人は畳める（畳む手は残っている）。
+function detailsOpen(summary: string): string {
+  return `<details open>\n<summary>${escapeHtml(summary || DEFAULT_SUMMARY)}</summary>\n`;
+}
+
 /// `:::note warn` の `warn`。省略は `info`、知らない綴りは別扱い
 /// （**画面と同じ規則**。片方だけ寄せ方を変えると、画面は灰色なのに
 /// 書き出しは青、という食い違いが起きる）。
@@ -139,11 +191,26 @@ function renderer() {
         tokens[index].nesting === 1
           ? `<div class="note note-${noteKind(tokens[index].info)}">\n`
           : "</div>\n",
+    })
+    // `:::details 呼び名` の折りたたみ（6-2）。呼び名は何語でもよい
+    .use(container, "details", {
+      validate: (params: string) => /^details(\s|$)/.test(params.trim()),
+      render: (tokens: { nesting: number; info: string }[], index: number) =>
+        tokens[index].nesting === 1
+          ? detailsOpen(
+              tokens[index].info.trim().slice("details".length).trim(),
+            )
+          : "</details>\n",
     });
   md.inline.ruler.before("emphasis", "oboegaki_highlight", highlightRule);
   // 数式はコードより後、強調より先（`$a_b$` の `_` を強調に取られない）
   md.inline.ruler.before("emphasis", "oboegaki_math", mathRule);
   md.block.ruler.before("fence", "oboegaki_math_block", mathBlockRule);
+  // 貼り付けた `<details>`。フェンスより後に見るので、コード例は素通り
+  md.block.ruler.before("paragraph", "oboegaki_details_html", detailsHtmlRule);
+  md.renderer.rules.details_open = (tokens, index) =>
+    detailsOpen(tokens[index].info);
+  md.renderer.rules.details_close = () => "</details>\n";
   return md;
 }
 
