@@ -826,6 +826,27 @@ pub fn open_handoff_app(app: String) -> Result<(), String> {
 /// 開いてよいアプリ。`src/lib/handoff.ts` の並びと同じもの。
 pub const HANDOFF_APPS: [&str; 4] = ["Claude", "Gemini", "ChatGPT", "Copilot"];
 
+/// フォルダを Finder で開く（要望 2026-09-05）。
+///
+/// **保管フォルダの中だけ。** 画面から来たパスをそのまま開くと、どこでも
+/// 開けてしまう（`guarded` が vault の外を断る）。
+#[tauri::command]
+pub fn open_in_finder(root: String, path: String) -> Result<(), String> {
+    let target = guarded(&root, &path)?;
+    if !target.is_dir() {
+        return Err("フォルダではありません".into());
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg(&target)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Finder で開けませんでした".into())
+    }
+}
+
 /// 文字ごと渡してよい URL の頭。**ここも決め打ち** — 画面から来た URL を
 /// そのまま開くと、`file://` でも何でも開けてしまう。
 pub const HANDOFF_URLS: [&str; 1] = ["claude://claude.ai/new?q="];
@@ -1322,6 +1343,13 @@ pub fn note_restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_Finder_で開けるのは保管フォルダの中だけ() {
+        // 画面から来たパスをそのまま開かない
+        assert!(open_in_finder("/v/notes".into(), "/etc".into()).is_err());
+        assert!(open_in_finder("/v/notes".into(), "/v/other/x".into()).is_err());
+    }
 
     #[test]
     fn test_渡せる_URL_も決め打ち() {

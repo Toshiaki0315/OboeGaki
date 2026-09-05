@@ -288,6 +288,7 @@ pub fn run() {
             commands::ocr_pdf_page,
             commands::open_handoff_app,
             commands::open_handoff_url,
+            commands::open_in_finder,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

@@ -31,6 +31,7 @@ import {
   SEARCH_HANDOFF,
   type Handoff,
 } from "./lib/handoff";
+import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
@@ -1856,6 +1857,23 @@ function App() {
     setReference(null);
     setRightPane((pane) => (pane === "reference" ? "none" : pane));
   }, [notes, reference]);
+
+  /// フォルダを Finder で開く（要望 2026-09-05）。
+  ///
+  /// **開ける先は保管フォルダの中だけ。** 画面から来た道をそのまま渡すと
+  /// どこでも開けてしまうので、中かどうかは Rust 側で確かめる。
+  async function openInFinder(folder: string) {
+    const root = vaultRootRef.current;
+    if (!root) return;
+    try {
+      await invoke("open_in_finder", {
+        root,
+        path: finderTarget(root, folder),
+      });
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
 
   /// 選んだ文字を外のサービスへ渡す（要望 2026-09-05）。
   ///
@@ -4415,6 +4433,12 @@ function App() {
                       {isRoot ? "新規フォルダ…" : "この中に新規フォルダ…"}
                     </button>
                   </li>
+                  <li>
+                    <button onClick={run(() => void openInFinder(target))}>
+                      <MenuIcon name="finder" />
+                      Finder で開く
+                    </button>
+                  </li>
                   {!isRoot && (
                     <>
                       <li className="separator" />
@@ -4454,6 +4478,15 @@ function App() {
               };
               return (
                 <ContextMenu at={trashMenu} onClose={() => setTrashMenu(null)}>
+                  <li>
+                    <button
+                      onClick={run(() => void openInFinder(TRASH_FOLDER))}
+                    >
+                      <MenuIcon name="finder" />
+                      Finder で開く
+                    </button>
+                  </li>
+                  <li className="separator" />
                   {target === null ? (
                     <li>
                       <button
