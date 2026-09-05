@@ -536,14 +536,33 @@ pub fn note_create_from_template(
 
 /// 今日のノート（E-4）。無ければ日次の雛形から作る。
 #[tauri::command]
-pub fn note_daily(state: tauri::State<'_, WatchState>, root: String) -> Result<NewNote, String> {
+pub fn note_daily(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    day: Option<String>,
+) -> Result<NewNote, String> {
     let vault = Vault::new(&root);
-    let made = vault
-        .daily_note(&chrono::Local::now())
-        .map_err(|e| e.to_string())?;
+    // 日付を渡さなければ今日（`Cmd+T`）。渡すときは `YYYY-MM-DD`（7-5）
+    let when = match day {
+        Some(text) => parse_day(&text).ok_or("日付を読み取れません")?,
+        None => chrono::Local::now(),
+    };
+    let made = vault.daily_note(&when).map_err(|e| e.to_string())?;
     state.suppressor.mark(&made.path);
     index_one(&vault, &made.path);
     Ok(made)
+}
+
+/// `YYYY-MM-DD` をその日の 0 時（この機械の時間帯）にする。
+///
+/// **時刻は持たない。** 日付だけで決まるノートなので、時刻を混ぜると
+/// 時間帯の境目で前の日のノートが開く。
+pub fn parse_day(text: &str) -> Option<chrono::DateTime<chrono::Local>> {
+    use chrono::TimeZone;
+    let day = chrono::NaiveDate::parse_from_str(text.trim(), "%Y-%m-%d").ok()?;
+    chrono::Local
+        .from_local_datetime(&day.and_hms_opt(0, 0, 0)?)
+        .single()
 }
 
 /// 使い方のノートを今の内容で置き直す（ヘルプメニュー）。
@@ -1347,6 +1366,23 @@ pub fn note_restore(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_日付は年月日だけを読む() {
+        use chrono::Datelike;
+        let day = parse_day("2026-09-06").expect("読めるはず");
+        assert_eq!((day.year(), day.month(), day.day()), (2026, 9, 6));
+        // 時刻は 0 時（時間帯の境目で前の日のノートを開かない）
+        assert_eq!(day.format("%H:%M").to_string(), "00:00");
+    }
+
+    #[test]
+    fn test_読めない日付は断る() {
+        assert!(parse_day("").is_none());
+        assert!(parse_day("2026/09/06").is_none());
+        assert!(parse_day("2026-13-40").is_none());
+        assert!(parse_day("きのう").is_none());
+    }
 
     #[test]
     fn test_Finder_で開けるのは保管フォルダの中だけ() {

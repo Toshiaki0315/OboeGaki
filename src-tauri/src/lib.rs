@@ -75,6 +75,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some("CmdOrCtrl+Shift+N"),
         )?)
         .item(&item("daily-note", "今日のノート", Some("CmdOrCtrl+T"))?)
+        // 昨日・先週のぶんへ戻れるように（7-5。ポメラの日付メモ相当）
+        .item(&item("pick-day", "日付を選んで開く…", None)?)
         .item(&item("move-note", "フォルダへ移動…", None)?)
         .item(&item("open-vault", "保管フォルダを開く…", None)?)
         .separator()

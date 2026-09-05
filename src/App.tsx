@@ -34,6 +34,7 @@ import {
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { splitFolders } from "./lib/folder-tree";
+import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
@@ -1582,11 +1583,28 @@ function App() {
   }
 
   /// 今日のノート（Cmd+T）。あれば開くだけ、無ければ日次の雛形から作る。
-  async function handleDailyNote() {
+  /// **日付を渡せばその日のぶん**（7-5。昨日・先週に戻れる）。
+  async function handleDailyNote(day?: string) {
     if (!vaultRoot) return;
-    const made = await dailyNote(vaultRoot);
-    await refresh();
-    await openNote(made.path, made.cursor);
+    try {
+      const made = await dailyNote(vaultRoot, day);
+      await refresh();
+      await openNote(made.path, made.cursor);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  /// 日付を選ぶ窓（7-5）。既定は今日。
+  const [dayDialog, setDayDialog] = useState<string | null>(null);
+  const dayInput = useRef<HTMLInputElement>(null);
+  function openDayDialog() {
+    setDayDialog(dayValue(new Date()));
+  }
+  function confirmDay() {
+    const day = dayInput.current?.value;
+    setDayDialog(null);
+    if (day) void handleDailyNote(day);
   }
 
   /// 使い方のノートを今の内容で置き直す（ヘルプ）。既にあるノートは
@@ -2250,6 +2268,7 @@ function App() {
     "new-note": () => void handleCreate(),
     "new-from-template": () => void chooseTemplate(),
     "daily-note": () => void handleDailyNote(),
+    "pick-day": openDayDialog,
     "move-note": () => {
       if (currentPathRef.current) setMoveOpen(true);
     },
@@ -3584,6 +3603,44 @@ function App() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            </div>
+          )}
+          {/* 日付を選んでその日のノートへ（7-5。ポメラの日付メモ相当） */}
+          {dayDialog !== null && (
+            <div
+              className="palette-backdrop"
+              onMouseDown={() => setDayDialog(null)}
+            >
+              <div
+                className="palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <header className="palette-title">日付を選んで開く</header>
+                <div className="table-dialog-fields">
+                  <label>
+                    日付
+                    <input
+                      ref={dayInput}
+                      type="date"
+                      autoFocus
+                      defaultValue={dayDialog}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") confirmDay();
+                        else if (event.key === "Escape") setDayDialog(null);
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="pref-note">
+                  その日のノートが無ければ、日次の雛形から作ります。
+                </p>
+                <div className="dialog-actions">
+                  <button onClick={() => setDayDialog(null)}>やめる</button>
+                  <button className="primary" onClick={() => confirmDay()}>
+                    開く
+                  </button>
+                </div>
               </div>
             </div>
           )}

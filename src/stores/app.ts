@@ -186,8 +186,9 @@ export async function createFromTemplate(
 }
 
 /// 今日のノート。無ければ日次の雛形から作る（E-4）。
-export async function dailyNote(root: string): Promise<NewNote> {
-  return invoke<NewNote>("note_daily", { root });
+/// その日のノート。`day`（`YYYY-MM-DD`）を渡すとその日のぶん（7-5）。
+export async function dailyNote(root: string, day?: string): Promise<NewNote> {
+  return invoke<NewNote>("note_daily", { root, day });
 }
 
 /// 使い方のノートを今の内容で置き直す。置いた場所を返す。
