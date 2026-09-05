@@ -1488,6 +1488,39 @@ const blockTheme = EditorView.baseTheme({
   ".cm-codeblock-line-first": {
     paddingTop: "0.5em",
     borderRadius: "6px 6px 0 0",
+    // コピーの印を右上に置くための基準（要望 2026-09-06）
+    position: "relative",
+  },
+  // コードをコピーする印。**入っている間だけ**見せる（いつも出ていると
+  // 本文の一部に見える）
+  ".cm-copy-code": {
+    position: "absolute",
+    right: "0.5em",
+    top: "0.35em",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "1.9em",
+    height: "1.9em",
+    padding: "0",
+    border: "none",
+    borderRadius: "5px",
+    background: "color-mix(in srgb, currentColor 12%, transparent)",
+    color: "var(--code-fg)",
+    cursor: "pointer",
+    opacity: "0.75",
+  },
+  ".cm-copy-code:hover": {
+    opacity: "1",
+    background: "color-mix(in srgb, currentColor 22%, transparent)",
+  },
+  ".cm-copy-code svg": {
+    width: "1.05em",
+    height: "1.05em",
+  },
+  ".cm-copy-code.copied": {
+    color: "var(--code-prop)",
+    opacity: "1",
   },
   ".cm-codeblock-line-last": {
     paddingBottom: "0.5em",

@@ -62,6 +62,7 @@ import {
 import type { MermaidTheme } from "./mermaid";
 import { outlineOf, type OutlineItem } from "./outline";
 import { moveSection } from "./move-section";
+import { copyCode } from "./copy-code";
 import { statsOf, type TextStats } from "./stats";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -410,6 +411,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           }),
           syntaxHighlighting(codeHighlight),
           livePreview,
+          copyCode, // コードブロックのコピー（要望 2026-09-06）
           tableAutoFormat, // 表を離れたら整える（ADR-0003 決定 4 / ADR-0044）
           headingFolding, // 見出しの折りたたみ（ADR-0019）
           editorModes,
