@@ -31,7 +31,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     id: "code",
     label: "コードブロック",
     hint: "```  で囲んだコードを入れます",
-    snippet: "```${}\n\n```",
+    // 最初の止まり場は言語（`js` など）。Tab で中身へ移る
+    snippet: "```${}\n${}\n```",
   },
   {
     id: "alert",
@@ -145,8 +146,12 @@ export function slashCompletion(
           type: "keyword",
         }),
       ),
-      // 打ち進めている間は同じ候補集合を絞るだけで済む
-      validFor: /^\/\S*$/,
+      // **絞り込みは自分でやる。** CM6 は `from` から今の位置までの文字
+      // （`/cod`）で呼び名を絞るので、任せると `/` がどの呼び名にも
+      // 入っていないぶん 1 つも残らず、メニューが出ない（実機で発覚
+      // 2026-09-05）。そのぶん `validFor` は置かない — 前の候補を
+      // 使い回されると、打ち進めても絞られなくなる
+      filter: false,
     };
   };
 }

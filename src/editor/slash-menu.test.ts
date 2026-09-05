@@ -147,6 +147,20 @@ describe("slashCompletion", () => {
     expect(after.doc.toString()).toBe("# 題\n\n```\n\n```");
   });
 
+  test("test_絞り込みは自分でやる（CM6 に任せると候補が全部消える）", () => {
+    // CM6 は `from` から今の位置までの文字で候補の呼び名を絞る。ここは
+    // `/cod` なので、**`/` がどの呼び名にも入っていない**ぶん 1 つも
+    // 残らない = メニューが出ない（実機で発覚 2026-09-05）。
+    // `filter: false` にして、絞り込みは matchSlash が持つ
+    const doc = "# 題\n\n/cod";
+    const result = complete(doc, doc.length)!;
+    expect(result.filter).toBe(false);
+    expect(doc.slice(result.from)).toBe("/cod");
+    // 絞り込みを自分でやる以上、**打つたびに問い合わせ直す**必要がある
+    // （validFor を置くと、前の候補をそのまま使い回して絞られない）
+    expect(result.validFor).toBeUndefined();
+  });
+
   test("test_変換中は出さない（T5）", () => {
     expect(complete("/co", 3, true)).toBeNull();
   });
