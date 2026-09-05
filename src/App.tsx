@@ -2915,9 +2915,10 @@ function App() {
                             (folder === dropFolder ? " drop-target" : "")
                           }
                           style={{
-                            // 見出しの「フォルダ」の字と頭を揃える
-                            // （直下の行を畳んだぶん 1 段ずれた）
-                            paddingLeft: `${1 + folderDepth(folder) * 0.8}rem`,
+                            // **見出しより 1 段下げる**（要望 2026-09-05）。
+                            // 見出しと頭が揃っていると、中のフォルダが
+                            // 同じ高さのものに見える
+                            paddingLeft: `${1.8 + folderDepth(folder) * 0.8}rem`,
                           }}
                           title="右クリックで作る・名前を変える・消す（ノートを落とすと移せます）"
                           onClick={() =>
@@ -2938,47 +2939,6 @@ function App() {
                             {folderLabel(folder)}
                           </span>
                           <span className="folder-count">{count}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {settings.treesVisible && tags.length > 0 && (
-                <details className="tag-section" open={sideOpen === "tags"}>
-                  <summary
-                    onClick={(event) => {
-                      event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
-                      toggleSide("tags");
-                    }}
-                  >
-                    <span className="side-twist" aria-hidden="true" />
-                    <span className="side-label">タグ</span>
-                    <span className="side-count">{tags.length}</span>
-                  </summary>
-                  <ul>
-                    {tags.map(({ tag, count }) => (
-                      <li key={tag}>
-                        <button
-                          className={`tag-row${tag === tagFilter ? " selected" : ""}`}
-                          title="右クリックで絞る・検索・コピー"
-                          onClick={() =>
-                            filterByTag(tag === tagFilter ? null : tag)
-                          }
-                          // **OS の既定のメニューを出さない**（要望
-                          // 2026-09-04）。「Google で検索」「共有」など、
-                          // 選んだ文字を外へ出す道が並んでしまう
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setTagMenu({
-                              tag,
-                              x: event.clientX,
-                              y: event.clientY,
-                            });
-                          }}
-                        >
-                          <span className="tag-name">#{tag}</span>
-                          <span className="tag-count">{count}</span>
                         </button>
                       </li>
                     ))}
@@ -3073,6 +3033,47 @@ function App() {
                         </li>
                       );
                     })}
+                  </ul>
+                </details>
+              )}
+              {settings.treesVisible && tags.length > 0 && (
+                <details className="tag-section" open={sideOpen === "tags"}>
+                  <summary
+                    onClick={(event) => {
+                      event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
+                      toggleSide("tags");
+                    }}
+                  >
+                    <span className="side-twist" aria-hidden="true" />
+                    <span className="side-label">タグ</span>
+                    <span className="side-count">{tags.length}</span>
+                  </summary>
+                  <ul>
+                    {tags.map(({ tag, count }) => (
+                      <li key={tag}>
+                        <button
+                          className={`tag-row${tag === tagFilter ? " selected" : ""}`}
+                          title="右クリックで絞る・検索・コピー"
+                          onClick={() =>
+                            filterByTag(tag === tagFilter ? null : tag)
+                          }
+                          // **OS の既定のメニューを出さない**（要望
+                          // 2026-09-04）。「Google で検索」「共有」など、
+                          // 選んだ文字を外へ出す道が並んでしまう
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setTagMenu({
+                              tag,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
+                        >
+                          <span className="tag-name">#{tag}</span>
+                          <span className="tag-count">{count}</span>
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 </details>
               )}
