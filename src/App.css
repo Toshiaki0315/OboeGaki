@@ -1061,6 +1061,14 @@ body.resizing {
   font-size: 0.9rem;
 }
 
+/* **押しただけで青い枠を出さない。** `summary` はそれ自体が押せる要素
+   なので、マウスで押すと WebKit が焦点の枠を描く。下に並ぶ行（ボタン）は
+   出ないので、見出しだけ枠が付いて「別の何か」に見えた（実機報告
+   2026-09-05）。キーボードで辿っているときは残す（どこに居るか要る） */
+.note-list summary:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* 見出しがそのまま保管フォルダの行（要望 2026-09-05）。件数を中のフォルダと
    同じ右端に揃えたいので **flex で組む**。flex にすると summary の既定
    （list-item）が消えて開閉の三角も消えるため、三角は自前で描く */
@@ -1091,6 +1099,17 @@ body.resizing {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.note-list li button.folder-row {
+  display: flex;
+}
+
+/* **ボタンの見た目消しはここだけに置く。** 一覧の行は
+   `.note-list li button` が同じことをしていて、詳細度が同じまま後ろに
+   置くと `.selected` の色を打ち消す（選んだフォルダの帯が消えた
+   2026-09-05） */
+.folder-section summary > .folder-head {
   border: none;
   background: none;
   color: inherit;
@@ -1098,10 +1117,6 @@ body.resizing {
   text-align: left;
   border-radius: 6px;
   cursor: pointer;
-}
-
-.note-list li button.folder-row {
-  display: flex;
 }
 
 .folder-section summary > .folder-head.selected {
