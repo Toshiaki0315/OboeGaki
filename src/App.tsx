@@ -2844,9 +2844,7 @@ function App() {
                       if (dragged) void handleDropOnFolder(dragged, "");
                     }}
                   >
-                    <span className="folder-twist" aria-hidden="true">
-                      {sideOpen === "folders" ? "▼" : "▶"}
-                    </span>
+                    <span className="side-twist" aria-hidden="true" />
                     <button
                       className={
                         `folder-row folder-head${folderFilter === "" ? " selected" : ""}` +
@@ -2951,7 +2949,9 @@ function App() {
                       toggleSide("tags");
                     }}
                   >
-                    タグ（{tags.length}）
+                    <span className="side-twist" aria-hidden="true" />
+                    <span className="side-label">タグ</span>
+                    <span className="side-count">{tags.length}</span>
                   </summary>
                   <ul>
                     {tags.map(({ tag, count }) => (
@@ -3026,7 +3026,9 @@ function App() {
                       });
                     }}
                   >
-                    ゴミ箱（{trashNotes.length}）
+                    <span className="side-twist" aria-hidden="true" />
+                    <span className="side-label">ゴミ箱</span>
+                    <span className="side-count">{trashNotes.length}</span>
                   </summary>
                   {trashNotes.length === 0 && (
                     <p className="trash-note">

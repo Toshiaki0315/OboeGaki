@@ -41,6 +41,16 @@ describe("headingSection", () => {
     expect(sectionText(DOC, 4)).toBe("\n中身A\n");
   });
 
+  test("test_長いノートの終わりの見出しも畳める", () => {
+    // **`syntaxTree` は時間で打ち切られる。** 木が未完成のまま返ると
+    // 見出しが見つからず、畳む印がガターから消える（2026-09-05。
+    // plain-copy・outline・focusRange と同じ根）
+    const filler = Array.from({ length: 3000 }, (_, i) => `行 ${i}`).join("\n");
+    const long = `# 頭\n${filler}\n\n## 最後\n中身\n`;
+    const lines = long.split("\n").length;
+    expect(sectionText(long, lines - 2)).toBe("\n中身\n");
+  });
+
   test("test_h1は配下のh2ごと巻き込む", () => {
     expect(sectionText(DOC, 1)).toBe(
       "\n一行目\n\n## 小見出しA\n中身A\n\n## 小見出しB\n中身B\n",

@@ -372,12 +372,6 @@ body {
   font-size: 0.9rem;
 }
 
-.trash-section summary {
-  cursor: pointer;
-  padding: 0.3rem 0.5rem;
-  opacity: 0.7;
-}
-
 /* ゴミ箱の 1 件（要望 2026-09-04: もう少し見やすく）。**題名を主にする** —
    `仕事/2026-09-04 議事録` のような 1 本の長いパスは、狭い一覧では 3 行に
    折り返してどれがどれか分からなくなる */
@@ -1084,14 +1078,6 @@ body.resizing {
   display: none;
 }
 
-.folder-twist {
-  flex: 0 0 auto;
-  width: 0.9rem;
-  text-align: center;
-  font-size: 0.7rem;
-  opacity: 0.6;
-}
-
 .folder-section summary > .folder-head {
   display: flex;
   flex: 1 1 auto;
@@ -1136,10 +1122,44 @@ body.resizing {
   white-space: nowrap;
 }
 
-.folder-count {
+.folder-count,
+.side-count {
   font-size: 0.75rem;
   opacity: 0.55;
   font-variant-numeric: tabular-nums;
+}
+
+/* 見出しの件数（要望 2026-09-05）。**フォルダに合わせて右端へ。**
+   括弧で囲んで名前にくっつけると、下に並ぶ行の件数と読む場所が変わる */
+.side-count {
+  margin-left: auto;
+  padding-left: 0.5rem;
+}
+
+.side-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 開閉の三角。**自前で描く。** 件数を右端へ寄せるには見出しを flex で
+   組む要るが、flex にすると summary の既定（list-item）が消えて
+   ネイティブの三角も消える（実機報告 2026-09-04）。向きは details の
+   開閉から CSS で決めるので、React 側で開閉を持たなくてよい */
+.side-twist {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  text-align: center;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.side-twist::before {
+  content: "▶";
+}
+
+details[open] > summary > .side-twist::before {
+  content: "▼";
 }
 
 .tag-section {
@@ -1149,10 +1169,22 @@ body.resizing {
   font-size: 0.9rem;
 }
 
-.tag-section summary {
+.tag-section summary,
+.trash-section summary {
+  display: flex;
+  align-items: center;
+  /* 三角と字の間はフォルダの見出しと同じ（あちらは 0.1 + 中のボタンの 0.3） */
+  gap: 0.4rem;
   cursor: pointer;
-  padding: 0.3rem 0.5rem;
+  /* 右は件数の 0.5rem ぶんだけ空ける（フォルダの見出しと同じ） */
+  padding: 0.3rem 0.5rem 0.3rem 0.5rem;
+  list-style: none;
   opacity: 0.7;
+}
+
+.tag-section summary::-webkit-details-marker,
+.trash-section summary::-webkit-details-marker {
+  display: none;
 }
 
 .note-list li button.tag-row {
