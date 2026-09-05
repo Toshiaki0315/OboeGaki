@@ -1142,6 +1142,12 @@ function App() {
   const outlineOpenRef = useRef(outlineOpen);
   outlineOpenRef.current = outlineOpen;
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
+  // 目次の右クリック（7-1）。節ごと動かす
+  const [outlineMenu, setOutlineMenu] = useState<{
+    from: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const [cursorPos, setCursorPos] = useState(0);
   const outlineSoon = useMemo(() => createDebouncer(300), []);
   // ステータスバーの統計（TASKS 3-10）。**打鍵ごとには数えない**
@@ -4559,6 +4565,40 @@ function App() {
                 </ContextMenu>
               );
             })()}
+          {outlineMenu !== null && (
+            <ContextMenu at={outlineMenu} onClose={() => setOutlineMenu(null)}>
+              {/* 節ごと動かす（7-1。ポメラのアウトライン相当）。
+                  端では押しても何も起きないので、押せるかどうかで見せる */}
+              <li>
+                <button
+                  onClick={() => {
+                    const { from } = outlineMenu;
+                    setOutlineMenu(null);
+                    if (!editorRef.current?.moveSection(from, -1)) {
+                      setStatus("これより上には動かせません");
+                    }
+                  }}
+                >
+                  <MenuIcon name="moveUp" />
+                  この節を上へ動かす
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => {
+                    const { from } = outlineMenu;
+                    setOutlineMenu(null);
+                    if (!editorRef.current?.moveSection(from, 1)) {
+                      setStatus("これより下には動かせません");
+                    }
+                  }}
+                >
+                  <MenuIcon name="moveDown" />
+                  この節を下へ動かす
+                </button>
+              </li>
+            </ContextMenu>
+          )}
           {trashMenu !== null &&
             (() => {
               const target = trashMenu.path;
@@ -5039,7 +5079,16 @@ function App() {
                       style={{
                         paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem`,
                       }}
+                      title="右クリックで節ごと動かせます"
                       onClick={() => editorRef.current?.revealPos(item.from)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setOutlineMenu({
+                          from: item.from,
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
                     >
                       {item.text}
                     </button>

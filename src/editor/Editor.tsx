@@ -57,6 +57,7 @@ import {
 } from "./live-preview";
 import type { MermaidTheme } from "./mermaid";
 import { outlineOf, type OutlineItem } from "./outline";
+import { moveSection } from "./move-section";
 import { statsOf, type TextStats } from "./stats";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -92,6 +93,8 @@ export type EditorHandle = {
   insertTable: (rows: number, columns: number) => void;
   /** 書式を当てる（メニュー・ツールバーの両方から呼ぶ。中身は 1 つ） */
   applyFormat: (kind: FormatKind) => void;
+  /** 見出しの節を丸ごと上（-1）／下（+1）へ動かす（7-1）。動かせたら true */
+  moveSection: (headingFrom: number, delta: -1 | 1) => boolean;
 };
 
 type Props = {
@@ -282,6 +285,23 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 24 }),
         });
         current.focus();
+      },
+      moveSection(headingFrom, delta) {
+        const current = view.current;
+        if (!current) return false;
+        const move = moveSection(current.state, headingFrom, delta);
+        if (!move) return false;
+        // **1 回の取り消しで戻る**（節の移動は 1 つの変更）。動かした先へ
+        // キャレットを置いて、どこへ行ったかを見せる
+        current.dispatch({
+          changes: move.changes,
+          selection: { anchor: move.headingAt },
+          effects: EditorView.scrollIntoView(move.headingAt, {
+            y: "center",
+          }),
+        });
+        current.focus();
+        return true;
       },
     }),
     [],

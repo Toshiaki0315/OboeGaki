@@ -16,6 +16,8 @@ export type MenuIconName =
   | "trash"
   | "restore"
   | "noteNew"
+  | "moveUp"
+  | "moveDown"
   | "folder"
   | "tag"
   | "folderNew"
@@ -69,6 +71,10 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   ],
   // 戻す（左へ回る矢印）
   restore: ["M3.4 8a4.8 4.8 0 1 0 1.6-3.6", "M2.6 3.2v3.4h3.4"],
+  // 節を上へ動かす（上向きの矢印）
+  moveUp: ["M8 13V3.6", "M4.2 7.4 8 3.6l3.8 3.8"],
+  // 節を下へ動かす（下向きの矢印）
+  moveDown: ["M8 3v9.4", "M4.2 8.6 8 12.4l3.8-3.8"],
   // フォルダ（左の欄の見出しと行。中身の無い素のフォルダ）
   folder: [
     "M1.8 12.5v-8a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.4a1 1 0 0 1-1 1h-9.4a1 1 0 0 1-1-1z",
