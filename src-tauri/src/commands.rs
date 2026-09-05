@@ -800,6 +800,32 @@ pub async fn ocr_image(data: String) -> Result<String, String> {
     Ok(crate::ocr::recognize(&bytes))
 }
 
+/// 選んだ文字を渡す先のアプリを開く（要望 2026-09-05）。
+///
+/// **渡せる先は決め打ち。** 受け取った名前をそのまま `open -a` へ流すと、
+/// 画面側の穴がそのまま「好きなアプリを起動できる」になる。並びは
+/// `src/lib/handoff.ts` と揃える（片方だけ増やさない）。
+#[tauri::command]
+pub fn open_handoff_app(app: String) -> Result<(), String> {
+    if !HANDOFF_APPS.contains(&app.as_str()) {
+        return Err(format!("渡せない先です: {app}"));
+    }
+    let status = std::process::Command::new("/usr/bin/open")
+        .args(["-a", &app])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        // 入っていないアプリを選んだとき。**押してから断る**しかない
+        // （入っているかどうかは、押すまで分からない）
+        Err(format!("{app} を開けませんでした（入っていますか？）"))
+    }
+}
+
+/// 開いてよいアプリ。`src/lib/handoff.ts` の並びと同じもの。
+pub const HANDOFF_APPS: [&str; 4] = ["Claude", "Gemini", "ChatGPT", "Copilot"];
+
 /// PDF のページ数（TASKS 4-6）。読めなければ 0。
 #[tauri::command]
 pub async fn pdf_page_count(data: String) -> Result<usize, String> {
@@ -1267,4 +1293,17 @@ pub fn note_restore(
         eprintln!("索引の更新に失敗した: {error}");
     }
     Ok(restored.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_渡せる先は決め打ち() {
+        // 画面から来た名前をそのまま開かない（好きなアプリを起動させない）
+        assert!(open_handoff_app("Terminal".into()).is_err());
+        assert!(open_handoff_app("../../bin/sh".into()).is_err());
+        assert!(HANDOFF_APPS.contains(&"Claude"));
+    }
 }

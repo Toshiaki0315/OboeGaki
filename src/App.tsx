@@ -20,6 +20,13 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { anchorAbove, menuPosition } from "./lib/context-menu";
+import {
+  confirmMessage,
+  HANDOFFS,
+  needsConfirm,
+  searchUrl,
+  type Handoff,
+} from "./lib/handoff";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
@@ -1707,6 +1714,37 @@ function App() {
     setReference(null);
     setRightPane((pane) => (pane === "reference" ? "none" : pane));
   }, [notes, reference]);
+
+  /// 選んだ文字を外のサービスへ渡す（要望 2026-09-05）。
+  ///
+  /// **このアプリで初めて、ノートの中身が外へ出る道。** 押したときだけ動き、
+  /// 渡すのは選んだところだけ。生成 AI の前には確認を挟む（環境設定で切れる）。
+  async function handOff(handoff: Handoff) {
+    const selected = editorRef.current?.getSelection() ?? "";
+    if (!selected.trim()) return;
+    if (needsConfirm(handoff, settingsRef.current.confirmHandoff)) {
+      const ok = await confirm(confirmMessage(handoff, selected), {
+        title: "覚書",
+        kind: "warning",
+      });
+      if (!ok) return;
+    }
+    try {
+      if (handoff.search) {
+        await openUrl(searchUrl(selected));
+        return;
+      }
+      // **クリップボードに入れてから開く。** アプリごとに受け取り方が
+      // 違う（Gemini には URL の口が無い）ので、どれでも同じ操作にする
+      await writeClipboard(selected);
+      await invoke("open_handoff_app", { app: handoff.app });
+      setStatus(
+        `クリップボードに入れて ${handoff.app} を開きました（⌘V で貼り付け）`,
+      );
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
 
   /// 本文の切り取り・コピー・貼り付け（右クリックのメニューから）。
   ///
@@ -3736,6 +3774,29 @@ function App() {
                         </select>
                       </label>
                     </fieldset>
+                    <h3 className="pref-section">外のサービス</h3>
+                    <p className="pref-note">
+                      本文を右クリックして選んだところを、外の生成 AI や Google
+                      へ渡せます。**渡すのは選んだところだけ**で、
+                      押したときしか出ません。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>渡す前の確認</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={settings.confirmHandoff}
+                            onChange={(event) =>
+                              changeSettings({
+                                confirmHandoff: event.currentTarget.checked,
+                              })
+                            }
+                          />
+                          生成AIにデータを渡すときは確認する
+                        </span>
+                      </label>
+                    </div>
                     <h3 className="pref-section">PowerPoint</h3>
                     <p className="pref-note">
                       書き出すスライドの配色と書体を、選んだテンプレートに
@@ -4069,6 +4130,22 @@ function App() {
                         表を挿入…
                       </button>
                     </li>
+                    <li className="separator" />
+                    {/* **外へ出る道**（要望 2026-09-05）。選んでいないときは
+                      押せない状態で見せる（渡すものが無い） */}
+                    {HANDOFFS.map((handoff) => (
+                      <li key={handoff.id}>
+                        <button
+                          disabled={!selected}
+                          onClick={run(() => void handOff(handoff))}
+                        >
+                          <MenuIcon
+                            name={handoff.search ? "search" : "handoff"}
+                          />
+                          {handoff.label}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               );

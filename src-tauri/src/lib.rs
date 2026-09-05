@@ -286,6 +286,7 @@ pub fn run() {
             commands::ocr_image,
             commands::pdf_page_count,
             commands::ocr_pdf_page,
+            commands::open_handoff_app,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

@@ -23,7 +23,8 @@ export type MenuIconName =
   | "paste"
   | "preferences"
   | "table"
-  | "beside";
+  | "beside"
+  | "handoff";
 
 export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   // ピン留め（一覧の上のボタンと同じ絵）
@@ -101,6 +102,13 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
     "M2 3.4h12a.6.6 0 0 1 .6.6v8a.6.6 0 0 1-.6.6H2a.6.6 0 0 1-.6-.6V4a.6.6 0 0 1 .6-.6z",
     "M9.6 3.4v9.2",
     "M11 6h2.2M11 8h2.2M11 10h2.2",
+  ],
+  // 外へ渡す（要望 2026-09-05）。**枠から出ていく矢印** — 外へ出ることが
+  // 絵でも分かるようにする
+  handoff: [
+    "M8.4 3.2H3.6a1 1 0 0 0-1 1v8.2a1 1 0 0 0 1 1h8.2a1 1 0 0 0 1-1V8.2",
+    "M7.4 8.6 13.4 2.6",
+    "M9.6 2.4h4v4",
   ],
   // 表（書式ツールバーと同じ絵）
   table: ["M2.5 3.5h11v9h-11z", "M2.5 6.5h11M6.2 6.5v6M9.8 6.5v6"],

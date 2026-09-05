@@ -111,6 +111,17 @@ describe("ローカルLLM の設定（ADR-0025）", () => {
     expect(found.llmTimeoutMinutes).toBe(DEFAULT_SETTINGS.llmTimeoutMinutes);
   });
 
+  it("test_生成AIへ渡す前の確認は既定で入り", () => {
+    // ノートの中身が外へ出る操作なので、黙って出さない
+    expect(DEFAULT_SETTINGS.confirmHandoff).toBe(true);
+    const stored = loadSettings(
+      fakeStorage({
+        [SETTINGS_KEY]: JSON.stringify({ confirmHandoff: false }),
+      }),
+    );
+    expect(stored.confirmHandoff).toBe(false);
+  });
+
   it("test_PowerPoint のテンプレートの場所を覚える", () => {
     expect(DEFAULT_SETTINGS.slideTemplate).toBe("");
     const stored = loadSettings(
