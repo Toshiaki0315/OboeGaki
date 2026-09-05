@@ -27,6 +27,15 @@ describe("plainTextOf", () => {
     );
   });
 
+  test("test_長いノートでも最後まで記号を外す", () => {
+    // **`syntaxTree` は時間で打ち切られる。** 木が未完成のまま返ると、
+    // 届いていないところの記号がそのまま残る（並列でテストを回すと出た
+    // 2026-09-05）。実機でも長いノートで同じことが起きうる
+    const filler = Array.from({ length: 3000 }, (_, i) => `行 ${i}`).join("\n");
+    const doc = `${filler}\n\n**最後の強調**\n`;
+    expect(plain(doc).endsWith("最後の強調\n")).toBe(true);
+  });
+
   test("test_コードは記号ごと残す", () => {
     // コードは記号ごと検索・貼り付けできたほうがよい（参照実装と同じ）
     const doc = "```\nx = **1**\n```\n";

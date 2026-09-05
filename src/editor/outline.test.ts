@@ -43,4 +43,12 @@ describe("outlineOf", () => {
   test("見出しが無ければ空", () => {
     expect(outline("ただの本文\n")).toEqual([]);
   });
+
+  test("test_長いノートでも最後の見出しまで拾う", () => {
+    // **`syntaxTree` は時間で打ち切られる。** 木が未完成のまま返ると、
+    // 届いていない見出しが目次から落ちる（2026-09-05）
+    const filler = Array.from({ length: 3000 }, (_, i) => `行 ${i}`).join("\n");
+    const items = outline(`# 頭\n\n${filler}\n\n## 最後\n`);
+    expect(items[items.length - 1]?.text).toBe("最後");
+  });
 });

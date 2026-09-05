@@ -280,17 +280,39 @@ function SubMenu({
   children: ReactNode;
 }) {
   const item = useRef<HTMLLIElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  // 希望の位置（項目の横）と、測って決めた置き場所を分けて持つ
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const [placed, setPlaced] = useState<{ left: number; top: number } | null>(
+    null,
+  );
   const place = () => {
     const box = item.current?.getBoundingClientRect();
     if (!box) return;
+    // 横は開く向きだけ決める（右端なら左へ返す）。**縦は測ってから**
     const flip = box.right + SUBMENU_WIDTH > window.innerWidth;
     setAt({
       // 少し重ねる（親から枝へマウスを移すときに間で切れない）
       left: flip ? box.left - SUBMENU_WIDTH + 4 : box.right - 4,
-      top: Math.max(8, box.top - 4),
+      top: box.top - 4,
     });
   };
+  // **枝も高さを見積もらない。** 窓の下のほうで開くと、下が切れて最後の
+  // 相手が押せなくなる（実機報告 2026-09-05）
+  useLayoutEffect(() => {
+    if (!at) {
+      setPlaced(null);
+      return;
+    }
+    const box = list.current?.getBoundingClientRect();
+    if (!box) return;
+    const spot = menuPosition(
+      { x: at.left, y: at.top },
+      { width: box.width, height: box.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    setPlaced({ left: spot.x, top: spot.y });
+  }, [at]);
   return (
     <li
       ref={item}
@@ -307,7 +329,14 @@ function SubMenu({
         </span>
       </button>
       {at && (
-        <ul className="context-menu context-submenu" style={at}>
+        <ul
+          ref={list}
+          className="context-menu context-submenu"
+          style={{
+            ...(placed ?? at),
+            visibility: placed ? "visible" : "hidden",
+          }}
+        >
           {children}
         </ul>
       )}
