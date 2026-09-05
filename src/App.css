@@ -1891,3 +1891,21 @@ fieldset.preferences-fields:disabled {
   padding: 0.6rem 0.8rem;
   font-size: 0.9rem;
 }
+
+/* メニューの中の枝（要望 2026-09-05）。生成 AI の 4 つをここへ入れる */
+.has-submenu {
+  position: relative;
+}
+
+/* 右向きの三角。**字と離して右端に置く**（枝があることの印） */
+.submenu-arrow {
+  margin-left: auto;
+  font-size: 0.7em;
+  opacity: 0.5;
+}
+
+/* 枝そのもの。見た目は親のメニューと同じ（`.context-menu` を重ねて使う）。
+   **親の外に出る**ので、親が中で送れる状態でも切られない */
+.context-submenu {
+  min-width: 11rem;
+}

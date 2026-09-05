@@ -10,6 +10,9 @@
 
 export type Handoff = {
   id: "claude" | "gemini" | "chatgpt" | "copilot" | "google";
+  /// 相手の名前（確認の窓とサブメニューに出す）
+  name: string;
+  /// 平らに並べるときの呼び名（何をするかまで書く）
   label: string;
   /// 開くアプリの名前。**決め打ち**（Rust 側も同じ並びで確かめる）
   app?: string;
@@ -25,15 +28,23 @@ export type Handoff = {
 export const HANDOFFS: readonly Handoff[] = [
   {
     id: "claude",
+    name: "Claude",
     label: "Claude に渡す",
     app: "Claude",
     deepLink: "claude://claude.ai/new?q=",
   },
-  { id: "gemini", label: "Gemini に渡す", app: "Gemini" },
-  { id: "chatgpt", label: "ChatGPT に渡す", app: "ChatGPT" },
-  { id: "copilot", label: "Copilot に渡す", app: "Copilot" },
-  { id: "google", label: "Google で検索", search: true },
+  { id: "gemini", name: "Gemini", label: "Gemini に渡す", app: "Gemini" },
+  { id: "chatgpt", name: "ChatGPT", label: "ChatGPT に渡す", app: "ChatGPT" },
+  { id: "copilot", name: "Copilot", label: "Copilot に渡す", app: "Copilot" },
+  { id: "google", name: "Google", label: "Google で検索", search: true },
 ];
+
+/// 生成 AI（メニューでは「生成AIに渡す」の下にまとめる。要望 2026-09-05）。
+/// **1 つずつ並べると、外へ出る道がメニューの半分を占める。**
+export const AI_HANDOFFS = HANDOFFS.filter((entry) => entry.app !== undefined);
+
+/// 検索（生成 AI とは別の扱い。確認も要らない）。
+export const SEARCH_HANDOFF = HANDOFFS.find((entry) => entry.search)!;
 
 /// 渡す前に確認するか。**設定は生成 AI 向け**（検索は探す言葉を打つのと
 /// 同じ操作なので、毎回聞くと邪魔になる）。
@@ -63,7 +74,7 @@ export function confirmMessage(handoff: Handoff, text: string): string {
   const head = [...text.trim()].slice(0, 120).join("");
   const shown = [...text.trim()].length > 120 ? `${head}…` : head;
   return (
-    `選んだ文字を ${handoff.label.replace(/ に渡す$/, "")} に渡します。\n` +
+    `選んだ文字を ${handoff.name} に渡します。\n` +
     `この内容はこのパソコンの外へ出ます。\n\n${shown}`
   );
 }

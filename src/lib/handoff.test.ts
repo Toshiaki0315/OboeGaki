@@ -5,11 +5,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  AI_HANDOFFS,
   confirmMessage,
   HANDOFFS,
   handoffUrl,
   needsConfirm,
   searchUrl,
+  SEARCH_HANDOFF,
 } from "./handoff";
 
 describe("HANDOFFS", () => {
@@ -37,6 +39,19 @@ describe("HANDOFFS", () => {
     expect(HANDOFFS.find((e) => e.id === "google")?.label).toBe(
       "Google で検索",
     );
+  });
+});
+
+describe("まとめ方", () => {
+  it("test_生成AIは4つ、検索は別（要望 2026-09-05）", () => {
+    // 1 つずつ並べると、外へ出る道がメニューの半分を占める
+    expect(AI_HANDOFFS.map((entry) => entry.name)).toEqual([
+      "Claude",
+      "Gemini",
+      "ChatGPT",
+      "Copilot",
+    ]);
+    expect(SEARCH_HANDOFF.name).toBe("Google");
   });
 });
 

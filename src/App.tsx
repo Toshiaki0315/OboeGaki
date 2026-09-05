@@ -23,11 +23,12 @@ import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { anchorAbove, menuPosition } from "./lib/context-menu";
 import {
+  AI_HANDOFFS,
   confirmMessage,
-  HANDOFFS,
   handoffUrl,
   needsConfirm,
   searchUrl,
+  SEARCH_HANDOFF,
   type Handoff,
 } from "./lib/handoff";
 import { trashLabel, trashParts } from "./lib/trash-label";
@@ -263,6 +264,59 @@ function ContextMenu({
     </div>
   );
 }
+
+/// 右クリックのメニューの中の枝（要望 2026-09-05）。
+///
+/// **`position: fixed` で出す。** 親のメニューは高いときに中で送れるよう
+/// `overflow` を持っているので、その中に置くと枝が切られる。固定なら
+/// 親の外に出られる。右端で開いたときは左へ返す。
+function SubMenu({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  const item = useRef<HTMLLIElement>(null);
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const place = () => {
+    const box = item.current?.getBoundingClientRect();
+    if (!box) return;
+    const flip = box.right + SUBMENU_WIDTH > window.innerWidth;
+    setAt({
+      // 少し重ねる（親から枝へマウスを移すときに間で切れない）
+      left: flip ? box.left - SUBMENU_WIDTH + 4 : box.right - 4,
+      top: Math.max(8, box.top - 4),
+    });
+  };
+  return (
+    <li
+      ref={item}
+      className="has-submenu"
+      onMouseEnter={place}
+      onFocus={place}
+      onMouseLeave={() => setAt(null)}
+    >
+      <button type="button">
+        {icon}
+        {label}
+        <span className="submenu-arrow" aria-hidden="true">
+          ▶
+        </span>
+      </button>
+      {at && (
+        <ul className="context-menu context-submenu" style={at}>
+          {children}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/// 枝の幅（置く向きを決めるのに使う）。CSS の `min-width` と揃える。
+const SUBMENU_WIDTH = 176;
 
 /// メニューの項目に添える絵。**名前で引く**（同じ言葉には同じ絵）。
 function MenuIcon({ name }: { name: MenuIconName }) {
@@ -4151,21 +4205,39 @@ function App() {
                     </button>
                   </li>
                   <li className="separator" />
-                  {/* **外へ出る道**（要望 2026-09-05）。選んでいないときは
-                      押せない状態で見せる（渡すものが無い） */}
-                  {HANDOFFS.map((handoff) => (
-                    <li key={handoff.id}>
-                      <button
-                        disabled={!selected}
-                        onClick={run(() => void handOff(handoff))}
-                      >
-                        <MenuIcon
-                          name={handoff.search ? "search" : "handoff"}
-                        />
-                        {handoff.label}
+                  {/* **外へ出る道**（要望 2026-09-05）。生成 AI は 4 つを
+                      枝にまとめる — 平らに並べるとメニューの半分を占める。
+                      選んでいないときは押せない状態で見せる（渡すものが無い） */}
+                  {selected ? (
+                    <SubMenu
+                      icon={<MenuIcon name="handoff" />}
+                      label="生成AIに渡す"
+                    >
+                      {AI_HANDOFFS.map((handoff) => (
+                        <li key={handoff.id}>
+                          <button onClick={run(() => void handOff(handoff))}>
+                            {handoff.name}
+                          </button>
+                        </li>
+                      ))}
+                    </SubMenu>
+                  ) : (
+                    <li>
+                      <button disabled>
+                        <MenuIcon name="handoff" />
+                        生成AIに渡す
                       </button>
                     </li>
-                  ))}
+                  )}
+                  <li>
+                    <button
+                      disabled={!selected}
+                      onClick={run(() => void handOff(SEARCH_HANDOFF))}
+                    >
+                      <MenuIcon name="search" />
+                      {SEARCH_HANDOFF.label}
+                    </button>
+                  </li>
                 </ContextMenu>
               );
             })()}
