@@ -91,6 +91,9 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
         .item(&item("export-html", "HTML に書き出し…", None)?)
         .item(&item("export-pptx", "PowerPoint に書き出し…", None)?)
+        // PDF は印刷と同じ道（ADR-0038）。**項目を分けて置く** — 印刷の窓の
+        // 中にあると気づかれない（差分の調べ 2026-09-06）
+        .item(&item("export-pdf", "PDF に書き出し…", None)?)
         .item(&item(
             "import-pptx",
             "読み込む…（PDF / PowerPoint / 画像）",

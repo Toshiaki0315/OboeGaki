@@ -907,8 +907,13 @@ function App() {
   /// 印刷（ADR-0038）。**書き出しと同じ本文**を隠しの領域に組み、
   /// `@media print` でそこだけを紙に出す。エディタ（CM6）は見えている
   /// 範囲しか DOM に無いので、そのまま刷ると本文が欠ける。
-  async function handlePrint() {
+  async function handlePrint(forPdf = false) {
     if (!vaultRoot || !currentPath) return;
+    // **PDF はここから先が OS の仕事。** 印刷の窓のどこを押せばよいかを
+    // 先に言っておく（差分の調べ 2026-09-06: できるのに気づかれない）
+    if (forPdf) {
+      setStatus("印刷の窓の左下［PDF］から「PDF として保存」を選べます");
+    }
     await autosave.flush(); // 保存前の本文を刷らない
     const text = await readNote(vaultRoot, currentPath);
     const body = renderBody(
@@ -2233,6 +2238,7 @@ function App() {
     save: () => autosave.flush(),
     "export-html": () => void handleExport(),
     "export-pptx": () => void handleExportPptx(),
+    "export-pdf": () => void handlePrint(true),
     "import-pptx": () => void handleImportPptx(),
     print: () => void handlePrint(),
     history: () => void openHistory(),
