@@ -240,7 +240,9 @@ const STYLE = `
   h1, h2, h3 { line-height: 1.4; }
   code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em;
          background: rgba(0,0,0,0.06); border-radius: 3px; padding: 0 0.2em; }
-  pre { background: rgba(0,0,0,0.05); border-radius: 6px; padding: 0.8em 1em; overflow-x: auto; }
+  /* コードだけは明暗どちらでも濃い地（6-4。画面と同じ） */
+  pre { background: var(--code-bg); color: var(--code-fg); border-radius: 6px;
+        padding: 0.8em 1em; overflow-x: auto; }
   pre code { background: none; padding: 0; }
   blockquote { border-left: 3px solid rgba(0,0,0,0.25); margin-left: 0;
                padding-left: 1em; color: rgba(0,0,0,0.7); }
@@ -254,15 +256,14 @@ const STYLE = `
   /* コードの配色（TASKS 4-4 / ADR-0008）。App.css と同じ組を持たせる。
      **スタイルシートも JS も外から読まない**ので、1 枚で完結したまま
      読む人の明暗に合う */
-  :root { --code-name-bg: #63636b; --code-name-fg: #ffffff;
-          --code-keyword: #007020; --code-string: #4070a0; --code-comment: #60a0b0;
-          --code-number: #40a070; --code-type: #0e84b5; --code-func: #06287e;
-          --code-def: #06287e; --code-prop: #517918; }
+  :root { --code-bg: #22272e; --code-fg: #d5dae1;
+          --code-name-bg: #63636b; --code-name-fg: #ffffff;
+          --code-keyword: #ff7b72; --code-string: #a5d6ff; --code-comment: #8b949e;
+          --code-number: #79c0ff; --code-type: #ffa657; --code-func: #d2a8ff;
+          --code-def: #d2a8ff; --code-prop: #7ee787; }
   @media (prefers-color-scheme: dark) {
-    :root { --code-name-bg: #5a5a63; --code-name-fg: #f5f5f7;
-            --code-keyword: #ff7b72; --code-string: #a5d6ff; --code-comment: #8b949e;
-            --code-number: #79c0ff; --code-type: #ffa657; --code-func: #d2a8ff;
-            --code-def: #d2a8ff; --code-prop: #7ee787; }
+    /* 字の組は共通（6-4 で一本化）。地だけ本文との差を付ける */
+    :root { --code-bg: #14171c; --code-name-bg: #5a5a63; --code-name-fg: #f5f5f7; }
   }
   .tok-keyword { color: var(--code-keyword); }
   .tok-string { color: var(--code-string); }

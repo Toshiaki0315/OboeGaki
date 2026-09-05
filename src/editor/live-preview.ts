@@ -1459,8 +1459,13 @@ const blockTheme = EditorView.baseTheme({
     borderLeft: "3px solid color-mix(in srgb, currentColor 30%, transparent)",
     paddingLeft: "10px",
   },
+  // **明暗どちらでも濃い地**（6-4。要望 2026-09-05）。地が濃いので、
+  // 色の付かない字とキャレットの色も行に持たせる — ライトのままだと
+  // 黒いキャレットが沈んで、どこを打っているか分からない
   ".cm-codeblock-line": {
-    backgroundColor: "color-mix(in srgb, currentColor 6%, transparent)",
+    backgroundColor: "var(--code-bg)",
+    color: "var(--code-fg)",
+    caretColor: "var(--code-fg)",
     fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.9em",
   },

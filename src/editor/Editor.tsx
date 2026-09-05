@@ -44,6 +44,7 @@ import { autoPair, urlPasteLink } from "./auto-pair";
 import { tagCompletion } from "./tag-complete";
 import { noteLinkCompletion } from "./note-link-complete";
 import { slashCompletion } from "./slash-menu";
+import { fenceLanguageCompletion } from "./fence-language";
 import {
   diagramThemeField,
   imageResolver,
@@ -330,6 +331,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               tagCompletion(() => tagSource.current?.() ?? []),
               noteLinkCompletion(() => noteSource.current?.() ?? []),
               slashCompletion(), // 行頭の `/`（TASKS 6-1）
+              fenceLanguageCompletion(), // ``` の直後の言語（TASKS 6-3）
             ],
             icons: false,
           }),
