@@ -214,8 +214,7 @@ pub fn note_exists(root: String, path: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn note_read(root: String, path: String) -> Result<String, String> {
     let path = guarded(&root, &path)?;
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
-    Ok(crate::vault::decode_text(&bytes))
+    crate::vault::read_note(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -299,7 +298,7 @@ pub fn history_restore(
         return Err("このノートの版ではありません".to_string());
     }
     let now = chrono::Local::now().naive_local();
-    if let Ok(current) = fs::read_to_string(&note) {
+    if let Ok(current) = crate::vault::read_note(&note) {
         if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
             eprintln!("戻す前の版を残せなかった: {error}");
         }
@@ -1240,7 +1239,7 @@ pub fn note_trash(
     let path = guarded(&root, &path)?;
     // ピン留め中は捨てない（spec §7.3 の削除ガード）。
     // 消してよいなら先にピンを外す、という一拍を挟む
-    if std::fs::read_to_string(&path)
+    if crate::vault::read_note(&path)
         .map(|text| crate::front_matter::pinned(&text))
         .unwrap_or(false)
     {
@@ -1298,7 +1297,7 @@ pub fn note_pin(
     pinned: bool,
 ) -> Result<String, String> {
     let path = guarded(&root, &path)?;
-    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_note(&path).map_err(|e| e.to_string())?;
     let updated = crate::front_matter::with_pinned(&text, pinned);
     if updated != text {
         state.suppressor.mark(&path);

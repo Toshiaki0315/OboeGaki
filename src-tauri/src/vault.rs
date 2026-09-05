@@ -36,6 +36,16 @@ pub fn decode_text(bytes: &[u8]) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+/// ノートの本文を読む。**文字コードの揺れはここで吸収する**（7-6）。
+///
+/// `fs::read_to_string` を直に使うと、Shift_JIS のノートで失敗して
+/// 「無かったこと」になる。ピン留めの見張りや添付の掃除がそれを踏むと、
+/// **守るはずのものを守れない**（ピン留めしたノートが捨てられる・
+/// 使っている画像がゴミ箱へ行く）。
+pub fn read_note(path: &Path) -> io::Result<String> {
+    Ok(decode_text(&fs::read(path)?))
+}
+
 pub const TRASH_DIR: &str = ".trash";
 pub const MANAGED_DIR: &str = ".OboeGaki";
 /// 旧名（改名 2026-08-27 / ADR-0032）。開くときに一度だけ改名して引き継ぐ。
@@ -264,7 +274,7 @@ impl Vault {
         if !self.inside(path) {
             return Err(outside_error("保管フォルダの外は複製できない", path));
         }
-        let text = fs::read_to_string(path)?;
+        let text = read_note(path)?;
         let folder = path.parent().unwrap_or(&self.root).to_path_buf();
         let stem = path
             .file_stem()
@@ -328,7 +338,7 @@ impl Vault {
         };
         let mut used: HashSet<String> = HashSet::new();
         for note in self.all_markdown() {
-            if let Ok(text) = fs::read_to_string(&note) {
+            if let Ok(text) = read_note(&note) {
                 used.extend(crate::references::attachment_names(&text));
             }
         }
@@ -840,7 +850,7 @@ impl Vault {
         fs::rename(path, &target)?;
         // 「名前を変更」は本文の見出しも書き換える（ADR-0005）。
         // 見出しには打った通りのタイトルが入る（ファイル名側だけ sanitize）
-        if let Ok(text) = fs::read_to_string(&target) {
+        if let Ok(text) = read_note(&target) {
             let rewritten = with_title(&text, title);
             if rewritten != text {
                 crate::autosave::save_atomic(&target, &rewritten)?;
@@ -2500,6 +2510,62 @@ mod tests {
         let found = vault.unused_attachments();
 
         assert_eq!(found, vec![vault.attachments_dir().join("孤児.png")]);
+    }
+
+    #[test]
+    fn test_unused_attachments_Shift_JIS_のノートの参照も数える() {
+        // **守るはずのものを守れない**穴（7-6 の追い込み 2026-09-06）。
+        // 読めないノートを飛ばすと、使っている画像が「孤児」に見えて
+        // ゴミ箱へ行く
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::write(vault.attachments_dir().join("使用中.png"), "x").unwrap();
+        let sjis = encoding_rs::SHIFT_JIS
+            .encode("# 会議\n\n![](attachments/使用中.png)\n")
+            .0
+            .into_owned();
+        fs::write(root.path().join("会議.md"), sjis).unwrap();
+
+        assert!(vault.unused_attachments().is_empty());
+    }
+
+    #[test]
+    fn test_Shift_JIS_を開いて保存すると_UTF8_になる() {
+        // 質問 2026-09-06「読み出して、保存するときは UTF-8 に」。
+        // 読んだ時点で本文は UTF-8 / LF になっているので、保存すれば
+        // ファイルもそちらに揃う（**書き換えるのは保存したときだけ**）
+        let root = TempDir::new().unwrap();
+        let path = root.path().join("会議.md");
+        let sjis = encoding_rs::SHIFT_JIS
+            .encode("# 会議\r\n\r\n本文\r\n")
+            .0
+            .into_owned();
+        fs::write(&path, &sjis).unwrap();
+
+        let text = read_note(&path).unwrap();
+        assert_eq!(text, "# 会議\n\n本文\n");
+        crate::autosave::save_atomic(&path, &text).unwrap();
+
+        let bytes = fs::read(&path).unwrap();
+        assert_eq!(String::from_utf8(bytes).unwrap(), "# 会議\n\n本文\n");
+        // 読み直しても同じ（何度開き閉じしても増えない・減らない）
+        assert_eq!(read_note(&path).unwrap(), text);
+    }
+
+    #[test]
+    fn test_ピン留めは文字コードに関わらず読める() {
+        // ピン留めの見張り（ゴミ箱へ移せない）が、読めないノートで
+        // すり抜けていた
+        let root = TempDir::new().unwrap();
+        let sjis = encoding_rs::SHIFT_JIS
+            .encode("---\npinned: true\n---\n\n# 会議\n")
+            .0
+            .into_owned();
+        let path = root.path().join("会議.md");
+        fs::write(&path, sjis).unwrap();
+        let text = read_note(&path).unwrap();
+        assert!(crate::front_matter::pinned(&text));
     }
 
     #[test]
