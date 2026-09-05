@@ -33,7 +33,7 @@ import {
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { splitFolders } from "./lib/folder-tree";
-import { trashLabel, trashParts } from "./lib/trash-label";
+import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
 import { ASK_ACTION, ASSISTANT_ACTIONS } from "./lib/assistant-actions";
@@ -470,6 +470,8 @@ function App() {
       return "modified";
     }
   });
+  /// ゴミ箱を見ているか（一覧の中身が捨てたノートに変わる）。
+  const trashView = folderFilter === TRASH_FOLDER;
   const sortedNotes = useMemo(() => {
     const listed =
       folderFilter !== null ? folderNotes : tagFilter ? tagNotes : notes;
@@ -2008,7 +2010,9 @@ function App() {
   // 絞り込み中のフォルダのノートを引き直す（notes が変わったとき =
   // 索引が更新されたときも）
   useEffect(() => {
-    if (!vaultRoot || folderFilter === null) {
+    // **ゴミ箱は索引に無い**（T7 の走査対象外）。引きに行っても空なので、
+    // trash_list から来る `trashNotes` をそのまま一覧に出す
+    if (!vaultRoot || folderFilter === null || folderFilter === TRASH_FOLDER) {
       setFolderNotes([]);
       return;
     }
@@ -2674,7 +2678,7 @@ function App() {
                   {folderFilter !== null && (
                     <div className="tag-filter-row">
                       <span className="tag-filter-name">
-                        {folderFilter || "直下"}
+                        {folderFilterLabel(folderFilter)}
                       </span>
                       <button
                         className="tag-filter-clear"
@@ -2685,19 +2689,66 @@ function App() {
                       </button>
                     </div>
                   )}
-                  <div className="sort-row">
-                    <select
-                      value={sortOrder}
-                      onChange={(event) =>
-                        changeSort(event.currentTarget.value as SortOrder)
-                      }
-                    >
-                      <option value="modified">更新順</option>
-                      <option value="title">名前順</option>
-                    </select>
-                  </div>
+                  {!trashView && (
+                    <div className="sort-row">
+                      <select
+                        value={sortOrder}
+                        onChange={(event) =>
+                          changeSort(event.currentTarget.value as SortOrder)
+                        }
+                      >
+                        <option value="modified">更新順</option>
+                        <option value="title">名前順</option>
+                      </select>
+                    </div>
+                  )}
                   <ul className="note-rows">
-                    {(tagFilter || folderFilter !== null) &&
+                    {trashView && trashNotes.length === 0 && (
+                      <li className="no-hits">
+                        ゴミ箱は空です。捨てたノートは {settings.trashDays}{" "}
+                        日残ります
+                      </li>
+                    )}
+                    {/* 捨てたノート（要望 2026-09-05）。**出せる操作を絞る** —
+                        ゴミ箱の中身にピン留めや改名を許すと、戻したときの
+                        状態が読めない（参照実装 note_actions と同じ判断） */}
+                    {trashView &&
+                      trashNotes.map((entry) => {
+                        const { name, folder } = trashParts(
+                          vaultRoot,
+                          entry.path,
+                        );
+                        return (
+                          <li key={entry.path} className="trash-item">
+                            <button
+                              className={`trash-row${entry.path === currentPath ? " selected" : ""}`}
+                              title={`${trashLabel(vaultRoot, entry.path)}（右クリックで戻す・削除）`}
+                              onClick={() => void openNote(entry.path)}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                setTrashMenu({
+                                  path: entry.path,
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                });
+                              }}
+                            >
+                              <span className="trash-name">{name}</span>
+                              <span className="trash-meta">
+                                {/* 元の場所。直下のノートには出さない */}
+                                {folder && (
+                                  <span className="trash-folder">{folder}</span>
+                                )}
+                                <span className="trash-stamp">
+                                  {formatStamp(entry.trashedMs)}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    {!trashView &&
+                      (tagFilter || folderFilter !== null) &&
                       sortedNotes.length === 0 && (
                         <li className="no-hits">
                           {tagFilter
@@ -2942,97 +2993,63 @@ function App() {
                         </button>
                       </li>
                     ))}
-                  </ul>
-                </details>
-              )}
-              {settings.treesVisible && (
-                // **空でも畳まない。** 落とし先が消えると、捨てたあとに
-                // もう 1 枚捨てられなくなる（要望 2026-09-04）
-                <details
-                  className="trash-section"
-                  onDragEnter={(event) => {
-                    if (!isNoteDrag(Array.from(event.dataTransfer.types)))
-                      return;
-                    event.preventDefault();
-                    setDropTrash(true);
-                  }}
-                  onDragOver={(event) => {
-                    if (!isNoteDrag(Array.from(event.dataTransfer.types)))
-                      return;
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                    setDropTrash(true);
-                  }}
-                  onDragLeave={() => setDropTrash(false)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const dragged =
-                      draggingNote.current ||
-                      event.dataTransfer.getData(NOTE_DRAG_TYPE);
-                    draggingNote.current = null;
-                    setDropTrash(false);
-                    // ピン留めの断りと確認は handleTrash が持っている
-                    // （メニューの「ゴミ箱へ移動」と同じ道）
-                    if (dragged) void handleTrash(dragged);
-                  }}
-                >
-                  <summary
-                    className={dropTrash ? "drop-target" : ""}
-                    title="右クリックで空にできます（ノートを落とすと捨てます）"
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      // path が無いときは「ゴミ箱そのもの」への操作
-                      setTrashMenu({
-                        path: null,
-                        x: event.clientX,
-                        y: event.clientY,
-                      });
-                    }}
-                  >
-                    <span className="side-twist" aria-hidden="true" />
-                    <span className="side-label">ゴミ箱</span>
-                    <span className="side-count">{trashNotes.length}</span>
-                  </summary>
-                  {trashNotes.length === 0 && (
-                    <p className="trash-note">
-                      空です。捨てたノートは {settings.trashDays} 日残ります
-                    </p>
-                  )}
-                  <ul>
-                    {trashNotes.map((entry) => {
-                      const { name, folder } = trashParts(
-                        vaultRoot,
-                        entry.path,
-                      );
-                      return (
-                        /* 操作は右クリックへ（要望 2026-09-04）。ボタンを
-                          並べると題名が押し出されて読めなくなる */
-                        <li
-                          key={entry.path}
-                          className="trash-item"
-                          title={`${trashLabel(vaultRoot, entry.path)}（右クリックで戻す・削除）`}
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setTrashMenu({
-                              path: entry.path,
-                              x: event.clientX,
-                              y: event.clientY,
-                            });
-                          }}
-                        >
-                          <span className="trash-name">{name}</span>
-                          <span className="trash-meta">
-                            {/* 元の場所。直下のノートには出さない */}
-                            {folder && (
-                              <span className="trash-folder">{folder}</span>
-                            )}
-                            <span className="trash-stamp">
-                              {formatStamp(entry.trashedMs)}
-                            </span>
-                          </span>
-                        </li>
-                      );
-                    })}
+                    {/* **ゴミ箱もフォルダの中に置く**（要望 2026-09-05）。
+                        押すと一覧が捨てたノートに変わる。落とし先としての
+                        振る舞い（ノートを落とすと捨てる）はそのまま */}
+                    <li
+                      onDragEnter={(event) => {
+                        if (!isNoteDrag(Array.from(event.dataTransfer.types)))
+                          return;
+                        event.preventDefault();
+                        setDropTrash(true);
+                      }}
+                      onDragOver={(event) => {
+                        if (!isNoteDrag(Array.from(event.dataTransfer.types)))
+                          return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setDropTrash(true);
+                      }}
+                      onDragLeave={() => setDropTrash(false)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const dragged =
+                          draggingNote.current ||
+                          event.dataTransfer.getData(NOTE_DRAG_TYPE);
+                        draggingNote.current = null;
+                        setDropTrash(false);
+                        // ピン留めの断りと確認は handleTrash が持っている
+                        if (dragged) void handleTrash(dragged);
+                      }}
+                    >
+                      <button
+                        className={
+                          `folder-row${folderFilter === TRASH_FOLDER ? " selected" : ""}` +
+                          (dropTrash ? " drop-target" : "")
+                        }
+                        style={{ paddingLeft: "2.6rem" }}
+                        title="捨てたノートを見る（落とすと捨てます。右クリックで空にできます）"
+                        onClick={() =>
+                          filterByFolder(
+                            folderFilter === TRASH_FOLDER ? null : TRASH_FOLDER,
+                          )
+                        }
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          // path が無いときは「ゴミ箱そのもの」への操作
+                          setTrashMenu({
+                            path: null,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
+                      >
+                        <span className="folder-name">ゴミ箱</span>
+                        <span className="folder-count">
+                          {trashNotes.length}
+                        </span>
+                      </button>
+                    </li>
                   </ul>
                 </details>
               )}

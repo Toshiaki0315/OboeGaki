@@ -2,7 +2,7 @@
 // 題名を主にして、フォルダは添えに回す。
 
 import { describe, expect, it } from "vitest";
-import { trashLabel, trashParts } from "./trash-label";
+import { folderFilterLabel, trashLabel, trashParts } from "./trash-label";
 
 const root = "/v/notes";
 
@@ -42,5 +42,20 @@ describe("trashLabel", () => {
     expect(trashLabel(root, `${root}/.trash/仕事/議事録.md`)).toBe(
       "仕事/議事録",
     );
+  });
+});
+
+describe("folderFilterLabel", () => {
+  it("test_ゴミ箱は記号ではなく呼び名で出す（要望 2026-09-05）", () => {
+    // 一覧の帯に `.trash` と出ると、隠しフォルダを開いたように見える
+    expect(folderFilterLabel(".trash")).toBe("ゴミ箱");
+  });
+
+  it("test_空文字は直下", () => {
+    expect(folderFilterLabel("")).toBe("直下");
+  });
+
+  it("test_そのほかはフォルダの道をそのまま", () => {
+    expect(folderFilterLabel("仕事/2026")).toBe("仕事/2026");
   });
 });

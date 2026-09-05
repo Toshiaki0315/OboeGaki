@@ -113,17 +113,10 @@ body {
   min-height: 0;
   overflow-y: auto;
 }
-/* 保存した検索・ゴミ箱は小さめに抑えて、はみ出したら中でスクロール */
-.search-section[open] > ul,
-.trash-section[open] > ul {
+/* 保存した検索は小さめに抑えて、はみ出したら中でスクロール */
+.search-section[open] > ul {
   max-height: 20vh;
   overflow-y: auto;
-}
-
-/* ゴミ箱は 1 件が 2 行になったぶん、少しだけ高くする（要望 2026-09-04）。
-   3 件しか見えないと、捨てたものを探すのにスクロールが要る */
-.trash-section[open] > ul {
-  max-height: 26vh;
 }
 
 .note-list header {
@@ -365,33 +358,33 @@ body {
   cursor: pointer;
 }
 
-.trash-section {
-  margin-top: 1rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--pane-line);
-  font-size: 0.9rem;
-}
-
 /* ゴミ箱の 1 件（要望 2026-09-04: もう少し見やすく）。**題名を主にする** —
    `仕事/2026-09-04 議事録` のような 1 本の長いパスは、狭い一覧では 3 行に
    折り返してどれがどれか分からなくなる */
-.trash-item {
+/* 捨てたノートの 1 行（要望 2026-09-05 で一覧の中へ移した）。
+   余白は中のボタンが持つ（行ぜんぶが押せる） */
+.note-list li.trash-item {
+  padding: 0;
+}
+
+.note-list li button.trash-row {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.1rem;
-  padding: 0.35rem 0.5rem;
-  /* 操作は右クリック（要望 2026-09-04） */
-  cursor: default;
+  min-width: 0;
 }
 
 .trash-name {
   /* 折り返さず省略する。読むのは頭のほうなので、末尾を落とす */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .trash-meta {
+  max-width: 100%;
   display: flex;
   gap: 0.4rem;
   align-items: baseline;
@@ -1196,8 +1189,7 @@ details[open] > summary > .side-twist::before {
   font-size: 0.9rem;
 }
 
-.tag-section summary,
-.trash-section summary {
+.tag-section summary {
   display: flex;
   align-items: center;
   /* 三角と字の間はフォルダの見出しと同じ（あちらは 0.1 + 中のボタンの 0.3） */
@@ -1209,8 +1201,7 @@ details[open] > summary > .side-twist::before {
   opacity: 0.7;
 }
 
-.tag-section summary::-webkit-details-marker,
-.trash-section summary::-webkit-details-marker {
+.tag-section summary::-webkit-details-marker {
   display: none;
 }
 
@@ -1827,24 +1818,6 @@ button.danger {
   box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
   font-size: 0.9rem;
   pointer-events: none;
-}
-
-/* ノートを落とせるゴミ箱（要望 2026-09-04）。フォルダの行と同じ光り方に
-   揃える（落とせる場所の見え方を 1 つに保つ） */
-.trash-section summary.drop-target {
-  background: color-mix(in srgb, #0a84ff 18%, transparent);
-  outline: 1px solid color-mix(in srgb, #0a84ff 55%, transparent);
-  outline-offset: -1px;
-  border-radius: 6px;
-  opacity: 1;
-}
-
-/* 空のゴミ箱の案内。**欄自体は畳まない** — 落とし先が消えると、
-   捨てたあとにもう 1 枚捨てられなくなる */
-.trash-note {
-  margin: 0.1rem 0.5rem 0.4rem;
-  font-size: 0.8rem;
-  opacity: 0.55;
 }
 
 /* vault 全体への質問（L-2）。打って Enter が自然（検索欄と同じ） */

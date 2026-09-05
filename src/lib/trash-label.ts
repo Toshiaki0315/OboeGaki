@@ -4,7 +4,18 @@
 /// 幅の狭い一覧では折り返して 3 行になり、どれがどれか分からなくなる
 /// （要望 2026-09-04）。題名とフォルダに分けて、フォルダは添えに回す。
 
+import { TRASH_FOLDER } from "./finder";
+
 const EXTENSION = /\.(md|markdown)$/i;
+
+/// 一覧の帯に出す絞り込みの呼び名。
+///
+/// **ゴミ箱は記号で出さない**（要望 2026-09-05）。`.trash` と書くと、
+/// 隠しフォルダを開いてしまったように見える。空文字は保管フォルダの直下。
+export function folderFilterLabel(folder: string): string {
+  if (folder === TRASH_FOLDER) return "ゴミ箱";
+  return folder || "直下";
+}
 
 /// vault からの相対の位置（`仕事/議事録`）。確認の文に使う。
 export function trashLabel(root: string, path: string): string {
