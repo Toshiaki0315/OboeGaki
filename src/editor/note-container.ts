@@ -17,6 +17,17 @@ export const DEFAULT_NOTE_KIND = "info";
 /// 本文は残しつつ、灰色にして**区切り行も隠さない**。
 export const UNKNOWN_NOTE_KIND = "unknown";
 
+/// 囲みの頭に出す印（要望 2026-09-05。Qiita と同じ形）。
+///
+/// **丸の中に収まる 1 文字**にしてある。画面（CM6 のテーマ）と書き出しの
+/// CSS がここから作るので、印を変えるときは 1 か所でよい。
+export const NOTE_ICONS: Record<string, string> = {
+  info: "✓",
+  warn: "!",
+  alert: "✕",
+  [UNKNOWN_NOTE_KIND]: "?",
+};
+
 export type NoteContainer = {
   /// 開きの `:::note …` 行の先頭。
   from: number;

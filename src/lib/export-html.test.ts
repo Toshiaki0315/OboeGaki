@@ -1,6 +1,7 @@
 // HTML 書き出し（ADR-0007 の CM6 版）の検証。
 
 import { describe, expect, test } from "vitest";
+import { NOTE_ICONS } from "../editor/note-container";
 import { codeKey, collectCodeBlocks, renderHtml } from "./export-html";
 
 describe("renderHtml", () => {
@@ -192,6 +193,13 @@ describe("collectCodeBlocks", () => {
     const html = renderHtml(pasted, "貼り付け");
     expect(html).toContain("<summary>詳しく</summary>");
     expect(html).not.toContain("&lt;details&gt;");
+  });
+
+  test("test_囲みの頭に印を出す（要望 2026-09-05）", () => {
+    const html = renderHtml(":::note alert\n本文\n:::\n", "印");
+    // 画面と同じ印を、書き出した HTML でも出す
+    expect(html).toContain(`content: "${NOTE_ICONS.alert}"`);
+    expect(html).toContain(".note-alert > :first-child::before");
   });
 
   test("種類を省いたら info、知らない綴りは別扱い", () => {

@@ -2,7 +2,12 @@
 
 import { describe, expect, test } from "vitest";
 import { Text } from "@codemirror/state";
-import { noteContainers, UNKNOWN_NOTE_KIND } from "./note-container";
+import {
+  NOTE_ICONS,
+  NOTE_KINDS,
+  noteContainers,
+  UNKNOWN_NOTE_KIND,
+} from "./note-container";
 
 const of = (doc: string) => noteContainers(Text.of(doc.split("\n")));
 
@@ -38,5 +43,24 @@ describe("noteContainers", () => {
 
   test("`:::note warn extra` は囲みにしない（2 語まで）", () => {
     expect(of(":::note warn extra\n本文\n:::\n")).toEqual([]);
+  });
+});
+
+describe("NOTE_ICONS", () => {
+  test("test_3 種と綴り違いに印がある（要望 2026-09-05）", () => {
+    for (const kind of [...NOTE_KINDS, UNKNOWN_NOTE_KIND]) {
+      expect(NOTE_ICONS[kind], kind).toBeTruthy();
+    }
+  });
+
+  test("test_同じ印を 2 つ置かない（見分けが付かなくなる）", () => {
+    const glyphs = Object.values(NOTE_ICONS);
+    expect(new Set(glyphs).size).toBe(glyphs.length);
+  });
+
+  test("test_印は 1 文字（丸の中に収める）", () => {
+    for (const [kind, glyph] of Object.entries(NOTE_ICONS)) {
+      expect([...glyph].length, kind).toBe(1);
+    }
   });
 });

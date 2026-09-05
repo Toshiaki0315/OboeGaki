@@ -42,6 +42,7 @@ import {
 import { mathSpanAt, renderMath } from "./math";
 import {
   type NoteContainer,
+  NOTE_ICONS,
   noteContainers,
   UNKNOWN_NOTE_KIND,
 } from "./note-container";
@@ -1407,6 +1408,14 @@ const style = HighlightStyle.define([
 
 /// ブロック装飾の見た目。旧実装の painter_overlay（paintEvent 描画）に相当する
 /// ものが、CM6 では行クラスと widget + CSS で済む。
+/// 印の当て方（画面用）。**表は 1 か所**（note-container）から作る。
+const noteIconRules = Object.fromEntries(
+  Object.entries(NOTE_ICONS).map(([kind, glyph]) => [
+    `.cm-note-${kind}.cm-note-line-first::before`,
+    { content: `"${glyph}"` },
+  ]),
+);
+
 const blockTheme = EditorView.baseTheme({
   // `:::note` の囲み（B-3）。実色は App.css の CSS 変数が持つ
   // （ライト / ダークを 1 か所で切り替えるため）
@@ -1467,6 +1476,31 @@ const blockTheme = EditorView.baseTheme({
   ".cm-note-line-first": {
     paddingTop: "0.5em",
     borderTopRightRadius: "6px",
+  },
+  // 囲みの頭の印（要望 2026-09-05。Qiita と同じ形）。丸は種類の色、
+  // 文字は囲みの地の色 — 明暗どちらでも読める向きになる
+  ".cm-note-line-first::before": {
+    display: "inline-block",
+    width: "1.3em",
+    height: "1.3em",
+    lineHeight: "1.3em",
+    marginRight: "0.45em",
+    borderRadius: "50%",
+    textAlign: "center",
+    fontSize: "0.85em",
+    fontWeight: "700",
+    verticalAlign: "0.05em",
+    background: "var(--note-line)",
+    color: "var(--note-bg)",
+  },
+  ...noteIconRules,
+  // 綴り違いだけは色を直に書く。**`currentColor` は使えない** — 同じ
+  // 規則で `color` を決めているので、そちらを指してしまう（丸が白く
+  // なって消えた）。書き出しの CSS と同じ灰色に揃える
+  ".cm-note-unknown.cm-note-line-first::before": {
+    content: `"${NOTE_ICONS[UNKNOWN_NOTE_KIND]}"`,
+    background: "rgba(128, 128, 128, 0.6)",
+    color: "#fff",
   },
   ".cm-note-line-last": {
     paddingBottom: "0.5em",

@@ -16,6 +16,7 @@ import { splitFenceInfo } from "../editor/code-blocks";
 import { DEFAULT_SUMMARY } from "../editor/details-container";
 import {
   DEFAULT_NOTE_KIND,
+  NOTE_ICONS,
   NOTE_KINDS,
   UNKNOWN_NOTE_KIND,
 } from "../editor/note-container";
@@ -221,6 +222,18 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/// 印の CSS（画面と同じ表から作る）。色は囲みの枠色を継ぐ。
+const NOTE_ICON_CSS = Object.entries(NOTE_ICONS)
+  .map(
+    ([kind, glyph]) =>
+      // 丸は種類の色、文字は囲みの地の色。綴り違い（--note-unknown は
+      // 置いていない）は既定の灰色に落ちる
+      `  .note-${kind} > :first-child::before { content: "${glyph}";` +
+      ` background: var(--note-${kind}, rgba(128,128,128,0.6));` +
+      ` color: var(--note-${kind}-bg, #fff); }`,
+  )
+  .join("\n");
+
 const STYLE = `
   body { font-family: -apple-system, "Hiragino Sans", sans-serif;
          line-height: 1.8; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
@@ -279,6 +292,13 @@ const STYLE = `
   .note-unknown { border-color: rgba(128,128,128,0.6); background: rgba(128,128,128,0.08); }
   .note > :first-child { margin-top: 0; }
   .note > :last-child { margin-bottom: 0; }
+  /* 頭の印（要望 2026-09-05）。丸の色は種類の色、文字は囲みの地の色 */
+  .note > :first-child::before {
+    display: inline-block; width: 1.3em; height: 1.3em; line-height: 1.3em;
+    margin-right: 0.45em; border-radius: 50%; text-align: center;
+    font-size: 0.85em; font-weight: 700; vertical-align: 0.05em;
+  }
+${NOTE_ICON_CSS}
 `;
 
 /// 本文に出てくるコードブロック（言語と中身）。**色分けは非同期**
