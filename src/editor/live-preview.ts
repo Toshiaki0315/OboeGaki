@@ -1575,7 +1575,9 @@ const blockTheme = EditorView.baseTheme({
   ".cm-code-filename": {
     display: "inline-block",
     fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
-    fontSize: "0.75em",
+    // **コードと同じ大きさ**（要望 2026-09-05）。ここは既に 0.9em の帯の
+    // 中なので、更に縮めると本文の 0.7 倍になって読めない
+    fontSize: "1em",
     padding: "0.1em 0.7em",
     borderRadius: "4px",
     // 参照実装 code_name_background / foreground（ADR-0008）。

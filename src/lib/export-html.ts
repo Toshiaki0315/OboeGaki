@@ -274,7 +274,8 @@ const STYLE = `
   .tok-def { color: var(--code-def); }
   .tok-prop { color: var(--code-prop); }
   .code-block { margin: 1em 0; }
-  .code-name { display: inline-block; font-size: 0.8em; padding: 0.1em 0.6em;
+  /* ラベルはコードと同じ大きさ（要望 2026-09-05） */
+  .code-name { display: inline-block; font-size: 0.9em; padding: 0.1em 0.6em;
                border-radius: 6px 6px 0 0; background: var(--code-name-bg);
                color: var(--code-name-fg); font-family: ui-monospace, Menlo, monospace; }
   .code-block pre { margin-top: 0; border-top-left-radius: 0; }
