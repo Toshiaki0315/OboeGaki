@@ -14,6 +14,7 @@ import { mathSpanAt, renderMath } from "../editor/math";
 import { frontMatterRange } from "../editor/frontmatter";
 import { splitFenceInfo } from "../editor/code-blocks";
 import { DEFAULT_SUMMARY } from "../editor/details-container";
+import { splitImageAlt } from "../editor/image-size";
 import {
   DEFAULT_NOTE_KIND,
   NOTE_ICONS,
@@ -209,6 +210,24 @@ function renderer() {
   md.block.ruler.before("fence", "oboegaki_math_block", mathBlockRule);
   // 貼り付けた `<details>`。フェンスより後に見るので、コード例は素通り
   md.block.ruler.before("paragraph", "oboegaki_details_html", detailsHtmlRule);
+  // 画像の大きさ（6-8）。`![説明|300](道)` の `|300` を幅と高さに移す
+  const image = md.renderer.rules.image;
+  md.renderer.rules.image = (tokens, index, options, env, self) => {
+    const token = tokens[index];
+    const raw = token.children?.reduce((text, c) => text + c.content, "") ?? "";
+    const { alt, width, height } = splitImageAlt(raw);
+    if (width !== undefined) {
+      // **説明から大きさの字は落とす**（読み上げに `|300` を混ぜない）
+      const src = String(token.attrGet("src") ?? "");
+      const size =
+        ` width="${width}"` +
+        (height === undefined ? "" : ` height="${height}"`);
+      return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${size}>`;
+    }
+    return image
+      ? image(tokens, index, options, env, self)
+      : self.renderToken(tokens, index, options);
+  };
   md.renderer.rules.details_open = (tokens, index) =>
     detailsOpen(tokens[index].info);
   md.renderer.rules.details_close = () => "</details>\n";

@@ -47,6 +47,7 @@ import {
   UNKNOWN_NOTE_KIND,
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
+import { splitImageAlt } from "./image-size";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
@@ -279,11 +280,18 @@ class ImageWidget extends WidgetType {
   constructor(
     readonly url: string,
     readonly alt: string,
+    readonly width?: number,
+    readonly height?: number,
   ) {
     super();
   }
   eq(other: ImageWidget): boolean {
-    return other.url === this.url && other.alt === this.alt;
+    return (
+      other.url === this.url &&
+      other.alt === this.alt &&
+      other.width === this.width &&
+      other.height === this.height
+    );
   }
   toDOM(view: EditorView): HTMLElement {
     const holder = document.createElement("span");
@@ -295,6 +303,12 @@ class ImageWidget extends WidgetType {
       const image = document.createElement("img");
       image.src = src;
       image.alt = this.alt;
+      // 大きさ指定（6-8）。**幅だけのときは縦を自動に**（形が崩れない）
+      if (this.width !== undefined) {
+        image.style.width = `${this.width}px`;
+        image.style.height =
+          this.height === undefined ? "auto" : `${this.height}px`;
+      }
       holder.replaceChildren(image);
       // 画像の高さが後から確定するので、行レイアウトを測り直させる
       view.requestMeasure();
@@ -575,13 +589,14 @@ export function previewDecorations(
         const url = state.sliceDoc(urlNode.from, urlNode.to);
         if (REMOTE_RE.test(url)) return; // 遠隔は絵にしない
         const marks = node.node.getChildren("LinkMark");
-        const alt =
+        const raw =
           marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : "";
+        // `![説明|300](道)` の大きさ（6-8）
+        const { alt, width, height } = splitImageAlt(raw);
         out.push(
-          Decoration.replace({ widget: new ImageWidget(url, alt) }).range(
-            node.from,
-            node.to,
-          ),
+          Decoration.replace({
+            widget: new ImageWidget(url, alt, width, height),
+          }).range(node.from, node.to),
         );
         return false; // 中のマーカー隠しは重ねない
       }

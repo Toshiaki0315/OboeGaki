@@ -202,6 +202,23 @@ describe("collectCodeBlocks", () => {
     expect(html).toContain(".note-alert > :first-child::before");
   });
 
+  test("test_画像の大きさ指定が幅になる（6-8）", () => {
+    const html = renderHtml("![犬|300](a.png)\n", "画像");
+    expect(html).toContain('width="300"');
+    expect(html).toContain('alt="犬"'); // 説明から大きさは落とす
+    expect(html).not.toContain("犬|300");
+  });
+
+  test("test_縦横を書けば両方付く", () => {
+    const html = renderHtml("![犬|300x200](a.png)\n", "画像");
+    expect(html).toContain('width="300"');
+    expect(html).toContain('height="200"');
+  });
+
+  test("test_大きさでない縦棒は説明のまま", () => {
+    expect(renderHtml("![表 A|B](a.png)\n", "画像")).toContain('alt="表 A|B"');
+  });
+
   test("種類を省いたら info、知らない綴りは別扱い", () => {
     expect(renderHtml(":::note\n本文\n:::\n", "x")).toContain("note-info");
     // **info に寄せない**（間違いに気づけなくなる）
