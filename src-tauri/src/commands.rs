@@ -214,7 +214,8 @@ pub fn note_exists(root: String, path: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn note_read(root: String, path: String) -> Result<String, String> {
     let path = guarded(&root, &path)?;
-    fs::read_to_string(path).map_err(|e| e.to_string())
+    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    Ok(crate::vault::decode_text(&bytes))
 }
 
 #[tauri::command]

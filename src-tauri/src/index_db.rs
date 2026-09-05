@@ -129,9 +129,12 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
         return Ok(());
     };
     let relative = relative.to_string_lossy().into_owned();
-    let (Ok(meta), Ok(text)) = (fs::metadata(absolute), fs::read_to_string(absolute)) else {
+    // **本文は decode_text で読む**（7-6）。UTF-8 でない `.md`（ポメラや
+    // Windows で書いたもの）が索引から漏れると、一覧にも検索にも出ない
+    let (Ok(meta), Ok(bytes)) = (fs::metadata(absolute), fs::read(absolute)) else {
         return Ok(());
     };
+    let text = crate::vault::decode_text(&bytes);
     let title = absolute
         .file_stem()
         .and_then(|s| s.to_str())
@@ -851,6 +854,21 @@ mod tests {
     fn test_preview_200文字で切る() {
         let text = "あ".repeat(300);
         assert_eq!(note_preview(&text), "あ".repeat(200));
+    }
+
+    #[test]
+    fn test_search_Shift_JIS_のノートも索引に載る() {
+        // ポメラや Windows で書いた `.md`（7-6）。索引から漏れると、
+        // 一覧にも検索にも出ないまま「消えた」ように見える
+        let (root, vault) = vault_with(&[("他.md", "# 他\n")]);
+        // 「# 会議\n\n検索機能の話。\n」の Shift_JIS
+        let sjis = encoding_rs::SHIFT_JIS
+            .encode("# 会議\n\n検索機能の話。\n")
+            .0
+            .into_owned();
+        fs::write(root.path().join("会議.md"), sjis).unwrap();
+        let db = synced(&vault);
+        assert_eq!(paths(&db.search("検索機能").unwrap()), vec!["会議.md"]);
     }
 
     #[test]

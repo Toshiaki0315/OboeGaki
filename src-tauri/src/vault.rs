@@ -17,6 +17,25 @@ use chrono::{DateTime, Local};
 
 use crate::template::{daily_title, expand};
 
+/// バイト列を本文にする（TASKS 7-6。ポメラや Windows で書いた `.txt`）。
+///
+/// **まず UTF-8。読めなかったときだけ Shift_JIS で読み直す。** 文字コードの
+/// 当てずっぽうは危ない（UTF-8 のまま Shift_JIS と決めつけると全部化ける）。
+/// UTF-8 として成立するならそれが正しい、と決め打つ。
+///
+/// **改行は LF に揃える。** CRLF のまま CM6 に渡すと `\r` が字として残り、
+/// 行末に見えない文字が付いて回る。書き出しは今までどおり UTF-8 / LF。
+pub fn decode_text(bytes: &[u8]) -> String {
+    let text = match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        // 日本語の `.txt` はほぼ Shift_JIS（ポメラの既定もこれ）
+        Err(_) => encoding_rs::SHIFT_JIS.decode(bytes).0.into_owned(),
+    };
+    // BOM は字ではない（先頭に見えない文字が残ると検索も置換も外れる）
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text).to_string();
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 pub const TRASH_DIR: &str = ".trash";
 pub const MANAGED_DIR: &str = ".OboeGaki";
 /// 旧名（改名 2026-08-27 / ADR-0032）。開くときに一度だけ改名して引き継ぐ。
@@ -1452,6 +1471,31 @@ fn sort_by_trashed(entries: &mut [TrashEntry]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_UTF8_はそのまま読む() {
+        assert_eq!(decode_text("こんにちは\n".as_bytes()), "こんにちは\n");
+    }
+
+    #[test]
+    fn test_Shift_JIS_も読める_ポメラや_Windows_の_txt() {
+        // 「こんにちは」の Shift_JIS
+        let sjis = [0x82, 0xB1, 0x82, 0xF1, 0x82, 0xC9, 0x82, 0xBF, 0x82, 0xCD];
+        assert_eq!(decode_text(&sjis), "こんにちは");
+    }
+
+    #[test]
+    fn test_改行は_LF_に揃える() {
+        assert_eq!(decode_text(b"a\r\nb\r\n"), "a\nb\n");
+        assert_eq!(decode_text(b"a\rb"), "a\nb"); // 古い Mac の改行
+    }
+
+    #[test]
+    fn test_BOM_は落とす() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice("題".as_bytes());
+        assert_eq!(decode_text(&bytes), "題");
+    }
     use std::fs;
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
