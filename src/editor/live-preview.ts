@@ -18,6 +18,7 @@ import {
 } from "@codemirror/view";
 import {
   type EditorState,
+  type Extension,
   Facet,
   type Range,
   RangeSet,
@@ -1647,6 +1648,14 @@ export const livePreview = [
   hideMarkers,
   tableField,
   blockWidgetField,
-  syntaxHighlighting(style),
   blockTheme,
 ];
+
+/// 見た目（太字・見出しの大きさ・リンクの色…）。**ソースモードでは外す。**
+///
+/// ソースモードは「書いたとおりを見る」ための表示（`Cmd+/`）。記号を出す
+/// だけで太字や見出しの大きさが残っていると、**素のテキストに見えない**
+/// （実機報告 2026-09-06）。装飾はここに集めて、丸ごと外せるようにする。
+export function editorHighlights(sourceMode: boolean): Extension[] {
+  return sourceMode ? [] : [syntaxHighlighting(style)];
+}

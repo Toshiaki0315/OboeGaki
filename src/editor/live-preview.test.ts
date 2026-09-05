@@ -13,6 +13,7 @@ import { extendedInline } from "./extended-inline";
 import {
   bulletGlyph,
   blockWidgetDecorations,
+  editorHighlights,
   blockWidgetField,
   previewDecorations,
   setSourceMode,
@@ -632,6 +633,18 @@ describe("`:::note` の囲み（B-3）", () => {
     const marks = decorationsOf(bold, 0).filter((deco) => deco.kind === "hide");
     // `**` の開きと閉じが隠れている
     expect(marks.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("ソースモードの見た目（実機報告 2026-09-06）", () => {
+  test("test_ソースモードでは装飾を 1 つも入れない", () => {
+    // 記号を出すだけで太字や見出しの大きさが残っていると、
+    // 「書いたとおり」に見えない
+    expect(editorHighlights(true)).toEqual([]);
+  });
+
+  test("test_ふだんは装飾を入れる", () => {
+    expect(editorHighlights(false).length).toBeGreaterThan(0);
   });
 });
 

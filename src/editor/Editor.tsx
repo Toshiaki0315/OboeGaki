@@ -51,6 +51,7 @@ import { slashCompletion } from "./slash-menu";
 import { fenceLanguageCompletion } from "./fence-language";
 import {
   diagramThemeField,
+  editorHighlights,
   imageResolver,
   livePreview,
   setDiagramTheme,
@@ -62,6 +63,13 @@ import {
 import type { MermaidTheme } from "./mermaid";
 import { outlineOf, type OutlineItem } from "./outline";
 import { moveSection } from "./move-section";
+
+/// ソースモードのときは装飾も色分けも入れない（「書いたとおり」を見る）。
+function highlightsFor(sourceMode: boolean) {
+  return sourceMode
+    ? []
+    : [...editorHighlights(false), syntaxHighlighting(codeHighlight)];
+}
 import { copyCode } from "./copy-code";
 import { statsOf, type TextStats } from "./stats";
 
@@ -178,6 +186,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   attachmentSaver.current = saveAttachment;
   // タブ幅は Compartment で差し替える（設定を変えた瞬間に効かせる）
   const tabSize = useRef(new Compartment());
+  // 見た目（装飾と色分け）。**ソースモードで丸ごと外す**ので、作り直さずに
+  // 差し替えられる形で持つ（実機報告 2026-09-06）
+  const highlights = useRef(new Compartment());
   // 行番号は設定で入り切りするので、作り直さずに差し替えられる形で持つ
   const gutters = useRef(new Compartment());
   const tagSource = useRef(knownTags);
@@ -409,8 +420,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             // パーサ本体は最初にその言語が現れたときに遅延ロードされる
             codeLanguages: resolveCodeLanguage,
           }),
-          syntaxHighlighting(codeHighlight),
+
           livePreview,
+          highlights.current.of(highlightsFor(sourceMode ?? false)),
           copyCode, // コードブロックのコピー（要望 2026-09-06）
           tableAutoFormat, // 表を離れたら整える（ADR-0003 決定 4 / ADR-0044）
           headingFolding, // 見出しの折りたたみ（ADR-0019）
@@ -432,9 +444,19 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                 tr.effects.some((effect) => effect.is(setSourceMode)),
               )
             ) {
-              modeChanged.current?.(
-                update.state.field(sourceModeField, false) ?? false,
-              );
+              const source =
+                update.state.field(sourceModeField, false) ?? false;
+              modeChanged.current?.(source);
+              // **装飾を丸ごと外す / 戻す。** update の最中には流せないので、
+              // 1 拍おいてから差し替える（CM6 の決まり）
+              const current = update.view;
+              queueMicrotask(() => {
+                current.dispatch({
+                  effects: highlights.current.reconfigure(
+                    highlightsFor(source),
+                  ),
+                });
+              });
             }
             if (update.selectionSet) {
               cursorChanged.current?.(update.state.selection.main.head);
