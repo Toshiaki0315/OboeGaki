@@ -1077,8 +1077,9 @@ body.resizing {
   align-items: center;
   gap: 0.1rem;
   cursor: pointer;
-  /* 右は行と同じ 0.5rem を中のボタンが持つ（二重に空けない） */
-  padding: 0.3rem 0 0.3rem 0.5rem;
+  /* 縦と右の余白は中のボタンが持つ。**帯の高さを中のフォルダと
+     揃えるため**（見出しだけ細く見えた 2026-09-05） */
+  padding: 0 0 0 0.5rem;
   list-style: none;
 }
 
@@ -1090,8 +1091,9 @@ body.resizing {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  /* 右は行と同じ 0.5rem。件数の右端を中のフォルダと揃える */
-  padding: 0 0.5rem 0 0.3rem;
+  /* 縦は行と同じ 0.4rem（帯の高さが揃う）。右も行と同じ 0.5rem で、
+     件数の右端が中のフォルダと揃う */
+  padding: 0.4rem 0.5rem 0.4rem 0.3rem;
 }
 
 .note-list li button.folder-row,
@@ -1191,8 +1193,8 @@ details[open] > summary > .side-twist::before {
   /* 三角と字の間はフォルダの見出しと同じ（あちらは 0.1 + 中のボタンの 0.3） */
   gap: 0.4rem;
   cursor: pointer;
-  /* 右は件数の 0.5rem ぶんだけ空ける（フォルダの見出しと同じ） */
-  padding: 0.3rem 0.5rem 0.3rem 0.5rem;
+  /* 縦はフォルダの見出しと同じ（3 つの見出しの高さを揃える） */
+  padding: 0.4rem 0.5rem;
   list-style: none;
   opacity: 0.7;
 }
