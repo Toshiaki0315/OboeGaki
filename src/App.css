@@ -831,6 +831,11 @@ body.resizing {
 
 .note-row-preview {
   display: block;
+  /* **幅の上限が要る。** 行は `align-items: flex-start` の縦並びなので、
+     これが無いと中身の長さのまま伸びて、`…` で切れずに一覧が横に
+     はみ出す（題名のほうは上限があるので切れていた。実機報告
+     2026-09-05） */
+  max-width: 100%;
   font-size: 0.8rem;
   opacity: 0.65;
   overflow: hidden;
