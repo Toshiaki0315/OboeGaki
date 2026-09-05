@@ -2920,6 +2920,7 @@ function App() {
                         });
                       }}
                     >
+                      <MenuIcon name="folder" />
                       <span className="folder-name">フォルダ</span>
                       <span className="folder-count">{rootNotes}</span>
                     </button>
@@ -2986,6 +2987,7 @@ function App() {
                             });
                           }}
                         >
+                          <MenuIcon name="folder" />
                           <span className="folder-name">
                             {folderLabel(folder)}
                           </span>
@@ -3027,7 +3029,9 @@ function App() {
                           `folder-row${folderFilter === TRASH_FOLDER ? " selected" : ""}` +
                           (dropTrash ? " drop-target" : "")
                         }
-                        style={{ paddingLeft: "2.6rem" }}
+                        // 書き始めは見出しの「フォルダ」と揃える
+                        // （要望 2026-09-05）。中のフォルダより 1 段浅い
+                        style={{ paddingLeft: "1.8rem" }}
                         title="捨てたノートを見る（落とすと捨てます。右クリックで空にできます）"
                         onClick={() =>
                           filterByFolder(
@@ -3044,6 +3048,7 @@ function App() {
                           });
                         }}
                       >
+                        <MenuIcon name="trash" />
                         <span className="folder-name">ゴミ箱</span>
                         <span className="folder-count">
                           {trashNotes.length}
@@ -3062,6 +3067,7 @@ function App() {
                     }}
                   >
                     <span className="side-twist" aria-hidden="true" />
+                    <MenuIcon name="tag" />
                     <span className="side-label">タグ</span>
                     <span className="side-count">{tags.length}</span>
                   </summary>

@@ -1144,6 +1144,8 @@ body.resizing {
 
 .folder-count,
 .side-count {
+  /* 件数は右端。**左に絵が入っても右に張り付く**（要望 2026-09-05） */
+  margin-left: auto;
   font-size: 0.75rem;
   opacity: 0.55;
   font-variant-numeric: tabular-nums;

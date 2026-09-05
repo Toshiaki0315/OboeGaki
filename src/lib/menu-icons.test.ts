@@ -28,6 +28,14 @@ describe("MENU_ICONS", () => {
     );
   });
 
+  it("test_左の欄の 3 つ（フォルダ・ゴミ箱・タグ）に絵がある", () => {
+    // 要望 2026-09-05。**ゴミ箱はメニューと同じ絵**（同じ言葉に同じ絵）
+    const names: MenuIconName[] = ["folder", "trash", "tag"];
+    const drawn = names.map((name) => MENU_ICONS[name].join("|"));
+    for (const paths of drawn) expect(paths).not.toBe("");
+    expect(new Set(drawn).size).toBe(3); // 3 つとも見分けが付く
+  });
+
   it("test_捨てる操作は 1 つの絵にまとめる", () => {
     // ゴミ箱へ移動・完全に削除・ゴミ箱を空にする は同じ「捨てる」の絵
     const names: MenuIconName[] = ["trash"];
