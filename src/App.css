@@ -1067,34 +1067,59 @@ body.resizing {
   font-size: 0.9rem;
 }
 
+/* 見出しがそのまま保管フォルダの行（要望 2026-09-05）。件数を中のフォルダと
+   同じ右端に揃えたいので **flex で組む**。flex にすると summary の既定
+   （list-item）が消えて開閉の三角も消えるため、三角は自前で描く */
 .folder-section summary {
-  /* display を flex にすると summary の既定（list-item）が消えて
-     開閉の三角が出なくなる（実機報告 2026-09-04）。タグと同じ
-     ネイティブの三角を残し、＋ は絶対配置で右へ寄せる */
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
   cursor: pointer;
-  padding: 0.3rem 2rem 0.3rem 0.5rem;
-  opacity: 0.7;
+  /* 右は行と同じ 0.5rem を中のボタンが持つ（二重に空けない） */
+  padding: 0.3rem 0 0.3rem 0.5rem;
+  list-style: none;
 }
 
-.folder-add {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font: inherit;
-  color: inherit;
-  background: none;
+.folder-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.folder-twist {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  text-align: center;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.folder-section summary > .folder-head {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 右は行と同じ 0.5rem。件数の右端を中のフォルダと揃える */
+  padding: 0 0.5rem 0 0.3rem;
+}
+
+.note-list li button.folder-row,
+.folder-section summary > .folder-head {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   border: none;
-  padding: 0 0.3rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border-radius: 6px;
   cursor: pointer;
 }
 
 .note-list li button.folder-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+}
+
+.folder-section summary > .folder-head.selected {
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 /* ノートを落とせるフォルダ（要望 2026-09-04）。**掴んでいる間だけ光らせる** —

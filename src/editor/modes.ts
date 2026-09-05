@@ -22,7 +22,7 @@ import {
   StateEffect,
   StateField,
 } from "@codemirror/state";
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 
 function toggleField(
   effect: StateEffect<boolean> extends never
@@ -49,14 +49,23 @@ export const typewriterField = toggleField(setTypewriter);
 
 /// キャレットのある「段落」（トップレベルのブロック）の範囲。
 /// 空行の上では null（減光しない）。
+/// 木の解析を待つ上限。打鍵の 16ms を壊さない範囲に抑える（spec §6.6）。
+const PARSE_WAIT_MS = 50;
+
 export function focusRange(
   state: EditorState,
 ): { start: number; end: number } | null {
   const head = state.selection.main.head;
   const line = state.doc.lineAt(head);
   if (!line.text.trim()) return null;
+  // **木を待つ。** `syntaxTree` は時間で打ち切られるので、長いノートでは
+  // キャレットの手前まで届かず、段落が見つからないまま減光が消える。
+  // ここは選択が動くたびに通るので待つ時間は短くする（間に合わなければ
+  // 減光しないだけで、打鍵は止めない）
+  const tree =
+    ensureSyntaxTree(state, line.to, PARSE_WAIT_MS) ?? syntaxTree(state);
   // トップレベル（Document 直下）のブロックまで上がる
-  let node = syntaxTree(state).resolveInner(head, -1);
+  let node = tree.resolveInner(head, -1);
   while (node.parent && node.parent.name !== "Document") {
     node = node.parent;
   }

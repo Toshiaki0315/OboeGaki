@@ -32,6 +32,7 @@ import {
   type Handoff,
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
+import { splitFolders } from "./lib/folder-tree";
 import { trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
@@ -836,6 +837,9 @@ function App() {
     setHeadings(null);
     editorRef.current?.revealPos(item.from);
   }
+
+  // 「直下」は行ではなく見出しに出す（要望 2026-09-05）
+  const { root: rootNotes, sub: subFolders } = splitFolders(folders);
 
   // 左下のフォルダ / タグは排他で開く（ユーザー要望 2026-09-04）。
   // 両方開くと一覧が痩せすぎる。開いた側が縦の約 1/3 を使う
@@ -2806,34 +2810,70 @@ function App() {
                   className="folder-section"
                   open={sideOpen === "folders"}
                 >
+                  {/* **見出しがそのまま保管フォルダの行**（要望 2026-09-05）。
+                      同じ場所を指す「直下」の行を下に並べない。三角を押すと
+                      開閉、名前を押すと直下で絞る。作る操作は右クリックへ */}
                   <summary
                     onClick={(event) => {
                       event.preventDefault(); // 開閉はこちらで持つ（タグと排他）
                       toggleSide("folders");
                     }}
+                    onDragEnter={(event) => {
+                      if (!acceptsDrop(event, "")) return;
+                      event.preventDefault();
+                      setDropFolder("");
+                    }}
+                    onDragOver={(event) => {
+                      if (!acceptsDrop(event, "")) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDropFolder("");
+                    }}
+                    onDragLeave={() =>
+                      setDropFolder((current) =>
+                        current === "" ? null : current,
+                      )
+                    }
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const dragged =
+                        draggingNote.current ||
+                        event.dataTransfer.getData(NOTE_DRAG_TYPE);
+                      draggingNote.current = null;
+                      setDropFolder(null);
+                      if (dragged) void handleDropOnFolder(dragged, "");
+                    }}
                   >
-                    フォルダ（{folders.length - 1}）
+                    <span className="folder-twist" aria-hidden="true">
+                      {sideOpen === "folders" ? "▼" : "▶"}
+                    </span>
                     <button
-                      className="folder-add"
-                      title={
-                        folderFilter
-                          ? `「${folderFilter}」の中に作る`
-                          : "保管フォルダの直下に作る"
+                      className={
+                        `folder-row folder-head${folderFilter === "" ? " selected" : ""}` +
+                        (dropFolder === "" ? " drop-target" : "")
                       }
+                      title="右クリックで作る（ノートを落とすと直下へ移せます）"
                       onClick={(event) => {
                         event.preventDefault(); // summary の開閉を巻き込まない
                         event.stopPropagation();
-                        setFolderDialog({
-                          kind: "create",
-                          folder: folderFilter ?? "",
+                        filterByFolder(folderFilter === "" ? null : "");
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setFolderMenu({
+                          folder: "",
+                          x: event.clientX,
+                          y: event.clientY,
                         });
                       }}
                     >
-                      ＋
+                      <span className="folder-name">フォルダ</span>
+                      <span className="folder-count">{rootNotes}</span>
                     </button>
                   </summary>
                   <ul>
-                    {folders.map(({ folder, count }) => (
+                    {subFolders.map(({ folder, count }) => (
                       // **受け口はボタンではなく行に置く。** WebKit では
                       // ボタンがドラッグの出来事を飲んでしまう。あわせて
                       // **dragenter と dragover の両方を止める** —
@@ -2874,7 +2914,9 @@ function App() {
                             (folder === dropFolder ? " drop-target" : "")
                           }
                           style={{
-                            paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
+                            // 見出しの「フォルダ」の字と頭を揃える
+                            // （直下の行を畳んだぶん 1 段ずれた）
+                            paddingLeft: `${1 + folderDepth(folder) * 0.8}rem`,
                           }}
                           title="右クリックで作る・名前を変える・消す（ノートを落とすと移せます）"
                           onClick={() =>

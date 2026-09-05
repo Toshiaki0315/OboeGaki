@@ -36,6 +36,19 @@ describe("focusRange", () => {
     expect(range).toEqual({ start, end: doc.indexOf("続きの行。") + 5 });
   });
 
+  test("test_長いノートの終わりでも段落を見つける", () => {
+    // **`syntaxTree` は時間で打ち切られる。** 木が未完成のまま返ると
+    // 段落が見つからず、減光が丸ごと効かない（2026-09-05 に本番の
+    // テストが落ちて発覚。plain-copy・outline と同じ根）
+    const filler = Array.from({ length: 3000 }, (_, i) => `行 ${i}`).join("\n");
+    const long = `${filler}\n\n最後の段落。\n`;
+    const start = long.indexOf("最後の段落。");
+    expect(focusRange(stateOf(long, start + 2))).toEqual({
+      start,
+      end: start + "最後の段落。".length,
+    });
+  });
+
   test("見出しの上では見出しだけ", () => {
     const range = focusRange(stateOf(doc, 2));
     expect(range).toEqual({ start: 0, end: "# 見出し".length });
