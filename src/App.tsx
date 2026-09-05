@@ -1,10 +1,12 @@
 import {
   Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -205,6 +207,62 @@ const SPACING_LABELS: Record<LineSpacing, string> = {
   normal: "ふつう",
   relaxed: "ゆったり",
 };
+
+/// 右クリックのメニュー（枠と置き場所）。
+///
+/// **高さを見積もらない。** 項目が増えるたびに見積もりを直すことになり、
+/// 直し忘れると窓の下で切れて**最後の項目が押せなくなる**（実機報告
+/// 2026-09-05）。出してから測って置き直す。
+/// 画面より高いメニューは、そのまま中で送れるようにする（CSS の max-height）。
+function ContextMenu({
+  at,
+  onClose,
+  children,
+}: {
+  at: { x: number; y: number };
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const list = useRef<HTMLUListElement>(null);
+  const [placed, setPlaced] = useState<{ left: number; top: number } | null>(
+    null,
+  );
+  useLayoutEffect(() => {
+    const box = list.current?.getBoundingClientRect();
+    if (!box) return;
+    const spot = menuPosition(
+      at,
+      { width: box.width, height: box.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    setPlaced({ left: spot.x, top: spot.y });
+  }, [at]);
+  return (
+    <div
+      className="menu-backdrop"
+      onMouseDown={onClose}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <ul
+        ref={list}
+        className="context-menu"
+        // 測るまでは押した場所に置き、置き場所が決まるまで見せない
+        // （一瞬ずれた場所に出るのを避ける）
+        style={{
+          left: placed?.left ?? at.x,
+          top: placed?.top ?? at.y,
+          visibility: placed ? "visible" : "hidden",
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {children}
+      </ul>
+    </div>
+  );
+}
 
 /// メニューの項目に添える絵。**名前で引く**（同じ言葉には同じ絵）。
 function MenuIcon({ name }: { name: MenuIconName }) {
@@ -3937,97 +3995,73 @@ function App() {
                 action();
               };
               return (
-                <div
-                  className="menu-backdrop"
-                  onMouseDown={() => setNoteMenu(null)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setNoteMenu(null);
-                  }}
-                >
-                  <ul
-                    className="context-menu"
-                    // 窓の端で押されても外へはみ出さない（下の行が多い）
-                    style={(() => {
-                      const at = menuPosition(
-                        noteMenu,
-                        { width: 220, height: 300 },
-                        {
-                          width: window.innerWidth,
-                          height: window.innerHeight,
-                        },
-                      );
-                      return { left: at.x, top: at.y };
-                    })()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <li>
-                      <button onClick={run(() => void handlePin(target))}>
-                        <MenuIcon name="pin" />
-                        {pinned ? "ピンを外す" : "ピン留め"}
-                      </button>
-                    </li>
-                    <li>
-                      {/* **本文を入れ替える「開く」とは別の道**（U-1）。
+                <ContextMenu at={noteMenu} onClose={() => setNoteMenu(null)}>
+                  <li>
+                    <button onClick={run(() => void handlePin(target))}>
+                      <MenuIcon name="pin" />
+                      {pinned ? "ピンを外す" : "ピン留め"}
+                    </button>
+                  </li>
+                  <li>
+                    {/* **本文を入れ替える「開く」とは別の道**（U-1）。
                         書いているノートを奪わずに、もう 1 枚を並べる */}
-                      <button onClick={run(() => void openBeside(target))}>
-                        <MenuIcon name="beside" />
-                        横に開く
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(() => void handleDuplicate(target))}>
-                        <MenuIcon name="copy" />
-                        複製
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={run(() => {
-                          setMoveTarget(target);
-                          setMoveOpen(true);
-                        })}
-                      >
-                        <MenuIcon name="move" />
-                        フォルダへ移動…
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(() => setTemplateName(target))}>
-                        <MenuIcon name="template" />
-                        テンプレートに登録…
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    <li>
-                      <button onClick={run(() => void copyNoteLink(target))}>
-                        <MenuIcon name="link" />
-                        リンクをコピー
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(() => void revealItemInDir(target))}>
-                        <MenuIcon name="finder" />
-                        Finder で表示
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    <li>
-                      {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
-                      <button
-                        className="danger"
-                        disabled={pinned}
-                        title={
-                          pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
-                        }
-                        onClick={run(() => void handleTrash(target))}
-                      >
-                        <MenuIcon name="trash" />
-                        ゴミ箱へ移動
-                      </button>
-                    </li>
-                  </ul>
-                </div>
+                    <button onClick={run(() => void openBeside(target))}>
+                      <MenuIcon name="beside" />
+                      横に開く
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={run(() => void handleDuplicate(target))}>
+                      <MenuIcon name="copy" />
+                      複製
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={run(() => {
+                        setMoveTarget(target);
+                        setMoveOpen(true);
+                      })}
+                    >
+                      <MenuIcon name="move" />
+                      フォルダへ移動…
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={run(() => setTemplateName(target))}>
+                      <MenuIcon name="template" />
+                      テンプレートに登録…
+                    </button>
+                  </li>
+                  <li className="separator" />
+                  <li>
+                    <button onClick={run(() => void copyNoteLink(target))}>
+                      <MenuIcon name="link" />
+                      リンクをコピー
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={run(() => void revealItemInDir(target))}>
+                      <MenuIcon name="finder" />
+                      Finder で表示
+                    </button>
+                  </li>
+                  <li className="separator" />
+                  <li>
+                    {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
+                    <button
+                      className="danger"
+                      disabled={pinned}
+                      title={
+                        pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
+                      }
+                      onClick={run(() => void handleTrash(target))}
+                    >
+                      <MenuIcon name="trash" />
+                      ゴミ箱へ移動
+                    </button>
+                  </li>
+                </ContextMenu>
               );
             })()}
           {editorMenu !== null &&
@@ -4070,91 +4104,69 @@ function App() {
                 );
               };
               return (
-                <div
-                  className="menu-backdrop"
-                  onMouseDown={() => setEditorMenu(null)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setEditorMenu(null);
-                  }}
+                <ContextMenu
+                  at={editorMenu}
+                  onClose={() => setEditorMenu(null)}
                 >
-                  <ul
-                    className="context-menu"
-                    style={(() => {
-                      const at = menuPosition(
-                        editorMenu,
-                        { width: 200, height: 300 },
-                        {
-                          width: window.innerWidth,
-                          height: window.innerHeight,
-                        },
-                      );
-                      return { left: at.x, top: at.y };
-                    })()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <li>
-                      {/* 選んでいないときは押せない状態で見せる
+                  <li>
+                    {/* 選んでいないときは押せない状態で見せる
                         （項目ごと消すと、なぜ無いのか分からない） */}
-                      <button
-                        disabled={!selected}
-                        onClick={run(() => void editorClipboard("cut"))}
-                      >
-                        <MenuIcon name="cut" />
-                        切り取り
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        disabled={!selected}
-                        onClick={run(() => void editorClipboard("copy"))}
-                      >
-                        <MenuIcon name="copy" />
-                        コピー
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={run(() => void editorClipboard("paste"))}
-                      >
-                        <MenuIcon name="paste" />
-                        貼り付け
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    {format("strong", "太字")}
-                    {format("emphasis", "斜体")}
-                    {format("code", "コード")}
-                    {format("link", "リンク")}
-                    <li className="separator" />
-                    {format("heading", "見出し")}
-                    {format("bullet", "箇条書き")}
-                    {format("quote", "引用")}
-                    <li className="separator" />
-                    <li>
-                      <button onClick={run(() => setTableDialog(true))}>
-                        <MenuIcon name="table" />
-                        表を挿入…
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    {/* **外へ出る道**（要望 2026-09-05）。選んでいないときは
+                    <button
+                      disabled={!selected}
+                      onClick={run(() => void editorClipboard("cut"))}
+                    >
+                      <MenuIcon name="cut" />
+                      切り取り
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      disabled={!selected}
+                      onClick={run(() => void editorClipboard("copy"))}
+                    >
+                      <MenuIcon name="copy" />
+                      コピー
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={run(() => void editorClipboard("paste"))}>
+                      <MenuIcon name="paste" />
+                      貼り付け
+                    </button>
+                  </li>
+                  <li className="separator" />
+                  {format("strong", "太字")}
+                  {format("emphasis", "斜体")}
+                  {format("code", "コード")}
+                  {format("link", "リンク")}
+                  <li className="separator" />
+                  {format("heading", "見出し")}
+                  {format("bullet", "箇条書き")}
+                  {format("quote", "引用")}
+                  <li className="separator" />
+                  <li>
+                    <button onClick={run(() => setTableDialog(true))}>
+                      <MenuIcon name="table" />
+                      表を挿入…
+                    </button>
+                  </li>
+                  <li className="separator" />
+                  {/* **外へ出る道**（要望 2026-09-05）。選んでいないときは
                       押せない状態で見せる（渡すものが無い） */}
-                    {HANDOFFS.map((handoff) => (
-                      <li key={handoff.id}>
-                        <button
-                          disabled={!selected}
-                          onClick={run(() => void handOff(handoff))}
-                        >
-                          <MenuIcon
-                            name={handoff.search ? "search" : "handoff"}
-                          />
-                          {handoff.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                  {HANDOFFS.map((handoff) => (
+                    <li key={handoff.id}>
+                      <button
+                        disabled={!selected}
+                        onClick={run(() => void handOff(handoff))}
+                      >
+                        <MenuIcon
+                          name={handoff.search ? "search" : "handoff"}
+                        />
+                        {handoff.label}
+                      </button>
+                    </li>
+                  ))}
+                </ContextMenu>
               );
             })()}
           {gearMenu !== null &&
@@ -4174,6 +4186,9 @@ function App() {
               );
               const menu = menuActions.current;
               return (
+                // 歯車は**押した絵の真上**に出す（測って置くのではなく、
+                // 下端を歯車に合わせる = ADR は無いが lib/context-menu の
+                // anchorAbove の言）
                 <div
                   className="menu-backdrop"
                   onMouseDown={() => setGearMenu(null)}
@@ -4184,9 +4199,6 @@ function App() {
                 >
                   <ul
                     className="context-menu"
-                    // **下端を歯車に合わせ、上へは中身なりに伸ばす。**
-                    // 高さを見積もって上端を決めると、実際が短いときに
-                    // 歯車から離れて浮く（実機報告 2026-09-04）
                     style={anchorAbove(gearMenu, 230, {
                       width: window.innerWidth,
                       height: window.innerHeight,
@@ -4252,55 +4264,30 @@ function App() {
                 action();
               };
               return (
-                <div
-                  className="menu-backdrop"
-                  onMouseDown={() => setTagMenu(null)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setTagMenu(null);
-                  }}
-                >
-                  <ul
-                    className="context-menu"
-                    style={(() => {
-                      const at = menuPosition(
-                        tagMenu,
-                        { width: 200, height: 120 },
-                        {
-                          width: window.innerWidth,
-                          height: window.innerHeight,
-                        },
-                      );
-                      return { left: at.x, top: at.y };
-                    })()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <li>
-                      <button
-                        onClick={run(() =>
-                          filterByTag(filtered ? null : target),
-                        )}
-                      >
-                        {filtered ? "絞り込みを解除" : `#${target} で絞り込む`}
-                      </button>
-                    </li>
-                    <li>
-                      {/* 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
+                <ContextMenu at={tagMenu} onClose={() => setTagMenu(null)}>
+                  <li>
+                    <button
+                      onClick={run(() => filterByTag(filtered ? null : target))}
+                    >
+                      {filtered ? "絞り込みを解除" : `#${target} で絞り込む`}
+                    </button>
+                  </li>
+                  <li>
+                    {/* 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
                         検索へ回す（同じ書き方が検索欄でも効く） */}
-                      <button onClick={run(() => searchByTag(target))}>
-                        <MenuIcon name="search" />
-                        このタグで全ノート検索
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    <li>
-                      <button onClick={run(() => void copyTag(target))}>
-                        <MenuIcon name="copy" />
-                        タグ名をコピー
-                      </button>
-                    </li>
-                  </ul>
-                </div>
+                    <button onClick={run(() => searchByTag(target))}>
+                      <MenuIcon name="search" />
+                      このタグで全ノート検索
+                    </button>
+                  </li>
+                  <li className="separator" />
+                  <li>
+                    <button onClick={run(() => void copyTag(target))}>
+                      <MenuIcon name="copy" />
+                      タグ名をコピー
+                    </button>
+                  </li>
+                </ContextMenu>
               );
             })()}
           {folderMenu !== null &&
@@ -4314,67 +4301,47 @@ function App() {
                 action();
               };
               return (
-                <div
-                  className="menu-backdrop"
-                  onMouseDown={() => setFolderMenu(null)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setFolderMenu(null);
-                  }}
+                <ContextMenu
+                  at={folderMenu}
+                  onClose={() => setFolderMenu(null)}
                 >
-                  <ul
-                    className="context-menu"
-                    style={(() => {
-                      const at = menuPosition(
-                        folderMenu,
-                        { width: 200, height: isRoot ? 44 : 120 },
-                        {
-                          width: window.innerWidth,
-                          height: window.innerHeight,
-                        },
-                      );
-                      return { left: at.x, top: at.y };
-                    })()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <li>
-                      <button
-                        onClick={run(() =>
-                          setFolderDialog({ kind: "create", folder: target }),
-                        )}
-                      >
-                        {isRoot ? "新規フォルダ…" : "この中に新規フォルダ…"}
-                      </button>
-                    </li>
-                    {!isRoot && (
-                      <>
-                        <li className="separator" />
-                        <li>
-                          <button
-                            onClick={run(() =>
-                              setFolderDialog({
-                                kind: "rename",
-                                folder: target,
-                              }),
-                            )}
-                          >
-                            <MenuIcon name="rename" />
-                            名前を変更…
-                          </button>
-                        </li>
-                        <li>
-                          <button
-                            className="danger"
-                            onClick={run(() => void handleDeleteFolder(target))}
-                          >
-                            <MenuIcon name="trash" />
-                            削除
-                          </button>
-                        </li>
-                      </>
-                    )}
-                  </ul>
-                </div>
+                  <li>
+                    <button
+                      onClick={run(() =>
+                        setFolderDialog({ kind: "create", folder: target }),
+                      )}
+                    >
+                      {isRoot ? "新規フォルダ…" : "この中に新規フォルダ…"}
+                    </button>
+                  </li>
+                  {!isRoot && (
+                    <>
+                      <li className="separator" />
+                      <li>
+                        <button
+                          onClick={run(() =>
+                            setFolderDialog({
+                              kind: "rename",
+                              folder: target,
+                            }),
+                          )}
+                        >
+                          <MenuIcon name="rename" />
+                          名前を変更…
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          className="danger"
+                          onClick={run(() => void handleDeleteFolder(target))}
+                        >
+                          <MenuIcon name="trash" />
+                          削除
+                        </button>
+                      </li>
+                    </>
+                  )}
+                </ContextMenu>
               );
             })()}
           {trashMenu !== null &&
@@ -4385,67 +4352,38 @@ function App() {
                 action();
               };
               return (
-                <div
-                  className="menu-backdrop"
-                  onMouseDown={() => setTrashMenu(null)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setTrashMenu(null);
-                  }}
-                >
-                  <ul
-                    className="context-menu"
-                    style={(() => {
-                      const at = menuPosition(
-                        trashMenu,
-                        // 高さは項目の数ぶん。決め打ちにすると項目 1 つの
-                        // メニューが押した場所から離れて出る
-                        { width: 180, height: target === null ? 44 : 84 },
-                        {
-                          width: window.innerWidth,
-                          height: window.innerHeight,
-                        },
-                      );
-                      return { left: at.x, top: at.y };
-                    })()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    {target === null ? (
+                <ContextMenu at={trashMenu} onClose={() => setTrashMenu(null)}>
+                  {target === null ? (
+                    <li>
+                      <button
+                        className="danger"
+                        onClick={run(() => void handleEmptyTrash())}
+                      >
+                        <MenuIcon name="trash" />
+                        ゴミ箱を空にする…
+                      </button>
+                    </li>
+                  ) : (
+                    <>
+                      <li>
+                        <button onClick={run(() => void handleRestore(target))}>
+                          <MenuIcon name="restore" />
+                          元に戻す
+                        </button>
+                      </li>
+                      <li className="separator" />
                       <li>
                         <button
                           className="danger"
-                          onClick={run(() => void handleEmptyTrash())}
+                          onClick={run(() => void handleDeleteForever(target))}
                         >
                           <MenuIcon name="trash" />
-                          ゴミ箱を空にする…
+                          完全に削除
                         </button>
                       </li>
-                    ) : (
-                      <>
-                        <li>
-                          <button
-                            onClick={run(() => void handleRestore(target))}
-                          >
-                            <MenuIcon name="restore" />
-                            元に戻す
-                          </button>
-                        </li>
-                        <li className="separator" />
-                        <li>
-                          <button
-                            className="danger"
-                            onClick={run(
-                              () => void handleDeleteForever(target),
-                            )}
-                          >
-                            <MenuIcon name="trash" />
-                            完全に削除
-                          </button>
-                        </li>
-                      </>
-                    )}
-                  </ul>
-                </div>
+                    </>
+                  )}
+                </ContextMenu>
               );
             })()}
           {styleFindings !== null && (

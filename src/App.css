@@ -1198,6 +1198,11 @@ body.resizing {
   border-radius: 8px;
   box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
   font-size: 0.85rem;
+  /* **画面より高くなっても最後まで押せるように**（実機報告 2026-09-05:
+     下のほうで開くと途中で切れていた）。置き場所は測ってから決めるが、
+     窓そのものより高い献立はここで送れるようにする */
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
 }
 
 .context-menu li.separator {
