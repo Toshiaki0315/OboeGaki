@@ -201,8 +201,28 @@ impl Vault {
     /// 本文はタイトルの見出し 1 行（ADR-0005 の「タイトル ↔ 見出し」の対応）。
     /// front matter の id は履歴（ADR-0023）を実装するときに足す。
     pub fn create(&self, title: &str) -> io::Result<PathBuf> {
+        self.create_in("", title)
+    }
+
+    /// フォルダを指定して新しいノートを作る（フォルダの右クリックから）。
+    ///
+    /// **行き先は実在するフォルダ**（画面の一覧から来る）。空文字は直下。
+    /// 予約フォルダや vault の外は `existing_folder_relative` が断る。
+    pub fn create_in(&self, folder: &str, title: &str) -> io::Result<PathBuf> {
+        let cleaned = self.existing_folder_relative(folder)?;
+        let destination = if cleaned.is_empty() {
+            self.root.clone()
+        } else {
+            self.root.join(&cleaned)
+        };
+        fs::create_dir_all(&destination)?;
+        // 実体で確かめる。字句検査だけだと、シンボリックリンク経由で
+        // vault の外にノートが生まれる（move_note と同じ理由）
+        if !self.inside(&destination) {
+            return Err(outside_error("保管フォルダの外には作れない", &destination));
+        }
         let stem = sanitize_filename(title);
-        let path = unique_path(&self.root, &stem, ".md", None);
+        let path = unique_path(&destination, &stem, ".md", None);
         crate::autosave::save_atomic(&path, &format!("# {title}\n\n"))?;
         Ok(path)
     }
@@ -1898,6 +1918,35 @@ mod tests {
         vault.create("無題").unwrap();
         let second = vault.create("無題").unwrap();
         assert_eq!(second, root.path().join("無題-2.md"));
+    }
+
+    #[test]
+    fn test_create_in_フォルダの中に作る() {
+        // フォルダを右クリックして新規ノート（要望 2026-09-05）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        fs::create_dir(root.path().join("仕事")).unwrap();
+        let path = vault.create_in("仕事", "無題").unwrap();
+        assert_eq!(path, root.path().join("仕事/無題.md"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "# 無題\n\n");
+    }
+
+    #[test]
+    fn test_create_in_空文字は保管フォルダの直下() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        assert_eq!(
+            vault.create_in("", "無題").unwrap(),
+            root.path().join("無題.md")
+        );
+    }
+
+    #[test]
+    fn test_create_in_予約フォルダと外には作らせない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        assert!(vault.create_in(".trash", "無題").is_err());
+        assert!(vault.create_in("../外", "無題").is_err());
     }
 
     #[test]

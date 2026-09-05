@@ -15,6 +15,7 @@ export type MenuIconName =
   | "finder"
   | "trash"
   | "restore"
+  | "noteNew"
   | "folderNew"
   | "rename"
   | "filter"
@@ -66,6 +67,11 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   ],
   // 戻す（左へ回る矢印）
   restore: ["M3.4 8a4.8 4.8 0 1 0 1.6-3.6", "M2.6 3.2v3.4h3.4"],
+  // 新しいノート（紙と ＋。雛形に登録＝紙の外の ＋ と描き分ける）
+  noteNew: [
+    "M3.4 2.4h9.2a1 1 0 0 1 1 1v9.2a1 1 0 0 1-1 1H3.4a1 1 0 0 1-1-1V3.4a1 1 0 0 1 1-1z",
+    "M8 5.4v5.2M5.4 8h5.2",
+  ],
   // 新しいフォルダ（フォルダと ＋）
   folderNew: [
     "M1.8 12.5v-8a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.4a1 1 0 0 1-1 1h-9.4a1 1 0 0 1-1-1z",

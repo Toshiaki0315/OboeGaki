@@ -1528,11 +1528,17 @@ function App() {
     setPrintBody(null); // 前のノートの印刷用の組みは捨てる（ADR-0038）
   }
 
-  async function handleCreate() {
+  /// 新しいノート（Cmd+N・フォルダの右クリック）。
+  /// フォルダを渡すとその中に作る（空文字は直下）。
+  async function handleCreate(folder = "") {
     if (!vaultRoot) return;
-    const path = await createNote(vaultRoot, "無題");
-    await refresh();
-    await openNote(path);
+    try {
+      const path = await createNote(vaultRoot, "無題", folder);
+      await refresh();
+      await openNote(path);
+    } catch (error) {
+      setStatus(String(error));
+    }
   }
 
   /// テンプレートを選ぶ（Cmd+Shift+N）。**題名は聞かない** — 雛形の名前を
@@ -4425,12 +4431,19 @@ function App() {
                   onClose={() => setFolderMenu(null)}
                 >
                   <li>
+                    <button onClick={run(() => void handleCreate(target))}>
+                      <MenuIcon name="noteNew" />
+                      新規ノート
+                    </button>
+                  </li>
+                  <li>
                     <button
                       onClick={run(() =>
                         setFolderDialog({ kind: "create", folder: target }),
                       )}
                     >
-                      {isRoot ? "新規フォルダ…" : "この中に新規フォルダ…"}
+                      <MenuIcon name="folderNew" />
+                      新規フォルダ…
                     </button>
                   </li>
                   <li>

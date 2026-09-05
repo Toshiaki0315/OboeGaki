@@ -486,14 +486,18 @@ pub async fn note_search(root: String, query: String) -> Result<SearchOutcome, S
     })
 }
 
+/// 新しいノートを作る。`folder` を渡すとその中に作る（省略で直下）。
 #[tauri::command]
 pub fn note_create(
     state: tauri::State<'_, WatchState>,
     root: String,
     title: String,
+    folder: Option<String>,
 ) -> Result<String, String> {
     let vault = Vault::new(&root);
-    let path = vault.create(&title).map_err(|e| e.to_string())?;
+    let path = vault
+        .create_in(folder.as_deref().unwrap_or(""), &title)
+        .map_err(|e| e.to_string())?;
     state.suppressor.mark(&path);
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))

@@ -19,6 +19,15 @@ describe("MENU_ICONS", () => {
     expect(new Set(drawn).size).toBe(drawn.length);
   });
 
+  it("test_新しく作る操作はノートとフォルダで描き分ける", () => {
+    // 同じメニューに 2 つ並ぶ（要望 2026-09-05）。同じ絵だとどちらが
+    // どちらか分からない
+    expect(MENU_ICONS.noteNew).toBeDefined();
+    expect(MENU_ICONS.noteNew.join("|")).not.toBe(
+      MENU_ICONS.folderNew.join("|"),
+    );
+  });
+
   it("test_捨てる操作は 1 つの絵にまとめる", () => {
     // ゴミ箱へ移動・完全に削除・ゴミ箱を空にする は同じ「捨てる」の絵
     const names: MenuIconName[] = ["trash"];

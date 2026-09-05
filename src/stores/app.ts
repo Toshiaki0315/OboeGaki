@@ -109,8 +109,13 @@ export async function writeNote(
   await invoke("note_write", { root, path, text, historyMinutes });
 }
 
-export async function createNote(root: string, title: string): Promise<string> {
-  return invoke<string>("note_create", { root, title });
+/// 新しいノートを作る。`folder`（vault からの相対）を渡すとその中に作る。
+export async function createNote(
+  root: string,
+  title: string,
+  folder?: string,
+): Promise<string> {
+  return invoke<string>("note_create", { root, title, folder });
 }
 
 export async function renameNote(
