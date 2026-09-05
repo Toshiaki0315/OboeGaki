@@ -5,8 +5,14 @@
 setup:            ## 初回セットアップ
 	npm install
 
+# dev サーバのポート。既定 1430（1420 は Tauri テンプレートの既定値で
+# 他アプリと衝突する）。`OBOEGAKI_DEV_PORT=1500 make run` で変えられる。
+# tauri.conf.json の devUrl は静的なので、同じ値を --config で被せて揃える。
+OBOEGAKI_DEV_PORT ?= 1430
+
 run:              ## アプリ起動（Tauri dev = WKWebView。初回は Rust ビルドで数分）
-	npm run tauri dev
+	OBOEGAKI_DEV_PORT=$(OBOEGAKI_DEV_PORT) npm run tauri dev -- \
+	  --config '{"build":{"devUrl":"http://localhost:$(OBOEGAKI_DEV_PORT)"}}'
 
 test:             ## フロントエンドのテスト
 	npx vitest run

@@ -71,6 +71,24 @@ make check
 
 `package-lock.json` / `Cargo.lock` は必ずコミットする（再現性）。
 
+### dev サーバのポート
+
+既定は **1430**。Tauri テンプレートの既定値 1420 は、同じテンプレートから
+作った他アプリ（FudaCho など）と衝突する — 衝突すると Vite は strictPort で
+起動に失敗する一方、Tauri のウィンドウは devUrl のポートを読みに行くため、
+**別アプリの画面が出る**という分かりにくい形で現れる。
+
+変えたいときは環境変数で指定する（HMR は隣のポートを使う）:
+
+```bash
+OBOEGAKI_DEV_PORT=1500 make run
+```
+
+判定は `src/lib/dev-port.ts`。整数でない値・1024〜65534 の範囲外は、
+黙って既定へ落とさずその場で失敗させる。`make run` は同じ値を
+`--config` で `build.devUrl` に被せて、Vite と Tauri のポートを揃える
+（`tauri.conf.json` は静的 JSON なので環境変数を読めない）。
+
 ---
 
 ## 3. アーキテクチャの不可侵ルール
