@@ -12,7 +12,11 @@ import {
   useRef,
   type MouseEvent,
 } from "react";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  lineNumbers as lineNumbersGutter,
+} from "@codemirror/view";
 import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -115,6 +119,8 @@ type Props = {
   saveAttachment?: SaveAttachment;
   /** タブを何文字ぶんの幅で見せるか（環境設定） */
   tabWidth?: number;
+  /** 行番号を出すか（環境設定。TASKS 7-4） */
+  lineNumbers?: boolean;
   /** 4 文字の字下げをコードブロックとして扱うか（ADR-0033）。
       パーサ構成なので、変えるときは呼び出し側が作り直す（key に含める） */
   indentedCode?: boolean;
@@ -146,6 +152,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     onContextMenu,
     saveAttachment,
     tabWidth,
+    lineNumbers,
     indentedCode,
     knownTags,
     knownNotes,
@@ -170,6 +177,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   attachmentSaver.current = saveAttachment;
   // タブ幅は Compartment で差し替える（設定を変えた瞬間に効かせる）
   const tabSize = useRef(new Compartment());
+  // 行番号は設定で入り切りするので、作り直さずに差し替えられる形で持つ
+  const gutters = useRef(new Compartment());
   const tagSource = useRef(knownTags);
   tagSource.current = knownTags;
   const noteSource = useRef(knownNotes);
@@ -318,6 +327,16 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   }, [tabWidth]);
 
   useEffect(() => {
+    const current = view.current;
+    if (!current) return;
+    current.dispatch({
+      effects: gutters.current.reconfigure(
+        lineNumbers ? lineNumbersGutter() : [],
+      ),
+    });
+  }, [lineNumbers]);
+
+  useEffect(() => {
     if (!host.current) return;
     view.current = new EditorView({
       parent: host.current,
@@ -338,6 +357,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
             : []),
           tabSize.current.of(EditorState.tabSize.of(tabWidth ?? 4)),
+          gutters.current.of(lineNumbers ? lineNumbersGutter() : []),
           frontMatterHide,
           diagramThemeField.init(() => diagramTheme ?? "light"),
           sourceModeField.init(() => sourceMode ?? false),

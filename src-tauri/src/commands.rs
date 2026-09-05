@@ -853,7 +853,7 @@ pub fn open_in_finder(root: String, path: String) -> Result<(), String> {
 
 /// 文字ごと渡してよい URL の頭。**ここも決め打ち** — 画面から来た URL を
 /// そのまま開くと、`file://` でも何でも開けてしまう。
-pub const HANDOFF_URLS: [&str; 1] = ["claude://claude.ai/new?q="];
+pub const HANDOFF_URLS: [&str; 2] = ["claude://claude.ai/new?q=", "dict://"];
 
 /// 文字ごと渡す（貼り付けが要らないアプリ用。要望 2026-09-05）。
 ///

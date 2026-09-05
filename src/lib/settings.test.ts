@@ -24,6 +24,24 @@ function fakeStorage(initial: Record<string, string> = {}) {
   };
 }
 
+describe("行番号（TASKS 7-4）", () => {
+  it("test_既定は出さない（ふだんは要らない）", () => {
+    expect(DEFAULT_SETTINGS.lineNumbers).toBe(false);
+  });
+
+  it("test_覚えて読み戻せる", () => {
+    const storage = fakeStorage();
+    saveSettings(storage, { ...DEFAULT_SETTINGS, lineNumbers: true });
+    expect(loadSettings(storage).lineNumbers).toBe(true);
+  });
+
+  it("test_壊れた値なら既定に落ちる", () => {
+    const storage = fakeStorage();
+    storage.setItem("oboegaki.settings", '{"lineNumbers":"はい"}');
+    expect(loadSettings(storage).lineNumbers).toBe(false);
+  });
+});
+
 describe("loadSettings", () => {
   it("test_記憶が無ければ既定", () => {
     expect(loadSettings(fakeStorage())).toEqual(DEFAULT_SETTINGS);

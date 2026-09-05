@@ -25,6 +25,7 @@ import { anchorAbove, menuPosition } from "./lib/context-menu";
 import {
   AI_HANDOFFS,
   confirmMessage,
+  dictUrl,
   handoffUrl,
   needsConfirm,
   searchUrl,
@@ -49,7 +50,7 @@ import {
 } from "./lib/fonts";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
-import type { TextStats } from "./editor/stats";
+import { sheets, type TextStats } from "./editor/stats";
 import {
   collectMermaid,
   renderMermaid,
@@ -1893,6 +1894,23 @@ function App() {
         root,
         path: finderTarget(root, folder),
       });
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  /// 選んだ語を手元の辞書で引く（TASKS 7-2。ポメラの電子辞書相当）。
+  ///
+  /// **外へ出ない**（macOS の辞書が開くだけ）ので、確認の窓は挟まない。
+  async function lookUpInDictionary() {
+    const selected = editorRef.current?.getSelection() ?? "";
+    const url = dictUrl(selected);
+    if (!url) {
+      setStatus("辞書で引くには、語を短く選んでください");
+      return;
+    }
+    try {
+      await invoke("open_handoff_url", { url });
     } catch (error) {
       setStatus(String(error));
     }
@@ -3797,6 +3815,21 @@ function App() {
                           4 文字の字下げでコードブロックとする
                         </span>
                       </label>
+                      <label>
+                        <span>行番号</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={settings.lineNumbers}
+                            onChange={(event) =>
+                              changeSettings({
+                                lineNumbers: event.currentTarget.checked,
+                              })
+                            }
+                          />
+                          本文の左に行番号を出す
+                        </span>
+                      </label>
                     </div>
                     <h3 className="pref-section">ウィンドウ</h3>
                     <p className="pref-note">
@@ -4372,6 +4405,17 @@ function App() {
                     >
                       <MenuIcon name="search" />
                       {SEARCH_HANDOFF.label}
+                    </button>
+                  </li>
+                  {/* 手元の辞書（7-2。ポメラの電子辞書相当）。**外へ出ない**
+                      ので、生成 AI のような確認は挟まない */}
+                  <li>
+                    <button
+                      disabled={!selected}
+                      onClick={run(() => void lookUpInDictionary())}
+                    >
+                      <MenuIcon name="dictionary" />
+                      辞書で調べる
                     </button>
                   </li>
                 </ContextMenu>
@@ -5064,6 +5108,7 @@ function App() {
                 resolveImage={(url) => imageSource(vaultRoot, url)}
                 diagramTheme={diagramTheme}
                 tabWidth={settings.tabWidth}
+                lineNumbers={settings.lineNumbers}
                 indentedCode={settings.indentedCode}
               />
             </aside>
@@ -5142,7 +5187,11 @@ function App() {
           <span className="status-message">{status}</span>
           <span className="status-stats">
             {currentPath !== null &&
-              `${stats.characters} 文字 / ${stats.lines} 行`}
+              // 原稿用紙の枚数は 1 枚を超えてから足す（ポメラ調べ 7-3）
+              `${stats.characters} 文字 / ${stats.lines} 行` +
+                (sheets(stats.characters) === null
+                  ? ""
+                  : ` / ${sheets(stats.characters)} 枚`)}
             {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
           </span>
         </footer>

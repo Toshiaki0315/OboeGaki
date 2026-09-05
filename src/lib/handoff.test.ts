@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AI_HANDOFFS,
+  dictUrl,
   confirmMessage,
   HANDOFFS,
   handoffUrl,
@@ -118,5 +119,23 @@ describe("confirmMessage", () => {
     const message = confirmMessage(claude, "あ".repeat(500));
     expect([...message].length).toBeLessThan(300);
     expect(message).toContain("…");
+  });
+});
+
+describe("dictUrl", () => {
+  it("test_選んだ語を手元の辞書に渡す（外へ出ない）", () => {
+    expect(dictUrl("覚書")).toBe("dict://%E8%A6%9A%E6%9B%B8");
+  });
+
+  it("test_前後の空白は落とす", () => {
+    expect(dictUrl("  漢字\n")).toBe("dict://%E6%BC%A2%E5%AD%97");
+  });
+
+  it("test_長すぎるものは引かない（語を引く道具なので）", () => {
+    expect(dictUrl("あ".repeat(200))).toBeNull();
+  });
+
+  it("test_空なら引かない", () => {
+    expect(dictUrl("   ")).toBeNull();
   });
 });

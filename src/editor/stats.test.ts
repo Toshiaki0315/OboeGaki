@@ -6,7 +6,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
-import { countText, statsOf } from "./stats";
+import { countText, sheets, statsOf } from "./stats";
 
 function stats(doc: string) {
   const state = EditorState.create({
@@ -57,5 +57,24 @@ describe("statsOf", () => {
   test("コードは記号ごと数える（記号もコードの一部）", () => {
     const doc = "```js\nlet a = 1;\n```\n";
     expect(stats(doc).lines).toBe(3);
+  });
+});
+
+describe("sheets", () => {
+  test("test_400 字で 1 枚（原稿用紙の数え方）", () => {
+    expect(sheets(400)).toBe("1");
+    expect(sheets(800)).toBe("2");
+  });
+
+  test("test_端数は小数第 1 位まで（切り上げない）", () => {
+    // 「あと少しで 2 枚」が見えるほうが、書く手が進む
+    expect(sheets(600)).toBe("1.5");
+    expect(sheets(444)).toBe("1.1");
+  });
+
+  test("test_1 枚に満たなければ null（枚数を出さない）", () => {
+    // 0.2 枚と言われても分からない。1 枚を超えてから出す
+    expect(sheets(399)).toBeNull();
+    expect(sheets(0)).toBeNull();
   });
 });

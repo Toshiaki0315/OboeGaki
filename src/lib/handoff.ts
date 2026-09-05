@@ -78,3 +78,16 @@ export function confirmMessage(handoff: Handoff, text: string): string {
     `この内容はこのパソコンの外へ出ます。\n\n${shown}`
   );
 }
+
+/// 辞書で引ける長さの上限。**語を引く道具**なので、文を渡さない。
+const DICT_MAX = 40;
+
+/// 選んだ語を macOS の辞書で引く URL（TASKS 7-2。ポメラの電子辞書相当）。
+///
+/// **外へ出ない**（手元の辞書アプリが開くだけ）ので、生成 AI に渡すときの
+/// ような確認の窓は挟まない。引けないときは null。
+export function dictUrl(text: string): string | null {
+  const word = text.trim();
+  if (!word || [...word].length > DICT_MAX) return null;
+  return `dict://${encodeURIComponent(word)}`;
+}

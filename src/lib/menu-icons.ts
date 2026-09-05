@@ -16,6 +16,7 @@ export type MenuIconName =
   | "trash"
   | "restore"
   | "noteNew"
+  | "dictionary"
   | "moveUp"
   | "moveDown"
   | "folder"
@@ -71,6 +72,11 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   ],
   // 戻す（左へ回る矢印）
   restore: ["M3.4 8a4.8 4.8 0 1 0 1.6-3.6", "M2.6 3.2v3.4h3.4"],
+  // 辞書で調べる（開いた本）
+  dictionary: [
+    "M8 4.4C6.6 3.2 4.6 2.8 2.4 3v9.4c2.2-.2 4.2.2 5.6 1.4 1.4-1.2 3.4-1.6 5.6-1.4V3c-2.2-.2-4.2.2-5.6 1.4z",
+    "M8 4.4v10",
+  ],
   // 節を上へ動かす（上向きの矢印）
   moveUp: ["M8 13V3.6", "M4.2 7.4 8 3.6l3.8 3.8"],
   // 節を下へ動かす（下向きの矢印）

@@ -50,6 +50,9 @@ export type Settings = {
   notesVisible: boolean;
   /// フォルダ・タグ・ゴミ箱の並び（サイドバー相当）を出すか（Cmd+1）。
   treesVisible: boolean;
+  /// 本文に行番号を出すか（TASKS 7-4。ポメラの調べ）。**既定は出さない** —
+  /// ふだんは要らず、人と原稿をやり取りするときだけ効く。
+  lineNumbers: boolean;
   /// 生成 AI へ渡す前に確認するか（要望 2026-09-05）。**既定は確認する** —
   /// ノートの中身が外へ出る操作なので、黙って出さない。
   confirmHandoff: boolean;
@@ -103,6 +106,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // 次の起動が真っ白な窓になった（実測）
   notesVisible: true,
   treesVisible: true,
+  lineNumbers: false,
   confirmHandoff: true,
   slideTemplate: "",
   assistantEnabled: true, // 今までどおり使える状態から始める
@@ -181,6 +185,7 @@ export function loadSettings(storage: StorageLike): Settings {
     ),
     notesVisible: readFlag(stored.notesVisible, DEFAULT_SETTINGS.notesVisible),
     treesVisible: readFlag(stored.treesVisible, DEFAULT_SETTINGS.treesVisible),
+    lineNumbers: readFlag(stored.lineNumbers, DEFAULT_SETTINGS.lineNumbers),
     confirmHandoff: readFlag(
       stored.confirmHandoff,
       DEFAULT_SETTINGS.confirmHandoff,

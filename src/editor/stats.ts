@@ -31,6 +31,20 @@ export function countText(text: string): TextStats {
   };
 }
 
+/// 原稿用紙（400 字詰め）の枚数。1 枚に満たなければ null。
+///
+/// **日本語の書き手はこちらで測る**（ポメラの調べ 2026-09-06）。
+/// 切り上げない — 「あと少しで 2 枚」が見えるほうが手が進む。
+/// 1 枚未満のときに「0.2 枚」と言われても分からないので、出さない。
+export function sheets(characters: number): string | null {
+  if (characters < SHEET) return null;
+  const count = Math.floor((characters / SHEET) * 10) / 10;
+  return String(count);
+}
+
+/// 原稿用紙 1 枚の字数（20 字 × 20 行）。
+const SHEET = 400;
+
 /// エディタの今の内容を数える。
 export function statsOf(state: EditorState): TextStats {
   const body = frontMatterRange(state.doc.toString())?.bodyStart ?? 0;
