@@ -43,6 +43,7 @@ import { plainCopyKeymap } from "./plain-copy";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import { tagCompletion } from "./tag-complete";
 import { noteLinkCompletion } from "./note-link-complete";
+import { slashCompletion } from "./slash-menu";
 import {
   diagramThemeField,
   imageResolver,
@@ -328,6 +329,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             override: [
               tagCompletion(() => tagSource.current?.() ?? []),
               noteLinkCompletion(() => noteSource.current?.() ?? []),
+              slashCompletion(), // 行頭の `/`（TASKS 6-1）
             ],
             icons: false,
           }),
