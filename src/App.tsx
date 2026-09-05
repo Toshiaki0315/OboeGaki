@@ -2814,6 +2814,12 @@ function App() {
                       同じ場所を指す「直下」の行を下に並べない。三角を押すと
                       開閉、名前を押すと直下で絞る。作る操作は右クリックへ */}
                   <summary
+                    // **色は見出しの行ぜんぶに敷く。** 帯の左端を中の
+                    // フォルダと揃える（要望 2026-09-05）
+                    className={
+                      (folderFilter === "" ? "selected" : "") +
+                      (dropFolder === "" ? " drop-target" : "")
+                    }
                     onClick={(event) => {
                       event.preventDefault(); // 開閉はこちらで持つ（タグと排他）
                       toggleSide("folders");
@@ -2846,10 +2852,7 @@ function App() {
                   >
                     <span className="side-twist" aria-hidden="true" />
                     <button
-                      className={
-                        `folder-row folder-head${folderFilter === "" ? " selected" : ""}` +
-                        (dropFolder === "" ? " drop-target" : "")
-                      }
+                      className="folder-row folder-head"
                       title="右クリックで作る（ノートを落とすと直下へ移せます）"
                       onClick={(event) => {
                         event.preventDefault(); // summary の開閉を巻き込まない

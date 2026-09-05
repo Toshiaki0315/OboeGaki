@@ -1121,13 +1121,17 @@ body.resizing {
   cursor: pointer;
 }
 
-.folder-section summary > .folder-head.selected {
+/* 選んでいる印は**見出しの行ぜんぶ**に敷く（要望 2026-09-05）。
+   中のボタンだけに敷くと、▼ のぶん帯の左端が中のフォルダとずれる */
+.folder-section summary.selected {
   background: color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 6px;
 }
 
 /* ノートを落とせるフォルダ（要望 2026-09-04）。**掴んでいる間だけ光らせる** —
    どこへ落ちるかが分からないまま指を離すのがいちばん怖い */
-.folder-row.drop-target {
+.folder-row.drop-target,
+.folder-section summary.drop-target {
   background: color-mix(in srgb, #0a84ff 18%, transparent);
   outline: 1px solid color-mix(in srgb, #0a84ff 55%, transparent);
   outline-offset: -1px;
