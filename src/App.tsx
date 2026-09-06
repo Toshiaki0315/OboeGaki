@@ -17,6 +17,7 @@ import {
   writeText as writeClipboard,
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
 import { ContextMenu, SubMenu } from "./components/ContextMenu";
@@ -57,7 +58,6 @@ import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
-import { ASK_ACTION, ASSISTANT_ACTIONS } from "./lib/assistant-actions";
 import { packSources, pickSources } from "./lib/sources";
 import {
   availableFonts,
@@ -3783,163 +3783,22 @@ function App() {
             />
           )}
           {assistantOpen && (
-            <aside className="assistant-pane">
-              <header>アシスタント</header>
-              {/* 並びは参照実装（ui/assistant_pane.py）と同じ。
-                **ボタンの列は Ollama が無くても出す** — 「関連」は索引を
-                引くだけで、モデルを通さない（L-3） */}
-              <div
-                className="assistant-actions"
-                role="group"
-                aria-label="アシスタント"
-              >
-                {ASSISTANT_ACTIONS.map((action) => (
-                  <button
-                    key={action.id}
-                    className={action.id === "stop" ? "assistant-stop" : ""}
-                    title={action.hint}
-                    aria-label={action.label}
-                    disabled={
-                      action.id === "stop"
-                        ? !thinking
-                        : action.id === "related"
-                          ? // **索引を引くだけ。** Ollama が無くても押せる（L-3）
-                            !currentPath
-                          : thinking || !currentPath || llmReady === false
-                    }
-                    onClick={() => {
-                      if (action.id === "stop") stopAssistant();
-                      else if (action.id === "related") showRelated();
-                      else void askAssistant(action.id);
-                    }}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      {action.paths.map((d) => (
-                        <path
-                          key={d}
-                          d={d}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      ))}
-                    </svg>
-                  </button>
-                ))}
-              </div>
-              {llmReady === false ? (
-                // **押してから断らない**（G-3 のゴミ箱と同じ作法）
-                <p className="assistant-note">
-                  アシスタントを使うには Ollama という無料のソフトが要ります。
-                  <br />
-                  ollama.com から入れて動かすと、ここで使えるようになります。
-                  <br />
-                  読ませたノートはこのパソコンの中だけで扱われ、外へは出ません。
-                </p>
-              ) : (
-                <>
-                  {/* vault 全体への質問（L-2）。打って Enter が自然（検索欄と同じ） */}
-                  <div className="assistant-ask">
-                    <input
-                      value={question}
-                      placeholder="ノート全体に質問する"
-                      onChange={(event) =>
-                        setQuestion(event.currentTarget.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === "Enter" &&
-                          !event.nativeEvent.isComposing
-                        )
-                          void askQuestion();
-                      }}
-                    />
-                    {/* 空の質問では押せない（押しても何も起きないボタンを押させない） */}
-                    <button
-                      title={ASK_ACTION.hint}
-                      aria-label={ASK_ACTION.label}
-                      disabled={thinking || !question.trim()}
-                      onClick={() => void askQuestion()}
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true">
-                        {ASK_ACTION.paths.map((d) => (
-                          <path
-                            key={d}
-                            d={d}
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        ))}
-                      </svg>
-                    </button>
-                  </div>
-                  {/* **答えを書き始めたら畳む**（要望 2026-09-04）。使い方の
-                    案内は、まだ何も出ていないときにだけ意味がある */}
-                  {!thinking && !answer && (
-                    <p className="assistant-note">
-                      要約とレビューはこのノートだけを読みます。質問は索引で
-                      材料を探して読ませます。 本文は書き換えません。
-                    </p>
-                  )}
-                  {/* **渡した材料をそのまま出す。** 出典を作文させない */}
-                  {sources.length > 0 && (
-                    <div className="related-notes">
-                      <div className="related-title">読んだノート</div>
-                      <ul>
-                        {sources.map((hit) => (
-                          <li key={hit.path}>
-                            <button
-                              onClick={() =>
-                                void openNote(`${vaultRoot}/${hit.path}`)
-                              }
-                            >
-                              <span className="related-name">{hit.title}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="assistant-answer">
-                    {answer || (thinking ? "考えています…" : "")}
-                  </div>
-                </>
-              )}
-              {/* 関連は索引から出す。**Ollama が無くても出る**（L-3） */}
-              {relatedShown && (
-                <div className="related-notes">
-                  <div className="related-title">関連するノート</div>
-                  <ul>
-                    {related.map((entry) => (
-                      <li key={entry.path}>
-                        <button
-                          onClick={() =>
-                            void openNote(`${vaultRoot}/${entry.path}`)
-                          }
-                        >
-                          <span className="related-name">{entry.title}</span>
-                          {/* **理由をそのまま出す**（読めないと確かめようがない） */}
-                          <span className="related-reason">
-                            {entry.reasons.join(" / ")}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                    {related.length === 0 && (
-                      <li className="no-hits">
-                        関連するノートはありません。タグを付けるか
-                        `[[ノート名]]` で結ぶと出ます。
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              )}
-            </aside>
+            <AssistantPane
+              hasNote={currentPath !== null}
+              llmReady={llmReady}
+              thinking={thinking}
+              answer={answer}
+              question={question}
+              onQuestionChange={setQuestion}
+              sources={sources}
+              related={related}
+              relatedShown={relatedShown}
+              onStop={() => void stopAssistant()}
+              onRelated={() => void showRelated()}
+              onAsk={(task) => void askAssistant(task)}
+              onAskQuestion={() => void askQuestion()}
+              onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
+            />
           )}
           {rightPane === "reference" && reference && (
             // 横に開いたノート（U-1）。**読むだけ** — 保存も監視も繋がない
