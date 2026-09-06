@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -20,6 +19,7 @@ import {
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { ChoiceDialog } from "./components/ChoiceDialog";
 import { ContextMenu, SubMenu } from "./components/ContextMenu";
+import { FormatToolbar } from "./components/FormatToolbar";
 import { FuzzyPalette } from "./components/FuzzyPalette";
 import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
@@ -33,7 +33,7 @@ import { StyleCheckDialog } from "./components/StyleCheckDialog";
 import { TableDialog } from "./components/TableDialog";
 
 import type { FormatKind } from "./editor/format-commands";
-import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
+import { FORMAT_TOOLBAR } from "./editor/format-toolbar";
 import { anchorAbove } from "./lib/context-menu";
 import {
   AI_HANDOFFS,
@@ -3176,55 +3176,10 @@ function App() {
                     </button>
                   </div>
                 </div>
-                {/* 書式ツールバー（B-1）。ショートカットを覚えていなくても
-                  押せるようにする。**アイコンだけ**なので、呼び名と
-                  ショートカットは Tips（title）が担う */}
-                <div
-                  className="format-toolbar"
-                  role="toolbar"
-                  aria-label="書式"
-                >
-                  {FORMAT_TOOLBAR.map((group, index) => (
-                    <Fragment key={group[0].kind}>
-                      {index > 0 && (
-                        <span
-                          className="toolbar-separator"
-                          aria-hidden="true"
-                        />
-                      )}
-                      {group.map((item) => (
-                        <button
-                          key={item.kind}
-                          title={formatHint(item)}
-                          aria-label={item.label}
-                          // **押しても本文の選択を外さない。** 外すと囲む
-                          // ものが無くなって空振りする（参照実装が
-                          // NoFocus で守っていたのと同じ勘所）
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() =>
-                            item.kind === "table"
-                              ? setTableDialog(true)
-                              : editorRef.current?.applyFormat(item.kind)
-                          }
-                        >
-                          <svg viewBox="0 0 16 16" aria-hidden="true">
-                            {item.paths.map((d) => (
-                              <path
-                                key={d}
-                                d={d}
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.4"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            ))}
-                          </svg>
-                        </button>
-                      ))}
-                    </Fragment>
-                  ))}
-                </div>
+                <FormatToolbar
+                  onFormat={(kind) => editorRef.current?.applyFormat(kind)}
+                  onTable={() => setTableDialog(true)}
+                />
                 <Editor
                   key={currentPath}
                   ref={editorRef}
