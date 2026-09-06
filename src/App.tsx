@@ -22,6 +22,7 @@ import {
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
+import { PromptDialog } from "./components/PromptDialog";
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { anchorAbove, menuPosition } from "./lib/context-menu";
@@ -416,17 +417,15 @@ function App() {
   );
   // 「検索を保存…」の名前入力。null は閉じている
   const [savingSearch, setSavingSearch] = useState<string | null>(null);
-  const searchName = useRef<HTMLInputElement>(null);
 
   function keepSearches(next: SavedSearch[]) {
     setSearches(next);
     saveSearches(localStorage, next);
   }
 
-  function confirmSaveSearch() {
-    const name = searchName.current?.value.trim() ?? "";
+  function confirmSaveSearch(name: string) {
     const typed = savingSearch?.trim() ?? "";
-    if (!name || !typed) return;
+    if (!typed) return;
     setSavingSearch(null);
     // 同じ名前は上書き（検索式の更新に使う）
     keepSearches(upsertSearch(searches, { name, query: typed }));
@@ -652,7 +651,6 @@ function App() {
   } | null>(null);
   // 「テンプレートに登録…」の名前入力。null は閉じている
   const [templateName, setTemplateName] = useState<string | null>(null);
-  const templateInput = useRef<HTMLInputElement>(null);
   // 「フォルダへ移動…」の対象（右クリックからは開いていないノートも動かす）
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
 
@@ -738,10 +736,9 @@ function App() {
     }
   }
 
-  async function confirmRegisterTemplate() {
-    const typed = templateInput.current?.value.trim() ?? "";
+  async function confirmRegisterTemplate(typed: string) {
     const path = templateName;
-    if (!vaultRoot || !path || !typed) return;
+    if (!vaultRoot || !path) return;
     setTemplateName(null);
     try {
       await registerTemplate(vaultRoot, path, typed);
@@ -1097,7 +1094,6 @@ function App() {
     kind: "create" | "rename";
     folder: string; // create: 親（"" は直下）/ rename: 対象
   } | null>(null);
-  const folderName = useRef<HTMLInputElement>(null);
   // 「フォルダへ移動…」の行き先選び。null は閉じている
   const [moveOpen, setMoveOpen] = useState(false);
   // 雛形の `{{cursor}}`。開いた直後のキャレット位置としてエディタへ渡す
@@ -1620,14 +1616,12 @@ function App() {
 
   /// 日付を選ぶ窓（7-5）。既定は今日。
   const [dayDialog, setDayDialog] = useState<string | null>(null);
-  const dayInput = useRef<HTMLInputElement>(null);
   function openDayDialog() {
     setDayDialog(dayValue(new Date()));
   }
-  function confirmDay() {
-    const day = dayInput.current?.value;
+  function confirmDay(day: string) {
     setDayDialog(null);
-    if (day) void handleDailyNote(day);
+    void handleDailyNote(day);
   }
 
   /// 使い方のノートを今の内容で置き直す（ヘルプ）。既にあるノートは
@@ -1639,10 +1633,9 @@ function App() {
     await openNote(placed);
   }
 
-  async function confirmFolderName() {
-    const typed = folderName.current?.value.trim() ?? "";
+  async function confirmFolderName(typed: string) {
     const dialog = folderDialog;
-    if (!vaultRoot || !dialog || !typed) return;
+    if (!vaultRoot || !dialog) return;
     setFolderDialog(null);
     try {
       if (dialog.kind === "create") {
@@ -3636,87 +3629,36 @@ function App() {
           )}
           {/* 日付を選んでその日のノートへ（7-5。ポメラの日付メモ相当） */}
           {dayDialog !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setDayDialog(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">日付を選んで開く</header>
-                <div className="table-dialog-fields">
-                  <label>
-                    日付
-                    <input
-                      ref={dayInput}
-                      type="date"
-                      autoFocus
-                      defaultValue={dayDialog}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") confirmDay();
-                        else if (event.key === "Escape") setDayDialog(null);
-                      }}
-                    />
-                  </label>
-                </div>
-                <p className="pref-note">
-                  その日のノートが無ければ、日次の雛形から作ります。
-                </p>
-                <div className="dialog-actions">
-                  <button onClick={() => setDayDialog(null)}>やめる</button>
-                  <button className="primary" onClick={() => confirmDay()}>
-                    開く
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PromptDialog
+              title="日付を選んで開く"
+              label="日付"
+              type="date"
+              defaultValue={dayDialog}
+              note="その日のノートが無ければ、日次の雛形から作ります。"
+              confirmLabel="開く"
+              onConfirm={confirmDay}
+              onClose={() => setDayDialog(null)}
+            />
           )}
           {folderDialog !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setFolderDialog(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">
-                  {folderDialog.kind === "create"
-                    ? folderDialog.folder
-                      ? `「${folderDialog.folder}」の中に新しいフォルダ`
-                      : "新しいフォルダ"
-                    : `「${folderDialog.folder}」の名前を変更`}
-                </header>
-                <div className="table-dialog-fields">
-                  <label>
-                    名前
-                    <input
-                      ref={folderName}
-                      autoFocus
-                      defaultValue={
-                        folderDialog.kind === "rename"
-                          ? folderLabel(folderDialog.folder)
-                          : ""
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") void confirmFolderName();
-                        else if (event.key === "Escape") setFolderDialog(null);
-                      }}
-                    />
-                  </label>
-                </div>
-                <div className="dialog-actions">
-                  <button onClick={() => setFolderDialog(null)}>やめる</button>
-                  <button
-                    className="primary"
-                    onClick={() => void confirmFolderName()}
-                  >
-                    決定
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PromptDialog
+              title={
+                folderDialog.kind === "create"
+                  ? folderDialog.folder
+                    ? `「${folderDialog.folder}」の中に新しいフォルダ`
+                    : "新しいフォルダ"
+                  : `「${folderDialog.folder}」の名前を変更`
+              }
+              label="名前"
+              defaultValue={
+                folderDialog.kind === "rename"
+                  ? folderLabel(folderDialog.folder)
+                  : ""
+              }
+              confirmLabel="決定"
+              onConfirm={(typed) => void confirmFolderName(typed)}
+              onClose={() => setFolderDialog(null)}
+            />
           )}
           {moveOpen && (
             <div
@@ -4398,80 +4340,27 @@ function App() {
             </div>
           )}
           {savingSearch !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setSavingSearch(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">検索を保存</header>
-                <div className="table-dialog-fields">
-                  <label>
-                    サイドバーに出す名前
-                    <input
-                      ref={searchName}
-                      autoFocus
-                      // 既定は式そのもの（短い式ならそのまま通せる）
-                      defaultValue={savingSearch}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") confirmSaveSearch();
-                        else if (event.key === "Escape") setSavingSearch(null);
-                      }}
-                    />
-                  </label>
-                </div>
-                <p className="dialog-text">検索式: {savingSearch}</p>
-                <div className="dialog-actions">
-                  <button onClick={() => setSavingSearch(null)}>やめる</button>
-                  <button className="primary" onClick={confirmSaveSearch}>
-                    保存
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PromptDialog
+              title="検索を保存"
+              label="サイドバーに出す名前"
+              // 既定は式そのもの（短い式ならそのまま通せる）
+              defaultValue={savingSearch}
+              note={`検索式: ${savingSearch}`}
+              confirmLabel="保存"
+              onConfirm={confirmSaveSearch}
+              onClose={() => setSavingSearch(null)}
+            />
           )}
           {templateName !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setTemplateName(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">テンプレートに登録</header>
-                <div className="table-dialog-fields">
-                  <label>
-                    名前
-                    <input
-                      ref={templateInput}
-                      autoFocus
-                      defaultValue={noteStem(templateName)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter")
-                          void confirmRegisterTemplate();
-                        else if (event.key === "Escape") setTemplateName(null);
-                      }}
-                    />
-                  </label>
-                </div>
-                <p className="dialog-text">
-                  見出しは {"{{title}}"} に置き換わります（この雛形から作った
-                  ノートには新しい題名が入ります）。
-                </p>
-                <div className="dialog-actions">
-                  <button onClick={() => setTemplateName(null)}>やめる</button>
-                  <button
-                    className="primary"
-                    onClick={() => void confirmRegisterTemplate()}
-                  >
-                    登録
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PromptDialog
+              title="テンプレートに登録"
+              label="名前"
+              defaultValue={noteStem(templateName)}
+              note="見出しは {{title}} に置き換わります（この雛形から作ったノートには新しい題名が入ります）。"
+              confirmLabel="登録"
+              onConfirm={(typed) => void confirmRegisterTemplate(typed)}
+              onClose={() => setTemplateName(null)}
+            />
           )}
           {deleted !== null && (
             <div className="palette-backdrop">
