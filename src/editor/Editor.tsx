@@ -39,6 +39,7 @@ import {
   type Activation,
 } from "./activation";
 import { attachmentEvents, type SaveAttachment } from "./attachments";
+import { csvDropEvents } from "./csv-drop";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
@@ -421,6 +422,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             codeLanguages: resolveCodeLanguage,
           }),
 
+          csvDropEvents(), // CSV を落としたら表にする（要望 2026-09-06）
           livePreview,
           highlights.current.of(highlightsFor(sourceMode ?? false)),
           copyCode, // コードブロックのコピー（要望 2026-09-06）
