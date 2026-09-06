@@ -219,6 +219,19 @@ describe("collectCodeBlocks", () => {
     expect(renderHtml("![表 A|B](a.png)\n", "画像")).toContain('alt="表 A|B"');
   });
 
+  test("test_説明や道の引用符は属性を突き破らない（レビュー 2026-09-07）", () => {
+    // 属性値に入るものは `"` も落とさないと、`alt` の外に別の属性を
+    // 書き足せてしまう（印刷プレビューは innerHTML で流し込む）
+    const html = renderHtml('![犬" onerror="x|300](a.png)\n', "画像");
+    expect(html).toContain('alt="犬&quot; onerror=&quot;x"');
+    expect(html).not.toContain('" onerror="');
+  });
+
+  test("test_言語名の引用符もクラス属性を突き破らない", () => {
+    const html = renderHtml('```js" onclick="x\ncode\n```\n', "コード");
+    expect(html).not.toContain('" onclick="');
+  });
+
   test("種類を省いたら info、知らない綴りは別扱い", () => {
     expect(renderHtml(":::note\n本文\n:::\n", "x")).toContain("note-info");
     // **info に寄せない**（間違いに気づけなくなる）

@@ -33,11 +33,14 @@ const exportHighlighter = tagHighlighter([
   { tag: tags.meta, class: "tok-comment" },
 ]);
 
+// 属性値にも置くので `"` `'` まで落とす（`alt` や `class` を突き破らせない）
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /// コードを色分けした HTML にする。**知らない言語は null**

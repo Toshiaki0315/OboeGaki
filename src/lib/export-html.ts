@@ -234,11 +234,14 @@ function renderer() {
   return md;
 }
 
+// 属性値にも置くので `"` `'` まで落とす（`alt` や `class` を突き破らせない）
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /// 印の CSS（画面と同じ表から作る）。色は囲みの枠色を継ぐ。
