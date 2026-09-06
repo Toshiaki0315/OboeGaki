@@ -157,6 +157,48 @@ describe("用紙サイズ（TASKS 8-3 / GR-06）", () => {
   });
 });
 
+describe("縦の用紙では縦に積む（TASKS 8-4 / GR-04）", () => {
+  const cardDoc = "## A\n\n### 一\n\nあ\n\n### 二\n\nい\n";
+  const build = async (preset: PptxSettings["page"]["preset"]) => {
+    const settings = {
+      ...DEFAULT_PPTX_SETTINGS,
+      page: { ...DEFAULT_PPTX_SETTINGS.page, preset },
+    };
+    const base64 = await buildPptx(
+      splitDeck(cardDoc),
+      async () => null,
+      DEFAULT_SLIDE_THEME,
+      null,
+      { ...DEFAULT_PPTX_OPTIONS, metrics: slideMetrics(settings) },
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    // 箱（roundRect）の位置を拾う。**形の直前の `<a:off>` が箱の位置**
+    // （DrawingML は xfrm → prstGeom の順に書く）
+    return [...xml.matchAll(/prst="roundRect"/g)].map((found) => {
+      const before = xml.slice(0, found.index);
+      const offsets = [
+        ...before.matchAll(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/g),
+      ];
+      const last = offsets[offsets.length - 1];
+      return { x: Number(last[1]), y: Number(last[2]) };
+    });
+  };
+
+  it("test_横の用紙では横に並ぶ（x が違い y が同じ）", async () => {
+    const boxes = await build("16:9");
+    expect(boxes[0].y).toBe(boxes[1].y);
+    expect(boxes[0].x).not.toBe(boxes[1].x);
+  });
+
+  it("test_縦の用紙では縦に積む（x が同じで y が違う）", async () => {
+    const boxes = await build("a4-portrait");
+    expect(boxes[0].x).toBe(boxes[1].x);
+    expect(boxes[1].y).toBeGreaterThan(boxes[0].y);
+  });
+});
+
 describe("buildPptx", () => {
   it("test_太字と斜体とコードが形式に載る", async () => {
     const deck = await open("## A\n\n**太字**と*斜体*と`コード`\n");

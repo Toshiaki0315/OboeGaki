@@ -298,15 +298,26 @@ function placeCards(
   theme: SlideTheme,
   sheet: SlideMetrics,
 ): void {
-  const gap = 0.3;
-  const width =
-    (sheet.width - sheet.margin * 2 - gap * (cards.length - 1)) / cards.length;
-  const height = sheet.height - sheet.bodyTop - sheet.margin - 0.4;
+  const gap = sheet.gutter * 1.5;
+  // **縦の用紙では縦に積む**（GR-04）。横に 3 つ並べると 1 つが細長い帯に
+  // なって、字が縦 1 列で落ちてくる
+  const stacked = sheet.height > sheet.width;
+  const width = stacked
+    ? sheet.width - sheet.margin * 2
+    : (sheet.width - sheet.margin * 2 - gap * (cards.length - 1)) /
+      cards.length;
+  const available = sheet.bodyH - sheet.gutter * 2;
+  const height = stacked
+    ? (available - gap * (cards.length - 1)) / cards.length
+    : available;
   cards.forEach((card, index) => {
-    const left = sheet.margin + (width + gap) * index;
+    const left = stacked ? sheet.margin : sheet.margin + (width + gap) * index;
+    const top = stacked
+      ? sheet.bodyTop + (height + gap) * index
+      : sheet.bodyTop;
     page.addShape("roundRect", {
       x: left,
-      y: sheet.bodyTop,
+      y: top,
       w: width,
       h: height,
       fill: { color: "bg2" },
@@ -327,7 +338,7 @@ function placeCards(
       ),
       {
         x: left + 0.2,
-        y: sheet.bodyTop + 0.18,
+        y: top + sheet.gutter,
         w: width - 0.4,
         h: 0.5,
         valign: "top",
@@ -337,7 +348,7 @@ function placeCards(
     if (body.length > 0) {
       page.addText(body, {
         x: left + 0.2,
-        y: sheet.bodyTop + 0.75,
+        y: top + sheet.gutter * 3.75,
         w: width - 0.4,
         h: height - 0.95,
         valign: "top",
