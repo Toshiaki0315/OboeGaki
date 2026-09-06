@@ -81,7 +81,13 @@ const MARKS = new Set([
   "ListMark",
 ]);
 
-export function splitDeck(text: string): Deck {
+/// 何番目の見出しでスライドを分けるか（CFG-40。既定は 2 = `##`）。
+///
+/// **浅い見出しは扉、同じ深さは本文の枚、深い見出しは枚の中の小見出し**。
+/// この 1 本の規則で 1 / 2 / 3 のどれでも同じように割れる。
+export type SplitLevel = 1 | 2 | 3;
+
+export function splitDeck(text: string, splitLevel: SplitLevel = 2): Deck {
   const tree = parser.parse(text);
   const deck: Deck = { title: "", subtitle: "", slides: [] };
   const subtitle: string[] = [];
@@ -98,7 +104,7 @@ export function splitDeck(text: string): Deck {
       const body = plain(text, node);
       if (level === 1 && !deck.title) {
         deck.title = body;
-      } else if (level === 1) {
+      } else if (level < splitLevel) {
         // **2 つ目以降の `#` は扉にする**（TASKS 5-3）。これまでは捨てて
         // いたので、書いた区切りが PowerPoint 側に届かなかった
         deck.slides.push({
@@ -109,7 +115,7 @@ export function splitDeck(text: string): Deck {
           notes: "",
         });
         current = null; // 扉に本文は載せない（次の `##` から拾う）
-      } else if (level === 2) {
+      } else if (level === splitLevel) {
         current = {
           kind: "content",
           title: body,

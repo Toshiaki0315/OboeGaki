@@ -1,7 +1,7 @@
 // Markdown をスライドの構造に割る（TASKS 4-5 / F-4）。
 // 区切りは参照実装 core/slides.py と同じ（ユーザーと決めた並べ方）。
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { cardsOf, plainText, splitDeck, type SlideBlock } from "./slides";
 
 /// 本文だけを見たいテスト用（装飾は runs が持つ）
@@ -11,6 +11,54 @@ const said = (block: SlideBlock) =>
 /// 装飾ごと見たいテスト用（コード・表には runs が無い）
 const runsOf = (block: SlideBlock) => ("runs" in block ? block.runs : []);
 const plainOf = (block: SlideBlock) => plainText(runsOf(block));
+
+describe("分ける見出しのレベル（CFG-40 / TASKS 8-2）", () => {
+  const doc = `# 題
+
+前書き
+
+## A
+
+あ
+
+### A-1
+
+い
+
+## B
+
+う
+`;
+
+  it("test_既定は見出し 2 で分ける（今までどおり）", () => {
+    const deck = splitDeck(doc);
+    expect(deck.title).toBe("題");
+    expect(deck.slides.map((s) => s.title)).toEqual(["A", "B"]);
+  });
+
+  it("test_見出し 1 で分けると、2 つ目以降の # が本文の枚になる", () => {
+    const deck = splitDeck("# 題\n\nあ\n\n# 次\n\nい\n", 1);
+    expect(deck.title).toBe("題");
+    expect(deck.slides.map((s) => [s.kind, s.title])).toEqual([
+      ["content", "次"],
+    ]);
+  });
+
+  it("test_見出し 3 で分けると、## は扉になり ### が枚になる", () => {
+    const deck = splitDeck(doc, 3);
+    expect(deck.slides.map((s) => [s.kind, s.title])).toEqual([
+      ["section", "A"],
+      ["content", "A-1"],
+      ["section", "B"],
+    ]);
+  });
+
+  it("test_分ける深さより深い見出しは枚の中の小見出し", () => {
+    const deck = splitDeck(doc, 2);
+    const found = deck.slides[0].blocks.find((b) => b.kind === "heading");
+    expect(found).toBeTruthy();
+  });
+});
 
 describe("splitDeck", () => {
   test("`#` は表紙。その前後の段落が副題になる", () => {

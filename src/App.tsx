@@ -79,7 +79,17 @@ import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
 import { buildPptx, readTemplateTheme } from "./lib/pptx";
-import { readSlideTheme } from "./lib/slide-theme";
+import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
+import {
+  DEFAULT_PPTX_SETTINGS,
+  hexColor,
+  isThemeRef,
+  loadPptxSettings,
+  resetPptxSettings,
+  savePptxSettings,
+  themeRef,
+  type PptxSettings,
+} from "./lib/pptx-settings";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
 import { OCR_THRESHOLD, pdfPages } from "./lib/pdf-import";
@@ -494,7 +504,9 @@ function App() {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [preferences, setPreferences] = useState(false);
-  const [prefTab, setPrefTab] = useState<"general" | "assistant">("general");
+  const [prefTab, setPrefTab] = useState<"general" | "pptx" | "assistant">(
+    "general",
+  );
   const [historyUsage, setHistoryUsage] = useState<number | null>(null);
   // Ollama に入っているモデル（設定のモデル欄の選択肢）。無ければ空
   const [installedModels, setInstalledModels] = useState<string[]>([]);
@@ -842,6 +854,27 @@ function App() {
     editorRef.current?.revealPos(item.from);
   }
 
+  // PowerPoint の書き出し設定（TASKS 8-1 / 8-2）。**置き場は別の鍵** —
+  // 大きな入れ子なので、ほかの設定と混ぜない
+  const [pptxSettings, setPptxSettings] = useState<PptxSettings>(() => {
+    try {
+      return loadPptxSettings(localStorage);
+    } catch {
+      return DEFAULT_PPTX_SETTINGS;
+    }
+  });
+  function changePptxSettings(patch: Partial<PptxSettings>) {
+    setPptxSettings((current) => {
+      const next = { ...current, ...patch };
+      try {
+        savePptxSettings(localStorage, next);
+      } catch {
+        // 置けなくてもこの回は効かせる
+      }
+      return next;
+    });
+  }
+
   // 「直下」は行ではなく見出しに出す（要望 2026-09-05）
   const { root: rootNotes, sub: subFolders } = splitFolders(folders);
 
@@ -940,12 +973,17 @@ function App() {
     if (!target) return;
     setStatus("PowerPoint を組んでいます…");
     try {
-      // 見た目はノートの front matter から（TASKS 5-5）
+      // 土台は環境設定（8-1）、**ノートの front matter が勝つ**
+      //（SC-02 > SC-01。ADR-0046 の決定 4）
       const data = await buildPptx(
-        splitDeck(text),
+        splitDeck(text, pptxSettings.layout.splitLevel),
         (url) => imageSource(vaultRoot, url),
-        readSlideTheme(text),
+        readSlideTheme(text, slideThemeFrom(pptxSettings)),
         await borrowedTheme(),
+        {
+          footer: pptxSettings.footer,
+          decoration: pptxSettings.decoration,
+        },
       );
       await invoke("export_write_binary", { path: target, data });
       setStatus(`書き出しました: ${target}`);
@@ -3742,6 +3780,14 @@ function App() {
                   </button>
                   <button
                     role="tab"
+                    aria-selected={prefTab === "pptx"}
+                    className={prefTab === "pptx" ? "selected" : ""}
+                    onClick={() => setPrefTab("pptx")}
+                  >
+                    PowerPoint
+                  </button>
+                  <button
+                    role="tab"
                     aria-selected={prefTab === "assistant"}
                     className={prefTab === "assistant" ? "selected" : ""}
                     onClick={() => setPrefTab("assistant")}
@@ -3988,6 +4034,233 @@ function App() {
                       </label>
                     </div>
                   </div>
+                ) : prefTab === "pptx" ? (
+                  <div className="pref-page">
+                    <h3 className="pref-section">スライドの分け方</h3>
+                    <p className="pref-note">
+                      どの見出しで 1 枚に分けるか。浅い見出しは扉、深い見出しは
+                      枚の中の小見出しになります。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>分ける見出し</span>
+                        <select
+                          value={String(pptxSettings.layout.splitLevel)}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              layout: {
+                                ...pptxSettings.layout,
+                                splitLevel: Number(
+                                  event.currentTarget.value,
+                                ) as 1 | 2 | 3,
+                              },
+                            })
+                          }
+                        >
+                          <option value="1">見出し 1（#）</option>
+                          <option value="2">見出し 2（##）</option>
+                          <option value="3">見出し 3（###）</option>
+                        </select>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">見た目</h3>
+                    <p className="pref-note">
+                      色と書体。**ノートの front matter に書いてあれば
+                      そちらが勝ちます**（そのノートだけ変えたいとき）。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>見出しの色</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={isThemeRef(
+                              pptxSettings.theme.palette.accent,
+                            )}
+                            onChange={(event) =>
+                              changePptxSettings({
+                                theme: {
+                                  ...pptxSettings.theme,
+                                  palette: {
+                                    ...pptxSettings.theme.palette,
+                                    accent: event.currentTarget.checked
+                                      ? themeRef("accent1")
+                                      : { hex: "1E2761" },
+                                  },
+                                },
+                              })
+                            }
+                          />
+                          テーマに従う（PowerPoint 側で替えると一緒に変わる）
+                        </span>
+                      </label>
+                      {!isThemeRef(pptxSettings.theme.palette.accent) && (
+                        <label>
+                          <span>色を選ぶ</span>
+                          <input
+                            type="color"
+                            value={`#${(pptxSettings.theme.palette.accent as { hex: string }).hex}`}
+                            onChange={(event) => {
+                              const picked = hexColor(
+                                event.currentTarget.value,
+                              );
+                              if (!picked) return;
+                              changePptxSettings({
+                                theme: {
+                                  ...pptxSettings.theme,
+                                  palette: {
+                                    ...pptxSettings.theme.palette,
+                                    accent: picked,
+                                  },
+                                },
+                              });
+                            }}
+                          />
+                        </label>
+                      )}
+                      <label>
+                        <span>本文の書体</span>
+                        <input
+                          value={pptxSettings.font.jp}
+                          placeholder="選んでいません（テンプレートに従う）"
+                          onChange={(event) =>
+                            changePptxSettings({
+                              font: {
+                                ...pptxSettings.font,
+                                jp: event.currentTarget.value,
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>コードの書体</span>
+                        <input
+                          value={pptxSettings.font.mono}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              font: {
+                                ...pptxSettings.font,
+                                mono: event.currentTarget.value,
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>テンプレート</span>
+                        <span className="pref-vault-row">
+                          <input
+                            value={settings.slideTemplate}
+                            readOnly
+                            placeholder="選んでいません（既定の見た目）"
+                          />
+                          <button onClick={() => void chooseSlideTemplate()}>
+                            選ぶ…
+                          </button>
+                          {settings.slideTemplate && (
+                            <button
+                              onClick={() =>
+                                changeSettings({ slideTemplate: "" })
+                              }
+                            >
+                              外す
+                            </button>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">フッタ</h3>
+                    <p className="pref-note">
+                      どの枚にも同じように入る帯。空にすると、ノートの題名が
+                      入ります。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>ページ番号</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={pptxSettings.footer.pageNumber}
+                            onChange={(event) =>
+                              changePptxSettings({
+                                footer: {
+                                  ...pptxSettings.footer,
+                                  pageNumber: event.currentTarget.checked,
+                                },
+                              })
+                            }
+                          />
+                          右下にページ番号を入れる
+                        </span>
+                      </label>
+                      <label>
+                        <span>フッタの字</span>
+                        <input
+                          value={pptxSettings.footer.text}
+                          placeholder="空ならノートの題名"
+                          onChange={(event) =>
+                            changePptxSettings({
+                              footer: {
+                                ...pptxSettings.footer,
+                                text: event.currentTarget.value,
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>日付</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={pptxSettings.footer.showDate}
+                            onChange={(event) =>
+                              changePptxSettings({
+                                footer: {
+                                  ...pptxSettings.footer,
+                                  showDate: event.currentTarget.checked,
+                                },
+                              })
+                            }
+                          />
+                          書き出した日を入れる
+                        </span>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">コード</h3>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>言語名</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={pptxSettings.decoration.codeLanguageLabel}
+                            onChange={(event) =>
+                              changePptxSettings({
+                                decoration: {
+                                  ...pptxSettings.decoration,
+                                  codeLanguageLabel:
+                                    event.currentTarget.checked,
+                                },
+                              })
+                            }
+                          />
+                          コードの上に言語名を小さく出す
+                        </span>
+                      </label>
+                    </div>
+                    <div className="pref-actions">
+                      <button
+                        onClick={() => {
+                          resetPptxSettings(localStorage);
+                          setPptxSettings(DEFAULT_PPTX_SETTINGS);
+                        }}
+                      >
+                        PowerPoint の設定を既定に戻す
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="pref-page">
                     <h3 className="pref-section">アシスタント</h3>
@@ -4139,35 +4412,6 @@ function App() {
                             }
                           />
                           生成AIにデータを渡すときは確認する
-                        </span>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">PowerPoint</h3>
-                    <p className="pref-note">
-                      書き出すスライドの配色と書体を、選んだテンプレートに
-                      合わせます（背景の飾りやロゴは入りません）。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>テンプレート</span>
-                        <span className="pref-vault-row">
-                          <input
-                            value={settings.slideTemplate}
-                            readOnly
-                            placeholder="選んでいません（既定の見た目）"
-                          />
-                          <button onClick={() => void chooseSlideTemplate()}>
-                            選ぶ…
-                          </button>
-                          {settings.slideTemplate && (
-                            <button
-                              onClick={() =>
-                                changeSettings({ slideTemplate: "" })
-                              }
-                            >
-                              外す
-                            </button>
-                          )}
                         </span>
                       </label>
                     </div>

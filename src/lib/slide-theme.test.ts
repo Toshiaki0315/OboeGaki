@@ -1,7 +1,12 @@
 // スライドの見た目（TASKS 5-5）。md2pptx のメタデータ相当を front matter から。
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SLIDE_THEME, readSlideTheme } from "./slide-theme";
+import {
+  DEFAULT_SLIDE_THEME,
+  readSlideTheme,
+  slideThemeFrom,
+} from "./slide-theme";
+import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 
 describe("readSlideTheme", () => {
   it("test_書いていなければ既定のまま", () => {
@@ -56,5 +61,59 @@ describe("readSlideTheme", () => {
     expect(readSlideTheme("---\nslide-font: ''\n---\n").font).toBe(
       DEFAULT_SLIDE_THEME.font,
     );
+  });
+});
+
+describe("環境設定を土台にする（TASKS 8-2 / ADR-0046 の決定 4）", () => {
+  const base = { font: "Meiryo", mono: "Consolas", accent: "1E2761" };
+
+  it("test_front_matter_が無ければ設定の値を使う", () => {
+    expect(readSlideTheme("# 題\n", base)).toEqual(base);
+  });
+
+  it("test_front_matter_が勝つ（SC-02 > SC-01）", () => {
+    const text = "---\nslide-font: Hiragino Sans\n---\n\n# 題\n";
+    expect(readSlideTheme(text, base)).toEqual({
+      font: "Hiragino Sans",
+      mono: "Consolas",
+      accent: "1E2761",
+    });
+  });
+
+  it("test_読めない値は設定へ倒す（既定へは戻さない）", () => {
+    const text = "---\nslide-accent: まっか\n---\n\n# 題\n";
+    expect(readSlideTheme(text, base).accent).toBe("1E2761");
+  });
+});
+
+describe("slideThemeFrom（CFG-30〜32 / CFG-12）", () => {
+  it("test_テーマ参照の色はそのまま渡す", () => {
+    const theme = slideThemeFrom(DEFAULT_PPTX_SETTINGS);
+    expect(theme.accent).toBe("accent1");
+  });
+
+  it("test_具体色は 6 桁で渡す", () => {
+    const settings = {
+      ...DEFAULT_PPTX_SETTINGS,
+      theme: {
+        ...DEFAULT_PPTX_SETTINGS.theme,
+        palette: {
+          ...DEFAULT_PPTX_SETTINGS.theme.palette,
+          accent: { hex: "1E2761" },
+        },
+      },
+      font: { ...DEFAULT_PPTX_SETTINGS.font, jp: "Meiryo", mono: "Consolas" },
+    };
+    expect(slideThemeFrom(settings)).toEqual({
+      font: "Meiryo",
+      mono: "Consolas",
+      accent: "1E2761",
+    });
+  });
+
+  it("test_書体を選んでいなければ既定のまま", () => {
+    const theme = slideThemeFrom(DEFAULT_PPTX_SETTINGS);
+    expect(theme.font).toBe(DEFAULT_SLIDE_THEME.font);
+    expect(theme.mono).toBe(DEFAULT_SLIDE_THEME.mono);
   });
 });

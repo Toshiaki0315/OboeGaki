@@ -43,6 +43,36 @@ const MASTER = "OBOEGAKI_MASTER";
 export type ImageResolver = (url: string) => Promise<string | null>;
 
 /// デッキを `.pptx` にして base64 で返す。
+/// 書き出しの体裁（環境設定 8-1 から来る。TASKS 8-2）。
+///
+/// **画面の設定をそのまま渡さない。** ここが要るのは「今の書き出しが
+/// 実際に使う値」だけで、増やすときは使う側と一緒に増やす。
+export type PptxOptions = {
+  footer: { pageNumber: boolean; text: string; showDate: boolean };
+  decoration: { imageCaption: boolean; codeLanguageLabel: boolean };
+  /// 日付を出すときの「今日」。テストで固定できるように受け取る。
+  today?: Date;
+};
+
+export const DEFAULT_PPTX_OPTIONS: PptxOptions = {
+  footer: { pageNumber: true, text: "", showDate: false },
+  decoration: { imageCaption: false, codeLanguageLabel: true },
+};
+
+/// フッタに出す字。**空なら題名**（今までどおり）。日付は末尾に足す。
+function footerText(deck: Deck, options: PptxOptions): string {
+  const base = options.footer.text || deck.title;
+  if (!options.footer.showDate) return base;
+  const day = stamp(options.today ?? new Date());
+  return base ? `${base}　${day}` : day;
+}
+
+/// `2026-09-06`。**画面と同じ並び**（年から書く。並べ替えで崩れない）。
+function stamp(when: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
+}
+
 export async function buildPptx(
   deck: Deck,
   resolveImage: ImageResolver,
@@ -50,6 +80,7 @@ export async function buildPptx(
   theme: SlideTheme = DEFAULT_SLIDE_THEME,
   /// テンプレートから借りた配色と書体（TASKS 5-6 / ADR-0045 案 A）
   borrowed: ThemeParts | null = null,
+  options: PptxOptions = DEFAULT_PPTX_OPTIONS,
 ): Promise<string> {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
@@ -74,11 +105,11 @@ export async function buildPptx(
           line: { color: "bg2", width: 0.75 },
         },
       },
-      ...(deck.title
+      ...(footerText(deck, options)
         ? [
             {
               text: {
-                text: deck.title,
+                text: footerText(deck, options),
                 options: {
                   x: MARGIN,
                   y: LAYOUT.height - 0.5,
@@ -92,15 +123,22 @@ export async function buildPptx(
           ]
         : []),
     ],
-    slideNumber: {
-      x: LAYOUT.width - MARGIN - 0.6,
-      y: LAYOUT.height - 0.5,
-      w: 0.6,
-      h: 0.3,
-      align: "right",
-      fontSize: 10,
-      color: "tx2",
-    },
+    // ページ番号は出さない設定にもできる（CFG-50）。**表紙と扉には
+    // 出さない**という決まりは pptxgenjs のマスタでは表せないので、
+    // 今は全枚に出す（CFG-53 は用紙の作り直しと一緒に見直す）
+    ...(options.footer.pageNumber
+      ? {
+          slideNumber: {
+            x: LAYOUT.width - MARGIN - 0.6,
+            y: LAYOUT.height - 0.5,
+            w: 0.6,
+            h: 0.3,
+            align: "right" as const,
+            fontSize: 10,
+            color: "tx2",
+          },
+        }
+      : {}),
   });
 
   if (deck.title || deck.subtitle) {
@@ -162,7 +200,14 @@ export async function buildPptx(
     // 小見出しが 2 つ以上あれば横並びの箱にする（TASKS 5-4）
     const cards = images.length === 0 ? cardsOf(slide.blocks) : null;
     if (cards) placeCards(page, cards, theme);
-    else placeBlocks(page, slide.blocks, bodyWidth, theme);
+    else
+      placeBlocks(
+        page,
+        slide.blocks,
+        bodyWidth,
+        theme,
+        options.decoration.codeLanguageLabel,
+      );
     placeImages(page, images, bodyWidth);
     if (slide.notes) page.addNotes(slide.notes);
   }
@@ -320,6 +365,7 @@ function placeBlocks(
   blocks: SlideBlock[],
   width: number,
   theme: SlideTheme,
+  labelCode = DEFAULT_PPTX_OPTIONS.decoration.codeLanguageLabel,
 ): void {
   // 文章・箇条書き・小見出しは 1 つの枠にまとめる（段落として流す）。
   // コードと表は入らないので別の図形にする
@@ -339,6 +385,18 @@ function placeBlocks(
   }
   for (const block of blocks) {
     if (block.kind === "code") {
+      // 言語名を小さく添える（CFG-73）。**書いていないときは足さない**
+      if (labelCode && block.language) {
+        page.addText(block.language, {
+          x: MARGIN,
+          y: top,
+          w: width,
+          h: 0.22,
+          fontSize: 9,
+          color: "tx2",
+        });
+        top += 0.24;
+      }
       page.addText(block.text, {
         x: MARGIN,
         y: top,

@@ -15,6 +15,7 @@
 /// 出るほうがよい（画面には front matter が出ないので、間違いに気づけない）。
 
 import { parseFrontMatterMeta } from "../editor/frontmatter";
+import { isThemeRef, type PptxSettings } from "./pptx-settings";
 
 export type SlideTheme = {
   /// 見出しと本文の書体。空なら PowerPoint の既定
@@ -46,11 +47,27 @@ function readFont(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-export function readSlideTheme(markdownText: string): SlideTheme {
+/// ノートの front matter を読む。**土台は環境設定**（`base`）で、
+/// front matter に書いてあるものだけが勝つ（SC-02 > SC-01。ADR-0046）。
+export function readSlideTheme(
+  markdownText: string,
+  base: SlideTheme = DEFAULT_SLIDE_THEME,
+): SlideTheme {
   const meta = parseFrontMatterMeta(markdownText);
   return {
-    font: readFont(meta["slide-font"], DEFAULT_SLIDE_THEME.font),
-    mono: readFont(meta["slide-mono"], DEFAULT_SLIDE_THEME.mono),
-    accent: readColor(meta["slide-accent"], DEFAULT_SLIDE_THEME.accent),
+    font: readFont(meta["slide-font"], base.font),
+    mono: readFont(meta["slide-mono"], base.mono),
+    accent: readColor(meta["slide-accent"], base.accent),
+  };
+}
+
+/// 環境設定（8-1）からスライドの見た目を作る。**色はテーマ参照のまま
+/// 渡せる** — 触っていない色は PowerPoint 側のテーマに追従する（ADR-0046）。
+export function slideThemeFrom(settings: PptxSettings): SlideTheme {
+  const accent = settings.theme.palette.accent;
+  return {
+    font: settings.font.jp || DEFAULT_SLIDE_THEME.font,
+    mono: settings.font.mono || DEFAULT_SLIDE_THEME.mono,
+    accent: isThemeRef(accent) ? accent.ref : accent.hex,
   };
 }

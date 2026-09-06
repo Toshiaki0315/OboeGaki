@@ -5,7 +5,12 @@
 
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { buildPptx, readTemplateTheme } from "./pptx";
+import {
+  buildPptx,
+  DEFAULT_PPTX_OPTIONS,
+  readTemplateTheme,
+  type PptxOptions,
+} from "./pptx";
 import { splitDeck } from "./slides";
 import { DEFAULT_SLIDE_THEME, readSlideTheme } from "./slide-theme";
 
@@ -23,6 +28,84 @@ async function open(markdown: string) {
   ).length;
   return { zip, slide, count };
 }
+
+describe("環境設定からの体裁（TASKS 8-2）", () => {
+  const build = async (markdown: string, options: PptxOptions) => {
+    const base64 = await buildPptx(
+      splitDeck(markdown),
+      async () => null,
+      readSlideTheme(markdown),
+      null,
+      options,
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    // **マスタとレイアウトの両方を見る。** pptxgenjs はマスタに置いた
+    // 図形をレイアウト側の XML に書く（実測 2026-09-06）
+    const parts: string[] = [];
+    for (const name of Object.keys(zip.files)) {
+      if (!/^ppt\/slide(Masters|Layouts)\/.*\.xml$/.test(name)) continue;
+      parts.push((await zip.file(name)?.async("string")) ?? "");
+    }
+    return {
+      master: parts.join("\n"),
+      slide: (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "",
+    };
+  };
+
+  it("test_CFG_50_ページ番号を切れる", async () => {
+    const on = await build("# 題\n\n## A\n\nあ\n", DEFAULT_PPTX_OPTIONS);
+    expect(on.master).toContain("slidenum");
+    const off = await build("# 題\n\n## A\n\nあ\n", {
+      ...DEFAULT_PPTX_OPTIONS,
+      footer: { ...DEFAULT_PPTX_OPTIONS.footer, pageNumber: false },
+    });
+    expect(off.master).not.toContain("slidenum");
+  });
+
+  it("test_CFG_51_フッタの字を決められる（空なら題名）", async () => {
+    const named = await build("# 題\n\n## A\n\nあ\n", {
+      ...DEFAULT_PPTX_OPTIONS,
+      footer: { ...DEFAULT_PPTX_OPTIONS.footer, text: "社外秘" },
+    });
+    expect(named.master).toContain("社外秘");
+    expect(named.master).not.toContain(">題<");
+    const bare = await build("# 題\n\n## A\n\nあ\n", DEFAULT_PPTX_OPTIONS);
+    expect(bare.master).toContain("題");
+  });
+
+  it("test_CFG_52_日付を出せる", async () => {
+    const dated = await build("# 題\n\n## A\n\nあ\n", {
+      ...DEFAULT_PPTX_OPTIONS,
+      footer: { ...DEFAULT_PPTX_OPTIONS.footer, showDate: true },
+      today: new Date(2026, 8, 6),
+    });
+    expect(dated.master).toContain("2026-09-06");
+  });
+
+  it("test_CFG_73_コードの言語名を出す（既定は出す）", async () => {
+    const shown = await build(
+      "## A\n\n```js\nlet a = 1;\n```\n",
+      DEFAULT_PPTX_OPTIONS,
+    );
+    expect(shown.slide).toContain("js");
+    const hidden = await build("## A\n\n```js\nlet a = 1;\n```\n", {
+      ...DEFAULT_PPTX_OPTIONS,
+      decoration: {
+        ...DEFAULT_PPTX_OPTIONS.decoration,
+        codeLanguageLabel: false,
+      },
+    });
+    expect(hidden.slide).not.toContain(">js<");
+  });
+
+  it("test_言語を書いていないコードには何も足さない", async () => {
+    const plain = await build(
+      "## A\n\n```\nlet a = 1;\n```\n",
+      DEFAULT_PPTX_OPTIONS,
+    );
+    expect(plain.slide).toContain("let a = 1;");
+  });
+});
 
 describe("buildPptx", () => {
   it("test_太字と斜体とコードが形式に載る", async () => {
