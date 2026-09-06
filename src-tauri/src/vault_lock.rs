@@ -11,7 +11,25 @@
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 
-pub const LOCK_FILE: &str = "instance.lock";
+/// ロックの置き場。**参照実装（hitofude）と名前を分ける。**
+///
+/// 同じ保管フォルダを両方のアプリで開ける状態になっていた（2026-09-06 に
+/// 調べた）。管理フォルダはどちらも `.OboeGaki/` で、素の `instance.lock`
+/// を取り合うが、**掛け方が違うので互いを止められない**:
+///
+/// | | こちら | hitofude |
+/// | --- | --- | --- |
+/// | 仕組み | `flock`（OS の助言ロック） | `QLockFile`（中身に pid を書く） |
+/// | ファイルの中身 | 0 バイト | pid / アプリ名 / ホスト名 |
+///
+/// さらに hitofude は**中身の読めないロックを消す**（あちらの
+/// `_drop_unreadable_lock`）。こちらの 0 バイトのロックがそれに当たるので、
+/// **走っている最中に消される**。消えても `flock` は生きているが、次に
+/// 起動したときは新しいファイルで取り直せてしまい、二重起動を止められない。
+///
+/// 索引を `index-hitofude.sqlite` と分けたのと同じ考え方で、名前を分ける。
+/// 古い `instance.lock` は**こちらからは消さない**（あちらが使っている）。
+pub const LOCK_FILE: &str = "instance-oboegaki.lock";
 
 /// 取れたロック。**アプリが vault を開いている間は持ち続けること**
 /// （手放すと OS がロックを外す）。
@@ -99,5 +117,8 @@ mod tests {
 
         // 索引と同じ「捨ててよい」置き場（T7）
         assert!(managed.join(LOCK_FILE).is_file());
+        // **素の名前は使わない**（hitofude と取り合って、どちらも
+        // 止められない状態になる）
+        assert_ne!(LOCK_FILE, "instance.lock");
     }
 }

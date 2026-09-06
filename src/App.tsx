@@ -3066,7 +3066,12 @@ function App() {
               )}
               {settings.treesVisible && searches.length > 0 && (
                 <details className="search-section" open>
-                  <summary>保存した検索（{searches.length}）</summary>
+                  <summary>
+                    <span className="side-twist" aria-hidden="true" />
+                    <MenuIcon name="search" />
+                    <span className="side-label">保存した検索</span>
+                    <span className="side-count">{searches.length}</span>
+                  </summary>
                   <ul>
                     {searches.map((entry) => (
                       <li key={entry.name}>

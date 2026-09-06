@@ -1017,12 +1017,6 @@ body.resizing {
   font-size: 0.9rem;
 }
 
-.search-section summary {
-  cursor: pointer;
-  padding: 0.3rem 0.5rem;
-  opacity: 0.7;
-}
-
 .search-section li {
   display: flex;
   align-items: center;
@@ -1191,6 +1185,7 @@ details[open] > summary > .side-twist::before {
   font-size: 0.9rem;
 }
 
+.search-section summary,
 .tag-section summary {
   display: flex;
   align-items: center;
@@ -1203,6 +1198,7 @@ details[open] > summary > .side-twist::before {
   opacity: 0.7;
 }
 
+.search-section summary::-webkit-details-marker,
 .tag-section summary::-webkit-details-marker {
   display: none;
 }
