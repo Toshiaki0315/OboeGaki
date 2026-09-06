@@ -23,6 +23,7 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import { ChoiceDialog } from "./components/ChoiceDialog";
 import { FuzzyPalette } from "./components/FuzzyPalette";
 import { HistoryDialog } from "./components/HistoryDialog";
+import { ListPalette } from "./components/ListPalette";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
 import type { FormatKind } from "./editor/format-commands";
@@ -1083,7 +1084,6 @@ function App() {
   const [tableDialog, setTableDialog] = useState(false);
   // テンプレートの選択（E-4）。null は閉じている
   const [templates, setTemplates] = useState<string[] | null>(null);
-  const [templateIndex, setTemplateIndex] = useState(0);
   // フォルダの作成・改名の入力（ADR-0024）。null は閉じている
   const [folderDialog, setFolderDialog] = useState<{
     kind: "create" | "rename";
@@ -1584,7 +1584,6 @@ function App() {
       setStatus(`「${vaultRoot}/templates」に .md を置くと、ここから使えます`);
       return;
     }
-    setTemplateIndex(0);
     setTemplates(found);
   }
 
@@ -3468,47 +3467,17 @@ function App() {
             )}
           </section>
           {templates !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setTemplates(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setTemplates(null);
-                  else if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setTemplateIndex((i) =>
-                      Math.min(i + 1, templates.length - 1),
-                    );
-                  } else if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setTemplateIndex((i) => Math.max(i - 1, 0));
-                  } else if (event.key === "Enter") {
-                    event.preventDefault();
-                    const chosen = templates[templateIndex];
-                    if (chosen) void handleCreateFromTemplate(chosen);
-                  }
-                }}
-              >
-                <header className="palette-title">テンプレートを選ぶ</header>
-                <ul>
-                  {templates.map((path, index) => (
-                    <li key={path}>
-                      <button
-                        autoFocus={index === 0}
-                        className={index === templateIndex ? "selected" : ""}
-                        onMouseEnter={() => setTemplateIndex(index)}
-                        onClick={() => void handleCreateFromTemplate(path)}
-                      >
-                        {noteStem(path)}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            <ListPalette
+              title="テンプレートを選ぶ"
+              items={templates.map((path) => ({
+                key: path,
+                label: noteStem(path),
+              }))}
+              onChoose={(index) =>
+                void handleCreateFromTemplate(templates[index])
+              }
+              onClose={() => setTemplates(null)}
+            />
           )}
           {/* 日付を選んでその日のノートへ（7-5。ポメラの日付メモ相当） */}
           {dayDialog !== null && (
@@ -3544,31 +3513,16 @@ function App() {
             />
           )}
           {moveOpen && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setMoveOpen(false)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">フォルダへ移動</header>
-                <ul>
-                  {folders.map(({ folder }) => (
-                    <li key={folder || "."}>
-                      <button
-                        style={{
-                          paddingLeft: `${0.5 + folderDepth(folder) * 0.8}rem`,
-                        }}
-                        onClick={() => void handleMoveNote(folder)}
-                      >
-                        {folderLabel(folder)}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            <ListPalette
+              title="フォルダへ移動"
+              items={folders.map(({ folder }) => ({
+                key: folder || ".",
+                label: folderLabel(folder),
+                indent: folderDepth(folder),
+              }))}
+              onChoose={(index) => void handleMoveNote(folders[index].folder)}
+              onClose={() => setMoveOpen(false)}
+            />
           )}
           {preferences && (
             <PreferencesDialog
