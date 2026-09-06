@@ -1479,6 +1479,9 @@ fn sort_by_trashed(entries: &mut [TrashEntry]) {
 }
 
 #[cfg(test)]
+// テスト名は日本語で書く。Finder / URL / Shift_JIS のような固有名を
+// 小文字に崩さないため、snake_case の警告はこの mod だけ黙らせる
+#[allow(non_snake_case)]
 mod tests {
     use super::*;
 
