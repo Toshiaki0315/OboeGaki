@@ -18,28 +18,93 @@ export type Frame =
   /// 表。
   | ({ kind: "table"; block: SlideBlock } & Box);
 
+/// 本文と画像の割り方（GR-04）。
+export type BodyLayout = {
+  bodyX: number;
+  bodyY: number;
+  bodyW: number;
+  bodyH: number;
+  images: Box[];
+};
+
+/// 画像があるときの本文の幅（横の用紙。全体に対する割合）。
+const BODY_RATIO_WITH_IMAGE = 0.52;
+/// 縦の用紙で画像に渡す高さ（本文の高さに対する割合）。
+const IMAGE_BAND = 0.42;
+/// 画像どうしの隙間。
+const IMAGE_GAP = 0.2;
+
+/// 本文と画像をどう割るか。
+///
+/// **縦の用紙では画像を上、本文を下に積む**（GR-04）。横に並べると本文が
+/// 細長い柱になって、字が縦 1 列で落ちてくる。
+export function bodyLayout(
+  sheet: SlideMetrics,
+  imageCount: number,
+): BodyLayout {
+  const full = {
+    bodyX: sheet.margin,
+    bodyY: sheet.bodyTop,
+    bodyW: sheet.contentW,
+    bodyH: sheet.bodyH,
+    images: [] as Box[],
+  };
+  if (imageCount <= 0) return full;
+
+  if (sheet.height > sheet.width) {
+    // 縦: 画像の帯を上に、本文を下に
+    const bandH = sheet.bodyH * IMAGE_BAND;
+    const each = bandH / imageCount;
+    return {
+      ...full,
+      bodyY: sheet.bodyTop + bandH,
+      bodyH: sheet.bodyH - bandH,
+      images: Array.from({ length: imageCount }, (_, index) => ({
+        x: sheet.margin,
+        y: sheet.bodyTop + each * index,
+        w: sheet.contentW,
+        h: each - IMAGE_GAP,
+      })),
+    };
+  }
+  // 横: 本文を左、画像を右の柱に
+  const bodyW = sheet.width * BODY_RATIO_WITH_IMAGE - sheet.margin * 2;
+  const left = sheet.margin + bodyW + sheet.margin * 0.5;
+  const width = sheet.width - left - sheet.margin;
+  const each = sheet.bodyH / imageCount;
+  return {
+    ...full,
+    bodyW,
+    images: Array.from({ length: imageCount }, (_, index) => ({
+      x: left,
+      y: sheet.bodyTop + each * index,
+      w: width,
+      h: each - IMAGE_GAP,
+    })),
+  };
+}
+
 /// 本文の枠を上から順に置く。`pptx.ts` もプレビューもこれを描く。
 export function bodyFrames(
   blocks: readonly SlideBlock[],
-  widthIn: number,
-  sheet: SlideMetrics,
+  layout: BodyLayout,
   labelCode: boolean,
 ): Frame[] {
   const frames: Frame[] = [];
   const flow = blocks.filter(
     (block) => block.kind !== "code" && block.kind !== "table",
   );
-  let top = sheet.bodyTop;
+  let top = layout.bodyY;
   if (flow.length > 0) {
     frames.push({
       kind: "flow",
       blocks: flow,
-      x: sheet.margin,
+      x: layout.bodyX,
       y: top,
-      w: widthIn,
-      h: sheet.bodyH * 0.78,
+      w: layout.bodyW,
+      h: layout.bodyH * 0.78,
     });
-    top += sheet.bodyH * 0.82;
+    top += layout.bodyH * 0.82;
   }
   for (const block of blocks) {
     if (block.kind === "code") {
@@ -49,22 +114,22 @@ export function bodyFrames(
         kind: "code",
         block,
         label,
-        x: sheet.margin,
+        x: layout.bodyX,
         y: top,
-        w: widthIn,
-        h: sheet.bodyH * 0.28,
+        w: layout.bodyW,
+        h: layout.bodyH * 0.28,
       });
-      top += sheet.bodyH * 0.32;
+      top += layout.bodyH * 0.32;
     } else if (block.kind === "table") {
       frames.push({
         kind: "table",
         block,
-        x: sheet.margin,
+        x: layout.bodyX,
         y: top,
-        w: widthIn,
-        h: sheet.bodyH * 0.28,
+        w: layout.bodyW,
+        h: layout.bodyH * 0.28,
       });
-      top += sheet.bodyH * 0.32;
+      top += layout.bodyH * 0.32;
     }
   }
   return frames;

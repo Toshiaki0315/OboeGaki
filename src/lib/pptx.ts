@@ -23,11 +23,14 @@ import {
 import { DEFAULT_SLIDE_THEME, type SlideTheme } from "./slide-theme";
 import { applyThemeParts, themeParts, type ThemeParts } from "./slide-template";
 import { slideMetrics, type SlideMetrics } from "./slide-grid";
-import { bodyFrames, LABEL_H } from "./slide-frame";
+import {
+  bodyFrames,
+  bodyLayout,
+  LABEL_H,
+  type BodyLayout,
+} from "./slide-frame";
 import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 
-/// 画像があるときの本文の幅（全体に対する割合）。残りが画像の場所になる
-const BODY_RATIO_WITH_IMAGE = 0.52;
 /// 用紙の名前（`defineLayout` に渡す。GR-06）
 const LAYOUT_NAME = "OBOEGAKI_PAGE";
 /// PowerPoint の箇条書きは 0〜8 段
@@ -196,11 +199,10 @@ export async function buildPptx(
       bold: true,
       color: theme.accent,
     });
-    // 画像があるスライドは本文を左半分へ寄せる（画像と重ならないように）
+    // 本文と画像の割り方は `slide-frame.ts` が決める（**縦の用紙では
+    // 画像が上に来る** = GR-04。プレビューも同じ計算を使う）
     const images = await embedImages(slide.images, resolveImage);
-    const bodyWidth =
-      (images.length > 0 ? sheet.width * BODY_RATIO_WITH_IMAGE : sheet.width) -
-      sheet.margin * 2;
+    const layout = bodyLayout(sheet, images.length);
     // 小見出しが 2 つ以上あれば横並びの箱にする（TASKS 5-4）
     const cards = images.length === 0 ? cardsOf(slide.blocks) : null;
     if (cards) placeCards(page, cards, theme, sheet);
@@ -208,18 +210,12 @@ export async function buildPptx(
       placeBlocks(
         page,
         slide.blocks,
-        bodyWidth,
+        layout,
         theme,
         sheet,
         options.decoration.codeLanguageLabel,
       );
-    placeImages(
-      page,
-      images,
-      bodyWidth,
-      sheet,
-      options.decoration.imageCaption,
-    );
+    placeImages(page, images, layout, sheet, options.decoration.imageCaption);
     if (slide.notes) page.addNotes(slide.notes);
   }
   const built = (await pptx.write({ outputType: "base64" })) as string;
@@ -397,13 +393,13 @@ function flowRuns(
 function placeBlocks(
   page: Page,
   blocks: SlideBlock[],
-  width: number,
+  layout: BodyLayout,
   theme: SlideTheme,
   sheet: SlideMetrics,
   labelCode = DEFAULT_PPTX_OPTIONS.decoration.codeLanguageLabel,
 ): void {
   // 置き場所は `slide-frame.ts` が決める（プレビューと同じ計算 = PV-01）
-  for (const frame of bodyFrames(blocks, width, sheet, labelCode)) {
+  for (const frame of bodyFrames(blocks, layout, labelCode)) {
     if (frame.kind === "flow") {
       page.addText(flowRuns(frame.blocks, theme, sheet), {
         x: frame.x,
@@ -473,30 +469,28 @@ function placeBlocks(
 function placeImages(
   page: Page,
   images: readonly Placed[],
-  bodyWidth: number,
+  layout: BodyLayout,
   sheet: SlideMetrics,
   caption = DEFAULT_PPTX_OPTIONS.decoration.imageCaption,
 ): void {
-  if (images.length === 0) return;
-  const left = sheet.margin + bodyWidth + sheet.margin * 0.5;
-  const width = sheet.width - left - sheet.margin;
-  const height = (sheet.height - sheet.bodyTop - sheet.margin) / images.length;
   images.forEach(({ data, alt }, index) => {
+    const box = layout.images[index];
+    if (!box) return;
     // 説明を出すぶんだけ絵を縮める（重ねると字が読めない）
     const captionH = caption && alt ? sheet.points.body / 72 + 0.1 : 0;
     page.addImage({
       data,
-      x: left,
-      y: sheet.bodyTop + height * index,
-      w: width,
-      h: height - 0.2 - captionH,
-      sizing: { type: "contain", w: width, h: height - 0.2 - captionH },
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h - captionH,
+      sizing: { type: "contain", w: box.w, h: box.h - captionH },
     });
     if (captionH === 0) return;
     page.addText(alt, {
-      x: left,
-      y: sheet.bodyTop + height * index + height - 0.2 - captionH,
-      w: width,
+      x: box.x,
+      y: box.y + box.h - captionH,
+      w: box.w,
       h: captionH,
       fontSize: Math.max(8, Math.round(sheet.points.body * 0.7)),
       color: "tx2",

@@ -12,9 +12,7 @@ import { plainText } from "./slides";
 import type { SlideMetrics } from "./slide-grid";
 import type { PptxSettings } from "./pptx-settings";
 import { estimateHeightIn } from "./slide-lint";
-
-/// 画像があるときの本文の幅（`pptx.ts` と同じ割り方）。
-const BODY_RATIO_WITH_IMAGE = 0.52;
+import { bodyLayout } from "./slide-frame";
 
 /// 設定に合わせて枚を割り直す。**扉と表紙は触らない。**
 export function splitForDensity(
@@ -52,10 +50,7 @@ function splitOne(
       if (said) notes = notes ? `${notes}\n${said}` : said;
     }
   }
-  const widthIn =
-    slide.images.length > 0
-      ? metrics.contentW * BODY_RATIO_WITH_IMAGE
-      : metrics.contentW;
+  const layout = bodyLayout(metrics, slide.images.length);
 
   // 1 枚ぶんずつ詰めていく。**必ず 1 つは載せる** — 載せられないものが
   // あっても、そこで止まると枚が無限に増える
@@ -73,7 +68,7 @@ function splitOne(
       block.kind === "bullet" && bullets + 1 > Math.max(1, maxBulletItems);
     const tooTall =
       page.length > 0 &&
-      estimateHeightIn(next, widthIn, metrics) > metrics.bodyH;
+      estimateHeightIn(next, layout.bodyW, metrics) > layout.bodyH;
     if (tooMany || tooTall) flush();
     page.push(block);
     if (block.kind === "bullet") bullets += 1;

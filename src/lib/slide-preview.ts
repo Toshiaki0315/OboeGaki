@@ -12,7 +12,7 @@
 import { splitDeck, type Slide } from "./slides";
 import { splitForDensity } from "./slide-split";
 import { slideMetrics } from "./slide-grid";
-import { bodyFrames, LABEL_H, type Frame } from "./slide-frame";
+import { bodyFrames, bodyLayout, LABEL_H, type Frame } from "./slide-frame";
 import type { PptxSettings } from "./pptx-settings";
 
 /// 画面に出す枠。本文の枠（`slide-frame`）に、題と表紙と画像を足したもの。
@@ -37,8 +37,6 @@ export type Preview = {
 
 /// 見せる枚数（PV-03 と同じ 5 枚まで）。**設定画面で重い処理をしない。**
 const MAX_PAGES = 5;
-/// 画像があるときの本文の幅（`pptx.ts` と同じ割り方）。
-const BODY_RATIO_WITH_IMAGE = 0.52;
 
 /// Markdown と設定から、画面に出す枠を作る。
 export function previewOf(markdown: string, settings: PptxSettings): Preview {
@@ -103,10 +101,8 @@ function pageOf(
       ],
     };
   }
-  const widthIn =
-    slide.images.length > 0
-      ? sheet.contentW * BODY_RATIO_WITH_IMAGE
-      : sheet.contentW;
+  // 本文と画像の割り方は書き出しと同じ（GR-04 の縦積みもここで決まる）
+  const layout = bodyLayout(sheet, slide.images.length);
   const frames: PreviewFrame[] = [
     {
       kind: "title",
@@ -116,28 +112,12 @@ function pageOf(
       w: sheet.width - sheet.margin * 2,
       h: sheet.titleH,
     },
-    ...bodyFrames(
-      slide.blocks,
-      widthIn,
-      sheet,
-      settings.decoration.codeLanguageLabel,
-    ),
+    ...bodyFrames(slide.blocks, layout, settings.decoration.codeLanguageLabel),
   ];
-  // 画像は右half（`pptx.ts` と同じ置き方）
-  const left = sheet.margin + widthIn + sheet.margin * 0.5;
-  const imageW = sheet.width - left - sheet.margin;
-  const imageH = slide.images.length
-    ? (sheet.height - sheet.bodyTop - sheet.margin) / slide.images.length
-    : 0;
   slide.images.forEach((image, index) => {
-    frames.push({
-      kind: "image",
-      text: image.alt,
-      x: left,
-      y: sheet.bodyTop + imageH * index,
-      w: imageW,
-      h: imageH - 0.2,
-    });
+    const box = layout.images[index];
+    if (!box) return;
+    frames.push({ kind: "image", text: image.alt, ...box });
   });
   if (settings.footer.pageNumber || settings.footer.text) {
     frames.push({

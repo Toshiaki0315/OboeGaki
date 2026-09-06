@@ -219,6 +219,46 @@ describe("縦の用紙では縦に積む（TASKS 8-4 / GR-04）", () => {
   });
 });
 
+describe("縦の用紙では画像を上に積む（GR-04 の残り）", () => {
+  const doc = "## A\n\n本文の行。\n\n![写真](a.png)\n";
+  const boxes = async (preset: PptxSettings["page"]["preset"]) => {
+    const settings = {
+      ...DEFAULT_PPTX_SETTINGS,
+      page: { ...DEFAULT_PPTX_SETTINGS.page, preset },
+    };
+    const base64 = await buildPptx(
+      splitDeck(doc),
+      async () => "data:image/png;base64,iVBORw0KGgo=",
+      DEFAULT_SLIDE_THEME,
+      null,
+      { ...DEFAULT_PPTX_OPTIONS, metrics: slideMetrics(settings) },
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    // 絵（pic）と、本文の枠（最初の sp）の位置
+    const pic = /<p:pic>[\s\S]*?<a:off x="(\d+)" y="(\d+)"/.exec(xml);
+    // **2 つ目の枠が本文**（1 つ目は枚の題）
+    const sps = [...xml.matchAll(/<p:sp>[\s\S]*?<a:off x="(\d+)" y="(\d+)"/g)];
+    return {
+      image: { x: Number(pic?.[1]), y: Number(pic?.[2]) },
+      body: { x: Number(sps[1][1]), y: Number(sps[1][2]) },
+    };
+  };
+
+  it("test_横の用紙では本文の右に置く", async () => {
+    const found = await boxes("16:9");
+    expect(found.image.x).toBeGreaterThan(found.body.x);
+  });
+
+  it("test_縦の用紙では本文の上に置く", async () => {
+    const found = await boxes("a4-portrait");
+    expect(found.image.y).toBeLessThan(found.body.y);
+    // 左端は本文と同じ（全幅を使う）
+    expect(found.image.x).toBe(found.body.x);
+  });
+});
+
 describe("buildPptx", () => {
   it("test_太字と斜体とコードが形式に載る", async () => {
     const deck = await open("## A\n\n**太字**と*斜体*と`コード`\n");

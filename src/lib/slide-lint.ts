@@ -10,6 +10,7 @@
 import { plainText, type Deck, type SlideBlock } from "./slides";
 import type { SlideMetrics } from "./slide-grid";
 import { wrapCount } from "./text-width";
+import { bodyLayout } from "./slide-frame";
 
 export type Overflow = {
   /// 何枚目か（表紙を 1 枚目として数える）。
@@ -62,11 +63,11 @@ export function overflowingSlides(
   const offset = deck.title || deck.subtitle ? 1 : 0;
   deck.slides.forEach((slide, at) => {
     if (slide.kind !== "content") return;
-    // 画像がある枚は本文が半分の幅になる（`pptx.ts` と同じ割り方）
-    const widthIn =
-      slide.images.length > 0 ? metrics.contentW * 0.52 : metrics.contentW;
-    const needIn = estimateHeightIn(slide.blocks, widthIn, metrics);
-    if (needIn > metrics.bodyH) {
+    // 本文に使える幅と高さは `slide-frame.ts` が決める（画像があるとき・
+    // 縦の用紙のときで変わる）
+    const layout = bodyLayout(metrics, slide.images.length);
+    const needIn = estimateHeightIn(slide.blocks, layout.bodyW, metrics);
+    if (needIn > layout.bodyH) {
       found.push({
         index: at + offset + 1,
         title: slide.title,
