@@ -29,6 +29,7 @@ import { MenuIcon, PathIcon } from "./components/MenuIcon";
 import { NoteActions } from "./components/NoteActions";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
+import { StatusBar } from "./components/StatusBar";
 import { StyleCheckDialog } from "./components/StyleCheckDialog";
 
 import { TableDialog } from "./components/TableDialog";
@@ -65,7 +66,7 @@ import {
 } from "./lib/fonts";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
-import { sheets, type TextStats } from "./editor/stats";
+import type { TextStats } from "./editor/stats";
 import {
   collectMermaid,
   renderMermaid,
@@ -211,14 +212,6 @@ function noteStem(path: string): string {
 }
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
-/// 保存時刻（時:分）。日付は出さない — 開いている間に保存した時刻なので、
-/// 日付まで出すと情報が増えるだけで読み取りが遅くなる。
-function clockOf(at: number): string {
-  const time = new Date(at);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(time.getHours())}:${pad(time.getMinutes())}`;
-}
-
 /// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
 function folderLabel(folder: string): string {
   if (!folder) return "直下";
@@ -4048,55 +4041,12 @@ function App() {
             </aside>
           )}
         </div>
-        {/* ステータスバーはウィンドウの全幅（参照実装と同じ）。
-            左端に設定の歯車 — hitofude の置き場所に合わせる */}
-        <footer className="status-bar">
-          <button
-            className="settings-button"
-            title="メニュー"
-            aria-label="メニュー"
-            onClick={(event) => {
-              const box = event.currentTarget.getBoundingClientRect();
-              setGearMenu({ left: box.left, top: box.top });
-            }}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M12.4 8h2M11.11 11.11l1.42 1.42M8 12.4v2M4.89 11.11l-1.42 1.42M3.6 8h-2M4.89 4.89 3.47 3.47M8 3.6v-2M11.11 4.89l1.42-1.42"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-              />
-              <circle
-                cx="8"
-                cy="8"
-                r="3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-              />
-              <circle
-                cx="8"
-                cy="8"
-                r="1.2"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.4"
-              />
-            </svg>
-          </button>
-          <span className="status-message">{status}</span>
-          <span className="status-stats">
-            {currentPath !== null &&
-              // 原稿用紙の枚数は 1 枚を超えてから足す（ポメラ調べ 7-3）
-              `${stats.characters} 文字 / ${stats.lines} 行` +
-                (sheets(stats.characters) === null
-                  ? ""
-                  : ` / ${sheets(stats.characters)} 枚`)}
-            {savedAt !== null && ` ・ 保存 ${clockOf(savedAt)}`}
-          </span>
-        </footer>
+        <StatusBar
+          status={status}
+          stats={currentPath !== null ? stats : null}
+          savedAt={savedAt}
+          onMenu={setGearMenu}
+        />
       </main>
       {/* 印刷用（ADR-0038）。画面では隠れていて、紙にはここだけが出る。
           中身は書き出しと同じ本文（markdown-it が組んだもの） */}
