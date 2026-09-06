@@ -51,9 +51,35 @@
 - `PreferencesDialog` は開いている間だけ mount されるので、キャンセル用の
   スナップショットは「初回描画の props」で足りる（`useRef` の初期値）
 
+## 進み具合（2026-09-07 時点）
+
+同日のうちに 20 段まで進めた。App.tsx は 6,020 行 → 3,706 行、`useState`
+は 75 → 60 個。切り出した部品（`src/components/`、各 1 コミット）:
+
+- 窓: PreferencesDialog（General / Pptx / Assistant の 3 タブ）・
+  HistoryDialog・PromptDialog（名前を 1 つ聞く 4 つの窓を束ねた）・
+  ChoiceDialog（選択肢だけの 3 つの窓を束ねた）・TableDialog・
+  GraphDialog・StyleCheckDialog
+- パレット: FuzzyPalette（クイックオープン・見出し）・ListPalette
+  （テンプレート・フォルダへ移動）
+- 枠と絵: ContextMenu / SubMenu・MenuIcon / PathIcon・SlidePreview
+- エディタまわり: FormatToolbar・NoteActions・BacklinkBar・OutlinePane・
+  StatusBar・AssistantPane
+- サイドバーの葉: SearchHits・TagSection・SavedSearchSection・NoteRows・
+  TrashRows
+
+`noteStem` / `noteLabel` は `src/lib/note-path.ts` に移した。
+
 ## 次の段
 
-同じ手順で、閉じた状態を持つものから順に:
-スライドプレビュー以外のモーダル（表・フォルダ・移動・日付・競合の 3 択）、
-パレット（クイックオープン・見出し）、サイドバー、ツールバー、ステータス
-バー。**1 部品 = 1 コミット**で、`make check` を緑に保ちながら進める。
+残っているのは、App の状態と深く結びついているもの:
+
+- **フォルダの節**（サイドバー）。ドラッグ＆ドロップの受け口と落とし先の
+  強調（`dropFolder` / `dropTrash`）が App の ref・state に跨る。切るなら
+  props が 15 前後になるので、強調の状態を節の中に閉じる設計から考える
+- **右クリックメニューの中身**（ノート・本文・歯車・タグ・フォルダ・
+  ゴミ箱・アウトラインの 7 つ）。枠は部品にしたが、項目の並びは App の
+  振る舞いそのものなので、切るなら「項目の並び」を配列で渡す形
+- 題名の欄（改名）と `<main>` の外枠（D&D の受けるふり）
+
+同じ手順（RED → GREEN → `make check` → 1 部品 1 コミット）で進める。
