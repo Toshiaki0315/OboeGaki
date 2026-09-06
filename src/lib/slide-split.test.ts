@@ -95,6 +95,47 @@ describe("CFG-41 要点のみ", () => {
   });
 });
 
+describe("CFG-60 原文を発表者ノートに残す", () => {
+  const doc = "## A\n\n本文の段落。\n\n- 箇条書き\n";
+  const sparse = (keepOriginalText: boolean): PptxSettings => ({
+    ...settings({ density: "sparse" }),
+    notes: { keepOriginalText, llmSummary: false },
+  });
+
+  it("test_既定は残す（スライドから外れた段落がノートに入る）", () => {
+    const config = sparse(true);
+    const deck = splitForDensity(splitDeck(doc), config, slideMetrics(config));
+    expect(deck.slides[0].notes).toContain("本文の段落。");
+  });
+
+  it("test_切ると残らない（書き出したスライドから消える）", () => {
+    const config = sparse(false);
+    const deck = splitForDensity(splitDeck(doc), config, slideMetrics(config));
+    expect(deck.slides[0].blocks.map((b) => b.kind)).toEqual(["bullet"]);
+    expect(deck.slides[0].notes).toBe("");
+  });
+
+  it("test_切っても、元から書いてある引用のノートは消さない", () => {
+    const config = sparse(false);
+    const withNote = "## A\n\n> 話すこと\n\n本文。\n";
+    const deck = splitForDensity(
+      splitDeck(withNote),
+      config,
+      slideMetrics(config),
+    );
+    expect(deck.slides[0].notes).toBe("話すこと");
+  });
+
+  it("test_標準では関わらない（そもそも段落を外さない）", () => {
+    const config: PptxSettings = {
+      ...settings({ density: "normal" }),
+      notes: { keepOriginalText: false, llmSummary: false },
+    };
+    const deck = splitForDensity(splitDeck(doc), config, slideMetrics(config));
+    expect(deck.slides[0].blocks).toHaveLength(2);
+  });
+});
+
 describe("触らないもの", () => {
   it("test_扉と表紙はそのまま", () => {
     const deck = run("# 題\n\n副題\n\n# 扉\n\n## A\n\nあ\n");

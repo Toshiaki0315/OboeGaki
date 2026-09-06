@@ -45,8 +45,12 @@ function splitOne(
   if (density === "sparse") {
     const moved = blocks.filter((block) => block.kind === "paragraph");
     blocks = blocks.filter((block) => block.kind !== "paragraph");
-    const said = moved.map((block) => plainText(block.runs)).join("\n");
-    if (said) notes = notes ? `${notes}\n${said}` : said;
+    // **既定は残す**（CFG-60）。切ったときは書き出したスライドから消える
+    // ——ノートの本文は消えない（.md は触っていない）
+    if (settings.notes.keepOriginalText) {
+      const said = moved.map((block) => plainText(block.runs)).join("\n");
+      if (said) notes = notes ? `${notes}\n${said}` : said;
+    }
   }
   const widthIn =
     slide.images.length > 0

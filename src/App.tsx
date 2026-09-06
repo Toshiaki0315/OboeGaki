@@ -885,6 +885,25 @@ function App() {
     return overflowingSlides(deck, metrics);
   }, [preferences, prefTab, currentPath, pptxSettings]);
 
+  /// 「載らなかった本文を残す」の切り替え（CFG-60 / CFG-62）。
+  ///
+  /// **切るときだけ確認する。** 既定の ON を強く保つための一拍で、
+  /// 入れ直すときは黙って入れる。
+  async function changeKeepOriginal(keep: boolean) {
+    if (!keep) {
+      const ok = await confirm(
+        "「要点のみ」で書き出したとき、スライドに載らなかった本文が" +
+          "発表者ノートにも残らなくなります。\n" +
+          "（ノートの本文そのものは消えません）",
+        { title: "覚書", kind: "warning" },
+      );
+      if (!ok) return;
+    }
+    changePptxSettings({
+      notes: { ...pptxSettings.notes, keepOriginalText: keep },
+    });
+  }
+
   function changePptxSettings(patch: Partial<PptxSettings>) {
     setPptxSettings((current) => {
       const next = { ...current, ...patch };
@@ -4488,6 +4507,28 @@ function App() {
                             }
                           />
                           書き出した日を入れる
+                        </span>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">発表者ノート</h3>
+                    <p className="pref-note">
+                      スライドに載らなかった本文の行き先。ノートの本文
+                      （`.md`）は、どちらにしても変わりません。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>載らなかった本文</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={pptxSettings.notes.keepOriginalText}
+                            onChange={(event) =>
+                              void changeKeepOriginal(
+                                event.currentTarget.checked,
+                              )
+                            }
+                          />
+                          発表者ノートに残す
                         </span>
                       </label>
                     </div>
