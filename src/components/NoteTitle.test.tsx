@@ -42,4 +42,25 @@ describe("NoteTitle", () => {
     fireEvent.keyDown(input, { key: "Enter" }); // 確定後の Enter で外れる
     expect(onRename).toHaveBeenCalledTimes(1);
   });
+
+  test("test_T5_WebKit_keyCode 229 の Enter も変換中", () => {
+    const onRename = vi.fn();
+    render(<NoteTitle path="/v/a.md" onRename={onRename} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    input.focus();
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(document.activeElement).toBe(input);
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  test("test_T5_WebKit_compositionend の直後に届く Enter は確定のもの", () => {
+    const onRename = vi.fn();
+    render(<NoteTitle path="/v/a.md" onRename={onRename} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    input.focus();
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter" }); // isComposing は既に false
+    expect(document.activeElement).toBe(input);
+    expect(onRename).not.toHaveBeenCalled();
+  });
 });

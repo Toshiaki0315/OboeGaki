@@ -2,7 +2,9 @@
 // と同じ。Ollama とのやり取り・答えの組み立ては App が持ち、ここは
 // **押せる・押せない**と表示だけを引き受ける。
 
+import { useMemo } from "react";
 import type { AssistantAction } from "../lib/assistant-actions";
+import { imeEnterGuard } from "../lib/ime";
 import { ASK_ACTION, ASSISTANT_ACTIONS } from "../lib/assistant-actions";
 import type { RelatedNote, SearchHit } from "../stores/app";
 import { PathIcon } from "./MenuIcon";
@@ -43,6 +45,8 @@ export function AssistantPane({
   onAskQuestion,
   onOpen,
 }: AssistantPaneProps) {
+  // 質問欄の Enter。変換中の確定と見分ける（T5、lib/ime）
+  const ime = useMemo(imeEnterGuard, []);
   return (
     <aside className="assistant-pane">
       <header>アシスタント</header>
@@ -90,8 +94,11 @@ export function AssistantPane({
               value={question}
               placeholder="ノート全体に質問する"
               onChange={(event) => onQuestionChange(event.currentTarget.value)}
+              onCompositionEnd={(event) =>
+                ime.onCompositionEnd(event.nativeEvent)
+              }
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.nativeEvent.isComposing)
+                if (event.key === "Enter" && !ime.isImeEnter(event.nativeEvent))
                   onAskQuestion();
               }}
             />

@@ -77,6 +77,15 @@ describe("AssistantPane", () => {
     expect(props.onQuestionChange).toHaveBeenCalledWith("予算はいくら？");
   });
 
+  test("test_T5_WebKit の変換確定 Enter でも送らない（keyCode 229 / compositionend 直後）", () => {
+    const props = setup({ question: "予算は？" });
+    const input = screen.getByPlaceholderText("ノート全体に質問する");
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter" }); // isComposing は既に false
+    expect(props.onAskQuestion).not.toHaveBeenCalled();
+  });
+
   test("test_空の質問では送るボタンが押せない", () => {
     setup({ question: "   " });
     expect(button("質問").disabled).toBe(true);
