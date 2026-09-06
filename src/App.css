@@ -1647,6 +1647,15 @@ button.danger {
   font-size: 0.95rem;
   margin: 1.1rem 0 0.2rem;
 }
+/* 収まらない枚の知らせ（GR-05）。**止めない** — 気づけるだけでよい */
+.pref-warn {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--note-warn) 14%, transparent);
+  border-left: 3px solid var(--note-warn);
+  opacity: 1;
+}
+
 .pref-note {
   font-size: 0.8rem;
   opacity: 0.6;

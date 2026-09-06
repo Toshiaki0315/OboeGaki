@@ -868,6 +868,17 @@ function App() {
       return DEFAULT_PPTX_SETTINGS;
     }
   });
+  /// 用紙や字の大きさを変えたときの見直し（GR-05）。**今のノートで測る** —
+  /// 設定を触った瞬間に「収まらなくなった」が分かるほうが、書き出してから
+  /// 気づくより早い。開いていなければ何も言わない。
+  const pptxOverflow = useMemo(() => {
+    if (!preferences || prefTab !== "pptx" || !currentPath) return null;
+    const text = editorRef.current?.getText() ?? "";
+    if (!text.trim()) return null;
+    const deck = splitDeck(text, pptxSettings.layout.splitLevel);
+    return overflowingSlides(deck, slideMetrics(pptxSettings));
+  }, [preferences, prefTab, currentPath, pptxSettings]);
+
   function changePptxSettings(patch: Partial<PptxSettings>) {
     setPptxSettings((current) => {
       const next = { ...current, ...patch };
@@ -4171,6 +4182,18 @@ function App() {
                         </select>
                       </label>
                     </div>
+                    {pptxOverflow !== null && pptxOverflow.length > 0 && (
+                      <p className="pref-note pref-warn">
+                        いまのノートは <b>{pptxOverflow.length} 枚</b>
+                        で文字が収まらないかもしれません（
+                        {pptxOverflow
+                          .map((slide) => slide.title)
+                          .slice(0, 3)
+                          .join("・")}
+                        {pptxOverflow.length > 3 ? " ほか" : ""}
+                        ）。用紙を大きくするか、字を小さくすると収まります。
+                      </p>
+                    )}
                     <h3 className="pref-section">スライドの分け方</h3>
                     <p className="pref-note">
                       どの見出しで 1 枚に分けるか。浅い見出しは扉、深い見出しは
