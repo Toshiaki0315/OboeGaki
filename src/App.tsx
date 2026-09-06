@@ -51,6 +51,7 @@ import {
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
+import { noteLabel, noteStem } from "./lib/note-path";
 import { splitFolders } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
@@ -202,16 +203,6 @@ const AUTOSAVE_DELAY_MS = 800; // spec §7.4
 /// 自動保存が 800ms で走るのでここまで来ることは少ないが、**打ち続けて
 /// いる間**（デバウンスが伸び続ける）と保存できない状態の保険になる
 const STASH_INTERVAL_MS = 2000;
-
-function noteLabel(root: string, path: string): string {
-  const relative = path.startsWith(root) ? path.slice(root.length + 1) : path;
-  return relative.replace(/\.(md|markdown)$/i, "");
-}
-
-function noteStem(path: string): string {
-  const base = path.split("/").pop() ?? path;
-  return base.replace(/\.(md|markdown)$/i, "");
-}
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
 /// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
