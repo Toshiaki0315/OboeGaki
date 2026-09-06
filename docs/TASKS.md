@@ -336,6 +336,36 @@ GR-xx / ST-xx / VA-xx / PV-xx）を実装とテストの名前に必ず書く**�
       太いの 3 段）で測り、**安全のぶんを上乗せする**（仕様 MEAS-10 の
       「一覧外の書体」の扱いを全部に広げる）。近似であることは画面にも書く。- `measureIn()`（幅）と `wrapCount()`（何行になるか）を純関数で - 和文は**どこでも折れる**、欧文は空白で折れる、を分ける - 受け入れ: 実際に溢れる例／収まる例で行数が合うこと
 
+## 第 9 群 — 保守（ソースコードレビュー 2026-09-07 の残り）
+
+対応済み: HTML 書き出しの属性値エスケープ（②）・Rust テスト名の警告（④）・
+App.tsx の分割（①、ADR-0048。23 段で 6,020 行 → 3,443 行）。
+
+- [ ] **9-1. Tauri の CSP を設定する**（③）
+      `tauri.conf.json` の `security.csp` が `null`。WebView から fetch /
+      convertFileSrc / 外部フォントは使っていないので
+      `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+    img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMirror
+      の style-mod と Mermaid の SVG に必須）。**`make run` で Temml・Mermaid・
+      画像・Ollama 連携が壊れないことを見ながら**入れる。dev は `devCsp` も
+- [ ] **9-2. ESLint（react-hooks）を `make check` に入れる**（⑤）
+      `eslint-disable-next-line react-hooks/exhaustive-deps` が App.tsx に 3 箇所
+      あるのにリンタが無い。`eslint` + `eslint-plugin-react-hooks`（または
+      oxlint / biome）を devDeps に足し、Makefile の check と CI に加える。
+      最初は既存の指摘を洗い出し、直すものと許すものを分けてから緑にする
+- [ ] **9-3. App.tsx の状態と処理を hooks に切り出す**（ADR-0048 の続き）
+      部品化で残った 3,443 行の大半は状態と処理。`useAutosave`（自動保存・
+      退避・競合）、`useSearch`（検索・絞り込み・保存した検索）、`useAssistant`
+      （Ollama・答え・関連）のような hooks に分け、テストは
+      `@testing-library/react` の `renderHook` で。別の ADR を書いてから
+- [ ] **9-4. `stores/app.ts` の IPC ラッパーを分ける**（⑥）
+      Zustand のストア定義と 40 件超の `invoke` ラッパーが同居。ラッパーを
+      `src/lib/ipc.ts` に移し、ストアはストアだけにする。9-3 と一緒にやると
+      import の張り替えが 1 回で済む
+- [ ] **9-5.（低）`llm.rs` のテストがループバック通信に依存**（⑦）
+      CI は macos-14 で問題なし。ネットワーク無効の環境で回す予定ができたら、
+      `Read + Write` のトレイト境界で通信部を差し替えられるようにする
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち
