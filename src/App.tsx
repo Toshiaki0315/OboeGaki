@@ -32,6 +32,7 @@ import { NoteActions } from "./components/NoteActions";
 import { OutlinePane } from "./components/OutlinePane";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
+import { SearchHits } from "./components/SearchHits";
 import { StatusBar } from "./components/StatusBar";
 import { StyleCheckDialog } from "./components/StyleCheckDialog";
 
@@ -2521,24 +2522,10 @@ function App() {
                 />
               )}
               {!settings.notesVisible ? null : query.trim() ? (
-                <ul className="note-scroll note-rows">
-                  {hits.map((hit) => (
-                    <li key={hit.path}>
-                      <button
-                        className="search-hit"
-                        onClick={() =>
-                          void openNote(`${vaultRoot}/${hit.path}`)
-                        }
-                      >
-                        <span className="hit-title">{hit.title}</span>
-                        <span className="hit-snippet">{hit.snippet}</span>
-                      </button>
-                    </li>
-                  ))}
-                  {hits.length === 0 && (
-                    <li className="no-hits">見つかりません</li>
-                  )}
-                </ul>
+                <SearchHits
+                  hits={hits}
+                  onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
+                />
               ) : (
                 <div className="note-scroll">
                   {tagFilter && (
