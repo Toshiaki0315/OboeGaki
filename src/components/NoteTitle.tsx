@@ -16,7 +16,11 @@ export function NoteTitle({
         className="title-input"
         defaultValue={noteStem(path)}
         onKeyDown={(event) => {
-          if (event.key === "Enter") event.currentTarget.blur();
+          // 変換中の Enter は IME の確定（T5）。外すと確定と同時に改名が走る
+          // （実機報告 2026-09-07）
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            event.currentTarget.blur();
+          }
         }}
         onBlur={(event) => onRename(event.currentTarget.value)}
       />

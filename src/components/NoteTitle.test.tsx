@@ -27,4 +27,19 @@ describe("NoteTitle", () => {
     expect(onRename).toHaveBeenCalledTimes(1);
     expect(onRename).toHaveBeenCalledWith("b");
   });
+
+  test("test_T5_変換中の Enter は確定であって改名ではない（実機報告 2026-09-07）", () => {
+    // 日本語を打って未確定のまま Enter を押すと、確定と同時に欄から
+    // フォーカスが外れて改名まで走っていた。変換中の Enter は IME のもの
+    const onRename = vi.fn();
+    render(<NoteTitle path="/v/a.md" onRename={onRename} />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: "かいぎ" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(document.activeElement).toBe(input);
+    expect(onRename).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" }); // 確定後の Enter で外れる
+    expect(onRename).toHaveBeenCalledTimes(1);
+  });
 });
