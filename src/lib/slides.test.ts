@@ -12,6 +12,25 @@ const said = (block: SlideBlock) =>
 const runsOf = (block: SlideBlock) => ("runs" in block ? block.runs : []);
 const plainOf = (block: SlideBlock) => plainText(runsOf(block));
 
+describe("画像の説明（CFG-72 / TASKS 8-2 の積み残し）", () => {
+  it("test_道と説明の両方を持つ", () => {
+    const deck = splitDeck("## A\n\n![犬の写真](dog.png)\n");
+    expect(deck.slides[0].images).toEqual([
+      { url: "dog.png", alt: "犬の写真" },
+    ]);
+  });
+
+  it("test_説明が無ければ空", () => {
+    const deck = splitDeck("## A\n\n![](dog.png)\n");
+    expect(deck.slides[0].images[0].alt).toBe("");
+  });
+
+  it("test_大きさ指定は説明から外す（6-8 の `|300`）", () => {
+    const deck = splitDeck("## A\n\n![犬|300](dog.png)\n");
+    expect(deck.slides[0].images[0].alt).toBe("犬");
+  });
+});
+
 describe("分ける見出しのレベル（CFG-40 / TASKS 8-2）", () => {
   const doc = `# 題
 
@@ -98,7 +117,9 @@ describe("splitDeck", () => {
 
   test("画像は本文に混ぜず、右側に置くものとして分ける", () => {
     const deck = splitDeck("## A\n\n本文\n\n![](attachments/図.png)\n");
-    expect(deck.slides[0].images).toEqual(["attachments/図.png"]);
+    expect(deck.slides[0].images).toEqual([
+      { url: "attachments/図.png", alt: "" },
+    ]);
     expect(deck.slides[0].blocks.map(said)).toEqual(["本文"]);
   });
 

@@ -4415,7 +4415,7 @@ function App() {
                         </select>
                       </label>
                     </div>
-                    <h3 className="pref-section">コード</h3>
+                    <h3 className="pref-section">コードと画像</h3>
                     <div className="preferences-fields">
                       <label>
                         <span>言語名</span>
@@ -4434,6 +4434,24 @@ function App() {
                             }
                           />
                           コードの上に言語名を小さく出す
+                        </span>
+                      </label>
+                      <label>
+                        <span>画像の説明</span>
+                        <span className="pref-check">
+                          <input
+                            type="checkbox"
+                            checked={pptxSettings.decoration.imageCaption}
+                            onChange={(event) =>
+                              changePptxSettings({
+                                decoration: {
+                                  ...pptxSettings.decoration,
+                                  imageCaption: event.currentTarget.checked,
+                                },
+                              })
+                            }
+                          />
+                          画像の下に説明（`![説明](…)`）を出す
                         </span>
                       </label>
                     </div>

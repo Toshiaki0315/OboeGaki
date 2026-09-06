@@ -18,6 +18,7 @@ import {
   type Deck,
   type Run,
   type SlideBlock,
+  type SlideImage,
 } from "./slides";
 import { DEFAULT_SLIDE_THEME, type SlideTheme } from "./slide-theme";
 import { applyThemeParts, themeParts, type ThemeParts } from "./slide-template";
@@ -211,7 +212,13 @@ export async function buildPptx(
         sheet,
         options.decoration.codeLanguageLabel,
       );
-    placeImages(page, images, bodyWidth, sheet);
+    placeImages(
+      page,
+      images,
+      bodyWidth,
+      sheet,
+      options.decoration.imageCaption,
+    );
     if (slide.notes) page.addNotes(slide.notes);
   }
   const built = (await pptx.write({ outputType: "base64" })) as string;
@@ -255,14 +262,17 @@ export async function readTemplateTheme(
 const THEME_PATH = "ppt/theme/theme1.xml";
 
 /// 読めた画像だけを返す（読めないものは飛ばす。書き出しは止めない）。
+/// 画像を data URL に解決する。**説明も一緒に運ぶ**（CFG-72）。
+type Placed = { data: string; alt: string };
+
 async function embedImages(
-  urls: string[],
+  images: readonly SlideImage[],
   resolveImage: ImageResolver,
-): Promise<string[]> {
-  const found: string[] = [];
-  for (const url of urls) {
-    const data = await resolveImage(url);
-    if (data) found.push(data);
+): Promise<Placed[]> {
+  const found: Placed[] = [];
+  for (const image of images) {
+    const data = await resolveImage(image.url);
+    if (data) found.push({ data, alt: image.alt });
   }
   return found;
 }
@@ -471,22 +481,35 @@ function placeBlocks(
 
 function placeImages(
   page: Page,
-  images: string[],
+  images: readonly Placed[],
   bodyWidth: number,
   sheet: SlideMetrics,
+  caption = DEFAULT_PPTX_OPTIONS.decoration.imageCaption,
 ): void {
   if (images.length === 0) return;
   const left = sheet.margin + bodyWidth + sheet.margin * 0.5;
   const width = sheet.width - left - sheet.margin;
   const height = (sheet.height - sheet.bodyTop - sheet.margin) / images.length;
-  images.forEach((data, index) => {
+  images.forEach(({ data, alt }, index) => {
+    // 説明を出すぶんだけ絵を縮める（重ねると字が読めない）
+    const captionH = caption && alt ? sheet.points.body / 72 + 0.1 : 0;
     page.addImage({
       data,
       x: left,
       y: sheet.bodyTop + height * index,
       w: width,
-      h: height - 0.2,
-      sizing: { type: "contain", w: width, h: height - 0.2 },
+      h: height - 0.2 - captionH,
+      sizing: { type: "contain", w: width, h: height - 0.2 - captionH },
+    });
+    if (captionH === 0) return;
+    page.addText(alt, {
+      x: left,
+      y: sheet.bodyTop + height * index + height - 0.2 - captionH,
+      w: width,
+      h: captionH,
+      fontSize: Math.max(8, Math.round(sheet.points.body * 0.7)),
+      color: "tx2",
+      align: "center",
     });
   });
 }

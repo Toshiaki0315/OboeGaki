@@ -84,6 +84,26 @@ describe("環境設定からの体裁（TASKS 8-2）", () => {
     expect(dated.master).toContain("2026-09-06");
   });
 
+  it("test_CFG_72_画像の説明を出せる（既定は出さない）", async () => {
+    const doc = "## A\n\n![犬の写真](dog.png)\n";
+    const withImage = async (imageCaption: boolean) => {
+      const base64 = await buildPptx(
+        splitDeck(doc),
+        async () => "data:image/png;base64,iVBORw0KGgo=",
+        readSlideTheme(doc),
+        null,
+        {
+          ...DEFAULT_PPTX_OPTIONS,
+          decoration: { ...DEFAULT_PPTX_OPTIONS.decoration, imageCaption },
+        },
+      );
+      const zip = await JSZip.loadAsync(base64, { base64: true });
+      return (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    };
+    expect(await withImage(true)).toContain("犬の写真");
+    expect(await withImage(false)).not.toContain("犬の写真");
+  });
+
   it("test_CFG_73_コードの言語名を出す（既定は出す）", async () => {
     const shown = await build(
       "## A\n\n```js\nlet a = 1;\n```\n",

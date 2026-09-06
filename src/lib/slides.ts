@@ -18,6 +18,7 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
+import { splitImageAlt } from "../editor/image-size";
 import { relaxedAsterisk } from "../editor/relaxed-emphasis";
 import { extendedInline } from "../editor/extended-inline";
 
@@ -45,13 +46,16 @@ export function plainText(runs: readonly Run[]): string {
   return runs.map((run) => run.text).join("");
 }
 
+/// スライドに載せる画像。**説明も持つ**（CFG-72 の見出しに使う）。
+export type SlideImage = { url: string; alt: string };
+
 export type Slide = {
   /// `section` は扉（題だけの 1 枚）。2 つ目以降の `#` がこれになる
   kind: "content" | "section";
   title: string;
   blocks: SlideBlock[];
   /// 右側に置く画像のパス。**本文とは分ける**（並びに混ぜない）。
-  images: string[];
+  images: SlideImage[];
   /// 発表者ノート。スライドには出さない。
   notes: string;
 };
@@ -247,13 +251,20 @@ function fencedCode(text: string, node: SyntaxNode): SlideBlock {
 }
 
 /// 画像だけの段落ならその URL。違えば null。
-function imageOnly(text: string, node: SyntaxNode): string | null {
+function imageOnly(text: string, node: SyntaxNode): SlideImage | null {
   const body = text.slice(node.from, node.to).trim();
   const image = node.firstChild;
   if (!image || image.name !== "Image") return null;
   if (text.slice(image.from, image.to).trim() !== body) return null;
   const url = image.getChild("URL");
-  return url ? text.slice(url.from, url.to) : null;
+  if (!url) return null;
+  // `![説明](道)` の説明。`|300` の大きさ指定は説明ではない（6-8）
+  const marks = image.getChildren("LinkMark");
+  const raw = marks.length >= 2 ? text.slice(marks[0].to, marks[1].from) : "";
+  return {
+    url: text.slice(url.from, url.to),
+    alt: splitImageAlt(raw).alt,
+  };
 }
 
 /// 装飾ごと拾った本文（TASKS 5-1）。
