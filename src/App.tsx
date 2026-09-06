@@ -82,6 +82,7 @@ import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
 import { slideMetrics } from "./lib/slide-grid";
 import { overflowingSlides } from "./lib/slide-lint";
+import { contrastVerdict } from "./lib/contrast";
 import {
   DEFAULT_PPTX_SETTINGS,
   hexColor,
@@ -4252,6 +4253,30 @@ function App() {
                           />
                         </label>
                       )}
+                      {!isThemeRef(pptxSettings.theme.palette.accent) &&
+                        (() => {
+                          // **白い紙に置いたときの読みやすさ**（CFG-19）。
+                          // 白は「表の見出しの字の色」でもあるので、
+                          // この 1 組が両方の見え方をあらわす
+                          const found = contrastVerdict(
+                            (
+                              pptxSettings.theme.palette.accent as {
+                                hex: string;
+                              }
+                            ).hex,
+                            "FFFFFF",
+                          );
+                          return (
+                            <p className="pref-note">
+                              白い背景での見えかた: {found.ratio.toFixed(1)}:1
+                              {found.body === "warn"
+                                ? found.heading === "warn"
+                                  ? "（薄すぎます。大きな字でも読みにくい色です）"
+                                  : "（見出しには足りますが、本文には薄い色です）"
+                                : "（読みやすい色です）"}
+                            </p>
+                          );
+                        })()}
                       <label>
                         <span>本文の書体</span>
                         <input
