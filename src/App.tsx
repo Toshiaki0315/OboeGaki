@@ -17,6 +17,7 @@ import {
   writeText as writeClipboard,
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
 import { ContextMenu, SubMenu } from "./components/ContextMenu";
 import { FormatToolbar } from "./components/FormatToolbar";
@@ -3123,33 +3124,10 @@ function App() {
               <p className="placeholder">ノートを選んでください</p>
             )}
             {backlinks.length > 0 && (
-              <details className="backlink-bar">
-                <summary>バックリンク（{backlinks.length}）</summary>
-                <ul>
-                  {backlinks.map((entry) => (
-                    <li key={entry.path}>
-                      <button
-                        onClick={() =>
-                          void openNote(`${vaultRoot}/${entry.path}`)
-                        }
-                      >
-                        <span className="backlink-title">
-                          {entry.title}
-                          {/* 続柄（M-3）。付いているものだけ出す */}
-                          {entry.relation && (
-                            <span className="backlink-relation">
-                              {entry.relation}
-                            </span>
-                          )}
-                        </span>
-                        <span className="backlink-context">
-                          {entry.context}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              <BacklinkBar
+                backlinks={backlinks}
+                onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
+              />
             )}
           </section>
           {templates !== null && (
