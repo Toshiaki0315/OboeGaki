@@ -157,7 +157,7 @@ const bagOf = (value: unknown): Bag =>
     ? (value as Bag)
     : {};
 
-function pick<T extends string>(
+function pick<T extends string | number>(
   value: unknown,
   allowed: readonly T[],
   fallback: T,
