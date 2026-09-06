@@ -28,6 +28,8 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { ListPalette } from "./components/ListPalette";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
+import { StyleCheckDialog } from "./components/StyleCheckDialog";
+
 import { TableDialog } from "./components/TableDialog";
 
 import type { FormatKind } from "./editor/format-commands";
@@ -4054,44 +4056,15 @@ function App() {
               );
             })()}
           {styleFindings !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setStyleFindings(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">
-                  文体を見る（{styleFindings.length} 件）
-                </header>
-                <ul>
-                  {styleFindings.map((found) => (
-                    <li key={`${found.start}-${found.kind}`}>
-                      <button
-                        onClick={() => {
-                          setStyleFindings(null);
-                          editorRef.current?.revealPos(found.start);
-                        }}
-                      >
-                        <span className="style-text">
-                          {(editorRef.current?.getText() ?? "").slice(
-                            found.start,
-                            found.start + found.length,
-                          ) || "（空白）"}
-                        </span>
-                        {/* **どう書けるか**を出す（何が悪いかだけでは動けない） */}
-                        <span className="style-message">{found.message}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <p className="dialog-text">
-                  指摘するだけで、直しはしません。書き換えるかどうかは
-                  書いた人が決めます。
-                </p>
-              </div>
-            </div>
+            <StyleCheckDialog
+              findings={styleFindings}
+              text={editorRef.current?.getText() ?? ""}
+              onJump={(pos) => {
+                setStyleFindings(null);
+                editorRef.current?.revealPos(pos);
+              }}
+              onClose={() => setStyleFindings(null)}
+            />
           )}
           {graph !== null && (
             <GraphDialog
