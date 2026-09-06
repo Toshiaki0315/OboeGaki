@@ -13,6 +13,8 @@ import {
 } from "./pptx";
 import { splitDeck } from "./slides";
 import { DEFAULT_SLIDE_THEME, readSlideTheme } from "./slide-theme";
+import { slideMetrics } from "./slide-grid";
+import { DEFAULT_PPTX_SETTINGS, type PptxSettings } from "./pptx-settings";
 
 async function open(markdown: string) {
   const base64 = await buildPptx(
@@ -104,6 +106,54 @@ describe("環境設定からの体裁（TASKS 8-2）", () => {
       DEFAULT_PPTX_OPTIONS,
     );
     expect(plain.slide).toContain("let a = 1;");
+  });
+});
+
+describe("用紙サイズ（TASKS 8-3 / GR-06）", () => {
+  const build = async (settings: PptxSettings) => {
+    const base64 = await buildPptx(
+      splitDeck("# 題\n\n## A\n\nあ\n"),
+      async () => null,
+      DEFAULT_SLIDE_THEME,
+      null,
+      { ...DEFAULT_PPTX_OPTIONS, metrics: slideMetrics(settings) },
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    return (await zip.file("ppt/presentation.xml")?.async("string")) ?? "";
+  };
+  const withPage = (page: Partial<PptxSettings["page"]>): PptxSettings => ({
+    ...DEFAULT_PPTX_SETTINGS,
+    page: { ...DEFAULT_PPTX_SETTINGS.page, ...page },
+  });
+
+  /// PowerPoint は EMU（1in = 914400）で持つ
+  const emu = (inches: number) => Math.round(inches * 914400);
+
+  it("test_既定は 16 対 9（13.333 × 7.5in）", async () => {
+    const xml = await build(DEFAULT_PPTX_SETTINGS);
+    expect(xml).toContain(`cx="${emu(13.333)}"`);
+    expect(xml).toContain(`cy="${emu(7.5)}"`);
+  });
+
+  it("test_4 対 3 を選ぶとその大きさで出る", async () => {
+    const xml = await build(withPage({ preset: "4:3" }));
+    expect(xml).toContain(`cx="${emu(10)}"`);
+    expect(xml).toContain(`cy="${emu(7.5)}"`);
+  });
+
+  it("test_縦の用紙は縦で出る", async () => {
+    const xml = await build(withPage({ preset: "a4-portrait" }));
+    // 8.27 × 11.69in（高さのほうが大きい）
+    const width = Number(/sldSz[^>]*cx="(\d+)"/.exec(xml)?.[1] ?? 0);
+    const height = Number(/sldSz[^>]*cy="(\d+)"/.exec(xml)?.[1] ?? 0);
+    expect(height).toBeGreaterThan(width);
+  });
+
+  it("test_カスタムの大きさも通る", async () => {
+    const xml = await build(
+      withPage({ preset: "custom", customWidthIn: 20, customHeightIn: 10 }),
+    );
+    expect(xml).toContain(`cx="${emu(20)}"`);
   });
 });
 

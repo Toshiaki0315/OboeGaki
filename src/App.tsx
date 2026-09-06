@@ -80,11 +80,14 @@ import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
 import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
+import { slideMetrics } from "./lib/slide-grid";
 import {
   DEFAULT_PPTX_SETTINGS,
   hexColor,
   isThemeRef,
   loadPptxSettings,
+  MAX_PAGE_IN,
+  MIN_PAGE_IN,
   resetPptxSettings,
   savePptxSettings,
   themeRef,
@@ -983,6 +986,7 @@ function App() {
         {
           footer: pptxSettings.footer,
           decoration: pptxSettings.decoration,
+          metrics: slideMetrics(pptxSettings),
         },
       );
       await invoke("export_write_binary", { path: target, data });
@@ -4036,6 +4040,115 @@ function App() {
                   </div>
                 ) : prefTab === "pptx" ? (
                   <div className="pref-page">
+                    <h3 className="pref-section">用紙</h3>
+                    <p className="pref-note">
+                      スライドの大きさ。変えると余白と字の大きさも一緒に
+                      組み直します。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>大きさ</span>
+                        <select
+                          value={pptxSettings.page.preset}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              page: {
+                                ...pptxSettings.page,
+                                preset: event.currentTarget
+                                  .value as PptxSettings["page"]["preset"],
+                              },
+                            })
+                          }
+                        >
+                          <option value="16:9">16:9（横）</option>
+                          <option value="4:3">4:3（横・昔の投影機）</option>
+                          <option value="16:10">16:10（横）</option>
+                          <option value="a4-landscape">A4（横・配布用）</option>
+                          <option value="a4-portrait">A4（縦）</option>
+                          <option value="9:16">9:16（縦・スマホ）</option>
+                          <option value="custom">自分で決める</option>
+                        </select>
+                      </label>
+                      {pptxSettings.page.preset === "custom" && (
+                        <label>
+                          <span>幅と高さ（インチ）</span>
+                          <span className="pref-vault-row">
+                            <input
+                              type="number"
+                              min={MIN_PAGE_IN}
+                              max={MAX_PAGE_IN}
+                              step={0.1}
+                              value={pptxSettings.page.customWidthIn}
+                              onChange={(event) =>
+                                changePptxSettings({
+                                  page: {
+                                    ...pptxSettings.page,
+                                    customWidthIn: Number(
+                                      event.currentTarget.value,
+                                    ),
+                                  },
+                                })
+                              }
+                            />
+                            <input
+                              type="number"
+                              min={MIN_PAGE_IN}
+                              max={MAX_PAGE_IN}
+                              step={0.1}
+                              value={pptxSettings.page.customHeightIn}
+                              onChange={(event) =>
+                                changePptxSettings({
+                                  page: {
+                                    ...pptxSettings.page,
+                                    customHeightIn: Number(
+                                      event.currentTarget.value,
+                                    ),
+                                  },
+                                })
+                              }
+                            />
+                          </span>
+                        </label>
+                      )}
+                      <label>
+                        <span>余白</span>
+                        <select
+                          value={pptxSettings.layout.marginScale}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              layout: {
+                                ...pptxSettings.layout,
+                                marginScale: event.currentTarget
+                                  .value as PptxSettings["layout"]["marginScale"],
+                              },
+                            })
+                          }
+                        >
+                          <option value="compact">狭い</option>
+                          <option value="normal">標準</option>
+                          <option value="wide">広い</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>字の大きさ</span>
+                        <select
+                          value={pptxSettings.font.scale}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              font: {
+                                ...pptxSettings.font,
+                                scale: event.currentTarget
+                                  .value as PptxSettings["font"]["scale"],
+                              },
+                            })
+                          }
+                        >
+                          <option value="small">小</option>
+                          <option value="normal">標準</option>
+                          <option value="large">大</option>
+                        </select>
+                      </label>
+                    </div>
                     <h3 className="pref-section">スライドの分け方</h3>
                     <p className="pref-note">
                       どの見出しで 1 枚に分けるか。浅い見出しは扉、深い見出しは

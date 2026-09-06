@@ -21,18 +21,13 @@ import {
 } from "./slides";
 import { DEFAULT_SLIDE_THEME, type SlideTheme } from "./slide-theme";
 import { applyThemeParts, themeParts, type ThemeParts } from "./slide-template";
+import { slideMetrics, type SlideMetrics } from "./slide-grid";
+import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 
-// スライドの大きさ（16:9）。既定の 4:3 は今どき狭い
-const LAYOUT = { name: "OBOEGAKI_16x9", width: 13.333, height: 7.5 };
-const MARGIN = 0.6;
-const BODY_TOP = 1.8;
 /// 画像があるときの本文の幅（全体に対する割合）。残りが画像の場所になる
 const BODY_RATIO_WITH_IMAGE = 0.52;
-const TITLE_POINTS = 30;
-const BODY_POINTS = 17;
-const HEADING_POINTS = 19;
-const CODE_POINTS = 13;
-const TABLE_POINTS = 13;
+/// 用紙の名前（`defineLayout` に渡す。GR-06）
+const LAYOUT_NAME = "OBOEGAKI_PAGE";
 /// PowerPoint の箇条書きは 0〜8 段
 const MAX_LEVEL = 8;
 /// 共通の体裁の名前（スライド番号とフッタを載せる）
@@ -52,11 +47,14 @@ export type PptxOptions = {
   decoration: { imageCaption: boolean; codeLanguageLabel: boolean };
   /// 日付を出すときの「今日」。テストで固定できるように受け取る。
   today?: Date;
+  /// 用紙と余白と字の大きさ（8-3）。**唯一の入口は `slideMetrics()`**。
+  metrics: SlideMetrics;
 };
 
 export const DEFAULT_PPTX_OPTIONS: PptxOptions = {
   footer: { pageNumber: true, text: "", showDate: false },
   decoration: { imageCaption: false, codeLanguageLabel: true },
+  metrics: slideMetrics(DEFAULT_PPTX_SETTINGS),
 };
 
 /// フッタに出す字。**空なら題名**（今までどおり）。日付は末尾に足す。
@@ -84,8 +82,14 @@ export async function buildPptx(
 ): Promise<string> {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
-  pptx.defineLayout(LAYOUT);
-  pptx.layout = LAYOUT.name;
+  // **用紙は設定から**（GR-01 / GR-06）。`LAYOUT_16x9` は 10in なので使わない
+  const sheet = options.metrics;
+  pptx.defineLayout({
+    name: LAYOUT_NAME,
+    width: sheet.width,
+    height: sheet.height,
+  });
+  pptx.layout = LAYOUT_NAME;
   // 書体は全体の既定に置く（枠ごとに書くと、あとで足した枠で付け忘れる）
   if (theme.font) {
     pptx.theme = { headFontFace: theme.font, bodyFontFace: theme.font };
@@ -98,9 +102,9 @@ export async function buildPptx(
     objects: [
       {
         line: {
-          x: MARGIN,
-          y: LAYOUT.height - 0.55,
-          w: LAYOUT.width - MARGIN * 2,
+          x: sheet.margin,
+          y: sheet.footerLineY,
+          w: sheet.width - sheet.margin * 2,
           h: 0,
           line: { color: "bg2", width: 0.75 },
         },
@@ -111,9 +115,9 @@ export async function buildPptx(
               text: {
                 text: footerText(deck, options),
                 options: {
-                  x: MARGIN,
-                  y: LAYOUT.height - 0.5,
-                  w: LAYOUT.width / 2,
+                  x: sheet.margin,
+                  y: sheet.footerY,
+                  w: sheet.width / 2,
                   h: 0.3,
                   fontSize: 10,
                   color: "tx2",
@@ -129,9 +133,9 @@ export async function buildPptx(
     ...(options.footer.pageNumber
       ? {
           slideNumber: {
-            x: LAYOUT.width - MARGIN - 0.6,
-            y: LAYOUT.height - 0.5,
-            w: 0.6,
+            x: sheet.width - sheet.margin - sheet.gutter * 3,
+            y: sheet.footerY,
+            w: sheet.gutter * 3,
             h: 0.3,
             align: "right" as const,
             fontSize: 10,
@@ -144,19 +148,19 @@ export async function buildPptx(
   if (deck.title || deck.subtitle) {
     const cover = pptx.addSlide();
     cover.addText(deck.title || "無題", {
-      x: MARGIN,
-      y: 2.6,
-      w: LAYOUT.width - MARGIN * 2,
-      h: 1.2,
-      fontSize: 40,
+      x: sheet.margin,
+      y: sheet.coverTitleY,
+      w: sheet.width - sheet.margin * 2,
+      h: sheet.titleH * 1.4,
+      fontSize: Math.round(sheet.points.title * 1.33),
       bold: true,
     });
     if (deck.subtitle) {
       cover.addText(deck.subtitle, {
-        x: MARGIN,
-        y: 3.9,
-        w: LAYOUT.width - MARGIN * 2,
-        h: 0.8,
+        x: sheet.margin,
+        y: sheet.coverSubtitleY,
+        w: sheet.width - sheet.margin * 2,
+        h: sheet.titleH,
         fontSize: 20,
         color: "tx2", // テーマの副色（テンプレートに追従する）
       });
@@ -168,9 +172,9 @@ export async function buildPptx(
     if (slide.kind === "section") {
       const divider = pptx.addSlide({ masterName: MASTER });
       divider.addText(slide.title, {
-        x: MARGIN,
-        y: LAYOUT.height / 2 - 0.7,
-        w: LAYOUT.width - MARGIN * 2,
+        x: sheet.margin,
+        y: sheet.height / 2 - sheet.titleH / 2,
+        w: sheet.width - sheet.margin * 2,
         h: 1.4,
         fontSize: 36,
         bold: true,
@@ -182,33 +186,32 @@ export async function buildPptx(
     }
     const page = pptx.addSlide({ masterName: MASTER });
     page.addText(slide.title, {
-      x: MARGIN,
-      y: 0.6,
-      w: LAYOUT.width - MARGIN * 2,
-      h: 0.9,
-      fontSize: TITLE_POINTS,
+      x: sheet.margin,
+      y: sheet.titleY,
+      w: sheet.width - sheet.margin * 2,
+      h: sheet.titleH,
+      fontSize: sheet.points.title,
       bold: true,
       color: theme.accent,
     });
     // 画像があるスライドは本文を左半分へ寄せる（画像と重ならないように）
     const images = await embedImages(slide.images, resolveImage);
     const bodyWidth =
-      (images.length > 0
-        ? LAYOUT.width * BODY_RATIO_WITH_IMAGE
-        : LAYOUT.width) -
-      MARGIN * 2;
+      (images.length > 0 ? sheet.width * BODY_RATIO_WITH_IMAGE : sheet.width) -
+      sheet.margin * 2;
     // 小見出しが 2 つ以上あれば横並びの箱にする（TASKS 5-4）
     const cards = images.length === 0 ? cardsOf(slide.blocks) : null;
-    if (cards) placeCards(page, cards, theme);
+    if (cards) placeCards(page, cards, theme, sheet);
     else
       placeBlocks(
         page,
         slide.blocks,
         bodyWidth,
         theme,
+        sheet,
         options.decoration.codeLanguageLabel,
       );
-    placeImages(page, images, bodyWidth);
+    placeImages(page, images, bodyWidth, sheet);
     if (slide.notes) page.addNotes(slide.notes);
   }
   const built = (await pptx.write({ outputType: "base64" })) as string;
@@ -289,16 +292,21 @@ function textRun(run: Run, base: object, theme: SlideTheme) {
 
 /// 横並びの箱（TASKS 5-4）。**箱は同じ幅で割る** — 中身の量で幅を変えると、
 /// 資料ごとに並びが揺れて落ち着かない。
-function placeCards(page: Page, cards: Card[], theme: SlideTheme): void {
+function placeCards(
+  page: Page,
+  cards: Card[],
+  theme: SlideTheme,
+  sheet: SlideMetrics,
+): void {
   const gap = 0.3;
   const width =
-    (LAYOUT.width - MARGIN * 2 - gap * (cards.length - 1)) / cards.length;
-  const height = LAYOUT.height - BODY_TOP - MARGIN - 0.4;
+    (sheet.width - sheet.margin * 2 - gap * (cards.length - 1)) / cards.length;
+  const height = sheet.height - sheet.bodyTop - sheet.margin - 0.4;
   cards.forEach((card, index) => {
-    const left = MARGIN + (width + gap) * index;
+    const left = sheet.margin + (width + gap) * index;
     page.addShape("roundRect", {
       x: left,
-      y: BODY_TOP,
+      y: sheet.bodyTop,
       w: width,
       h: height,
       fill: { color: "bg2" },
@@ -309,7 +317,7 @@ function placeCards(page: Page, cards: Card[], theme: SlideTheme): void {
         textRun(
           run,
           {
-            fontSize: HEADING_POINTS,
+            fontSize: sheet.points.heading,
             bold: true,
             color: theme.accent,
             ...(at === card.heading.length - 1 ? { breakLine: true } : {}),
@@ -319,17 +327,17 @@ function placeCards(page: Page, cards: Card[], theme: SlideTheme): void {
       ),
       {
         x: left + 0.2,
-        y: BODY_TOP + 0.18,
+        y: sheet.bodyTop + 0.18,
         w: width - 0.4,
         h: 0.5,
         valign: "top",
       },
     );
-    const body = flowRuns(card.blocks, theme);
+    const body = flowRuns(card.blocks, theme, sheet);
     if (body.length > 0) {
       page.addText(body, {
         x: left + 0.2,
-        y: BODY_TOP + 0.75,
+        y: sheet.bodyTop + 0.75,
         w: width - 0.4,
         h: height - 0.95,
         valign: "top",
@@ -339,7 +347,11 @@ function placeCards(page: Page, cards: Card[], theme: SlideTheme): void {
 }
 
 /// 文章・箇条書き・小見出しを 1 つの枠に流す形に直す。
-function flowRuns(blocks: readonly SlideBlock[], theme: SlideTheme) {
+function flowRuns(
+  blocks: readonly SlideBlock[],
+  theme: SlideTheme,
+  sheet: SlideMetrics,
+) {
   return blocks.flatMap((block) => {
     if (block.kind === "code" || block.kind === "table") return [];
     const heading = block.kind === "heading";
@@ -347,7 +359,7 @@ function flowRuns(blocks: readonly SlideBlock[], theme: SlideTheme) {
       textRun(
         run,
         {
-          fontSize: heading ? HEADING_POINTS : BODY_POINTS,
+          fontSize: heading ? sheet.points.heading : sheet.points.body,
           ...(heading ? { bold: true, color: theme.accent } : {}),
           ...(index === 0 && block.kind === "bullet"
             ? { bullet: true, indentLevel: Math.min(block.level, MAX_LEVEL) }
@@ -365,6 +377,7 @@ function placeBlocks(
   blocks: SlideBlock[],
   width: number,
   theme: SlideTheme,
+  sheet: SlideMetrics,
   labelCode = DEFAULT_PPTX_OPTIONS.decoration.codeLanguageLabel,
 ): void {
   // 文章・箇条書き・小見出しは 1 つの枠にまとめる（段落として流す）。
@@ -372,23 +385,23 @@ function placeBlocks(
   const flow = blocks.filter(
     (block) => block.kind !== "code" && block.kind !== "table",
   );
-  let top = BODY_TOP;
+  let top = sheet.bodyTop;
   if (flow.length > 0) {
-    page.addText(flowRuns(flow, theme), {
-      x: MARGIN,
+    page.addText(flowRuns(flow, theme, sheet), {
+      x: sheet.margin,
       y: top,
       w: width,
-      h: 4.4,
+      h: sheet.bodyH * 0.78,
       valign: "top",
     });
-    top += 4.6;
+    top += sheet.bodyH * 0.82;
   }
   for (const block of blocks) {
     if (block.kind === "code") {
       // 言語名を小さく添える（CFG-73）。**書いていないときは足さない**
       if (labelCode && block.language) {
         page.addText(block.language, {
-          x: MARGIN,
+          x: sheet.margin,
           y: top,
           w: width,
           h: 0.22,
@@ -398,11 +411,11 @@ function placeBlocks(
         top += 0.24;
       }
       page.addText(block.text, {
-        x: MARGIN,
+        x: sheet.margin,
         y: top,
         w: width,
-        h: 1.6,
-        fontSize: CODE_POINTS,
+        h: sheet.bodyH * 0.28,
+        fontSize: sheet.points.code,
         fontFace: theme.mono,
         fill: { color: "bg2" },
         color: "tx1",
@@ -410,7 +423,7 @@ function placeBlocks(
         // 字が縁にくっつくと窮屈に見える（画面の帯と同じ考え方）
         margin: 8,
       });
-      top += 1.8;
+      top += sheet.bodyH * 0.32;
     } else if (block.kind === "table") {
       const cells = block.rows.map((row) =>
         row
@@ -433,10 +446,10 @@ function placeBlocks(
         })),
       );
       page.addTable(rows, {
-        x: MARGIN,
+        x: sheet.margin,
         y: top,
         w: width,
-        fontSize: TABLE_POINTS,
+        fontSize: sheet.points.table,
         border: { pt: 0.5, color: "bg2" },
         autoPage: false,
       });
@@ -445,16 +458,21 @@ function placeBlocks(
   }
 }
 
-function placeImages(page: Page, images: string[], bodyWidth: number): void {
+function placeImages(
+  page: Page,
+  images: string[],
+  bodyWidth: number,
+  sheet: SlideMetrics,
+): void {
   if (images.length === 0) return;
-  const left = MARGIN + bodyWidth + MARGIN * 0.5;
-  const width = LAYOUT.width - left - MARGIN;
-  const height = (LAYOUT.height - BODY_TOP - MARGIN) / images.length;
+  const left = sheet.margin + bodyWidth + sheet.margin * 0.5;
+  const width = sheet.width - left - sheet.margin;
+  const height = (sheet.height - sheet.bodyTop - sheet.margin) / images.length;
   images.forEach((data, index) => {
     page.addImage({
       data,
       x: left,
-      y: BODY_TOP + height * index,
+      y: sheet.bodyTop + height * index,
       w: width,
       h: height - 0.2,
       sizing: { type: "contain", w: width, h: height - 0.2 },
