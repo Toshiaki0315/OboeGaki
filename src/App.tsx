@@ -83,6 +83,12 @@ import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
 import { slideMetrics } from "./lib/slide-grid";
 import { overflowingSlides } from "./lib/slide-lint";
 import { splitForDensity } from "./lib/slide-split";
+import {
+  previewOf,
+  SAMPLE_DECKS,
+  type Preview,
+  type PreviewPage,
+} from "./lib/slide-preview";
 import { contrastVerdict } from "./lib/contrast";
 import {
   DEFAULT_PPTX_SETTINGS,
@@ -368,6 +374,65 @@ function SubMenu({
 const SUBMENU_WIDTH = 176;
 
 /// メニューの項目に添える絵。**名前で引く**（同じ言葉には同じ絵）。
+/// スライドのプレビュー（TASKS 8-6 / PV-01）。**置き場所は書き出しと同じ
+/// 計算**から貰い、ここは描くだけ。字は形が分かる程度に線で表す
+/// （本物の書体で組むのは出力先の PowerPoint = PV-05）。
+function SlidePreview({ page, view }: { page: PreviewPage; view: Preview }) {
+  const scale = 100 / view.widthIn; // 幅 100 の座標系に写す
+  const height = view.heightIn * scale;
+  return (
+    <svg
+      className="slide-preview"
+      viewBox={`0 0 100 ${height}`}
+      role="img"
+      aria-label={`${page.title} のプレビュー`}
+    >
+      <rect x="0" y="0" width="100" height={height} className="sp-paper" />
+      {page.frames.map((frame, index) => {
+        const box = {
+          x: frame.x * scale,
+          y: frame.y * scale,
+          width: frame.w * scale,
+          height: Math.max(0.6, frame.h * scale),
+        };
+        if (frame.kind === "code" || frame.kind === "table") {
+          return <rect key={index} {...box} className={`sp-${frame.kind}`} />;
+        }
+        if (frame.kind === "image") {
+          return <rect key={index} {...box} className="sp-image" />;
+        }
+        if (frame.kind === "flow") {
+          // 段落は線で表す（読ませるためではなく、量を見せるため）
+          const lines = Math.max(1, Math.min(12, frame.blocks.length * 2));
+          return (
+            <g key={index}>
+              {Array.from({ length: lines }, (_, line) => (
+                <rect
+                  key={line}
+                  x={box.x}
+                  y={box.y + line * 2.2}
+                  width={box.width * (line % 3 === 2 ? 0.62 : 0.96)}
+                  height={0.9}
+                  className="sp-line"
+                />
+              ))}
+            </g>
+          );
+        }
+        const big = frame.kind === "cover";
+        return (
+          <rect
+            key={index}
+            {...box}
+            height={big ? box.height : Math.max(1.4, box.height * 0.5)}
+            className={frame.kind === "footer" ? "sp-footer" : "sp-title"}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 function MenuIcon({ name }: { name: MenuIconName }) {
   return (
     <svg className="menu-icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -869,6 +934,15 @@ function App() {
       return DEFAULT_PPTX_SETTINGS;
     }
   });
+  // プレビュー（8-6）。見本を選ぶ／編集中のノートで見る（PV-02 / PV-03）
+  const [previewSample, setPreviewSample] = useState(1);
+  const [previewOwn, setPreviewOwn] = useState(false);
+  const [previewPage, setPreviewPage] = useState(0);
+  /// 200ms 置いてから組み直す（PV-04。つまみを動かすたびに組まない）
+  const [previewSettings, setPreviewSettings] = useState<PptxSettings | null>(
+    null,
+  );
+
   /// 用紙や字の大きさを変えたときの見直し（GR-05）。**今のノートで測る** —
   /// 設定を触った瞬間に「収まらなくなった」が分かるほうが、書き出してから
   /// 気づくより早い。開いていなければ何も言わない。
@@ -903,6 +977,21 @@ function App() {
       notes: { ...pptxSettings.notes, keepOriginalText: keep },
     });
   }
+
+  useEffect(() => {
+    if (!preferences || prefTab !== "pptx") return;
+    const timer = setTimeout(() => setPreviewSettings(pptxSettings), 200);
+    return () => clearTimeout(timer);
+  }, [preferences, prefTab, pptxSettings]);
+
+  const preview = useMemo(() => {
+    if (!previewSettings || !preferences || prefTab !== "pptx") return null;
+    const source = previewOwn
+      ? (editorRef.current?.getText() ?? "")
+      : SAMPLE_DECKS[previewSample].markdown;
+    if (!source.trim()) return null;
+    return previewOf(source, previewSettings);
+  }, [previewSettings, preferences, prefTab, previewOwn, previewSample]);
 
   function changePptxSettings(patch: Partial<PptxSettings>) {
     setPptxSettings((current) => {
@@ -4213,6 +4302,71 @@ function App() {
                         </select>
                       </label>
                     </div>
+                    {preview !== null && preview.pages.length > 0 && (
+                      <div className="preview-panel">
+                        <div className="preview-tabs">
+                          {SAMPLE_DECKS.map((sample, index) => (
+                            <button
+                              key={sample.name}
+                              className={
+                                !previewOwn && index === previewSample
+                                  ? "selected"
+                                  : ""
+                              }
+                              onClick={() => {
+                                setPreviewOwn(false);
+                                setPreviewSample(index);
+                                setPreviewPage(0);
+                              }}
+                            >
+                              {sample.name}
+                            </button>
+                          ))}
+                          <button
+                            className={previewOwn ? "selected" : ""}
+                            disabled={!currentPath}
+                            title="編集中のノートの先頭 5 枚"
+                            onClick={() => {
+                              setPreviewOwn(true);
+                              setPreviewPage(0);
+                            }}
+                          >
+                            このノート
+                          </button>
+                        </div>
+                        <SlidePreview
+                          page={
+                            preview.pages[
+                              Math.min(previewPage, preview.pages.length - 1)
+                            ]
+                          }
+                          view={preview}
+                        />
+                        <div className="preview-pager">
+                          <button
+                            disabled={previewPage <= 0}
+                            onClick={() => setPreviewPage((at) => at - 1)}
+                          >
+                            ◀
+                          </button>
+                          <span>
+                            {Math.min(previewPage, preview.pages.length - 1) +
+                              1}{" "}
+                            / {preview.pages.length}
+                          </span>
+                          <button
+                            disabled={previewPage >= preview.pages.length - 1}
+                            onClick={() => setPreviewPage((at) => at + 1)}
+                          >
+                            ▶
+                          </button>
+                        </div>
+                        <p className="pref-note">
+                          形と収まり具合の目安です。**字の幅は見積もり**で、
+                          本物の書体で組むのは PowerPoint 側です。
+                        </p>
+                      </div>
+                    )}
                     {pptxOverflow !== null && pptxOverflow.length > 0 && (
                       <p className="pref-note pref-warn">
                         いまのノートは <b>{pptxOverflow.length} 枚</b>

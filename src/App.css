@@ -1647,6 +1647,98 @@ button.danger {
   font-size: 0.95rem;
   margin: 1.1rem 0 0.2rem;
 }
+/* スライドのプレビュー（TASKS 8-6）。**形と収まり具合の目安**なので、
+   字は線で表す（読ませるためではなく、量を見せるため） */
+.preview-panel {
+  margin: 0 0 0.8rem;
+  padding: 0.6rem;
+  border: 1px solid var(--pane-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+}
+
+.preview-tabs {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.preview-tabs button {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--pane-line);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.preview-tabs button.selected {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.preview-tabs button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.slide-preview {
+  display: block;
+  width: 100%;
+  max-height: 40vh;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.sp-paper {
+  fill: #ffffff;
+}
+.sp-title {
+  fill: color-mix(in srgb, #1e2761 70%, transparent);
+}
+.sp-line {
+  fill: rgba(0, 0, 0, 0.4);
+}
+.sp-code {
+  fill: #22272e;
+}
+.sp-table {
+  fill: rgba(0, 0, 0, 0.12);
+}
+.sp-image {
+  fill: rgba(0, 0, 0, 0.08);
+  stroke: rgba(0, 0, 0, 0.25);
+  stroke-width: 0.3;
+}
+.sp-footer {
+  fill: rgba(0, 0, 0, 0.25);
+}
+
+.preview-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.preview-pager button {
+  font: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0.3rem;
+}
+
+.preview-pager button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* 収まらない枚の知らせ（GR-05）。**止めない** — 気づけるだけでよい */
 .pref-warn {
   padding: 0.4rem 0.6rem;

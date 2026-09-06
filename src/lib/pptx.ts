@@ -23,6 +23,7 @@ import {
 import { DEFAULT_SLIDE_THEME, type SlideTheme } from "./slide-theme";
 import { applyThemeParts, themeParts, type ThemeParts } from "./slide-template";
 import { slideMetrics, type SlideMetrics } from "./slide-grid";
+import { bodyFrames, LABEL_H } from "./slide-frame";
 import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 
 /// 画像があるときの本文の幅（全体に対する割合）。残りが画像の場所になる
@@ -401,41 +402,33 @@ function placeBlocks(
   sheet: SlideMetrics,
   labelCode = DEFAULT_PPTX_OPTIONS.decoration.codeLanguageLabel,
 ): void {
-  // 文章・箇条書き・小見出しは 1 つの枠にまとめる（段落として流す）。
-  // コードと表は入らないので別の図形にする
-  const flow = blocks.filter(
-    (block) => block.kind !== "code" && block.kind !== "table",
-  );
-  let top = sheet.bodyTop;
-  if (flow.length > 0) {
-    page.addText(flowRuns(flow, theme, sheet), {
-      x: sheet.margin,
-      y: top,
-      w: width,
-      h: sheet.bodyH * 0.78,
-      valign: "top",
-    });
-    top += sheet.bodyH * 0.82;
-  }
-  for (const block of blocks) {
-    if (block.kind === "code") {
+  // 置き場所は `slide-frame.ts` が決める（プレビューと同じ計算 = PV-01）
+  for (const frame of bodyFrames(blocks, width, sheet, labelCode)) {
+    if (frame.kind === "flow") {
+      page.addText(flowRuns(frame.blocks, theme, sheet), {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+        valign: "top",
+      });
+    } else if (frame.kind === "code" && frame.block.kind === "code") {
       // 言語名を小さく添える（CFG-73）。**書いていないときは足さない**
-      if (labelCode && block.language) {
-        page.addText(block.language, {
-          x: sheet.margin,
-          y: top,
-          w: width,
-          h: 0.22,
+      if (frame.label) {
+        page.addText(frame.label, {
+          x: frame.x,
+          y: frame.y - LABEL_H,
+          w: frame.w,
+          h: LABEL_H - 0.02,
           fontSize: 9,
           color: "tx2",
         });
-        top += 0.24;
       }
-      page.addText(block.text, {
-        x: sheet.margin,
-        y: top,
-        w: width,
-        h: sheet.bodyH * 0.28,
+      page.addText(frame.block.text, {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
         fontSize: sheet.points.code,
         fontFace: theme.mono,
         fill: { color: "bg2" },
@@ -444,9 +437,8 @@ function placeBlocks(
         // 字が縁にくっつくと窮屈に見える（画面の帯と同じ考え方）
         margin: 8,
       });
-      top += sheet.bodyH * 0.32;
-    } else if (block.kind === "table") {
-      const cells = block.rows.map((row) =>
+    } else if (frame.kind === "table" && frame.block.kind === "table") {
+      const cells = frame.block.rows.map((row) =>
         row
           .replace(/^\||\|$/g, "")
           .split("|")
@@ -467,14 +459,13 @@ function placeBlocks(
         })),
       );
       page.addTable(rows, {
-        x: sheet.margin,
-        y: top,
-        w: width,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
         fontSize: sheet.points.table,
         border: { pt: 0.5, color: "bg2" },
         autoPage: false,
       });
-      top += 0.4 * rows.length + 0.3;
     }
   }
 }
