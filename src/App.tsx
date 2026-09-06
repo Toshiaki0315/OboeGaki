@@ -27,6 +27,7 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { ListPalette } from "./components/ListPalette";
 import { MenuIcon, PathIcon } from "./components/MenuIcon";
 import { NoteActions } from "./components/NoteActions";
+import { OutlinePane } from "./components/OutlinePane";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -4009,36 +4010,12 @@ function App() {
             </aside>
           )}
           {outlineOpen && (
-            <aside className="outline-pane">
-              <header>目次</header>
-              <ul>
-                {outlineItems.map((item, index) => (
-                  <li key={`${item.from}-${item.text}`}>
-                    <button
-                      className={index === currentOutlineIndex ? "current" : ""}
-                      style={{
-                        paddingLeft: `${0.5 + (item.level - 1) * 0.9}rem`,
-                      }}
-                      title="右クリックで節ごと動かせます"
-                      onClick={() => editorRef.current?.revealPos(item.from)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setOutlineMenu({
-                          from: item.from,
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
-                    >
-                      {item.text}
-                    </button>
-                  </li>
-                ))}
-                {outlineItems.length === 0 && (
-                  <li className="no-hits">見出しがありません</li>
-                )}
-              </ul>
-            </aside>
+            <OutlinePane
+              items={outlineItems}
+              currentIndex={currentOutlineIndex}
+              onJump={(from) => editorRef.current?.revealPos(from)}
+              onMenu={setOutlineMenu}
+            />
           )}
         </div>
         <StatusBar
