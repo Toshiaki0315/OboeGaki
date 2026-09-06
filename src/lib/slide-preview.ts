@@ -137,7 +137,7 @@ function pageOf(
 export const SAMPLE_DECKS: { name: string; markdown: string }[] = [
   {
     name: "表紙",
-    markdown: "# 四半期のふりかえり\n\n2026-09-06 / 覚書チーム\n",
+    markdown: "# 四半期のふりかえり\n\n2026-09-06 / おぼえがきチーム\n",
   },
   {
     name: "箇条書き",

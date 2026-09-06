@@ -1,8 +1,9 @@
-# CLAUDE.md — 覚書（OboeGaki）Tauri 版 開発ガイド
+# CLAUDE.md — おぼえがき（OboeGaki）Tauri 版 開発ガイド
 
-ライブプレビュー型 Markdown エディタ **覚書（OboeGaki）** の再実装
+ライブプレビュー型 Markdown エディタ **おぼえがき（OboeGaki）** の再実装
 （macOS 13+ / Tauri v2 / React 19 / TypeScript / CodeMirror 6）。
-表示名は「覚書」、ファイル名・フォルダ名・ID 系は「OboeGaki」（ADR-0032）。
+表示名は「おぼえがき」（ADR-0047）、ファイル名・フォルダ名・ID 系は
+「OboeGaki」（ADR-0032）。
 
 **参照実装（PySide6 版）が `~/01_projects/hitofude` にあり、凍結維持している。**
 仕様の真実は [docs/spec.md](docs/spec.md)（参照実装から持ち込んだもの。

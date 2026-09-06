@@ -2,7 +2,8 @@
 
 **プロジェクト名**: `覚書`（OboeGaki）
 
-> 旧名は `Hitofude`。表示名・ファイル名・ID 系の対応は [ADR-0032](adr/0032-rename-to-oboegaki.md)。
+> 旧名は `Hitofude`。表示名・ファイル名・ID 系の対応は [ADR-0032](adr/0032-rename-to-oboegaki.md)
+> （表示名はのちに「おぼえがき」へ — [ADR-0047](adr/0047-display-name-in-hiragana.md)）。
 > Python パッケージ名 `hitofude` だけはユーザーに見えないので据え置き。
 
 **対象OS**: macOS 13 Ventura 以降（Apple Silicon。~~Intel~~ → **ADR-0012 で対象外**）

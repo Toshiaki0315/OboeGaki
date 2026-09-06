@@ -1,6 +1,6 @@
-# 覚書（OboeGaki）— Tauri 版
+# おぼえがき（OboeGaki）— Tauri 版
 
-ライブプレビュー型 Markdown エディタ **覚書** の Tauri v2 + React + TypeScript
+ライブプレビュー型 Markdown エディタ **おぼえがき** の Tauri v2 + React + TypeScript
 による再実装。参照実装（PySide6 版）は `~/01_projects/hitofude` にあり、
 機能同等になるまで凍結維持する。
 

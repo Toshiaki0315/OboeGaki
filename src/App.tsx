@@ -33,6 +33,7 @@ import {
   type Handoff,
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
+import { APP_NAME } from "./lib/app-name";
 import { splitFolders } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
@@ -969,7 +970,7 @@ function App() {
         "「要点のみ」で書き出したとき、スライドに載らなかった本文が" +
           "発表者ノートにも残らなくなります。\n" +
           "（ノートの本文そのものは消えません）",
-        { title: "覚書", kind: "warning" },
+        { title: APP_NAME, kind: "warning" },
       );
       if (!ok) return;
     }
@@ -1311,7 +1312,7 @@ function App() {
     autosave.cancel();
     const ok = await confirm(
       `${entry.stamp} の版に戻しますか？\n（今の内容も履歴に残ります）`,
-      { title: "覚書", kind: "warning" },
+      { title: APP_NAME, kind: "warning" },
     );
     if (!ok) return;
     let text: string;
@@ -1948,7 +1949,7 @@ function App() {
     }
     const ok = await confirm(
       `「${noteLabel(vaultRoot, path)}」をゴミ箱へ移しますか？`,
-      { title: "覚書", kind: "warning" },
+      { title: APP_NAME, kind: "warning" },
     );
     if (!ok) return;
     // 捨てるのが開いているノートなら、保存予約も破棄する
@@ -2138,7 +2139,7 @@ function App() {
     if (!selected.trim()) return;
     if (needsConfirm(handoff, settingsRef.current.confirmHandoff)) {
       const ok = await confirm(confirmMessage(handoff, selected), {
-        title: "覚書",
+        title: APP_NAME,
         kind: "warning",
       });
       if (!ok) return;
@@ -2325,7 +2326,7 @@ function App() {
     if (!vaultRoot) return;
     const ok = await confirm(
       `「${trashLabel(vaultRoot, path)}」を完全に削除しますか？\nこの操作は取り消せません。`,
-      { title: "覚書", kind: "warning" },
+      { title: APP_NAME, kind: "warning" },
     );
     if (!ok) return;
     await deleteForever(vaultRoot, path);
@@ -2336,7 +2337,7 @@ function App() {
     if (!vaultRoot) return;
     const ok = await confirm(
       `ゴミ箱の ${trashNotes.length} 件をすべて完全に削除しますか？\nこの操作は取り消せません。`,
-      { title: "覚書", kind: "warning" },
+      { title: APP_NAME, kind: "warning" },
     );
     if (!ok) return;
     await emptyTrash(vaultRoot);
@@ -2792,7 +2793,7 @@ function App() {
   if (!vaultRoot) {
     return (
       <main className="app app-empty">
-        <h1>覚書</h1>
+        <h1>{APP_NAME}</h1>
         <button onClick={() => void chooseVault()}>保管フォルダを開く</button>
         {/* 開けなかった理由（二重起動の断りなど）はここにしか出せない */}
         {status && <p className="empty-note">{status}</p>}

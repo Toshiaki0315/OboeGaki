@@ -89,7 +89,7 @@ pub const DEFAULT_TEMPLATES: [(&str, &str); 3] = [
 const TEMPLATES_MARKER: &str = "templates-seeded";
 
 /// 同梱の使い方ノート。初回だけ置く（ヘルプから置き直せる）。
-pub const MANUAL_TITLE: &str = "覚書の使い方";
+pub const MANUAL_TITLE: &str = "おぼえがきの使い方";
 pub const MANUAL: &str = include_str!("../resources/manual.md");
 /// 一度置いたら二度と置き直さない印。消したマニュアルを復活させない。
 const MANUAL_MARKER: &str = "seeded";
@@ -2466,6 +2466,13 @@ mod tests {
         note(root.path(), "先にあるノート.md");
 
         assert!(vault.seed_manual().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_manual_使い方ノートの題は表示名に合わせる() {
+        // 表示名は「おぼえがき」（ADR-0047）。ファイル名・ID 系の
+        // `OboeGaki` とは別物で、こちらは人が読む名前
+        assert_eq!(MANUAL_TITLE, "おぼえがきの使い方");
     }
 
     #[test]

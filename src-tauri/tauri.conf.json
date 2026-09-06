@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "覚書",
+        "title": "おぼえがき",
         "width": 800,
         "height": 600,
         "minWidth": 520,

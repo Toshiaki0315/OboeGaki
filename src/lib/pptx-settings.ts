@@ -208,7 +208,7 @@ function pageSize(
 
 /// 保存してあったものを設定にする（ST-03）。
 ///
-/// **知らない項目は残す。** 新しい版の覚書で書いた設定を、古い版で開いた
+/// **知らない項目は残す。** 新しい版のおぼえがきで書いた設定を、古い版で開いた
 /// だけで捨ててしまわないため（ST-03）。
 export function readPptxSettings(stored: unknown): PptxSettings {
   const bag = bagOf(stored);
