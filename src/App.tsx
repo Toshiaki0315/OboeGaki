@@ -22,7 +22,9 @@ import {
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { ChoiceDialog } from "./components/ChoiceDialog";
 import { FuzzyPalette } from "./components/FuzzyPalette";
+import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
+
 import { ListPalette } from "./components/ListPalette";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
@@ -4092,42 +4094,13 @@ function App() {
             </div>
           )}
           {graph !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setGraph(null)}
-            >
-              <div
-                className="palette graph-dialog"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">リンクの図</header>
-                <div
-                  className="graph-canvas"
-                  dangerouslySetInnerHTML={{ __html: graph.svg }}
-                />
-                <p className="dialog-text">
-                  {/* **黙って減らさない**（上限で落ちたぶんを言う） */}
-                  {graph.dropped > 0
-                    ? `多いので ${graph.dropped} 件を省いています。`
-                    : "開いているノートから辿れる範囲です。"}
-                </p>
-                <div className="conflict-actions">
-                  <button
-                    disabled={graphDepth <= 1}
-                    onClick={() => void showLinkGraph(graphDepth - 1)}
-                  >
-                    狭く
-                  </button>
-                  <button
-                    disabled={graphDepth >= 4}
-                    onClick={() => void showLinkGraph(graphDepth + 1)}
-                  >
-                    広く（{graphDepth} 段）
-                  </button>
-                  <button onClick={() => setGraph(null)}>閉じる</button>
-                </div>
-              </div>
-            </div>
+            <GraphDialog
+              svg={graph.svg}
+              dropped={graph.dropped}
+              depth={graphDepth}
+              onDepth={(depth) => void showLinkGraph(depth)}
+              onClose={() => setGraph(null)}
+            />
           )}
           {savingSearch !== null && (
             <PromptDialog
