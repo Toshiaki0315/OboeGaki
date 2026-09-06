@@ -21,6 +21,7 @@ import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
 import { ContextMenu, SubMenu } from "./components/ContextMenu";
+import { FolderSection } from "./components/FolderSection";
 import { FormatToolbar } from "./components/FormatToolbar";
 import { FuzzyPalette } from "./components/FuzzyPalette";
 import { GraphDialog } from "./components/GraphDialog";
@@ -61,7 +62,7 @@ import { noteLabel, noteStem } from "./lib/note-path";
 import { folderDepth, folderLabel, splitFolders } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel } from "./lib/trash-label";
-import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
+import { canDropInto, isNoteDrag } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
 import { packSources, pickSources } from "./lib/sources";
 import {
@@ -410,7 +411,6 @@ function App() {
   // 掴んでいるノートのパス。**ref で持つ** — dragover は毎フレーム飛ぶので、
   // 掴んだものまで state にすると打鍵と同じだけ再描画が走る
   const draggingNote = useRef<string | null>(null);
-  const [dropFolder, setDropFolder] = useState<string | null>(null);
   // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
   const [reference, setReference] = useState<{
     path: string;
@@ -436,7 +436,6 @@ function App() {
     () => availableFonts(CODE_FONTS, measureFont),
     [measureFont],
   );
-  const [dropTrash, setDropTrash] = useState(false);
   const [folderMenu, setFolderMenu] = useState<{
     folder: string;
     x: number;
@@ -2476,7 +2475,6 @@ function App() {
           if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
           event.preventDefault();
           draggingNote.current = null;
-          setDropFolder(null);
         }}
       >
         <div
@@ -2578,7 +2576,6 @@ function App() {
                       }}
                       onDragEnd={() => {
                         draggingNote.current = null;
-                        setDropFolder(null);
                       }}
                     />
                   )}
@@ -2601,206 +2598,29 @@ function App() {
                 />
               )}
               {settings.treesVisible && (
-                <details
-                  className="folder-section"
+                <FolderSection
+                  folders={subFolders}
+                  rootCount={rootNotes}
+                  trashCount={trashNotes.length}
+                  folderFilter={folderFilter}
                   open={sideOpen === "folders"}
-                >
-                  {/* **見出しがそのまま保管フォルダの行**（要望 2026-09-05）。
-                      同じ場所を指す「直下」の行を下に並べない。三角を押すと
-                      開閉、名前を押すと直下で絞る。作る操作は右クリックへ */}
-                  <summary
-                    // **色は見出しの行ぜんぶに敷く。** 帯の左端を中の
-                    // フォルダと揃える（要望 2026-09-05）
-                    className={
-                      (folderFilter === "" ? "selected" : "") +
-                      (dropFolder === "" ? " drop-target" : "")
-                    }
-                    onClick={(event) => {
-                      event.preventDefault(); // 開閉はこちらで持つ（タグと排他）
-                      toggleSide("folders");
-                    }}
-                    onDragEnter={(event) => {
-                      if (!acceptsDrop(event, "")) return;
-                      event.preventDefault();
-                      setDropFolder("");
-                    }}
-                    onDragOver={(event) => {
-                      if (!acceptsDrop(event, "")) return;
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setDropFolder("");
-                    }}
-                    onDragLeave={() =>
-                      setDropFolder((current) =>
-                        current === "" ? null : current,
-                      )
-                    }
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const dragged =
-                        draggingNote.current ||
-                        event.dataTransfer.getData(NOTE_DRAG_TYPE);
-                      draggingNote.current = null;
-                      setDropFolder(null);
-                      if (dragged) void handleDropOnFolder(dragged, "");
-                    }}
-                  >
-                    <span className="side-twist" aria-hidden="true" />
-                    <button
-                      className="folder-row folder-head"
-                      title="右クリックで作る（ノートを落とすと直下へ移せます）"
-                      onClick={(event) => {
-                        event.preventDefault(); // summary の開閉を巻き込まない
-                        event.stopPropagation();
-                        filterByFolder(folderFilter === "" ? null : "");
-                      }}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setFolderMenu({
-                          folder: "",
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
-                    >
-                      <MenuIcon name="folder" />
-                      <span className="folder-name">フォルダ</span>
-                      <span className="folder-count">{rootNotes}</span>
-                    </button>
-                  </summary>
-                  <ul>
-                    {subFolders.map(({ folder, count }) => (
-                      // **受け口はボタンではなく行に置く。** WebKit では
-                      // ボタンがドラッグの出来事を飲んでしまう。あわせて
-                      // **dragenter と dragover の両方を止める** —
-                      // dragover だけで受けられるのは Chrome の甘さで、
-                      // WebKit はこれが無いと落とせない（実機で発覚
-                      // 2026-09-04: 掴めるのに落とせない）
-                      <li
-                        key={folder || "."}
-                        onDragEnter={(event) => {
-                          if (!acceptsDrop(event, folder)) return;
-                          event.preventDefault();
-                          setDropFolder(folder);
-                        }}
-                        onDragOver={(event) => {
-                          if (!acceptsDrop(event, folder)) return;
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "move";
-                          setDropFolder(folder);
-                        }}
-                        onDragLeave={() =>
-                          setDropFolder((current) =>
-                            current === folder ? null : current,
-                          )
-                        }
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const dragged =
-                            draggingNote.current ||
-                            event.dataTransfer.getData(NOTE_DRAG_TYPE);
-                          draggingNote.current = null;
-                          setDropFolder(null);
-                          if (dragged) void handleDropOnFolder(dragged, folder);
-                        }}
-                      >
-                        <button
-                          className={
-                            `folder-row${folder === folderFilter ? " selected" : ""}` +
-                            (folder === dropFolder ? " drop-target" : "")
-                          }
-                          style={{
-                            // **見出しより 1 段下げる**（要望 2026-09-05）。
-                            // 見出しと頭が揃っていると、中のフォルダが
-                            // 同じ高さのものに見える
-                            paddingLeft: `${1.8 + folderDepth(folder) * 0.8}rem`,
-                          }}
-                          title="右クリックで作る・名前を変える・消す（ノートを落とすと移せます）"
-                          onClick={() =>
-                            filterByFolder(
-                              folder === folderFilter ? null : folder,
-                            )
-                          }
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setFolderMenu({
-                              folder,
-                              x: event.clientX,
-                              y: event.clientY,
-                            });
-                          }}
-                        >
-                          <MenuIcon name="folder" />
-                          <span className="folder-name">
-                            {folderLabel(folder)}
-                          </span>
-                          <span className="folder-count">{count}</span>
-                        </button>
-                      </li>
-                    ))}
-                    {/* **ゴミ箱もフォルダの中に置く**（要望 2026-09-05）。
-                        押すと一覧が捨てたノートに変わる。落とし先としての
-                        振る舞い（ノートを落とすと捨てる）はそのまま */}
-                    <li
-                      onDragEnter={(event) => {
-                        if (!isNoteDrag(Array.from(event.dataTransfer.types)))
-                          return;
-                        event.preventDefault();
-                        setDropTrash(true);
-                      }}
-                      onDragOver={(event) => {
-                        if (!isNoteDrag(Array.from(event.dataTransfer.types)))
-                          return;
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                        setDropTrash(true);
-                      }}
-                      onDragLeave={() => setDropTrash(false)}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        const dragged =
-                          draggingNote.current ||
-                          event.dataTransfer.getData(NOTE_DRAG_TYPE);
-                        draggingNote.current = null;
-                        setDropTrash(false);
-                        // ピン留めの断りと確認は handleTrash が持っている
-                        if (dragged) void handleTrash(dragged);
-                      }}
-                    >
-                      <button
-                        className={
-                          `folder-row${folderFilter === TRASH_FOLDER ? " selected" : ""}` +
-                          (dropTrash ? " drop-target" : "")
-                        }
-                        // 書き始めは見出しの「フォルダ」と揃える
-                        // （要望 2026-09-05）。中のフォルダより 1 段浅い
-                        style={{ paddingLeft: "1.8rem" }}
-                        title="捨てたノートを見る（落とすと捨てます。右クリックで空にできます）"
-                        onClick={() =>
-                          filterByFolder(
-                            folderFilter === TRASH_FOLDER ? null : TRASH_FOLDER,
-                          )
-                        }
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          // path が無いときは「ゴミ箱そのもの」への操作
-                          setTrashMenu({
-                            path: null,
-                            x: event.clientX,
-                            y: event.clientY,
-                          });
-                        }}
-                      >
-                        <MenuIcon name="trash" />
-                        <span className="folder-name">ゴミ箱</span>
-                        <span className="folder-count">
-                          {trashNotes.length}
-                        </span>
-                      </button>
-                    </li>
-                  </ul>
-                </details>
+                  onToggle={() => toggleSide("folders")}
+                  onFilter={filterByFolder}
+                  onFolderMenu={setFolderMenu}
+                  onTrashMenu={({ x, y }) => setTrashMenu({ path: null, x, y })}
+                  acceptsDrop={acceptsDrop}
+                  onDrop={(folder, carried) => {
+                    const dragged = draggingNote.current || carried;
+                    draggingNote.current = null;
+                    if (dragged) void handleDropOnFolder(dragged, folder);
+                  }}
+                  onDropTrash={(carried) => {
+                    const dragged = draggingNote.current || carried;
+                    draggingNote.current = null;
+                    // ピン留めの断りと確認は handleTrash が持っている
+                    if (dragged) void handleTrash(dragged);
+                  }}
+                />
               )}
               {settings.treesVisible && tags.length > 0 && (
                 <TagSection
