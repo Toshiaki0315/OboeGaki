@@ -26,6 +26,8 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { ListPalette } from "./components/ListPalette";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
+import { TableDialog } from "./components/TableDialog";
+
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { anchorAbove, menuPosition } from "./lib/context-menu";
@@ -1095,17 +1097,6 @@ function App() {
   const [initialCursor, setInitialCursor] = useState<number | null>(null);
   // このノートを指しているノート（E-6）。本文の下に畳んで出す
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
-  const tableRows = useRef<HTMLInputElement>(null);
-  const tableColumns = useRef<HTMLInputElement>(null);
-  function confirmInsertTable() {
-    const rows = Number(tableRows.current?.value ?? 2);
-    const columns = Number(tableColumns.current?.value ?? 2);
-    setTableDialog(false);
-    editorRef.current?.insertTable(
-      Number.isFinite(rows) ? rows : 2,
-      Number.isFinite(columns) ? columns : 2,
-    );
-  }
 
   // 版の履歴（ADR-0023）
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(
@@ -3549,45 +3540,13 @@ function App() {
             />
           )}
           {tableDialog && (
-            <div
-              className="palette-backdrop"
-              onClick={() => setTableDialog(false)}
-            >
-              <div
-                className="palette"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">表を挿入</header>
-                <div className="table-dialog-fields">
-                  <label>
-                    行（見出しを除く）
-                    <input
-                      ref={tableRows}
-                      type="number"
-                      min={1}
-                      max={50}
-                      defaultValue={2}
-                    />
-                  </label>
-                  <label>
-                    列
-                    <input
-                      ref={tableColumns}
-                      type="number"
-                      min={1}
-                      max={20}
-                      defaultValue={2}
-                    />
-                  </label>
-                </div>
-                <div className="dialog-actions">
-                  <button onClick={() => setTableDialog(false)}>やめる</button>
-                  <button className="primary" onClick={confirmInsertTable}>
-                    挿入
-                  </button>
-                </div>
-              </div>
-            </div>
+            <TableDialog
+              onInsert={(rows, columns) => {
+                setTableDialog(false);
+                editorRef.current?.insertTable(rows, columns);
+              }}
+              onClose={() => setTableDialog(false)}
+            />
           )}
           {recovery > 0 && (
             <ChoiceDialog
