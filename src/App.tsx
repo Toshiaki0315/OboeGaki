@@ -31,6 +31,7 @@ import { ListPalette } from "./components/ListPalette";
 import { MenuIcon, PathIcon } from "./components/MenuIcon";
 import { MenuList, type MenuEntry } from "./components/MenuList";
 import { NoteActions } from "./components/NoteActions";
+import { NoteTitle } from "./components/NoteTitle";
 import { NoteRows } from "./components/NoteRows";
 import { OutlinePane } from "./components/OutlinePane";
 import { PreferencesDialog } from "./components/PreferencesDialog";
@@ -2681,22 +2682,11 @@ function App() {
                 {/* 題名の行は本文と同じ幅で中央に置くので、区切り線は
                   外側の帯に引く（線だけが短いと途中で切れて見える） */}
                 <div className="note-header-bar">
-                  <header className="note-header">
-                    <input
-                      key={currentPath}
-                      className="title-input"
-                      defaultValue={noteStem(currentPath)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          // 改名は onBlur に一本化する（ここでも呼ぶと二重発火）
-                          event.currentTarget.blur();
-                        }
-                      }}
-                      onBlur={(event) =>
-                        void handleRename(event.currentTarget.value)
-                      }
-                    />
-                  </header>
+                  <NoteTitle
+                    key={currentPath}
+                    path={currentPath}
+                    onRename={(name) => void handleRename(name)}
+                  />
                   {/* 操作はアイコンでペインの右端に寄せる（題名の 46rem 幅とは
                     独立。ユーザー要望 2026-09-04）。並びは
                     ピン → 書き出し → 履歴 → ゴミ箱 → ソース表示切替 */}
