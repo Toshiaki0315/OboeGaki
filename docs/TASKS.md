@@ -341,11 +341,11 @@ GR-xx / ST-xx / VA-xx / PV-xx）を実装とテストの名前に必ず書く**�
 対応済み: HTML 書き出しの属性値エスケープ（②）・Rust テスト名の警告（④）・
 App.tsx の分割（①、ADR-0048。23 段で 6,020 行 → 3,443 行）。
 
-- [ ] **9-1. Tauri の CSP を設定する**（③）
+- [x] **9-1. Tauri の CSP を設定する**（③）— 2026-09-07 本番 .app で数式・図・画像・PDF/PPTX 取り込み・書き出し・アシスタント・印刷を実機確認
       `tauri.conf.json` の `security.csp` が `null`。WebView から fetch /
       convertFileSrc / 外部フォントは使っていないので
       `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-    img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMirror
+  img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMirror
       の style-mod と Mermaid の SVG に必須）。**`make run` で Temml・Mermaid・
       画像・Ollama 連携が壊れないことを見ながら**入れる。dev は `devCsp` も
 - [ ] **9-2. ESLint（react-hooks）を `make check` に入れる**（⑤）
