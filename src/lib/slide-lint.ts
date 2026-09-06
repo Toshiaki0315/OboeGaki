@@ -25,8 +25,9 @@ const LINE = 1.2;
 /// 段落と段落のあいだ。
 const GAP_IN = 0.12;
 
-/// 1 枚ぶんの高さを見積もる（インチ）。
-function heightOf(
+/// 1 枚ぶんの高さを見積もる（インチ）。**枚を割るほう（8-5）も同じ物差しを
+/// 使う** — 別々に測ると「割ったのに溢れている」が起きる。
+export function estimateHeightIn(
   blocks: readonly SlideBlock[],
   widthIn: number,
   metrics: SlideMetrics,
@@ -64,7 +65,7 @@ export function overflowingSlides(
     // 画像がある枚は本文が半分の幅になる（`pptx.ts` と同じ割り方）
     const widthIn =
       slide.images.length > 0 ? metrics.contentW * 0.52 : metrics.contentW;
-    const needIn = heightOf(slide.blocks, widthIn, metrics);
+    const needIn = estimateHeightIn(slide.blocks, widthIn, metrics);
     if (needIn > metrics.bodyH) {
       found.push({
         index: at + offset + 1,

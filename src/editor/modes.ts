@@ -57,8 +57,11 @@ export function focusRange(
   if (!line.text.trim()) return null;
   // **木を待つ。** `syntaxTree` は時間で打ち切られるので、長いノートでは
   // キャレットの手前まで届かず、段落が見つからないまま減光が消える。
-  // **待つのはキャレットの行まで**（文書の終わりまでは要らない）
-  const tree = treeOf(state, line.to);
+  //
+  // **キャレットの行までで止めない。** 箇条書きのように行をまたぐ塊は、
+  // そこで打ち切ると途中までの短い塊として返る（実測 2026-09-06:
+  // リスト全体のはずが 1 項目ぶんになった）
+  const tree = treeOf(state);
   // トップレベル（Document 直下）のブロックまで上がる
   let node = tree.resolveInner(head, -1);
   while (node.parent && node.parent.name !== "Document") {

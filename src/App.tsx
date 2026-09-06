@@ -82,6 +82,7 @@ import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
 import { slideMetrics } from "./lib/slide-grid";
 import { overflowingSlides } from "./lib/slide-lint";
+import { splitForDensity } from "./lib/slide-split";
 import { contrastVerdict } from "./lib/contrast";
 import {
   DEFAULT_PPTX_SETTINGS,
@@ -875,8 +876,13 @@ function App() {
     if (!preferences || prefTab !== "pptx" || !currentPath) return null;
     const text = editorRef.current?.getText() ?? "";
     if (!text.trim()) return null;
-    const deck = splitDeck(text, pptxSettings.layout.splitLevel);
-    return overflowingSlides(deck, slideMetrics(pptxSettings));
+    const metrics = slideMetrics(pptxSettings);
+    const deck = splitForDensity(
+      splitDeck(text, pptxSettings.layout.splitLevel),
+      pptxSettings,
+      metrics,
+    );
+    return overflowingSlides(deck, metrics);
   }, [preferences, prefTab, currentPath, pptxSettings]);
 
   function changePptxSettings(patch: Partial<PptxSettings>) {
@@ -991,8 +997,14 @@ function App() {
     try {
       // 土台は環境設定（8-1）、**ノートの front matter が勝つ**
       //（SC-02 > SC-01。ADR-0046 の決定 4）
-      const deck = splitDeck(text, pptxSettings.layout.splitLevel);
       const metrics = slideMetrics(pptxSettings);
+      // 収まらないぶんは次の枚へ送る（CFG-46）。**測ってから割る**ので、
+      // 見張り（下）は割ったあとの姿を見ることになる
+      const deck = splitForDensity(
+        splitDeck(text, pptxSettings.layout.splitLevel),
+        pptxSettings,
+        metrics,
+      );
       // 書き出し前チェック（CFG-70）。**測り方は近似**なので、止めるのは
       // 「厳格」を選んだときだけ。ふだんは知らせて先へ進む
       const over =
@@ -4219,6 +4231,75 @@ function App() {
                           <option value="2">見出し 2（##）</option>
                           <option value="3">見出し 3（###）</option>
                         </select>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">1 枚に載せる量</h3>
+                    <p className="pref-note">
+                      収まらないぶんは**次の枚へ送ります**（字を縮めたり、
+                      書いた文を削ったりはしません）。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>載せ方</span>
+                        <select
+                          value={pptxSettings.layout.density}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              layout: {
+                                ...pptxSettings.layout,
+                                density: event.currentTarget
+                                  .value as PptxSettings["layout"]["density"],
+                              },
+                            })
+                          }
+                        >
+                          <option value="full">詳しく</option>
+                          <option value="normal">標準</option>
+                          <option value="sparse">要点のみ</option>
+                        </select>
+                      </label>
+                      <p className="pref-note">
+                        {pptxSettings.layout.density === "sparse"
+                          ? "要点のみ — スライドは短く、本文は発表者ノートに入ります"
+                          : pptxSettings.layout.density === "full"
+                            ? "詳しく — 書いたものをそのまま載せます（溢れたら次の枚へ）"
+                            : "標準 — 収まらないときだけ次の枚へ送ります"}
+                      </p>
+                      <label>
+                        <span>箇条書きの上限</span>
+                        <span className="pref-check">
+                          <input
+                            type="range"
+                            min={3}
+                            max={10}
+                            value={pptxSettings.layout.maxBulletItems}
+                            onChange={(event) =>
+                              changePptxSettings({
+                                layout: {
+                                  ...pptxSettings.layout,
+                                  maxBulletItems: Number(
+                                    event.currentTarget.value,
+                                  ),
+                                },
+                              })
+                            }
+                          />
+                          1 枚に {pptxSettings.layout.maxBulletItems} 項目まで
+                        </span>
+                      </label>
+                      <label>
+                        <span>続きの枚の印</span>
+                        <input
+                          value={pptxSettings.layout.continuationSuffix}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              layout: {
+                                ...pptxSettings.layout,
+                                continuationSuffix: event.currentTarget.value,
+                              },
+                            })
+                          }
+                        />
                       </label>
                     </div>
                     <h3 className="pref-section">見た目</h3>
