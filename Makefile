@@ -1,6 +1,6 @@
 # 覚書（OboeGaki）Tauri 版の開発コマンド入口。hitofude と同じ流儀。
 
-.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench dmg
+.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg
 
 setup:            ## 初回セットアップ
 	npm install
@@ -34,6 +34,19 @@ bench-startup:    ## 起動時間の実測（spec §6.6: < 1.5 秒。release を
 bench: bench-search  ## 3 基準の計測（打鍵は bench.html — docs/bench.md 参照）
 	@echo "打鍵の実測: npx vite を起動して http://localhost:5173/bench.html を開く"
 	@echo "起動の実測: make bench-startup"
+
+# 配る形（DMG）まで要らないとき用。tauri build は既定で targets "all" を
+# 組むため DMG まで作って数分伸びる。`--bundles app` で .app だけにする。
+# 中の `beforeBuildCommand`（npm run build）はどちらでも走るので、
+# フロントの組み直しは要らない。
+APP := src-tauri/target/release/bundle/macos/OboeGaki.app
+
+app:              ## アプリ（.app）を組む。DMG は作らない
+	npm run tauri build -- --bundles app
+	@echo "アプリ: $(APP)"
+	@echo "開く:   open $(APP)"
+	@echo "※ 署名・公証はまだ（Apple Developer アカウント待ち）。初回は"
+	@echo "  右クリック →「開く」で Gatekeeper を通す"
 
 dmg:              ## インストール用 DMG を新規ビルドから作る（hitofude の make dmg と同役）
 	npm run tauri build
