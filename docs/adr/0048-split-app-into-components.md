@@ -53,8 +53,8 @@
 
 ## 進み具合（2026-09-07 時点）
 
-同日のうちに 20 段まで進めた。App.tsx は 6,020 行 → 3,706 行、`useState`
-は 75 → 60 個。切り出した部品（`src/components/`、各 1 コミット）:
+同日のうちに 23 段まで進めた。App.tsx は 6,020 行 → 3,443 行、`useState`
+は 75 → 58 個。切り出した部品（`src/components/`、各 1 コミット）:
 
 - 窓: PreferencesDialog（General / Pptx / Assistant の 3 タブ）・
   HistoryDialog・PromptDialog（名前を 1 つ聞く 4 つの窓を束ねた）・
@@ -62,24 +62,24 @@
   GraphDialog・StyleCheckDialog
 - パレット: FuzzyPalette（クイックオープン・見出し）・ListPalette
   （テンプレート・フォルダへ移動）
-- 枠と絵: ContextMenu / SubMenu・MenuIcon / PathIcon・SlidePreview
-- エディタまわり: FormatToolbar・NoteActions・BacklinkBar・OutlinePane・
-  StatusBar・AssistantPane
-- サイドバーの葉: SearchHits・TagSection・SavedSearchSection・NoteRows・
-  TrashRows
+- 枠と絵: ContextMenu / SubMenu・MenuList（項目を配列で描く）・
+  MenuIcon / PathIcon・SlidePreview
+- エディタまわり: NoteTitle・FormatToolbar・NoteActions・BacklinkBar・
+  OutlinePane・StatusBar・AssistantPane
+- サイドバー: FolderSection・TagSection・SavedSearchSection・SearchHits・
+  NoteRows・TrashRows
 
-`noteStem` / `noteLabel` は `src/lib/note-path.ts` に移した。
+`noteStem` / `noteLabel` は `src/lib/note-path.ts`、`folderLabel` /
+`folderDepth` は `src/lib/folder-tree.ts` に移した。
 
-## 次の段
+右クリックメニューの**項目の並び**（7 つ）は App に残した。何を並べるかは
+App の振る舞いそのものなので、MenuEntry の配列として App が書き、描くのは
+MenuList に任せる。
 
-残っているのは、App の状態と深く結びついているもの:
+## 残したもの
 
-- **フォルダの節**（サイドバー）。ドラッグ＆ドロップの受け口と落とし先の
-  強調（`dropFolder` / `dropTrash`）が App の ref・state に跨る。切るなら
-  props が 15 前後になるので、強調の状態を節の中に閉じる設計から考える
-- **右クリックメニューの中身**（ノート・本文・歯車・タグ・フォルダ・
-  ゴミ箱・アウトラインの 7 つ）。枠は部品にしたが、項目の並びは App の
-  振る舞いそのものなので、切るなら「項目の並び」を配列で渡す形
-- 題名の欄（改名）と `<main>` の外枠（D&D の受けるふり）
-
-同じ手順（RED → GREEN → `make check` → 1 部品 1 コミット）で進める。
+- `<main>` の外枠（CSS 変数と、D&D の「受けるふり」）と、`app-split` の
+  レイアウト。App のレイアウトそのものなので部品にしない
+- 状態と処理（vault の読み書き・自動保存・検索・LLM）。ここから先は
+  部品化ではなく **hooks への切り出し**（`useAutosave` / `useSearch` /
+  `useAssistant` のような）が次の手段になる。別の ADR で扱う
