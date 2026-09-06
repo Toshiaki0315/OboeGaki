@@ -81,6 +81,7 @@ import { checkStyle, type Finding } from "./lib/style-check";
 import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
 import { slideMetrics } from "./lib/slide-grid";
+import { overflowingSlides } from "./lib/slide-lint";
 import {
   DEFAULT_PPTX_SETTINGS,
   hexColor,
@@ -978,19 +979,39 @@ function App() {
     try {
       // 土台は環境設定（8-1）、**ノートの front matter が勝つ**
       //（SC-02 > SC-01。ADR-0046 の決定 4）
+      const deck = splitDeck(text, pptxSettings.layout.splitLevel);
+      const metrics = slideMetrics(pptxSettings);
+      // 書き出し前チェック（CFG-70）。**測り方は近似**なので、止めるのは
+      // 「厳格」を選んだときだけ。ふだんは知らせて先へ進む
+      const over =
+        pptxSettings.advanced.lintLevel === "off"
+          ? []
+          : overflowingSlides(deck, metrics);
+      if (over.length > 0 && pptxSettings.advanced.lintLevel === "strict") {
+        setStatus(
+          `${over.length} 枚で文字が収まらないかもしれません（${over
+            .map((slide) => slide.title)
+            .join("・")}）。書き出しを止めました`,
+        );
+        return;
+      }
       const data = await buildPptx(
-        splitDeck(text, pptxSettings.layout.splitLevel),
+        deck,
         (url) => imageSource(vaultRoot, url),
         readSlideTheme(text, slideThemeFrom(pptxSettings)),
         await borrowedTheme(),
         {
           footer: pptxSettings.footer,
           decoration: pptxSettings.decoration,
-          metrics: slideMetrics(pptxSettings),
+          metrics,
         },
       );
       await invoke("export_write_binary", { path: target, data });
-      setStatus(`書き出しました: ${target}`);
+      setStatus(
+        over.length > 0
+          ? `書き出しました: ${target}（${over.length} 枚で文字が収まらないかもしれません）`
+          : `書き出しました: ${target}`,
+      );
     } catch (error) {
       setStatus(`書き出せませんでした: ${String(error)}`);
     }
@@ -4339,6 +4360,34 @@ function App() {
                           />
                           書き出した日を入れる
                         </span>
+                      </label>
+                    </div>
+                    <h3 className="pref-section">書き出す前のチェック</h3>
+                    <p className="pref-note">
+                      文字が枠に収まるかを見ます。**当たりをつけるだけ**の
+                      見積もりなので、多めに知らせます。
+                    </p>
+                    <div className="preferences-fields">
+                      <label>
+                        <span>収まらないとき</span>
+                        <select
+                          value={pptxSettings.advanced.lintLevel}
+                          onChange={(event) =>
+                            changePptxSettings({
+                              advanced: {
+                                ...pptxSettings.advanced,
+                                lintLevel: event.currentTarget
+                                  .value as PptxSettings["advanced"]["lintLevel"],
+                              },
+                            })
+                          }
+                        >
+                          <option value="off">調べない</option>
+                          <option value="warn">
+                            知らせる（書き出しは続ける）
+                          </option>
+                          <option value="strict">書き出しを止める</option>
+                        </select>
                       </label>
                     </div>
                     <h3 className="pref-section">コード</h3>
