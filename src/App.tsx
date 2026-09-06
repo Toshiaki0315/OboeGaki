@@ -29,6 +29,7 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { ListPalette } from "./components/ListPalette";
 import { MenuIcon, PathIcon } from "./components/MenuIcon";
 import { NoteActions } from "./components/NoteActions";
+import { NoteRows } from "./components/NoteRows";
 import { OutlinePane } from "./components/OutlinePane";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
@@ -39,6 +40,7 @@ import { StyleCheckDialog } from "./components/StyleCheckDialog";
 
 import { TableDialog } from "./components/TableDialog";
 import { TagSection } from "./components/TagSection";
+import { TrashRows } from "./components/TrashRows";
 
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR } from "./editor/format-toolbar";
@@ -58,7 +60,7 @@ import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem } from "./lib/note-path";
 import { splitFolders } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
-import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
+import { folderFilterLabel, trashLabel } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
 import { packSources, pickSources } from "./lib/sources";
@@ -143,12 +145,7 @@ import {
   saveSettings,
   type Settings,
 } from "./lib/settings";
-import {
-  formatStamp,
-  sortNotes,
-  type NoteEntry,
-  type SortOrder,
-} from "./lib/note-order";
+import { sortNotes, type NoteEntry, type SortOrder } from "./lib/note-order";
 import {
   conflictCopy,
   createNote,
@@ -424,10 +421,6 @@ function App() {
   // 掴んでいるノートのパス。**ref で持つ** — dragover は毎フレーム飛ぶので、
   // 掴んだものまで state にすると打鍵と同じだけ再描画が走る
   const draggingNote = useRef<string | null>(null);
-  /// 掴んだときに持ち歩く札。**行そのものを絵にしない** — WebKit は行の
-  /// 載っている層ごと写し取るので、窓の幅いっぱいの帯になって隣のペインの
-  /// 本文まで一緒に動く（実機で発覚 2026-09-04）
-  const dragGhost = useRef<HTMLElement | null>(null);
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
   const [reference, setReference] = useState<{
@@ -2569,122 +2562,37 @@ function App() {
                       </select>
                     </div>
                   )}
-                  <ul className="note-rows">
-                    {trashView && trashNotes.length === 0 && (
-                      <li className="no-hits">
-                        ゴミ箱は空です。捨てたノートは {settings.trashDays}{" "}
-                        日残ります
-                      </li>
-                    )}
-                    {/* 捨てたノート（要望 2026-09-05）。**出せる操作を絞る** —
-                        ゴミ箱の中身にピン留めや改名を許すと、戻したときの
-                        状態が読めない（参照実装 note_actions と同じ判断） */}
-                    {trashView &&
-                      trashNotes.map((entry) => {
-                        const { name, folder } = trashParts(
-                          vaultRoot,
-                          entry.path,
-                        );
-                        return (
-                          <li key={entry.path} className="trash-item">
-                            <button
-                              className={`trash-row${entry.path === currentPath ? " selected" : ""}`}
-                              title={`${trashLabel(vaultRoot, entry.path)}（右クリックで戻す・削除）`}
-                              onClick={() => void openNote(entry.path)}
-                              onContextMenu={(event) => {
-                                event.preventDefault();
-                                setTrashMenu({
-                                  path: entry.path,
-                                  x: event.clientX,
-                                  y: event.clientY,
-                                });
-                              }}
-                            >
-                              <span className="trash-name">{name}</span>
-                              <span className="trash-meta">
-                                {/* 元の場所。直下のノートには出さない */}
-                                {folder && (
-                                  <span className="trash-folder">{folder}</span>
-                                )}
-                                <span className="trash-stamp">
-                                  {formatStamp(entry.trashedMs)}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    {!trashView &&
-                      (tagFilter || folderFilter !== null) &&
-                      sortedNotes.length === 0 && (
-                        <li className="no-hits">
-                          {tagFilter
-                            ? "このタグのノートはありません"
-                            : "このフォルダにノートはありません"}
-                        </li>
-                      )}
-                    {sortedNotes.map((entry) => (
-                      <li key={entry.path}>
-                        <button
-                          className={`note-row${entry.path === currentPath ? " selected" : ""}`}
-                          // フォルダへ落として移す（要望 2026-09-04）
-                          draggable
-                          onDragStart={(event) => {
-                            draggingNote.current = entry.path;
-                            // 動かすのであって写しではない（緑の + を出さない）
-                            event.dataTransfer.effectAllowed = "move";
-                            // **載せるのは目印だけ。** 素の文字を載せると
-                            // 本文や入力欄が「文字のコピー」として受け、
-                            // 緑の + が付くうえ、落とすと題名が本文に入る
-                            // （実機報告 2026-09-04）
-                            event.dataTransfer.setData(
-                              NOTE_DRAG_TYPE,
-                              entry.path,
-                            );
-                            // 画面の外で作った札を絵にする。**画面に載って
-                            // いないと写し取ってもらえない**ので、消すのは
-                            // 掴み終わってから（dragend）
-                            const ghost = document.createElement("div");
-                            ghost.className = "drag-ghost";
-                            ghost.textContent = noteStem(entry.path);
-                            document.body.appendChild(ghost);
-                            dragGhost.current = ghost;
-                            event.dataTransfer.setDragImage(ghost, 12, 12);
-                          }}
-                          onDragEnd={() => {
-                            draggingNote.current = null;
-                            setDropFolder(null);
-                            dragGhost.current?.remove();
-                            dragGhost.current = null;
-                          }}
-                          onClick={() => void openNote(entry.path)}
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setNoteMenu({
-                              path: entry.path,
-                              x: event.clientX,
-                              y: event.clientY,
-                            });
-                          }}
-                        >
-                          <span className="note-row-title">
-                            {entry.pinned && (
-                              <span className="pin-mark">📌</span>
-                            )}
-                            {entry.label}
-                          </span>
-                          {entry.preview && (
-                            <span className="note-row-preview">
-                              {entry.preview}
-                            </span>
-                          )}
-                          <span className="note-row-stamp">
-                            {formatStamp(entry.mtimeMs)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  {trashView ? (
+                    <TrashRows
+                      vaultRoot={vaultRoot}
+                      entries={trashNotes}
+                      currentPath={currentPath}
+                      trashDays={settings.trashDays}
+                      onOpen={(path) => void openNote(path)}
+                      onMenu={setTrashMenu}
+                    />
+                  ) : (
+                    <NoteRows
+                      notes={sortedNotes}
+                      currentPath={currentPath}
+                      emptyText={
+                        tagFilter
+                          ? "このタグのノートはありません"
+                          : folderFilter !== null
+                            ? "このフォルダにノートはありません"
+                            : null
+                      }
+                      onOpen={(path) => void openNote(path)}
+                      onMenu={setNoteMenu}
+                      onDragStart={(path) => {
+                        draggingNote.current = path;
+                      }}
+                      onDragEnd={() => {
+                        draggingNote.current = null;
+                        setDropFolder(null);
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {settings.treesVisible && searches.length > 0 && (
