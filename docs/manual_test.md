@@ -400,7 +400,7 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 
 ### Tauri 版の包み（`make app` / `make dmg`）
 
-- [x] `make app` で `src-tauri/target/release/bundle/macos/OboeGaki.app` ができる（実測 2026-09-06: 3 分 14 秒 / 18MB）
+- [x] `make app` で `src-tauri/target/release/bundle/macos/OboeGaki.app` ができる（実測 2026-09-06: 3 分 14 秒 / 16MB。18MB だったのは計測ツール bench を同梱していた頃の値）
 - [x] `.app` の `Contents/MacOS/` に **`oboegaki` だけ**が入っている（計測ツール `bench` が同梱されていない）
 - [x] `make bench-search` を走らせて `target/release/bench` を作ったあとでも、`.app` に `bench` は入らない
 - [x] `make dmg` でできた DMG の中の `.app` も同じ（実測 2026-09-06: `OboeGaki_0.1.0_aarch64.dmg` 7.7MB / 中の `.app` 16MB / `Contents/MacOS/` は `oboegaki` だけ）
