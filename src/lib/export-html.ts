@@ -271,7 +271,9 @@ const STYLE = `
   img { max-width: 100%; }
   mark { background: rgba(255, 214, 10, 0.5); border-radius: 2px; }
   hr { border: none; border-top: 2px solid rgba(0,0,0,0.2); }
-  input[type="checkbox"] { margin-right: 0.4em; }
+  /* 字の大きさに合わせる（画面と同じ。入力部品は font-size を継がない） */
+  input[type="checkbox"] { font-size: inherit; width: 1.15em; height: 1.15em;
+                           margin-right: 0.4em; vertical-align: -0.25em; }
   /* コードの配色（TASKS 4-4 / ADR-0008）。App.css と同じ組を持たせる。
      **スタイルシートも JS も外から読まない**ので、1 枚で完結したまま
      読む人の明暗に合う */

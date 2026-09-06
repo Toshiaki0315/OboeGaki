@@ -1567,9 +1567,17 @@ const blockTheme = EditorView.baseTheme({
     fontSize: "0.7em",
     verticalAlign: "middle",
   },
+  // **字の大きさに合わせて大きくする**（実機報告 2026-09-06）。素の
+  // チェックボックスは 13px 固定で、本文を大きくすると相対的に小さく見える
   ".cm-task-checkbox": {
+    // **`font-size` は継がれない**（入力部品の既定は 13px）。継がせないと
+    // `em` が 13px 基準になって、本文を大きくしても付いてこない
+    fontSize: "inherit",
+    width: "1.15em",
+    height: "1.15em",
     marginRight: "0.4em",
-    verticalAlign: "middle",
+    // 字の中心と印の中心を合わせる（実測で詰めた）
+    verticalAlign: "-0.25em",
   },
   ".cm-table-widget": {
     padding: "4px 0",
