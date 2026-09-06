@@ -34,7 +34,9 @@ jobs:
 
       - run: cargo fmt --check
         working-directory: src-tauri
-      - run: cargo clippy -- -D warnings
+      # 計測ツール（bench）は features で切ってある（.app に入れないため）。
+      # CI では付けて lint も通す
+      - run: cargo clippy --features bench -- -D warnings
         working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri

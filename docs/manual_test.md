@@ -398,6 +398,14 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 | [ ] | **クリーンな macOS** に DMG からインストール   | Gatekeeper の警告なしに起動する                                                                                       |
 | [-] | Intel Mac は対象外（ADR-0012）                 | 今後発売されないため支えない。`.app` は arm64 のみ                                                                    |
 
+### Tauri 版の包み（`make app` / `make dmg`）
+
+- [x] `make app` で `src-tauri/target/release/bundle/macos/OboeGaki.app` ができる（実測 2026-09-06: 3 分 14 秒 / 18MB）
+- [x] `.app` の `Contents/MacOS/` に **`oboegaki` だけ**が入っている（計測ツール `bench` が同梱されていない）
+- [x] `make bench-search` を走らせて `target/release/bench` を作ったあとでも、`.app` に `bench` は入らない
+- [ ] `make dmg` でできた DMG の中の `.app` も同じ（`Contents/MacOS/` は `oboegaki` だけ）
+- [ ] 包んだ `.app` を一度起動する（**包み方のずれはここでしか出ない**）
+
 ---
 
 ## 記録

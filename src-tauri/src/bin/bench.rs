@@ -1,5 +1,8 @@
 // 性能計測（spec §6.6）: 全文検索 < 200ms（5,000 ノートの vault）。
-// 実行: make bench-search（= cargo run --release --bin bench）
+// 実行: make bench-search（= cargo run --release --features bench --bin bench）
+//
+// features で切ってあるのは、束ねる .app に計測ツールを入れないため
+// （既定の cargo build で作られなければ、bundler も拾わない）。
 //
 // 一時フォルダに 5,000 ノートを生成し、索引の構築・再同期・検索を実測する。
 // 基準と突き合わせた判定まで出す（CLAUDE.md: 検証していない性能を

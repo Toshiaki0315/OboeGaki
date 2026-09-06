@@ -18,7 +18,7 @@
 
 ## 測り方
 
-- **検索**: `make bench-search`（= `cargo run --release --bin bench`）。
+- **検索**: `make bench-search`（= `cargo run --release --features bench --bin bench`）。
   一時フォルダに 5,000 ノートを生成 → 索引構築 → 4 種のクエリを計測。
   基準割れで exit 1
 - **打鍵**: `npx vite` を起動して `http://localhost:5183/bench.html` を開く

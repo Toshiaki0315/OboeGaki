@@ -15,6 +15,22 @@ edition = "2021"
 name = "oboegaki_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# 計測ツールは**束ねる .app に入れない**（実測 2026-09-06: 何もしないと
+# Contents/MacOS/ に bench が同梱される）。features で切っておくと、
+# 既定の `cargo build` で作られないので bundler も拾いようがない。
+# 走らせるのは make bench-search（--features bench を付ける）。
+[features]
+bench = []
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+required-features = ["bench"]
+
+[[bin]]
+name = "oboegaki"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

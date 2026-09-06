@@ -24,8 +24,10 @@ fmt:              ## フォーマット修正
 	npx prettier --write src
 	cd src-tauri && cargo fmt
 
+# 計測ツールは features で切ってある（束ねる .app に入れないため —
+# src-tauri/Cargo.toml 参照）。走らせるときだけ features を付ける。
 bench-search:     ## 全文検索の実測（spec §6.6: < 200ms / 5,000 ノート）
-	cd src-tauri && cargo run --release --bin bench
+	cd src-tauri && cargo run --release --features bench --bin bench
 
 bench-startup:    ## 起動時間の実測（spec §6.6: < 1.5 秒。release を組んで測る）
 	npm run tauri build -- --no-bundle
@@ -74,7 +76,7 @@ ci:               ## CI と同じ手順をローカルで（コミット済み�
 	  npx tsc --noEmit; \
 	  cd src-tauri; \
 	  cargo fmt --check; \
-	  cargo clippy -- -D warnings; \
+	  cargo clippy --features bench -- -D warnings; \
 	  cargo test ) || status=$$?; \
 	git worktree remove --force "$$dir"; \
 	rm -rf "$$tmp"; \
@@ -86,5 +88,5 @@ check:            ## コミット前チェック（lint + 型 + テスト全部�
 	npx vitest run
 	npx tsc --noEmit
 	cd src-tauri && cargo fmt --check
-	cd src-tauri && cargo clippy -- -D warnings
+	cd src-tauri && cargo clippy --features bench -- -D warnings
 	cd src-tauri && cargo test
