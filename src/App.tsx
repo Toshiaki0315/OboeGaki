@@ -25,6 +25,7 @@ import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
 
 import { ListPalette } from "./components/ListPalette";
+import { MenuIcon, PathIcon } from "./components/MenuIcon";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
 import { StyleCheckDialog } from "./components/StyleCheckDialog";
@@ -52,7 +53,6 @@ import { folderFilterLabel, trashLabel, trashParts } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
 import { terms } from "./lib/keywords";
 import { ASK_ACTION, ASSISTANT_ACTIONS } from "./lib/assistant-actions";
-import { MENU_ICONS, type MenuIconName } from "./lib/menu-icons";
 import { packSources, pickSources } from "./lib/sources";
 import {
   availableFonts,
@@ -207,28 +207,6 @@ function noteLabel(root: string, path: string): string {
 function noteStem(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.(md|markdown)$/i, "");
-}
-
-/// メニューの項目に添える絵。**名前で引く**（同じ言葉には同じ絵）。
-/// スライドのプレビュー（TASKS 8-6 / PV-01）。**置き場所は書き出しと同じ
-/// 計算**から貰い、ここは描くだけ。字は形が分かる程度に線で表す
-/// （本物の書体で組むのは出力先の PowerPoint = PV-05）。
-function MenuIcon({ name }: { name: MenuIconName }) {
-  return (
-    <svg className="menu-icon" viewBox="0 0 16 16" aria-hidden="true">
-      {MENU_ICONS[name].map((d) => (
-        <path
-          key={d}
-          d={d}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
-  );
 }
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
@@ -3526,23 +3504,11 @@ function App() {
                     <button
                       onClick={run(() => editorRef.current?.applyFormat(kind))}
                     >
-                      <svg
+                      <PathIcon
                         className="menu-icon"
-                        viewBox="0 0 16 16"
-                        aria-hidden="true"
-                      >
-                        {(item?.paths ?? []).map((d) => (
-                          <path
-                            key={d}
-                            d={d}
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        ))}
-                      </svg>
+                        paths={item?.paths ?? []}
+                        strokeWidth={1.3}
+                      />
                       {label}
                     </button>
                   </li>
