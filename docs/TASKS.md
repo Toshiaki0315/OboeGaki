@@ -361,3 +361,6 @@ GR-xx / ST-xx / VA-xx / PV-xx）を実装とテストの名前に必ず書く**�
 - [x] 集中モード / タイプライタモード / ソースモード（Cmd+/）
 - [x] 性能 3 基準の合格（docs/bench.md: 検索 2ms / 打鍵 p95 13.9ms / 起動 903ms）
 - [x] 改名 ↔ H1 同期（ADR-0005）・索引同期の背景化・`make dmg`
+- [x] App.tsx の分割 1 段目（2026-09-07、ADR-0048）: 環境設定（3 タブ）・
+      版の履歴・スライドの下絵を `src/components/` へ。部品は jsdom +
+      Testing Library で単体テストできる形に

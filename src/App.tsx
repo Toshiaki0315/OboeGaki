@@ -1,5 +1,6 @@
 import {
   Fragment,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,6 +20,8 @@ import {
   writeText as writeClipboard,
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import { HistoryDialog } from "./components/HistoryDialog";
+import { PreferencesDialog } from "./components/PreferencesDialog";
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR, formatHint } from "./editor/format-toolbar";
 import { anchorAbove, menuPosition } from "./lib/context-menu";
@@ -85,22 +88,10 @@ import { slideMetrics } from "./lib/slide-grid";
 import { overflowingSlides } from "./lib/slide-lint";
 import { splitForDensity } from "./lib/slide-split";
 import {
-  previewOf,
-  SAMPLE_DECKS,
-  type Preview,
-  type PreviewPage,
-} from "./lib/slide-preview";
-import { contrastVerdict } from "./lib/contrast";
-import {
   DEFAULT_PPTX_SETTINGS,
-  hexColor,
-  isThemeRef,
   loadPptxSettings,
-  MAX_PAGE_IN,
-  MIN_PAGE_IN,
   resetPptxSettings,
   savePptxSettings,
-  themeRef,
   type PptxSettings,
 } from "./lib/pptx-settings";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
@@ -111,8 +102,6 @@ import {
   clampFontSize,
   DEFAULT_FONT_PX,
   FONT_STEP_PX,
-  MAX_FONT_PX,
-  MIN_FONT_PX,
   loadFontSize,
   saveFontSize,
   zoomActionFor,
@@ -131,24 +120,12 @@ import {
 } from "./lib/saved-searches";
 import {
   clampPaneWidth,
-  CONTEXT_CHOICES,
   contentWidthCss,
-  CONTENT_WIDTHS,
   DEFAULT_SETTINGS,
-  HISTORY_CHOICES,
-  KEEP_ALIVE_CHOICES,
-  LINE_SPACINGS,
   loadSettings,
-  MAX_TRASH_DAYS,
-  MIN_TRASH_DAYS,
   resolveTheme,
   saveSettings,
-  TAB_WIDTHS,
-  THEMES,
-  type ContentWidth,
-  type LineSpacing,
   type Settings,
-  type Theme,
 } from "./lib/settings";
 import {
   formatStamp,
@@ -223,18 +200,6 @@ function noteStem(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.(md|markdown)$/i, "");
 }
-
-const THEME_LABELS: Record<Theme, string> = {
-  system: "システムに合わせる",
-  light: "ライト",
-  dark: "ダーク",
-};
-
-const SPACING_LABELS: Record<LineSpacing, string> = {
-  tight: "詰めて",
-  normal: "ふつう",
-  relaxed: "ゆったり",
-};
 
 /// 右クリックのメニュー（枠と置き場所）。
 ///
@@ -378,62 +343,6 @@ const SUBMENU_WIDTH = 176;
 /// スライドのプレビュー（TASKS 8-6 / PV-01）。**置き場所は書き出しと同じ
 /// 計算**から貰い、ここは描くだけ。字は形が分かる程度に線で表す
 /// （本物の書体で組むのは出力先の PowerPoint = PV-05）。
-function SlidePreview({ page, view }: { page: PreviewPage; view: Preview }) {
-  const scale = 100 / view.widthIn; // 幅 100 の座標系に写す
-  const height = view.heightIn * scale;
-  return (
-    <svg
-      className="slide-preview"
-      viewBox={`0 0 100 ${height}`}
-      role="img"
-      aria-label={`${page.title} のプレビュー`}
-    >
-      <rect x="0" y="0" width="100" height={height} className="sp-paper" />
-      {page.frames.map((frame, index) => {
-        const box = {
-          x: frame.x * scale,
-          y: frame.y * scale,
-          width: frame.w * scale,
-          height: Math.max(0.6, frame.h * scale),
-        };
-        if (frame.kind === "code" || frame.kind === "table") {
-          return <rect key={index} {...box} className={`sp-${frame.kind}`} />;
-        }
-        if (frame.kind === "image") {
-          return <rect key={index} {...box} className="sp-image" />;
-        }
-        if (frame.kind === "flow") {
-          // 段落は線で表す（読ませるためではなく、量を見せるため）
-          const lines = Math.max(1, Math.min(12, frame.blocks.length * 2));
-          return (
-            <g key={index}>
-              {Array.from({ length: lines }, (_, line) => (
-                <rect
-                  key={line}
-                  x={box.x}
-                  y={box.y + line * 2.2}
-                  width={box.width * (line % 3 === 2 ? 0.62 : 0.96)}
-                  height={0.9}
-                  className="sp-line"
-                />
-              ))}
-            </g>
-          );
-        }
-        const big = frame.kind === "cover";
-        return (
-          <rect
-            key={index}
-            {...box}
-            height={big ? box.height : Math.max(1.4, box.height * 0.5)}
-            className={frame.kind === "footer" ? "sp-footer" : "sp-title"}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
 function MenuIcon({ name }: { name: MenuIconName }) {
   return (
     <svg className="menu-icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -453,18 +362,6 @@ function MenuIcon({ name }: { name: MenuIconName }) {
 }
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-const WIDTH_LABELS: Record<ContentWidth, string> = {
-  standard: "標準",
-  wide: "広め",
-  full: "最大（ウィンドウ幅）",
-};
-
 /// 保存時刻（時:分）。日付は出さない — 開いている間に保存した時刻なので、
 /// 日付まで出すと情報が増えるだけで読み取りが遅くなる。
 function clockOf(at: number): string {
@@ -575,48 +472,29 @@ function App() {
   );
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  // 環境設定ダイアログ（components/PreferencesDialog）。**開閉だけ**をここで
+  // 持ち、タブやキャンセル用のスナップショットはダイアログの中で閉じる
   const [preferences, setPreferences] = useState(false);
-  const [prefTab, setPrefTab] = useState<"general" | "pptx" | "assistant">(
-    "general",
-  );
-  const [historyUsage, setHistoryUsage] = useState<number | null>(null);
-  // Ollama に入っているモデル（設定のモデル欄の選択肢）。無ければ空
-  const [installedModels, setInstalledModels] = useState<string[]>([]);
-  // キャンセルで戻すためのスナップショット（開いた瞬間の設定と文字サイズ）
-  const prefSnapshot = useRef<{ settings: Settings; fontSize: number } | null>(
-    null,
-  );
 
   function openPreferences() {
-    prefSnapshot.current = {
-      settings: settingsRef.current,
-      fontSize: fontSizeRef.current,
-    };
-    setHistoryUsage(null);
     setPreferences(true);
-    const root = vaultRootRef.current;
-    if (root) {
-      invoke<number>("history_usage", { root })
-        .then((bytes) => setHistoryUsage(bytes))
-        .catch(() => setHistoryUsage(0));
-    } else {
-      setHistoryUsage(0);
-    }
-    // モデル欄の選択肢。**入っていない名前を打たせない**ためのもの
-    // （名前違いの 404 で「返ってこない」ように見えた実機の事故から）
-    invoke<string[]>("llm_models", { port: settingsRef.current.llmPort })
-      .then((found) => setInstalledModels(found))
-      .catch(() => setInstalledModels([]));
   }
 
-  function cancelPreferences() {
-    const kept = prefSnapshot.current;
-    if (kept) {
-      changeSettings(kept.settings);
-      changeFontSize(kept.fontSize);
-    }
-    setPreferences(false);
-  }
+  /// 履歴フォルダの大きさ（環境設定の「履歴の使用量」）。vault が無ければ 0。
+  /// ダイアログが開いている間に何度も聞かないよう、参照を固定する
+  const loadHistoryUsage = useCallback((): Promise<number> => {
+    const root = vaultRootRef.current;
+    return root
+      ? invoke<number>("history_usage", { root })
+      : Promise.resolve(0);
+  }, []);
+
+  /// Ollama に入っているモデル名（設定のモデル欄の選択肢）
+  const loadInstalledModels = useCallback(
+    (): Promise<string[]> =>
+      invoke<string[]>("llm_models", { port: settingsRef.current.llmPort }),
+    [],
+  );
 
   function resetPreferences() {
     // ダイアログに出ている項目だけを既定へ（ペイン幅や開閉は触らない）
@@ -935,64 +813,13 @@ function App() {
       return DEFAULT_PPTX_SETTINGS;
     }
   });
-  // プレビュー（8-6）。見本を選ぶ／編集中のノートで見る（PV-02 / PV-03）
-  const [previewSample, setPreviewSample] = useState(1);
-  const [previewOwn, setPreviewOwn] = useState(false);
-  const [previewPage, setPreviewPage] = useState(0);
-  /// 200ms 置いてから組み直す（PV-04。つまみを動かすたびに組まない）
-  const [previewSettings, setPreviewSettings] = useState<PptxSettings | null>(
-    null,
+  /// 開いているノートの本文を返す。環境設定の PowerPoint タブが「このノート」
+  /// の下絵と収まり具合の見直し（GR-05）に使う。開いていなければ null。
+  /// **currentPath ごとに 1 つ**にして、打鍵のたびに測り直させない
+  const noteText = useMemo(
+    () => (currentPath ? () => editorRef.current?.getText() ?? "" : null),
+    [currentPath],
   );
-
-  /// 用紙や字の大きさを変えたときの見直し（GR-05）。**今のノートで測る** —
-  /// 設定を触った瞬間に「収まらなくなった」が分かるほうが、書き出してから
-  /// 気づくより早い。開いていなければ何も言わない。
-  const pptxOverflow = useMemo(() => {
-    if (!preferences || prefTab !== "pptx" || !currentPath) return null;
-    const text = editorRef.current?.getText() ?? "";
-    if (!text.trim()) return null;
-    const metrics = slideMetrics(pptxSettings);
-    const deck = splitForDensity(
-      splitDeck(text, pptxSettings.layout.splitLevel),
-      pptxSettings,
-      metrics,
-    );
-    return overflowingSlides(deck, metrics);
-  }, [preferences, prefTab, currentPath, pptxSettings]);
-
-  /// 「載らなかった本文を残す」の切り替え（CFG-60 / CFG-62）。
-  ///
-  /// **切るときだけ確認する。** 既定の ON を強く保つための一拍で、
-  /// 入れ直すときは黙って入れる。
-  async function changeKeepOriginal(keep: boolean) {
-    if (!keep) {
-      const ok = await confirm(
-        "「要点のみ」で書き出したとき、スライドに載らなかった本文が" +
-          "発表者ノートにも残らなくなります。\n" +
-          "（ノートの本文そのものは消えません）",
-        { title: APP_NAME, kind: "warning" },
-      );
-      if (!ok) return;
-    }
-    changePptxSettings({
-      notes: { ...pptxSettings.notes, keepOriginalText: keep },
-    });
-  }
-
-  useEffect(() => {
-    if (!preferences || prefTab !== "pptx") return;
-    const timer = setTimeout(() => setPreviewSettings(pptxSettings), 200);
-    return () => clearTimeout(timer);
-  }, [preferences, prefTab, pptxSettings]);
-
-  const preview = useMemo(() => {
-    if (!previewSettings || !preferences || prefTab !== "pptx") return null;
-    const source = previewOwn
-      ? (editorRef.current?.getText() ?? "")
-      : SAMPLE_DECKS[previewSample].markdown;
-    if (!source.trim()) return null;
-    return previewOf(source, previewSettings);
-  }, [previewSettings, preferences, prefTab, previewOwn, previewSample]);
 
   function changePptxSettings(patch: Partial<PptxSettings>) {
     setPptxSettings((current) => {
@@ -3919,1041 +3746,28 @@ function App() {
             </div>
           )}
           {preferences && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setPreferences(false)}
-            >
-              <div
-                className="palette preferences"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">環境設定</header>
-                <div
-                  className="pref-tabs"
-                  role="tablist"
-                  aria-label="設定のページ"
-                >
-                  <button
-                    role="tab"
-                    aria-selected={prefTab === "general"}
-                    className={prefTab === "general" ? "selected" : ""}
-                    onClick={() => setPrefTab("general")}
-                  >
-                    一般
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={prefTab === "pptx"}
-                    className={prefTab === "pptx" ? "selected" : ""}
-                    onClick={() => setPrefTab("pptx")}
-                  >
-                    PowerPoint
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={prefTab === "assistant"}
-                    className={prefTab === "assistant" ? "selected" : ""}
-                    onClick={() => setPrefTab("assistant")}
-                  >
-                    アシスタント
-                  </button>
-                </div>
-                {prefTab === "general" ? (
-                  <div className="pref-page">
-                    <h3 className="pref-section">本文の見え方</h3>
-                    <p className="pref-note">
-                      エディタに出る文字の形と幅。開いているノートにすぐ反映されます。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>本文フォント</span>
-                        <input
-                          list="body-fonts"
-                          value={settings.bodyFont}
-                          placeholder="システムの既定"
-                          onChange={(event) =>
-                            changeSettings({
-                              bodyFont: event.currentTarget.value,
-                            })
-                          }
-                        />
-                        <datalist id="body-fonts">
-                          {bodyFontChoices.map((font) => (
-                            <option
-                              key={font.family}
-                              value={font.family}
-                              label={font.label}
-                            />
-                          ))}
-                        </datalist>
-                      </label>
-                      <label>
-                        <span>文字サイズ</span>
-                        <span className="pref-unit-row">
-                          <input
-                            type="number"
-                            min={MIN_FONT_PX}
-                            max={MAX_FONT_PX}
-                            value={fontSize}
-                            onChange={(event) =>
-                              changeFontSize(Number(event.currentTarget.value))
-                            }
-                          />
-                          <span className="pref-unit">px</span>
-                        </span>
-                      </label>
-                      <label>
-                        {/* 等幅に限らない（要望 2026-09-04）。ここが効くのは
-                          コード・数式・Mermaid のソースで、桁を空白で
-                          揃えるのをやめた（ADR-0044）ので等幅である必要は
-                          もう無い。呼び名も中身に合わせる */}
-                        <span>コード・数式のフォント</span>
-                        <input
-                          list="mono-fonts"
-                          value={settings.monoFont}
-                          placeholder="既定の等幅"
-                          onChange={(event) =>
-                            changeSettings({
-                              monoFont: event.currentTarget.value,
-                            })
-                          }
-                        />
-                        <datalist id="mono-fonts">
-                          {codeFontChoices.map((font) => (
-                            <option
-                              key={font.family}
-                              value={font.family}
-                              label={font.label}
-                            />
-                          ))}
-                        </datalist>
-                      </label>
-                      <label>
-                        <span>本文の幅</span>
-                        <select
-                          value={settings.contentWidth}
-                          onChange={(event) =>
-                            changeSettings({
-                              contentWidth: event.currentTarget
-                                .value as ContentWidth,
-                            })
-                          }
-                        >
-                          {CONTENT_WIDTHS.map((width) => (
-                            <option key={width} value={width}>
-                              {WIDTH_LABELS[width]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>タブ幅</span>
-                        <span className="pref-unit-row">
-                          <select
-                            value={settings.tabWidth}
-                            onChange={(event) =>
-                              changeSettings({
-                                tabWidth: Number(event.currentTarget.value),
-                              })
-                            }
-                          >
-                            {TAB_WIDTHS.map((width) => (
-                              <option key={width} value={width}>
-                                {width}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="pref-unit">文字</span>
-                        </span>
-                      </label>
-                      <label>
-                        <span>字下げ</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={settings.indentedCode}
-                            onChange={(event) =>
-                              changeSettings({
-                                indentedCode: event.currentTarget.checked,
-                              })
-                            }
-                          />
-                          4 文字の字下げでコードブロックとする
-                        </span>
-                      </label>
-                      <label>
-                        <span>行番号</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={settings.lineNumbers}
-                            onChange={(event) =>
-                              changeSettings({
-                                lineNumbers: event.currentTarget.checked,
-                              })
-                            }
-                          />
-                          本文の左に行番号を出す
-                        </span>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">ウィンドウ</h3>
-                    <p className="pref-note">
-                      アプリ全体の配色と、一覧やサイドバーの詰まり具合。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>テーマ</span>
-                        <select
-                          value={settings.theme}
-                          onChange={(event) =>
-                            changeSettings({
-                              theme: event.currentTarget.value as Theme,
-                            })
-                          }
-                        >
-                          {THEMES.map((theme) => (
-                            <option key={theme} value={theme}>
-                              {THEME_LABELS[theme]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>行間</span>
-                        <select
-                          value={settings.lineSpacing}
-                          onChange={(event) =>
-                            changeSettings({
-                              lineSpacing: event.currentTarget
-                                .value as LineSpacing,
-                            })
-                          }
-                        >
-                          {LINE_SPACINGS.map((spacing) => (
-                            <option key={spacing} value={spacing}>
-                              {SPACING_LABELS[spacing]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">ノートの置き場所</h3>
-                    <p className="pref-note">
-                      .md
-                      ファイルを読み書きするフォルダ。変えても中のファイルは移動しません。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>保管フォルダ</span>
-                        <span className="pref-vault-row">
-                          <input value={vaultRoot ?? ""} readOnly />
-                          <button onClick={() => void chooseVault()}>
-                            変更…
-                          </button>
-                        </span>
-                      </label>
-                      <label>
-                        <span>ゴミ箱の保持</span>
-                        <span className="pref-unit-row">
-                          <input
-                            type="number"
-                            min={MIN_TRASH_DAYS}
-                            max={MAX_TRASH_DAYS}
-                            value={settings.trashDays}
-                            onChange={(event) =>
-                              changeSettings({
-                                trashDays: Number(event.currentTarget.value),
-                              })
-                            }
-                          />
-                          <span className="pref-unit">日</span>
-                        </span>
-                      </label>
-                      <label>
-                        <span>履歴を残す間隔</span>
-                        <select
-                          value={settings.historyMinutes}
-                          onChange={(event) =>
-                            changeSettings({
-                              historyMinutes: Number(event.currentTarget.value),
-                            })
-                          }
-                        >
-                          {HISTORY_CHOICES.map((minutes) => (
-                            <option key={minutes} value={minutes}>
-                              {minutes === 0 ? "なし" : `${minutes} 分`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>履歴の使用量</span>
-                        <span className="pref-static">
-                          {historyUsage === null
-                            ? "計算中…"
-                            : formatBytes(historyUsage)}
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                ) : prefTab === "pptx" ? (
-                  <div className="pref-page">
-                    <h3 className="pref-section">用紙</h3>
-                    <p className="pref-note">
-                      スライドの大きさ。変えると余白と字の大きさも一緒に
-                      組み直します。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>大きさ</span>
-                        <select
-                          value={pptxSettings.page.preset}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              page: {
-                                ...pptxSettings.page,
-                                preset: event.currentTarget
-                                  .value as PptxSettings["page"]["preset"],
-                              },
-                            })
-                          }
-                        >
-                          <option value="16:9">16:9（横）</option>
-                          <option value="4:3">4:3（横・昔の投影機）</option>
-                          <option value="16:10">16:10（横）</option>
-                          <option value="a4-landscape">A4（横・配布用）</option>
-                          <option value="a4-portrait">A4（縦）</option>
-                          <option value="9:16">9:16（縦・スマホ）</option>
-                          <option value="custom">自分で決める</option>
-                        </select>
-                      </label>
-                      {pptxSettings.page.preset === "custom" && (
-                        <label>
-                          <span>幅と高さ（インチ）</span>
-                          <span className="pref-vault-row">
-                            <input
-                              type="number"
-                              min={MIN_PAGE_IN}
-                              max={MAX_PAGE_IN}
-                              step={0.1}
-                              value={pptxSettings.page.customWidthIn}
-                              onChange={(event) =>
-                                changePptxSettings({
-                                  page: {
-                                    ...pptxSettings.page,
-                                    customWidthIn: Number(
-                                      event.currentTarget.value,
-                                    ),
-                                  },
-                                })
-                              }
-                            />
-                            <input
-                              type="number"
-                              min={MIN_PAGE_IN}
-                              max={MAX_PAGE_IN}
-                              step={0.1}
-                              value={pptxSettings.page.customHeightIn}
-                              onChange={(event) =>
-                                changePptxSettings({
-                                  page: {
-                                    ...pptxSettings.page,
-                                    customHeightIn: Number(
-                                      event.currentTarget.value,
-                                    ),
-                                  },
-                                })
-                              }
-                            />
-                          </span>
-                        </label>
-                      )}
-                      <label>
-                        <span>余白</span>
-                        <select
-                          value={pptxSettings.layout.marginScale}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              layout: {
-                                ...pptxSettings.layout,
-                                marginScale: event.currentTarget
-                                  .value as PptxSettings["layout"]["marginScale"],
-                              },
-                            })
-                          }
-                        >
-                          <option value="compact">狭い</option>
-                          <option value="normal">標準</option>
-                          <option value="wide">広い</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>字の大きさ</span>
-                        <select
-                          value={pptxSettings.font.scale}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              font: {
-                                ...pptxSettings.font,
-                                scale: event.currentTarget
-                                  .value as PptxSettings["font"]["scale"],
-                              },
-                            })
-                          }
-                        >
-                          <option value="small">小</option>
-                          <option value="normal">標準</option>
-                          <option value="large">大</option>
-                        </select>
-                      </label>
-                    </div>
-                    {preview !== null && preview.pages.length > 0 && (
-                      <div className="preview-panel">
-                        <div className="preview-tabs">
-                          {SAMPLE_DECKS.map((sample, index) => (
-                            <button
-                              key={sample.name}
-                              className={
-                                !previewOwn && index === previewSample
-                                  ? "selected"
-                                  : ""
-                              }
-                              onClick={() => {
-                                setPreviewOwn(false);
-                                setPreviewSample(index);
-                                setPreviewPage(0);
-                              }}
-                            >
-                              {sample.name}
-                            </button>
-                          ))}
-                          <button
-                            className={previewOwn ? "selected" : ""}
-                            disabled={!currentPath}
-                            title="編集中のノートの先頭 5 枚"
-                            onClick={() => {
-                              setPreviewOwn(true);
-                              setPreviewPage(0);
-                            }}
-                          >
-                            このノート
-                          </button>
-                        </div>
-                        <SlidePreview
-                          page={
-                            preview.pages[
-                              Math.min(previewPage, preview.pages.length - 1)
-                            ]
-                          }
-                          view={preview}
-                        />
-                        <div className="preview-pager">
-                          <button
-                            disabled={previewPage <= 0}
-                            onClick={() => setPreviewPage((at) => at - 1)}
-                          >
-                            ◀
-                          </button>
-                          <span>
-                            {Math.min(previewPage, preview.pages.length - 1) +
-                              1}{" "}
-                            / {preview.pages.length}
-                          </span>
-                          <button
-                            disabled={previewPage >= preview.pages.length - 1}
-                            onClick={() => setPreviewPage((at) => at + 1)}
-                          >
-                            ▶
-                          </button>
-                        </div>
-                        <p className="pref-note">
-                          形と収まり具合の目安です。**字の幅は見積もり**で、
-                          本物の書体で組むのは PowerPoint 側です。
-                        </p>
-                      </div>
-                    )}
-                    {pptxOverflow !== null && pptxOverflow.length > 0 && (
-                      <p className="pref-note pref-warn">
-                        いまのノートは <b>{pptxOverflow.length} 枚</b>
-                        で文字が収まらないかもしれません（
-                        {pptxOverflow
-                          .map((slide) => slide.title)
-                          .slice(0, 3)
-                          .join("・")}
-                        {pptxOverflow.length > 3 ? " ほか" : ""}
-                        ）。用紙を大きくするか、字を小さくすると収まります。
-                      </p>
-                    )}
-                    <h3 className="pref-section">スライドの分け方</h3>
-                    <p className="pref-note">
-                      どの見出しで 1 枚に分けるか。浅い見出しは扉、深い見出しは
-                      枚の中の小見出しになります。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>分ける見出し</span>
-                        <select
-                          value={String(pptxSettings.layout.splitLevel)}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              layout: {
-                                ...pptxSettings.layout,
-                                splitLevel: Number(
-                                  event.currentTarget.value,
-                                ) as 1 | 2 | 3,
-                              },
-                            })
-                          }
-                        >
-                          <option value="1">見出し 1（#）</option>
-                          <option value="2">見出し 2（##）</option>
-                          <option value="3">見出し 3（###）</option>
-                        </select>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">1 枚に載せる量</h3>
-                    <p className="pref-note">
-                      収まらないぶんは**次の枚へ送ります**（字を縮めたり、
-                      書いた文を削ったりはしません）。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>載せ方</span>
-                        <select
-                          value={pptxSettings.layout.density}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              layout: {
-                                ...pptxSettings.layout,
-                                density: event.currentTarget
-                                  .value as PptxSettings["layout"]["density"],
-                              },
-                            })
-                          }
-                        >
-                          <option value="full">詳しく</option>
-                          <option value="normal">標準</option>
-                          <option value="sparse">要点のみ</option>
-                        </select>
-                      </label>
-                      <p className="pref-note">
-                        {pptxSettings.layout.density === "sparse"
-                          ? "要点のみ — スライドは短く、本文は発表者ノートに入ります"
-                          : pptxSettings.layout.density === "full"
-                            ? "詳しく — 書いたものをそのまま載せます（溢れたら次の枚へ）"
-                            : "標準 — 収まらないときだけ次の枚へ送ります"}
-                      </p>
-                      <label>
-                        <span>箇条書きの上限</span>
-                        <span className="pref-check">
-                          <input
-                            type="range"
-                            min={3}
-                            max={10}
-                            value={pptxSettings.layout.maxBulletItems}
-                            onChange={(event) =>
-                              changePptxSettings({
-                                layout: {
-                                  ...pptxSettings.layout,
-                                  maxBulletItems: Number(
-                                    event.currentTarget.value,
-                                  ),
-                                },
-                              })
-                            }
-                          />
-                          1 枚に {pptxSettings.layout.maxBulletItems} 項目まで
-                        </span>
-                      </label>
-                      <label>
-                        <span>続きの枚の印</span>
-                        <input
-                          value={pptxSettings.layout.continuationSuffix}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              layout: {
-                                ...pptxSettings.layout,
-                                continuationSuffix: event.currentTarget.value,
-                              },
-                            })
-                          }
-                        />
-                      </label>
-                    </div>
-                    <h3 className="pref-section">見た目</h3>
-                    <p className="pref-note">
-                      色と書体。**ノートの front matter に書いてあれば
-                      そちらが勝ちます**（そのノートだけ変えたいとき）。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>見出しの色</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={isThemeRef(
-                              pptxSettings.theme.palette.accent,
-                            )}
-                            onChange={(event) =>
-                              changePptxSettings({
-                                theme: {
-                                  ...pptxSettings.theme,
-                                  palette: {
-                                    ...pptxSettings.theme.palette,
-                                    accent: event.currentTarget.checked
-                                      ? themeRef("accent1")
-                                      : { hex: "1E2761" },
-                                  },
-                                },
-                              })
-                            }
-                          />
-                          テーマに従う（PowerPoint 側で替えると一緒に変わる）
-                        </span>
-                      </label>
-                      {!isThemeRef(pptxSettings.theme.palette.accent) && (
-                        <label>
-                          <span>色を選ぶ</span>
-                          <input
-                            type="color"
-                            value={`#${(pptxSettings.theme.palette.accent as { hex: string }).hex}`}
-                            onChange={(event) => {
-                              const picked = hexColor(
-                                event.currentTarget.value,
-                              );
-                              if (!picked) return;
-                              changePptxSettings({
-                                theme: {
-                                  ...pptxSettings.theme,
-                                  palette: {
-                                    ...pptxSettings.theme.palette,
-                                    accent: picked,
-                                  },
-                                },
-                              });
-                            }}
-                          />
-                        </label>
-                      )}
-                      {!isThemeRef(pptxSettings.theme.palette.accent) &&
-                        (() => {
-                          // **白い紙に置いたときの読みやすさ**（CFG-19）。
-                          // 白は「表の見出しの字の色」でもあるので、
-                          // この 1 組が両方の見え方をあらわす
-                          const found = contrastVerdict(
-                            (
-                              pptxSettings.theme.palette.accent as {
-                                hex: string;
-                              }
-                            ).hex,
-                            "FFFFFF",
-                          );
-                          return (
-                            <p className="pref-note">
-                              白い背景での見えかた: {found.ratio.toFixed(1)}:1
-                              {found.body === "warn"
-                                ? found.heading === "warn"
-                                  ? "（薄すぎます。大きな字でも読みにくい色です）"
-                                  : "（見出しには足りますが、本文には薄い色です）"
-                                : "（読みやすい色です）"}
-                            </p>
-                          );
-                        })()}
-                      <label>
-                        <span>本文の書体</span>
-                        <input
-                          value={pptxSettings.font.jp}
-                          placeholder="選んでいません（テンプレートに従う）"
-                          onChange={(event) =>
-                            changePptxSettings({
-                              font: {
-                                ...pptxSettings.font,
-                                jp: event.currentTarget.value,
-                              },
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        <span>コードの書体</span>
-                        <input
-                          value={pptxSettings.font.mono}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              font: {
-                                ...pptxSettings.font,
-                                mono: event.currentTarget.value,
-                              },
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        <span>テンプレート</span>
-                        <span className="pref-vault-row">
-                          <input
-                            value={settings.slideTemplate}
-                            readOnly
-                            placeholder="選んでいません（既定の見た目）"
-                          />
-                          <button onClick={() => void chooseSlideTemplate()}>
-                            選ぶ…
-                          </button>
-                          {settings.slideTemplate && (
-                            <button
-                              onClick={() =>
-                                changeSettings({ slideTemplate: "" })
-                              }
-                            >
-                              外す
-                            </button>
-                          )}
-                        </span>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">フッタ</h3>
-                    <p className="pref-note">
-                      どの枚にも同じように入る帯。空にすると、ノートの題名が
-                      入ります。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>ページ番号</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={pptxSettings.footer.pageNumber}
-                            onChange={(event) =>
-                              changePptxSettings({
-                                footer: {
-                                  ...pptxSettings.footer,
-                                  pageNumber: event.currentTarget.checked,
-                                },
-                              })
-                            }
-                          />
-                          右下にページ番号を入れる
-                        </span>
-                      </label>
-                      <label>
-                        <span>フッタの字</span>
-                        <input
-                          value={pptxSettings.footer.text}
-                          placeholder="空ならノートの題名"
-                          onChange={(event) =>
-                            changePptxSettings({
-                              footer: {
-                                ...pptxSettings.footer,
-                                text: event.currentTarget.value,
-                              },
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        <span>日付</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={pptxSettings.footer.showDate}
-                            onChange={(event) =>
-                              changePptxSettings({
-                                footer: {
-                                  ...pptxSettings.footer,
-                                  showDate: event.currentTarget.checked,
-                                },
-                              })
-                            }
-                          />
-                          書き出した日を入れる
-                        </span>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">発表者ノート</h3>
-                    <p className="pref-note">
-                      スライドに載らなかった本文の行き先。ノートの本文
-                      （`.md`）は、どちらにしても変わりません。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>載らなかった本文</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={pptxSettings.notes.keepOriginalText}
-                            onChange={(event) =>
-                              void changeKeepOriginal(
-                                event.currentTarget.checked,
-                              )
-                            }
-                          />
-                          発表者ノートに残す
-                        </span>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">書き出す前のチェック</h3>
-                    <p className="pref-note">
-                      文字が枠に収まるかを見ます。**当たりをつけるだけ**の
-                      見積もりなので、多めに知らせます。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>収まらないとき</span>
-                        <select
-                          value={pptxSettings.advanced.lintLevel}
-                          onChange={(event) =>
-                            changePptxSettings({
-                              advanced: {
-                                ...pptxSettings.advanced,
-                                lintLevel: event.currentTarget
-                                  .value as PptxSettings["advanced"]["lintLevel"],
-                              },
-                            })
-                          }
-                        >
-                          <option value="off">調べない</option>
-                          <option value="warn">
-                            知らせる（書き出しは続ける）
-                          </option>
-                          <option value="strict">書き出しを止める</option>
-                        </select>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">コードと画像</h3>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>言語名</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={pptxSettings.decoration.codeLanguageLabel}
-                            onChange={(event) =>
-                              changePptxSettings({
-                                decoration: {
-                                  ...pptxSettings.decoration,
-                                  codeLanguageLabel:
-                                    event.currentTarget.checked,
-                                },
-                              })
-                            }
-                          />
-                          コードの上に言語名を小さく出す
-                        </span>
-                      </label>
-                      <label>
-                        <span>画像の説明</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={pptxSettings.decoration.imageCaption}
-                            onChange={(event) =>
-                              changePptxSettings({
-                                decoration: {
-                                  ...pptxSettings.decoration,
-                                  imageCaption: event.currentTarget.checked,
-                                },
-                              })
-                            }
-                          />
-                          画像の下に説明（`![説明](…)`）を出す
-                        </span>
-                      </label>
-                    </div>
-                    <div className="pref-actions">
-                      <button
-                        onClick={() => {
-                          resetPptxSettings(localStorage);
-                          setPptxSettings(DEFAULT_PPTX_SETTINGS);
-                        }}
-                      >
-                        PowerPoint の設定を既定に戻す
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="pref-page">
-                    <h3 className="pref-section">アシスタント</h3>
-                    {/* **数字や記号で説明しない**（要望 2026-09-04）。
-                      127.0.0.1 と書いても伝わらない。約束の中身
-                      （外へ出ない）は変えず、言い方だけ変える */}
-                    {/* **一番上に置く**（要望 2026-09-04）。切ってあるときは
-                      以下を丸ごと押せなくし、Cmd+6 でも出さない */}
-                    <label className="pref-check pref-toggle">
-                      <input
-                        type="checkbox"
-                        checked={settings.assistantEnabled}
-                        onChange={(event) =>
-                          changeSettings({
-                            assistantEnabled: event.currentTarget.checked,
-                          })
-                        }
-                      />
-                      AI アシスタントを使う
-                    </label>
-                    <p className="pref-note">
-                      Ollama に繋いで、要約やレビューを頼みます。やり取りは
-                      このパソコンの中だけで行われ、ノートは外へ出ません。
-                    </p>
-                    {/* **まとめて押せなくする。** 1 つずつ disabled を付けると、
-                      あとで足した欄に付け忘れる */}
-                    <fieldset
-                      className="preferences-fields"
-                      disabled={!settings.assistantEnabled}
-                    >
-                      <label>
-                        <span>モデル</span>
-                        <span className="pref-unit-row">
-                          <input
-                            value={settings.llmModel}
-                            placeholder="gemma3:4b"
-                            list="llm-model-choices"
-                            onChange={(event) =>
-                              changeSettings({
-                                llmModel: event.currentTarget.value,
-                              })
-                            }
-                          />
-                          <datalist id="llm-model-choices">
-                            {installedModels.map((model) => (
-                              <option key={model} value={model} />
-                            ))}
-                          </datalist>
-                          {installedModels.length > 0 &&
-                          !installedModels.includes(settings.llmModel) ? (
-                            <span className="pref-unit">
-                              （Ollama に入っていません）
-                            </span>
-                          ) : null}
-                        </span>
-                      </label>
-                      <label>
-                        <span>ポート</span>
-                        <span className="pref-unit-row">
-                          <input
-                            type="number"
-                            min={1}
-                            max={65535}
-                            value={settings.llmPort}
-                            onChange={(event) =>
-                              changeSettings({
-                                llmPort: Number(event.currentTarget.value),
-                              })
-                            }
-                          />
-                          <span className="pref-unit">
-                            （このパソコンの中だけ）
-                          </span>
-                        </span>
-                      </label>
-                      <label>
-                        <span>一度に渡す量</span>
-                        <select
-                          value={settings.llmContext}
-                          onChange={(event) =>
-                            changeSettings({
-                              llmContext: Number(event.currentTarget.value),
-                            })
-                          }
-                        >
-                          {CONTEXT_CHOICES.map((tokens) => (
-                            <option key={tokens} value={tokens}>
-                              {tokens / 1024}k トークン
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>応答待ち時間</span>
-                        <span className="pref-unit-row">
-                          <input
-                            type="number"
-                            min={1}
-                            max={60}
-                            value={settings.llmTimeoutMinutes}
-                            onChange={(event) =>
-                              changeSettings({
-                                llmTimeoutMinutes: Number(
-                                  event.currentTarget.value,
-                                ),
-                              })
-                            }
-                          />
-                          <span className="pref-unit">分</span>
-                        </span>
-                      </label>
-                      <label>
-                        <span>モデルを残す時間</span>
-                        <select
-                          value={settings.llmKeepAlive}
-                          onChange={(event) =>
-                            changeSettings({
-                              llmKeepAlive: event.currentTarget.value,
-                            })
-                          }
-                        >
-                          {KEEP_ALIVE_CHOICES.map((value) => (
-                            <option key={value} value={value}>
-                              {value === "0"
-                                ? "すぐ降ろす"
-                                : value.replace("m", " 分")}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </fieldset>
-                    <h3 className="pref-section">外のサービス</h3>
-                    <p className="pref-note">
-                      本文を右クリックして選んだところを、外の生成 AI や Google
-                      へ渡せます。**渡すのは選んだところだけ**で、
-                      押したときしか出ません。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>渡す前の確認</span>
-                        <span className="pref-check">
-                          <input
-                            type="checkbox"
-                            checked={settings.confirmHandoff}
-                            onChange={(event) =>
-                              changeSettings({
-                                confirmHandoff: event.currentTarget.checked,
-                              })
-                            }
-                          />
-                          生成AIにデータを渡すときは確認する
-                        </span>
-                      </label>
-                    </div>
-                    <h3 className="pref-section">画像とPDF</h3>
-                    <p className="pref-note">
-                      取り込んだ画像や PDF
-                      から、絵の中の文字を起こすときに使うもの。
-                    </p>
-                    <div className="preferences-fields">
-                      <label>
-                        <span>文字の読み取り</span>
-                        <select value="mac" onChange={() => {}}>
-                          <option value="mac">macOS（デフォルト）</option>
-                        </select>
-                      </label>
-                    </div>
-                  </div>
-                )}
-                <div className="pref-actions">
-                  <button onClick={resetPreferences}>デフォルトに戻す</button>
-                  <span className="pref-actions-right">
-                    <button onClick={cancelPreferences}>キャンセル</button>
-                    <button
-                      className="primary"
-                      onClick={() => setPreferences(false)}
-                    >
-                      OK
-                    </button>
-                  </span>
-                </div>
-              </div>
-            </div>
+            <PreferencesDialog
+              settings={settings}
+              onChangeSettings={changeSettings}
+              fontSize={fontSize}
+              onChangeFontSize={changeFontSize}
+              vaultRoot={vaultRoot}
+              onChooseVault={() => void chooseVault()}
+              onChooseSlideTemplate={() => void chooseSlideTemplate()}
+              pptxSettings={pptxSettings}
+              onChangePptxSettings={changePptxSettings}
+              onResetPptxSettings={() => {
+                resetPptxSettings(localStorage);
+                setPptxSettings(DEFAULT_PPTX_SETTINGS);
+              }}
+              onReset={resetPreferences}
+              onClose={() => setPreferences(false)}
+              noteText={noteText}
+              historyUsage={loadHistoryUsage}
+              installedModels={loadInstalledModels}
+              bodyFontChoices={bodyFontChoices}
+              codeFontChoices={codeFontChoices}
+            />
           )}
           {tableDialog && (
             <div
@@ -5699,34 +4513,11 @@ function App() {
             </div>
           )}
           {historyEntries !== null && (
-            <div
-              className="palette-backdrop"
-              onMouseDown={() => setHistoryEntries(null)}
-            >
-              <div
-                className="palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <header className="palette-title">
-                  版の履歴（新しい順・戻す前に今の内容も残ります）
-                </header>
-                <ul>
-                  {historyEntries.map((entry) => (
-                    <li key={entry.path} className="history-row">
-                      <span>{entry.stamp}</span>
-                      <button onClick={() => void restoreVersion(entry)}>
-                        戻す
-                      </button>
-                    </li>
-                  ))}
-                  {historyEntries.length === 0 && (
-                    <li className="no-hits">
-                      まだ版がありません（保存から 60 分間隔で残ります）
-                    </li>
-                  )}
-                </ul>
-              </div>
-            </div>
+            <HistoryDialog
+              entries={historyEntries}
+              onRestore={(entry) => void restoreVersion(entry)}
+              onClose={() => setHistoryEntries(null)}
+            />
           )}
           {assistantOpen && (
             <aside className="assistant-pane">
