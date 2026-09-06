@@ -1,7 +1,7 @@
 // 「直下」の行を見出しに畳む（要望 2026-09-05）。
 
 import { describe, expect, it } from "vitest";
-import { splitFolders } from "./folder-tree";
+import { folderDepth, folderLabel, splitFolders } from "./folder-tree";
 
 const folders = [
   { folder: "", count: 12 },
@@ -24,5 +24,16 @@ describe("splitFolders", () => {
   it("test_直下が無い一覧でも 0 で答える", () => {
     // 索引がまだ空のとき（開いた直後）に落ちない
     expect(splitFolders([])).toEqual({ root: 0, sub: [] });
+  });
+});
+
+describe("folderLabel / folderDepth", () => {
+  it("test_直下は「直下」_あとは末端の名前", () => {
+    expect(folderLabel("")).toBe("直下");
+    expect(folderLabel("仕事/会議")).toBe("会議");
+  });
+  it("test_深さは直下が 0", () => {
+    expect(folderDepth("")).toBe(0);
+    expect(folderDepth("仕事/会議")).toBe(2);
   });
 });

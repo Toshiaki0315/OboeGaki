@@ -16,3 +16,14 @@ export function splitFolders<T extends FolderCount>(
     sub: folders.filter((entry) => entry.folder !== ""),
   };
 }
+
+/// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
+export function folderLabel(folder: string): string {
+  if (!folder) return "直下";
+  return folder.split("/").pop() ?? folder;
+}
+
+/// 階層の深さ（直下は 0）。ツリーの字下げに使う。
+export function folderDepth(folder: string): number {
+  return folder ? folder.split("/").length : 0;
+}

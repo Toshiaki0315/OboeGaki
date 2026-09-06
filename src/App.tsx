@@ -58,7 +58,7 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem } from "./lib/note-path";
-import { splitFolders } from "./lib/folder-tree";
+import { folderDepth, folderLabel, splitFolders } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel } from "./lib/trash-label";
 import { canDropInto, isNoteDrag, NOTE_DRAG_TYPE } from "./lib/note-drop";
@@ -205,17 +205,6 @@ const AUTOSAVE_DELAY_MS = 800; // spec §7.4
 const STASH_INTERVAL_MS = 2000;
 
 /// バイト数の見せ方（設定画面の「履歴の使用量」）。
-/// フォルダ行の見出し。直下（空文字）だけ名前を付け、あとは末端の名前。
-function folderLabel(folder: string): string {
-  if (!folder) return "直下";
-  return folder.split("/").pop() ?? folder;
-}
-
-/// 階層の深さ（直下は 0）。ツリーの字下げに使う。
-function folderDepth(folder: string): number {
-  return folder ? folder.split("/").length : 0;
-}
-
 function App() {
   const {
     vaultRoot,
