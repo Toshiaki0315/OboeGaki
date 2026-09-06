@@ -20,7 +20,7 @@ import { Editor, type EditorHandle } from "./editor/Editor";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
-import { ContextMenu, SubMenu } from "./components/ContextMenu";
+import { ContextMenu } from "./components/ContextMenu";
 import { FolderSection } from "./components/FolderSection";
 import { FormatToolbar } from "./components/FormatToolbar";
 import { FuzzyPalette } from "./components/FuzzyPalette";
@@ -29,6 +29,7 @@ import { HistoryDialog } from "./components/HistoryDialog";
 
 import { ListPalette } from "./components/ListPalette";
 import { MenuIcon, PathIcon } from "./components/MenuIcon";
+import { MenuList, type MenuEntry } from "./components/MenuList";
 import { NoteActions } from "./components/NoteActions";
 import { NoteRows } from "./components/NoteRows";
 import { OutlinePane } from "./components/OutlinePane";
@@ -2883,199 +2884,165 @@ function App() {
               const pinned = notes.find(
                 (entry) => entry.path === target,
               )?.pinned;
-              const run = (action: () => void) => () => {
-                setNoteMenu(null);
-                action();
-              };
               return (
                 <ContextMenu at={noteMenu} onClose={() => setNoteMenu(null)}>
-                  <li>
-                    <button onClick={run(() => void handlePin(target))}>
-                      <MenuIcon name="pin" />
-                      {pinned ? "ピンを外す" : "ピン留め"}
-                    </button>
-                  </li>
-                  <li>
-                    {/* **本文を入れ替える「開く」とは別の道**（U-1）。
-                        書いているノートを奪わずに、もう 1 枚を並べる */}
-                    <button onClick={run(() => void openBeside(target))}>
-                      <MenuIcon name="beside" />
-                      横に開く
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => void handleDuplicate(target))}>
-                      <MenuIcon name="copy" />
-                      複製
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      onClick={run(() => {
-                        setMoveTarget(target);
-                        setMoveOpen(true);
-                      })}
-                    >
-                      <MenuIcon name="move" />
-                      フォルダへ移動…
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => setTemplateName(target))}>
-                      <MenuIcon name="template" />
-                      テンプレートに登録…
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  <li>
-                    <button onClick={run(() => void copyNoteLink(target))}>
-                      <MenuIcon name="link" />
-                      リンクをコピー
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => void revealItemInDir(target))}>
-                      <MenuIcon name="finder" />
-                      Finder で表示
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  <li>
-                    {/* 項目ごと消すと理由が分からない。押せない状態で見せる */}
-                    <button
-                      className="danger"
-                      disabled={pinned}
-                      title={
-                        pinned ? "ピン留め中は捨てられません" : "ゴミ箱へ移動"
-                      }
-                      onClick={run(() => void handleTrash(target))}
-                    >
-                      <MenuIcon name="trash" />
-                      ゴミ箱へ移動
-                    </button>
-                  </li>
+                  <MenuList
+                    onPick={() => setNoteMenu(null)}
+                    items={[
+                      {
+                        label: pinned ? "ピンを外す" : "ピン留め",
+                        icon: <MenuIcon name="pin" />,
+                        onSelect: () => void handlePin(target),
+                      },
+                      // **本文を入れ替える「開く」とは別の道**（U-1）。
+                      // 書いているノートを奪わずに、もう 1 枚を並べる
+                      {
+                        label: "横に開く",
+                        icon: <MenuIcon name="beside" />,
+                        onSelect: () => void openBeside(target),
+                      },
+                      {
+                        label: "複製",
+                        icon: <MenuIcon name="copy" />,
+                        onSelect: () => void handleDuplicate(target),
+                      },
+                      {
+                        label: "フォルダへ移動…",
+                        icon: <MenuIcon name="move" />,
+                        onSelect: () => {
+                          setMoveTarget(target);
+                          setMoveOpen(true);
+                        },
+                      },
+                      {
+                        label: "テンプレートに登録…",
+                        icon: <MenuIcon name="template" />,
+                        onSelect: () => setTemplateName(target),
+                      },
+                      { kind: "separator" },
+                      {
+                        label: "リンクをコピー",
+                        icon: <MenuIcon name="link" />,
+                        onSelect: () => void copyNoteLink(target),
+                      },
+                      {
+                        label: "Finder で表示",
+                        icon: <MenuIcon name="finder" />,
+                        onSelect: () => void revealItemInDir(target),
+                      },
+                      { kind: "separator" },
+                      {
+                        label: "ゴミ箱へ移動",
+                        icon: <MenuIcon name="trash" />,
+                        danger: true,
+                        disabled: pinned,
+                        title: pinned
+                          ? "ピン留め中は捨てられません"
+                          : "ゴミ箱へ移動",
+                        onSelect: () => void handleTrash(target),
+                      },
+                    ]}
+                  />
                 </ContextMenu>
               );
             })()}
           {editorMenu !== null &&
             (() => {
               const selected = editorMenu.selected;
-              const run = (action: () => void) => () => {
-                setEditorMenu(null);
-                action();
-              };
               // 書式の絵は**ツールバーと同じもの**を引く（同じ言葉に同じ絵）
-              const format = (kind: FormatKind, label: string) => {
-                const item = FORMAT_TOOLBAR.flat().find(
-                  (found) => found.kind === kind,
-                );
-                return (
-                  <li key={kind}>
-                    <button
-                      onClick={run(() => editorRef.current?.applyFormat(kind))}
-                    >
-                      <PathIcon
-                        className="menu-icon"
-                        paths={item?.paths ?? []}
-                        strokeWidth={1.3}
-                      />
-                      {label}
-                    </button>
-                  </li>
-                );
-              };
+              const format = (kind: FormatKind, label: string): MenuEntry => ({
+                label,
+                icon: (
+                  <PathIcon
+                    className="menu-icon"
+                    paths={
+                      FORMAT_TOOLBAR.flat().find((found) => found.kind === kind)
+                        ?.paths ?? []
+                    }
+                    strokeWidth={1.3}
+                  />
+                ),
+                onSelect: () => editorRef.current?.applyFormat(kind),
+              });
+              const handoffIcon = <MenuIcon name="handoff" />;
               return (
                 <ContextMenu
                   at={editorMenu}
                   onClose={() => setEditorMenu(null)}
                 >
-                  <li>
-                    {/* 選んでいないときは押せない状態で見せる
-                        （項目ごと消すと、なぜ無いのか分からない） */}
-                    <button
-                      disabled={!selected}
-                      onClick={run(() => void editorClipboard("cut"))}
-                    >
-                      <MenuIcon name="cut" />
-                      切り取り
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      disabled={!selected}
-                      onClick={run(() => void editorClipboard("copy"))}
-                    >
-                      <MenuIcon name="copy" />
-                      コピー
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => void editorClipboard("paste"))}>
-                      <MenuIcon name="paste" />
-                      貼り付け
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  {format("strong", "太字")}
-                  {format("emphasis", "斜体")}
-                  {format("code", "コード")}
-                  {format("link", "リンク")}
-                  <li className="separator" />
-                  {format("heading", "見出し")}
-                  {format("bullet", "箇条書き")}
-                  {format("quote", "引用")}
-                  <li className="separator" />
-                  <li>
-                    <button onClick={run(() => setTableDialog(true))}>
-                      <MenuIcon name="table" />
-                      表を挿入…
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  {/* **外へ出る道**（要望 2026-09-05）。生成 AI は 4 つを
-                      枝にまとめる — 平らに並べるとメニューの半分を占める。
-                      選んでいないときは押せない状態で見せる（渡すものが無い） */}
-                  {selected ? (
-                    <SubMenu
-                      icon={<MenuIcon name="handoff" />}
-                      label="生成AIに渡す"
-                    >
-                      {AI_HANDOFFS.map((handoff) => (
-                        <li key={handoff.id}>
-                          <button onClick={run(() => void handOff(handoff))}>
-                            {handoff.name}
-                          </button>
-                        </li>
-                      ))}
-                    </SubMenu>
-                  ) : (
-                    <li>
-                      <button disabled>
-                        <MenuIcon name="handoff" />
-                        生成AIに渡す
-                      </button>
-                    </li>
-                  )}
-                  <li>
-                    <button
-                      disabled={!selected}
-                      onClick={run(() => void handOff(SEARCH_HANDOFF))}
-                    >
-                      <MenuIcon name="search" />
-                      {SEARCH_HANDOFF.label}
-                    </button>
-                  </li>
-                  {/* 手元の辞書（7-2。ポメラの電子辞書相当）。**外へ出ない**
-                      ので、生成 AI のような確認は挟まない */}
-                  <li>
-                    <button
-                      disabled={!selected}
-                      onClick={run(() => void lookUpInDictionary())}
-                    >
-                      <MenuIcon name="dictionary" />
-                      辞書で調べる
-                    </button>
-                  </li>
+                  <MenuList
+                    onPick={() => setEditorMenu(null)}
+                    items={[
+                      // 選んでいないときは押せない状態で見せる
+                      // （項目ごと消すと、なぜ無いのか分からない）
+                      {
+                        label: "切り取り",
+                        icon: <MenuIcon name="cut" />,
+                        disabled: !selected,
+                        onSelect: () => void editorClipboard("cut"),
+                      },
+                      {
+                        label: "コピー",
+                        icon: <MenuIcon name="copy" />,
+                        disabled: !selected,
+                        onSelect: () => void editorClipboard("copy"),
+                      },
+                      {
+                        label: "貼り付け",
+                        icon: <MenuIcon name="paste" />,
+                        onSelect: () => void editorClipboard("paste"),
+                      },
+                      { kind: "separator" },
+                      format("strong", "太字"),
+                      format("emphasis", "斜体"),
+                      format("code", "コード"),
+                      format("link", "リンク"),
+                      { kind: "separator" },
+                      format("heading", "見出し"),
+                      format("bullet", "箇条書き"),
+                      format("quote", "引用"),
+                      { kind: "separator" },
+                      {
+                        label: "表を挿入…",
+                        icon: <MenuIcon name="table" />,
+                        onSelect: () => setTableDialog(true),
+                      },
+                      { kind: "separator" },
+                      // **外へ出る道**（要望 2026-09-05）。生成 AI は 4 つを
+                      // 枝にまとめる — 平らに並べるとメニューの半分を占める。
+                      // 選んでいないときは押せない状態で見せる（渡すものが無い）
+                      selected
+                        ? {
+                            kind: "submenu",
+                            label: "生成AIに渡す",
+                            icon: handoffIcon,
+                            items: AI_HANDOFFS.map((handoff) => ({
+                              label: handoff.name,
+                              onSelect: () => void handOff(handoff),
+                            })),
+                          }
+                        : {
+                            label: "生成AIに渡す",
+                            icon: handoffIcon,
+                            disabled: true,
+                            onSelect: () => {},
+                          },
+                      {
+                        label: SEARCH_HANDOFF.label,
+                        icon: <MenuIcon name="search" />,
+                        disabled: !selected,
+                        onSelect: () => void handOff(SEARCH_HANDOFF),
+                      },
+                      // 手元の辞書（7-2。ポメラの電子辞書相当）。**外へ出ない**
+                      // ので、生成 AI のような確認は挟まない
+                      {
+                        label: "辞書で調べる",
+                        icon: <MenuIcon name="dictionary" />,
+                        disabled: !selected,
+                        onSelect: () => void lookUpInDictionary(),
+                      },
+                    ]}
+                  />
                 </ContextMenu>
               );
             })()}
@@ -3084,21 +3051,10 @@ function App() {
               // 参照実装（ui/menus.build_gear_menu）と同じ考え方:
               // **メニューバーと同じ動作を使い回し、よく使うものだけ**。
               // 全部の写しにすると、探す手間がメニューバーと変わらない
-              const run = (action: () => void) => () => {
-                setGearMenu(null);
-                action();
-              };
-              // **印は幅を持つ枠に入れる。** 全角の空白で字下げすると、
-              // JSX が行頭の空白を落として揃わない（実機報告 2026-09-04）。
-              // 印と字の幅が違っても、枠が同じなら頭は揃う
-              const check = (on: boolean) => (
-                <span className="menu-check">{on ? "✓" : ""}</span>
-              );
               const menu = menuActions.current;
               return (
                 // 歯車は**押した絵の真上**に出す（測って置くのではなく、
-                // 下端を歯車に合わせる = ADR は無いが lib/context-menu の
-                // anchorAbove の言）
+                // 下端を歯車に合わせる = lib/context-menu の anchorAbove）
                 <div
                   className="menu-backdrop"
                   onMouseDown={() => setGearMenu(null)}
@@ -3115,52 +3071,58 @@ function App() {
                     })}
                     onMouseDown={(event) => event.stopPropagation()}
                   >
-                    <li>
-                      <button onClick={run(openPreferences)}>
-                        <MenuIcon name="preferences" />
-                        環境設定…
-                      </button>
-                    </li>
-                    <li className="separator" />
-                    <li>
-                      <button onClick={run(() => menu["toggle-trees"]?.())}>
-                        {check(settings.treesVisible)}サイドバー
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(() => menu["toggle-notes"]?.())}>
-                        {check(settings.notesVisible)}ノート一覧
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(toggleOutline)}>
-                        {check(outlineOpen)}アウトライン
-                      </button>
-                    </li>
-                    {/* 使わない設定のときは並べない（押せない項目を見せない） */}
-                    {settings.assistantEnabled && (
-                      <li>
-                        <button onClick={run(() => menu.assistant?.())}>
-                          {check(assistantOpen)}アシスタント
-                        </button>
-                      </li>
-                    )}
-                    <li className="separator" />
-                    <li>
-                      <button onClick={run(() => menu["source-mode"]?.())}>
-                        {check(sourceMode)}ソース表示
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(() => menu["focus-mode"]?.())}>
-                        {check(false)}フォーカスモード
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={run(() => menu.typewriter?.())}>
-                        {check(false)}タイプライタモード
-                      </button>
-                    </li>
+                    <MenuList
+                      onPick={() => setGearMenu(null)}
+                      items={[
+                        {
+                          label: "環境設定…",
+                          icon: <MenuIcon name="preferences" />,
+                          onSelect: openPreferences,
+                        },
+                        { kind: "separator" },
+                        {
+                          label: "サイドバー",
+                          checked: settings.treesVisible,
+                          onSelect: () => menu["toggle-trees"]?.(),
+                        },
+                        {
+                          label: "ノート一覧",
+                          checked: settings.notesVisible,
+                          onSelect: () => menu["toggle-notes"]?.(),
+                        },
+                        {
+                          label: "アウトライン",
+                          checked: outlineOpen,
+                          onSelect: toggleOutline,
+                        },
+                        // 使わない設定のときは並べない（押せない項目を見せない）
+                        ...(settings.assistantEnabled
+                          ? [
+                              {
+                                label: "アシスタント",
+                                checked: assistantOpen,
+                                onSelect: () => menu.assistant?.(),
+                              } satisfies MenuEntry,
+                            ]
+                          : []),
+                        { kind: "separator" },
+                        {
+                          label: "ソース表示",
+                          checked: sourceMode,
+                          onSelect: () => menu["source-mode"]?.(),
+                        },
+                        {
+                          label: "フォーカスモード",
+                          checked: false,
+                          onSelect: () => menu["focus-mode"]?.(),
+                        },
+                        {
+                          label: "タイプライタモード",
+                          checked: false,
+                          onSelect: () => menu.typewriter?.(),
+                        },
+                      ]}
+                    />
                   </ul>
                 </div>
               );
@@ -3169,34 +3131,32 @@ function App() {
             (() => {
               const target = tagMenu.tag;
               const filtered = target === tagFilter;
-              const run = (action: () => void) => () => {
-                setTagMenu(null);
-                action();
-              };
               return (
                 <ContextMenu at={tagMenu} onClose={() => setTagMenu(null)}>
-                  <li>
-                    <button
-                      onClick={run(() => filterByTag(filtered ? null : target))}
-                    >
-                      {filtered ? "絞り込みを解除" : `#${target} で絞り込む`}
-                    </button>
-                  </li>
-                  <li>
-                    {/* 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
-                        検索へ回す（同じ書き方が検索欄でも効く） */}
-                    <button onClick={run(() => searchByTag(target))}>
-                      <MenuIcon name="search" />
-                      このタグで全ノート検索
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  <li>
-                    <button onClick={run(() => void copyTag(target))}>
-                      <MenuIcon name="copy" />
-                      タグ名をコピー
-                    </button>
-                  </li>
+                  <MenuList
+                    onPick={() => setTagMenu(null)}
+                    items={[
+                      {
+                        label: filtered
+                          ? "絞り込みを解除"
+                          : `#${target} で絞り込む`,
+                        onSelect: () => filterByTag(filtered ? null : target),
+                      },
+                      // 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
+                      // 検索へ回す（同じ書き方が検索欄でも効く）
+                      {
+                        label: "このタグで全ノート検索",
+                        icon: <MenuIcon name="search" />,
+                        onSelect: () => searchByTag(target),
+                      },
+                      { kind: "separator" },
+                      {
+                        label: "タグ名をコピー",
+                        icon: <MenuIcon name="copy" />,
+                        onSelect: () => void copyTag(target),
+                      },
+                    ]}
+                  />
                 </ContextMenu>
               );
             })()}
@@ -3206,149 +3166,127 @@ function App() {
               // ないし消せないので、作る項目だけ出す
               const target = folderMenu.folder;
               const isRoot = target === "";
-              const run = (action: () => void) => () => {
-                setFolderMenu(null);
-                action();
-              };
               return (
                 <ContextMenu
                   at={folderMenu}
                   onClose={() => setFolderMenu(null)}
                 >
-                  <li>
-                    <button onClick={run(() => void handleCreate(target))}>
-                      <MenuIcon name="noteNew" />
-                      新規ノート
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      onClick={run(() =>
-                        setFolderDialog({ kind: "create", folder: target }),
-                      )}
-                    >
-                      <MenuIcon name="folderNew" />
-                      新規フォルダ…
-                    </button>
-                  </li>
-                  <li>
-                    <button onClick={run(() => void openInFinder(target))}>
-                      <MenuIcon name="finder" />
-                      Finder で開く
-                    </button>
-                  </li>
-                  {!isRoot && (
-                    <>
-                      <li className="separator" />
-                      <li>
-                        <button
-                          onClick={run(() =>
-                            setFolderDialog({
-                              kind: "rename",
-                              folder: target,
-                            }),
-                          )}
-                        >
-                          <MenuIcon name="rename" />
-                          名前を変更…
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          className="danger"
-                          onClick={run(() => void handleDeleteFolder(target))}
-                        >
-                          <MenuIcon name="trash" />
-                          削除
-                        </button>
-                      </li>
-                    </>
-                  )}
+                  <MenuList
+                    onPick={() => setFolderMenu(null)}
+                    items={[
+                      {
+                        label: "新規ノート",
+                        icon: <MenuIcon name="noteNew" />,
+                        onSelect: () => void handleCreate(target),
+                      },
+                      {
+                        label: "新規フォルダ…",
+                        icon: <MenuIcon name="folderNew" />,
+                        onSelect: () =>
+                          setFolderDialog({ kind: "create", folder: target }),
+                      },
+                      {
+                        label: "Finder で開く",
+                        icon: <MenuIcon name="finder" />,
+                        onSelect: () => void openInFinder(target),
+                      },
+                      ...(isRoot
+                        ? []
+                        : ([
+                            { kind: "separator" },
+                            {
+                              label: "名前を変更…",
+                              icon: <MenuIcon name="rename" />,
+                              onSelect: () =>
+                                setFolderDialog({
+                                  kind: "rename",
+                                  folder: target,
+                                }),
+                            },
+                            {
+                              label: "削除",
+                              icon: <MenuIcon name="trash" />,
+                              danger: true,
+                              onSelect: () => void handleDeleteFolder(target),
+                            },
+                          ] satisfies MenuEntry[])),
+                    ]}
+                  />
                 </ContextMenu>
               );
             })()}
           {outlineMenu !== null && (
             <ContextMenu at={outlineMenu} onClose={() => setOutlineMenu(null)}>
               {/* 節ごと動かす（7-1。ポメラのアウトライン相当）。
-                  端では押しても何も起きないので、押せるかどうかで見せる */}
-              <li>
-                <button
-                  onClick={() => {
-                    const { from } = outlineMenu;
-                    setOutlineMenu(null);
-                    if (!editorRef.current?.moveSection(from, -1)) {
-                      setStatus("これより上には動かせません");
-                    }
-                  }}
-                >
-                  <MenuIcon name="moveUp" />
-                  この節を上へ動かす
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => {
-                    const { from } = outlineMenu;
-                    setOutlineMenu(null);
-                    if (!editorRef.current?.moveSection(from, 1)) {
-                      setStatus("これより下には動かせません");
-                    }
-                  }}
-                >
-                  <MenuIcon name="moveDown" />
-                  この節を下へ動かす
-                </button>
-              </li>
+                  端では押しても何も起きないので、知らせを出す */}
+              <MenuList
+                onPick={() => setOutlineMenu(null)}
+                items={[
+                  {
+                    label: "この節を上へ動かす",
+                    icon: <MenuIcon name="moveUp" />,
+                    onSelect: () => {
+                      if (
+                        !editorRef.current?.moveSection(outlineMenu.from, -1)
+                      ) {
+                        setStatus("これより上には動かせません");
+                      }
+                    },
+                  },
+                  {
+                    label: "この節を下へ動かす",
+                    icon: <MenuIcon name="moveDown" />,
+                    onSelect: () => {
+                      if (
+                        !editorRef.current?.moveSection(outlineMenu.from, 1)
+                      ) {
+                        setStatus("これより下には動かせません");
+                      }
+                    },
+                  },
+                ]}
+              />
             </ContextMenu>
           )}
           {trashMenu !== null &&
             (() => {
               const target = trashMenu.path;
-              const run = (action: () => void) => () => {
-                setTrashMenu(null);
-                action();
-              };
               return (
                 <ContextMenu at={trashMenu} onClose={() => setTrashMenu(null)}>
-                  <li>
-                    <button
-                      onClick={run(() => void openInFinder(TRASH_FOLDER))}
-                    >
-                      <MenuIcon name="finder" />
-                      Finder で開く
-                    </button>
-                  </li>
-                  <li className="separator" />
-                  {target === null ? (
-                    <li>
-                      <button
-                        className="danger"
-                        onClick={run(() => void handleEmptyTrash())}
-                      >
-                        <MenuIcon name="trash" />
-                        ゴミ箱を空にする…
-                      </button>
-                    </li>
-                  ) : (
-                    <>
-                      <li>
-                        <button onClick={run(() => void handleRestore(target))}>
-                          <MenuIcon name="restore" />
-                          元に戻す
-                        </button>
-                      </li>
-                      <li className="separator" />
-                      <li>
-                        <button
-                          className="danger"
-                          onClick={run(() => void handleDeleteForever(target))}
-                        >
-                          <MenuIcon name="trash" />
-                          完全に削除
-                        </button>
-                      </li>
-                    </>
-                  )}
+                  <MenuList
+                    onPick={() => setTrashMenu(null)}
+                    items={[
+                      {
+                        label: "Finder で開く",
+                        icon: <MenuIcon name="finder" />,
+                        onSelect: () => void openInFinder(TRASH_FOLDER),
+                      },
+                      { kind: "separator" },
+                      ...(target === null
+                        ? ([
+                            {
+                              label: "ゴミ箱を空にする…",
+                              icon: <MenuIcon name="trash" />,
+                              danger: true,
+                              onSelect: () => void handleEmptyTrash(),
+                            },
+                          ] satisfies MenuEntry[])
+                        : ([
+                            {
+                              label: "元に戻す",
+                              icon: <MenuIcon name="restore" />,
+                              onSelect: () => void handleRestore(target),
+                            },
+                            { kind: "separator" },
+                            {
+                              label: "完全に削除",
+                              icon: <MenuIcon name="trash" />,
+                              danger: true,
+                              onSelect: () => void handleDeleteForever(target),
+                            },
+                          ] satisfies MenuEntry[])),
+                    ]}
+                  />
                 </ContextMenu>
               );
             })()}
