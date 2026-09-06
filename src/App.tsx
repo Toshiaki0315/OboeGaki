@@ -21,6 +21,7 @@ import {
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { ChoiceDialog } from "./components/ChoiceDialog";
+import { FuzzyPalette } from "./components/FuzzyPalette";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
@@ -99,7 +100,6 @@ import {
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
 import { OCR_THRESHOLD, pdfPages } from "./lib/pdf-import";
-import { rankCandidates } from "./lib/fuzzy";
 import {
   clampFontSize,
   DEFAULT_FONT_PX,
@@ -780,8 +780,6 @@ function App() {
   // 見出しパレット（Cmd+R、C-2）。**飛んだら閉じる道具**なので、
   // 出しっぱなしのアウトライン（Cmd+5）とは別に持つ
   const [headings, setHeadings] = useState<OutlineItem[] | null>(null);
-  const [headingQuery, setHeadingQuery] = useState("");
-  const [headingIndex, setHeadingIndex] = useState(0);
 
   /// 今のノートの見出しでパレットを開く。**空のパレットは出さない**
   /// （何も無いことが分かればよい）。
@@ -791,8 +789,6 @@ function App() {
       setStatus("このノートには見出しがありません");
       return;
     }
-    setHeadingQuery("");
-    setHeadingIndex(0);
     setHeadings(found);
   }
 
@@ -858,8 +854,6 @@ function App() {
 
   // クイックオープン（Cmd+O、spec §5.4）
   const [quickOpen, setQuickOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
-  const [paletteIndex, setPaletteIndex] = useState(0);
   // HTML 書き出し（ADR-0007 の CM6 版）。画像は data URL に埋め込んで
   // 1 ファイルで持ち運べる形にする
   /// 図を先に描く（描画は非同期。書き出しにも印刷にも SVG を埋める）。
@@ -2305,8 +2299,6 @@ function App() {
     trash: () => void handleTrash(),
     "quick-open": () => {
       setQuickOpen((open) => !open);
-      setPaletteQuery("");
-      setPaletteIndex(0);
     },
     "search-all": () => searchInputRef.current?.focus(),
     "save-search": () => {
@@ -3189,140 +3181,30 @@ function App() {
               onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
             />
           )}
-          {headings !== null &&
-            (() => {
-              // クイックオープンと同じ絞り方（入口が増えても操作を覚え直さない）
+          {headings !== null && (
+            <FuzzyPalette
+              placeholder="見出しへ飛ぶ"
               // 空の見出し（`##` だけの行）も選べるようにする
-              const labels = headings.map(
-                (item) => item.text || "（無題の見出し）",
-              );
-              const ranked = rankCandidates(headingQuery, labels).slice(0, 30);
-              return (
-                <div
-                  className="palette-backdrop"
-                  onMouseDown={() => setHeadings(null)}
-                >
-                  <div
-                    className="palette"
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      autoFocus
-                      className="palette-input"
-                      placeholder="見出しへ飛ぶ"
-                      value={headingQuery}
-                      onChange={(event) => {
-                        setHeadingQuery(event.currentTarget.value);
-                        setHeadingIndex(0);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") setHeadings(null);
-                        else if (event.key === "ArrowDown") {
-                          event.preventDefault();
-                          setHeadingIndex((i) =>
-                            Math.min(i + 1, ranked.length - 1),
-                          );
-                        } else if (event.key === "ArrowUp") {
-                          event.preventDefault();
-                          setHeadingIndex((i) => Math.max(i - 1, 0));
-                        } else if (event.key === "Enter") {
-                          event.preventDefault();
-                          jumpToHeading(headings[ranked[headingIndex] ?? -1]);
-                        }
-                      }}
-                    />
-                    <ul>
-                      {ranked.map((headingIdx, rankedIndex) => (
-                        <li key={`${headings[headingIdx].from}`}>
-                          <button
-                            className={
-                              rankedIndex === headingIndex ? "selected" : ""
-                            }
-                            // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
-                            style={{
-                              paddingLeft: `${0.5 + (headings[headingIdx].level - 1) * 0.9}rem`,
-                            }}
-                            onMouseEnter={() => setHeadingIndex(rankedIndex)}
-                            onClick={() => jumpToHeading(headings[headingIdx])}
-                          >
-                            {labels[headingIdx]}
-                          </button>
-                        </li>
-                      ))}
-                      {ranked.length === 0 && (
-                        <li className="no-hits">見つかりません</li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-              );
-            })()}
-          {quickOpen &&
-            (() => {
-              const labels = notes.map((entry) => entry.label);
-              const ranked = rankCandidates(paletteQuery, labels).slice(0, 20);
-              const choose = (rankedIndex: number) => {
-                const noteIndex = ranked[rankedIndex];
-                if (noteIndex === undefined) return;
+              labels={headings.map((item) => item.text || "（無題の見出し）")}
+              limit={30}
+              // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
+              indentOf={(index) => (headings[index].level - 1) * 0.9}
+              onChoose={(index) => jumpToHeading(headings[index])}
+              onClose={() => setHeadings(null)}
+            />
+          )}
+          {quickOpen && (
+            <FuzzyPalette
+              placeholder="ノート名で開く"
+              labels={notes.map((entry) => entry.label)}
+              limit={20}
+              onChoose={(index) => {
                 setQuickOpen(false);
-                void openNote(notes[noteIndex].path);
-              };
-              return (
-                <div
-                  className="palette-backdrop"
-                  onMouseDown={() => setQuickOpen(false)}
-                >
-                  <div
-                    className="palette"
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      autoFocus
-                      className="palette-input"
-                      placeholder="ノート名で開く"
-                      value={paletteQuery}
-                      onChange={(event) => {
-                        setPaletteQuery(event.currentTarget.value);
-                        setPaletteIndex(0);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") setQuickOpen(false);
-                        else if (event.key === "ArrowDown") {
-                          event.preventDefault();
-                          setPaletteIndex((i) =>
-                            Math.min(i + 1, ranked.length - 1),
-                          );
-                        } else if (event.key === "ArrowUp") {
-                          event.preventDefault();
-                          setPaletteIndex((i) => Math.max(i - 1, 0));
-                        } else if (event.key === "Enter") {
-                          event.preventDefault();
-                          choose(paletteIndex);
-                        }
-                      }}
-                    />
-                    <ul>
-                      {ranked.map((noteIndex, rankedIndex) => (
-                        <li key={notes[noteIndex].path}>
-                          <button
-                            className={
-                              rankedIndex === paletteIndex ? "selected" : ""
-                            }
-                            onMouseEnter={() => setPaletteIndex(rankedIndex)}
-                            onClick={() => choose(rankedIndex)}
-                          >
-                            {labels[noteIndex]}
-                          </button>
-                        </li>
-                      ))}
-                      {ranked.length === 0 && (
-                        <li className="no-hits">見つかりません</li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-              );
-            })()}
+                void openNote(notes[index].path);
+              }}
+              onClose={() => setQuickOpen(false)}
+            />
+          )}
           <section className="editor-pane">
             {doc !== null && currentPath !== null ? (
               <>
