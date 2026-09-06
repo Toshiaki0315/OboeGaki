@@ -37,6 +37,7 @@ import { StatusBar } from "./components/StatusBar";
 import { StyleCheckDialog } from "./components/StyleCheckDialog";
 
 import { TableDialog } from "./components/TableDialog";
+import { TagSection } from "./components/TagSection";
 
 import type { FormatKind } from "./editor/format-commands";
 import { FORMAT_TOOLBAR } from "./editor/format-toolbar";
@@ -2929,46 +2930,14 @@ function App() {
                 </details>
               )}
               {settings.treesVisible && tags.length > 0 && (
-                <details className="tag-section" open={sideOpen === "tags"}>
-                  <summary
-                    onClick={(event) => {
-                      event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
-                      toggleSide("tags");
-                    }}
-                  >
-                    <span className="side-twist" aria-hidden="true" />
-                    <MenuIcon name="tag" />
-                    <span className="side-label">タグ</span>
-                    <span className="side-count">{tags.length}</span>
-                  </summary>
-                  <ul>
-                    {tags.map(({ tag, count }) => (
-                      <li key={tag}>
-                        <button
-                          className={`tag-row${tag === tagFilter ? " selected" : ""}`}
-                          title="右クリックで絞る・検索・コピー"
-                          onClick={() =>
-                            filterByTag(tag === tagFilter ? null : tag)
-                          }
-                          // **OS の既定のメニューを出さない**（要望
-                          // 2026-09-04）。「Google で検索」「共有」など、
-                          // 選んだ文字を外へ出す道が並んでしまう
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            setTagMenu({
-                              tag,
-                              x: event.clientX,
-                              y: event.clientY,
-                            });
-                          }}
-                        >
-                          <span className="tag-name">#{tag}</span>
-                          <span className="tag-count">{count}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
+                <TagSection
+                  tags={tags}
+                  tagFilter={tagFilter}
+                  open={sideOpen === "tags"}
+                  onToggle={() => toggleSide("tags")}
+                  onFilter={filterByTag}
+                  onMenu={setTagMenu}
+                />
               )}
             </aside>
           )}
