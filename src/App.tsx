@@ -32,6 +32,7 @@ import { NoteActions } from "./components/NoteActions";
 import { OutlinePane } from "./components/OutlinePane";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
+import { SavedSearchSection } from "./components/SavedSearchSection";
 import { SearchHits } from "./components/SearchHits";
 import { StatusBar } from "./components/StatusBar";
 import { StyleCheckDialog } from "./components/StyleCheckDialog";
@@ -2687,45 +2688,20 @@ function App() {
                 </div>
               )}
               {settings.treesVisible && searches.length > 0 && (
-                <details className="search-section" open>
-                  <summary>
-                    <span className="side-twist" aria-hidden="true" />
-                    <MenuIcon name="search" />
-                    <span className="side-label">保存した検索</span>
-                    <span className="side-count">{searches.length}</span>
-                  </summary>
-                  <ul>
-                    {searches.map((entry) => (
-                      <li key={entry.name}>
-                        <button
-                          className="saved-search-row"
-                          title={entry.query}
-                          onClick={() => {
-                            // 結果は一覧ペイン側に出る。閉じたままだと
-                            // 押しても無反応に見える（レビュー 2026-09-04）
-                            if (!settingsRef.current.notesVisible) {
-                              changeSettings({ notesVisible: true });
-                            }
-                            handleQueryChanged(entry.query);
-                          }}
-                        >
-                          <span className="saved-search-name">
-                            {entry.name}
-                          </span>
-                        </button>
-                        <button
-                          className="saved-search-remove"
-                          title="この検索を外す"
-                          onClick={() =>
-                            keepSearches(removeSearch(searches, entry.name))
-                          }
-                        >
-                          ✕
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
+                <SavedSearchSection
+                  searches={searches}
+                  onRun={(query) => {
+                    // 結果は一覧ペイン側に出る。閉じたままだと押しても
+                    // 無反応に見える（レビュー 2026-09-04）
+                    if (!settingsRef.current.notesVisible) {
+                      changeSettings({ notesVisible: true });
+                    }
+                    handleQueryChanged(query);
+                  }}
+                  onRemove={(name) =>
+                    keepSearches(removeSearch(searches, name))
+                  }
+                />
               )}
               {settings.treesVisible && (
                 <details
