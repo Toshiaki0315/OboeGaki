@@ -20,6 +20,7 @@ import {
   writeText as writeClipboard,
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import { ChoiceDialog } from "./components/ChoiceDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
@@ -3753,26 +3754,20 @@ function App() {
             </div>
           )}
           {recovery > 0 && (
-            <div className="palette-backdrop">
-              <div className="palette">
-                <header className="palette-title">
-                  保存されていない変更が見つかりました
-                </header>
-                <p className="dialog-text">
-                  前回終了したときに保存されていない変更が {recovery}{" "}
-                  件あります。
-                  別のファイルとして復元しますか？（今あるノートは書き換えません）
-                </p>
-                <div className="conflict-actions">
-                  <button onClick={() => void handleRecovery(false)}>
-                    復元しない
-                  </button>
-                  <button onClick={() => void handleRecovery(true)}>
-                    復元する
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ChoiceDialog
+              title="保存されていない変更が見つかりました"
+              text={`前回終了したときに保存されていない変更が ${recovery} 件あります。別のファイルとして復元しますか？（今あるノートは書き換えません）`}
+              choices={[
+                {
+                  label: "復元しない",
+                  onChoose: () => void handleRecovery(false),
+                },
+                {
+                  label: "復元する",
+                  onChoose: () => void handleRecovery(true),
+                },
+              ]}
+            />
           )}
           {noteMenu !== null &&
             (() => {
@@ -4363,43 +4358,33 @@ function App() {
             />
           )}
           {deleted !== null && (
-            <div className="palette-backdrop">
-              <div className="palette">
-                <header className="palette-title">
-                  ファイルが削除されました
-                </header>
-                <p className="dialog-text">
-                  「{noteStem(deleted)}」は外部で削除されました。
-                  編集中の内容で作り直しますか？
-                </p>
-                <div className="conflict-actions">
-                  <button onClick={closeDeleted}>閉じる</button>
-                  <button onClick={() => void recreateDeleted()}>
-                    作り直す
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ChoiceDialog
+              title="ファイルが削除されました"
+              text={`「${noteStem(deleted)}」は外部で削除されました。編集中の内容で作り直しますか？`}
+              choices={[
+                { label: "閉じる", onChoose: closeDeleted },
+                { label: "作り直す", onChoose: () => void recreateDeleted() },
+              ]}
+            />
           )}
           {conflict !== null && (
-            <div className="palette-backdrop">
-              <div className="palette">
-                <header className="palette-title">
-                  このノートは外部でも変更されています。どうしますか？
-                </header>
-                <div className="conflict-actions">
-                  <button onClick={() => void resolveConflict("external")}>
-                    外部の変更を採用（自分の編集を捨てる）
-                  </button>
-                  <button onClick={() => void resolveConflict("mine")}>
-                    自分の版で上書き（外部の変更を捨てる）
-                  </button>
-                  <button onClick={() => void resolveConflict("both")}>
-                    両方残す（自分の版を「名前 (競合 日付)」に保存）
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ChoiceDialog
+              title="このノートは外部でも変更されています。どうしますか？"
+              choices={[
+                {
+                  label: "外部の変更を採用（自分の編集を捨てる）",
+                  onChoose: () => void resolveConflict("external"),
+                },
+                {
+                  label: "自分の版で上書き（外部の変更を捨てる）",
+                  onChoose: () => void resolveConflict("mine"),
+                },
+                {
+                  label: "両方残す（自分の版を「名前 (競合 日付)」に保存）",
+                  onChoose: () => void resolveConflict("both"),
+                },
+              ]}
+            />
           )}
           {historyEntries !== null && (
             <HistoryDialog
