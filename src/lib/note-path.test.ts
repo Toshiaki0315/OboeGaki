@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { noteLabel, noteStem } from "./note-path";
+import { noteFolder, noteLabel, noteStem } from "./note-path";
 
 describe("noteStem", () => {
   test("test_フォルダと拡張子を外した幹", () => {
@@ -17,5 +17,14 @@ describe("noteLabel", () => {
   });
   test("test_保管フォルダの外はそのまま", () => {
     expect(noteLabel("/v", "/elsewhere/x.md")).toBe("/elsewhere/x");
+  });
+});
+
+describe("noteFolder", () => {
+  test("test_入っているフォルダの相対パス", () => {
+    expect(noteFolder("/v", "/v/仕事/会議/議事録.md")).toBe("仕事/会議");
+  });
+  test("test_直下は空", () => {
+    expect(noteFolder("/v", "/v/メモ.md")).toBe("");
   });
 });

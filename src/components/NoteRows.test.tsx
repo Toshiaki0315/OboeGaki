@@ -17,6 +17,13 @@ const NOTES = [
     pinned: true,
   },
   { path: "/v/b.md", label: "b", preview: "", mtimeMs: 0, pinned: false },
+  {
+    path: "/v/仕事/会議/議事録.md",
+    label: "仕事/会議/議事録",
+    preview: "決めたこと",
+    mtimeMs: 0,
+    pinned: false,
+  },
 ];
 
 function setup(over: Partial<NoteRowsProps> = {}) {
@@ -42,6 +49,28 @@ describe("NoteRows", () => {
     expect(screen.getByText("b").closest("button")?.className).toContain(
       "selected",
     );
+  });
+
+  test("test_行は題名_冒頭_フォルダ_日付の 4 段（要望 2026-09-07）", () => {
+    const { view } = setup();
+    // 題名はファイル名の幹だけ（フルパスを 1 行目に詰め込まない）
+    const row = screen.getByText("議事録").closest("button")!;
+    expect(row.querySelector(".note-row-title")?.textContent).toBe("議事録");
+    expect(row.querySelector(".note-row-preview")?.textContent).toBe(
+      "決めたこと",
+    );
+    expect(row.querySelector(".note-row-folder")?.textContent).toBe(
+      "仕事/会議",
+    );
+    expect(row.querySelector(".note-row-stamp")).toBeTruthy();
+    expect(Array.from(row.children).map((child) => child.className)).toEqual([
+      "note-row-title",
+      "note-row-preview",
+      "note-row-folder",
+      "note-row-stamp",
+    ]);
+    // 直下のノートにはフォルダの行を出さない
+    expect(view.container.querySelectorAll(".note-row-folder")).toHaveLength(1);
   });
 
   test("test_押すと開き_右クリックで親に知らせる", () => {

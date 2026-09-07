@@ -4,7 +4,7 @@
 import { useRef } from "react";
 import { NOTE_DRAG_TYPE } from "../lib/note-drop";
 import { formatStamp, type NoteEntry } from "../lib/note-order";
-import { noteStem } from "../lib/note-path";
+import { labelFolder, noteStem } from "../lib/note-path";
 
 export type NoteRowsProps = {
   notes: readonly NoteEntry[];
@@ -69,12 +69,19 @@ export function NoteRows({
               onMenu({ path: entry.path, x: event.clientX, y: event.clientY });
             }}
           >
+            {/* 題名・冒頭・フォルダ・日付の 4 段（要望 2026-09-07）。題名は
+              ファイル名の幹だけにして、フォルダは自分の段に出す */}
             <span className="note-row-title">
               {entry.pinned && <span className="pin-mark">📌</span>}
-              {entry.label}
+              {noteStem(entry.path)}
             </span>
             {entry.preview && (
               <span className="note-row-preview">{entry.preview}</span>
+            )}
+            {labelFolder(entry.label) && (
+              <span className="note-row-folder">
+                {labelFolder(entry.label)}
+              </span>
             )}
             <span className="note-row-stamp">{formatStamp(entry.mtimeMs)}</span>
           </button>

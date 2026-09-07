@@ -11,3 +11,14 @@ export function noteStem(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.(md|markdown)$/i, "");
 }
+
+/// 見出し（相対パス）のうちフォルダの部分。直下なら空。
+export function labelFolder(label: string): string {
+  const cut = label.lastIndexOf("/");
+  return cut < 0 ? "" : label.slice(0, cut);
+}
+
+/// ノートが入っているフォルダ（保管フォルダからの相対）。直下なら空。
+export function noteFolder(root: string, path: string): string {
+  return labelFolder(noteLabel(root, path));
+}

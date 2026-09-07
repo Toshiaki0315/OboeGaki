@@ -836,6 +836,17 @@ body.resizing {
   white-space: nowrap;
 }
 
+/* 入っているフォルダ（要望 2026-09-07）。日付と同じ控えめさで、長ければ切る */
+.note-row-folder {
+  display: block;
+  max-width: 100%;
+  font-size: 0.72rem;
+  opacity: 0.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .note-row-stamp {
   font-size: 0.72rem;
   opacity: 0.5;
@@ -1588,8 +1599,9 @@ button.danger {
   padding-top: 0.15rem;
   padding-bottom: 0.15rem;
 }
-.app[data-spacing="tight"] .note-row-preview {
-  display: none; /* 詰める = プレビュー行を畳む */
+.app[data-spacing="tight"] .note-row-preview,
+.app[data-spacing="tight"] .note-row-folder {
+  display: none; /* 詰める = プレビューとフォルダの行を畳む */
 }
 .app[data-spacing="relaxed"] .note-list li button.note-row {
   padding-top: 0.7rem;
