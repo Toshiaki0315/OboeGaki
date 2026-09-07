@@ -437,6 +437,8 @@ function App() {
     x: number;
     y: number;
   } | null>(null);
+  // 「＋ 新規」の右クリック（作り方を選ぶ）。null は閉じている
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   const [noteMenu, setNoteMenu] = useState<{
     path: string;
     x: number;
@@ -1988,6 +1990,7 @@ function App() {
                     showSort={!trashView && !query.trim()}
                     newTitle={newNoteTitle}
                     onNew={() => void handleCreate()}
+                    onNewMenu={setNewMenu}
                   />
                 </>
               )}
@@ -2312,6 +2315,27 @@ function App() {
                 },
               ]}
             />
+          )}
+          {newMenu !== null && (
+            <ContextMenu at={newMenu} onClose={() => setNewMenu(null)}>
+              {/* 左クリックは無題のノート。ここは**別の作り方**だけを並べる
+                  （メニューバーの「ファイル」と同じ動作を使い回す） */}
+              <MenuList
+                onPick={() => setNewMenu(null)}
+                items={[
+                  {
+                    label: "テンプレートから新規…",
+                    icon: <MenuIcon name="template" />,
+                    onSelect: () => void chooseTemplate(),
+                  },
+                  {
+                    label: "今日のノート",
+                    icon: <MenuIcon name="noteNew" />,
+                    onSelect: () => void handleDailyNote(),
+                  },
+                ]}
+              />
+            </ContextMenu>
           )}
           {noteMenu !== null &&
             (() => {

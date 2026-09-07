@@ -14,6 +14,7 @@ function setup(over: Partial<ListControlsProps> = {}) {
     showSort: true,
     newTitle: "「仕事」の中に作る",
     onNew: vi.fn(),
+    onNewMenu: vi.fn(),
     ...over,
   };
   const view = render(<ListControls {...props} />);
@@ -40,9 +41,22 @@ describe("ListControls", () => {
   test("test_「＋ 新規」は置き場所を title で見せ_押すと知らせる", () => {
     const { props } = setup();
     const button = screen.getByRole("button", { name: "＋ 新規" });
-    expect(button.getAttribute("title")).toBe("「仕事」の中に作る");
+    expect(button.getAttribute("title")).toBe(
+      "「仕事」の中に作る（右クリックで作り方を選べます）",
+    );
     fireEvent.click(button);
     expect(props.onNew).toHaveBeenCalledTimes(1);
+  });
+
+  test("test_「＋ 新規」の右クリックは OS のメニューを出さず親に場所を知らせる", () => {
+    const { props } = setup();
+    const allowed = fireEvent.contextMenu(
+      screen.getByRole("button", { name: "＋ 新規" }),
+      { clientX: 12, clientY: 34 },
+    );
+    expect(allowed).toBe(false);
+    expect(props.onNewMenu).toHaveBeenCalledWith({ x: 12, y: 34 });
+    expect(props.onNew).not.toHaveBeenCalled(); // 右で無題は作らない
   });
 
   test("test_並び順が要らないとき（ゴミ箱・検索中）も「＋ 新規」は残る", () => {

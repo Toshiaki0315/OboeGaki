@@ -11,7 +11,11 @@ export type ListControlsProps = {
   showSort: boolean;
   /// 「＋ 新規」の置き場所の説明（title に出す）
   newTitle: string;
+  /// 左クリック: 無題のノートを作る
   onNew: () => void;
+  /// 右クリック: 作り方を選ぶメニュー（テンプレートから・今日のノート）を
+  /// 押した場所に出す（要望 2026-09-07）
+  onNewMenu: (at: { x: number; y: number }) => void;
 };
 
 export function ListControls({
@@ -20,6 +24,7 @@ export function ListControls({
   showSort,
   newTitle,
   onNew,
+  onNewMenu,
 }: ListControlsProps) {
   return (
     <div className="sort-row">
@@ -32,7 +37,15 @@ export function ListControls({
           <option value="title">名前順</option>
         </select>
       )}
-      <button className="new-note-button" title={newTitle} onClick={onNew}>
+      <button
+        className="new-note-button"
+        title={`${newTitle}（右クリックで作り方を選べます）`}
+        onClick={onNew}
+        onContextMenu={(event) => {
+          event.preventDefault(); // OS の既定のメニューを出さない
+          onNewMenu({ x: event.clientX, y: event.clientY });
+        }}
+      >
         ＋ 新規
       </button>
     </div>
