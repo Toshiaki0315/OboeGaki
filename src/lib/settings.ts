@@ -15,7 +15,6 @@ export type Theme = "system" | "light" | "dark";
 /// 一覧とサイドバーの行間（参照実装 LineSpacing）。px では持たない —
 /// 名前で選ばせて、実際の余白は対応表が決める。
 export type LineSpacing = "tight" | "normal" | "relaxed";
-/// 文字の読み取り（OCR）。今は macOS の Vision だけ（ADR-0041）。
 /// 文字の読み取りの読み手（ADR-0027 決定 1）。既定は macOS の Vision
 /// （速くて正確）。ローカルLLM は画像を読めるモデルを選べる人向け
 export type OcrEngine = "mac" | "llm";

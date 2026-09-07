@@ -65,7 +65,7 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem } from "./lib/note-path";
-import { ocrReaderFrom } from "./lib/ocr";
+import { ocrFailureText, ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
   folderLabel,
@@ -125,7 +125,7 @@ import {
 } from "./lib/pptx-settings";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
 import { toMarkdown } from "./lib/imported";
-import { OCR_THRESHOLD, pdfPages } from "./lib/pdf-import";
+import { fillBlankPages, pdfPages } from "./lib/pdf-import";
 import {
   clampFontSize,
   DEFAULT_FONT_PX,
@@ -770,29 +770,29 @@ function App() {
   /// 「印刷 → PDF」や取り込んだ紙）では pdf.js が 1 ページも返さないことが
   /// あり、そのときページの並びが空だと**読み取りに一度も回らないまま
   /// 「文字を取り出せませんでした」で終わる**（実機報告 2026-09-05）。
+  /// PDF のページの文字。文字の無いページだけ読み取りに回す（ADR-0027 追記）。
+  /// 読み取りに失敗したページは空のまま残し、**読めたページは捨てない**。
+  /// 失敗があれば知らせの文を返す
   async function readPdfPages(bytes: Uint8Array, data: string) {
     const pages = await pdfPages(bytes);
     const count =
       pages.length || (await invoke<number>("pdf_page_count", { data }));
-    const found: string[] = [];
-    for (let index = 0; index < count; index++) {
-      const page = pages[index] ?? "";
-      if (page.trim().length >= OCR_THRESHOLD) {
-        found.push(page); // 速くて正確なほうを黙って捨てない
-        continue;
-      }
-      setStatus(`文字を読み取っています… ${index + 1}/${count} ページ`);
-      // **絵にするのも Rust の仕事**（同じ機械の中で完結させる）
-      const read = await ocrPdfPage(
-        data,
-        index + 1,
-        ocrReaderFrom(settingsRef.current),
-      );
-      // **読み取りが元より短ければ捨てる**（外すこともあるので、短くても
-      // 本物の文字が入っているページを潰さない）
-      found.push(read.trim().length > page.trim().length ? read : page);
-    }
-    return found;
+    const reader = ocrReaderFrom(settingsRef.current);
+    // **絵にするのも Rust の仕事**（同じ機械の中で完結させる）
+    const found = await fillBlankPages(
+      pages,
+      count,
+      (page) => ocrPdfPage(data, page, reader),
+      (page, total) =>
+        setStatus(`文字を読み取っています… ${page}/${total} ページ`),
+    );
+    const trouble =
+      found.failed > 0
+        ? `${found.failed} ページを読み取れませんでした — ${
+            ocrFailureText(found.error) ?? String(found.error)
+          }`
+        : null;
+    return { texts: found.texts, trouble };
   }
 
   /// PowerPoint を読み込んでノートにする（TASKS 4-5 / F-3）。
@@ -826,13 +826,16 @@ function App() {
       const title = name.replace(/\.(pptx|pdf)$/i, "");
       // 形式ごとに読み方は違うが、**整えるのは同じ**（lib/imported.ts）
       let markdown: string;
+      let trouble: string | null = null; // 読み取れなかったページの知らせ
       if (/\.(png|jpe?g|heic|tiff?)$/i.test(name)) {
         markdown = toMarkdown(
           [await ocrImage(data, ocrReaderFrom(settingsRef.current))],
           title,
         );
       } else if (/\.pdf$/i.test(name)) {
-        markdown = toMarkdown(await readPdfPages(bytes, data), title);
+        const read = await readPdfPages(bytes, data);
+        markdown = toMarkdown(read.texts, title);
+        trouble = read.trouble;
       } else {
         markdown = slidesToMarkdown(title, await readPptx(bytes));
       }
@@ -850,9 +853,14 @@ function App() {
       );
       await refresh();
       await openNote(path);
-      setStatus("読み込みました（見た目は戻りません。手で整えてください）");
+      setStatus(
+        trouble ?? "読み込みました（見た目は戻りません。手で整えてください）",
+      );
     } catch (error) {
-      setStatus(`読み込めませんでした: ${String(error)}`);
+      // 読み取りの失敗は人の言葉で（ADR-0027 決定 4）。それ以外はそのまま
+      setStatus(
+        ocrFailureText(error) ?? `読み込めませんでした: ${String(error)}`,
+      );
     }
   }
 

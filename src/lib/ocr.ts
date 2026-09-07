@@ -25,3 +25,21 @@ export function ocrReaderFrom(settings: Settings): OcrReader {
     keepAlive: settings.llmKeepAlive,
   };
 }
+
+/// 読み取りの失敗を人の言葉にする（ADR-0027 決定 4:「読み取りできません」
+/// と出す）。Rust の LlmError の表示（not-running / timed-out / failed: …）
+/// を受ける。読み取りと関係ない失敗なら null（呼び出し側の言葉で）
+export function ocrFailureText(error: unknown): string | null {
+  const text = error instanceof Error ? error.message : String(error);
+  if (text.includes("not-running")) {
+    return "読み取りできません: Ollama が動いていません。環境設定の「文字の読み取り」を確かめてください";
+  }
+  if (text.includes("timed-out")) {
+    return "読み取りできません: 時間切れです（環境設定の「応答待ち時間」を延ばせます）";
+  }
+  const failed = text.indexOf("failed: ");
+  if (failed >= 0) {
+    return `読み取りできません: ${text.slice(failed + "failed: ".length)}`;
+  }
+  return null;
+}

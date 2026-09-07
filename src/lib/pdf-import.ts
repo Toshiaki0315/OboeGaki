@@ -58,3 +58,39 @@ function joinItems(items: unknown[]): string {
   }
   return text;
 }
+
+/// 文字の無いページだけを読み取りに回し、ページごとの文字を揃える
+/// （ADR-0027 追記: 切り分けはページごと）。
+///
+/// **読めたページは捨てない。** あるページの読み取りが失敗（Ollama が
+/// 動いていない等）しても、そのページを空のまま残して先へ進む。何ページ
+/// 失敗したかと最初の失敗を返すので、呼び出し側が知らせられる。
+export async function fillBlankPages(
+  pages: readonly string[],
+  count: number,
+  read: (page: number) => Promise<string>,
+  onProgress?: (page: number, count: number) => void,
+): Promise<{ texts: string[]; failed: number; error: unknown }> {
+  const texts: string[] = [];
+  let failed = 0;
+  let error: unknown = null;
+  for (let index = 0; index < count; index++) {
+    const page = pages[index] ?? "";
+    if (page.trim().length >= OCR_THRESHOLD) {
+      texts.push(page); // 速くて正確なほうを黙って捨てない
+      continue;
+    }
+    onProgress?.(index + 1, count);
+    try {
+      const found = await read(index + 1);
+      // **読み取りが元より短ければ捨てる**（外すこともあるので、短くても
+      // 本物の文字が入っているページを潰さない）
+      texts.push(found.trim().length > page.trim().length ? found : page);
+    } catch (caught) {
+      failed += 1;
+      error ??= caught;
+      texts.push(page);
+    }
+  }
+  return { texts, failed, error };
+}
