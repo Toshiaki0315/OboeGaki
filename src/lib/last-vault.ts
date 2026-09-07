@@ -58,3 +58,47 @@ export async function restoreLastVault(
     return null;
   }
 }
+
+// ---- 最後に開いたノート（要望 2026-09-08。参照実装 session/last_note）。
+// 保管フォルダからの相対で覚える — 保管フォルダを動かしても追いかけられ、
+// 別の保管フォルダの記憶を取り違えない。
+
+export const LAST_NOTE_KEY = "oboegaki.last-note";
+
+export function saveLastNote(
+  storage: StorageLike,
+  root: string,
+  path: string,
+): void {
+  const prefix = `${root}/`;
+  const relative = path.startsWith(prefix) ? path.slice(prefix.length) : path;
+  try {
+    storage.setItem(LAST_NOTE_KEY, JSON.stringify({ root, path: relative }));
+  } catch {
+    // 記憶できなくても今開いているノートは生きている
+  }
+}
+
+export function forgetLastNote(storage: StorageLike): void {
+  try {
+    storage.removeItem(LAST_NOTE_KEY);
+  } catch {
+    // 忘れられなくても致命ではない
+  }
+}
+
+/// この保管フォルダで最後に開いていたノート（絶対パス）。記憶が無い・
+/// 別の保管フォルダの記憶・壊れているときは null
+export function lastNoteFor(storage: StorageLike, root: string): string | null {
+  try {
+    const raw = storage.getItem(LAST_NOTE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { root: kept, path } = parsed as { root?: unknown; path?: unknown };
+    if (kept !== root || typeof path !== "string" || !path) return null;
+    return `${root}/${path}`;
+  } catch {
+    return null;
+  }
+}

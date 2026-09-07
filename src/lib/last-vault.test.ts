@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  forgetLastNote,
   isVaultBusy,
+  LAST_NOTE_KEY,
+  lastNoteFor,
   restoreLastVault,
+  saveLastNote,
   saveLastVault,
   VAULT_BUSY,
   VAULT_KEY,
@@ -95,5 +99,53 @@ describe("isVaultBusy", () => {
   it("test_二重起動の断りだけを見分ける", () => {
     expect(isVaultBusy(new Error(`${VAULT_BUSY}: 開いています`))).toBe(true);
     expect(isVaultBusy("開けない")).toBe(false);
+  });
+});
+
+describe("最後に開いたノート（要望 2026-09-08。参照実装 session/last_note）", () => {
+  it("test_保管フォルダからの相対で覚え_同じ保管フォルダなら絶対パスで返す", () => {
+    const storage = fakeStorage();
+    saveLastNote(storage, "/v/notes", "/v/notes/仕事/会議.md");
+    expect(storage.dump()[LAST_NOTE_KEY]).toBe(
+      JSON.stringify({ root: "/v/notes", path: "仕事/会議.md" }),
+    );
+    expect(lastNoteFor(storage, "/v/notes")).toBe("/v/notes/仕事/会議.md");
+  });
+
+  it("test_別の保管フォルダの記憶は使わない", () => {
+    const storage = fakeStorage();
+    saveLastNote(storage, "/v/notes", "/v/notes/a.md");
+    expect(lastNoteFor(storage, "/v/other")).toBeNull();
+  });
+
+  it("test_記憶が無い_壊れていれば null", () => {
+    expect(lastNoteFor(fakeStorage(), "/v/notes")).toBeNull();
+    expect(
+      lastNoteFor(fakeStorage({ [LAST_NOTE_KEY]: "{broken" }), "/v/notes"),
+    ).toBeNull();
+  });
+
+  it("test_忘れると null", () => {
+    const storage = fakeStorage();
+    saveLastNote(storage, "/v/notes", "/v/notes/a.md");
+    forgetLastNote(storage);
+    expect(lastNoteFor(storage, "/v/notes")).toBeNull();
+  });
+
+  it("test_保存先が壊れていても例外を漏らさない", () => {
+    const broken = {
+      getItem: () => {
+        throw new Error("no storage");
+      },
+      setItem: () => {
+        throw new Error("no storage");
+      },
+      removeItem: () => {
+        throw new Error("no storage");
+      },
+    };
+    expect(() => saveLastNote(broken, "/v", "/v/a.md")).not.toThrow();
+    expect(() => forgetLastNote(broken)).not.toThrow();
+    expect(lastNoteFor(broken, "/v")).toBeNull();
   });
 });

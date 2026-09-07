@@ -135,7 +135,10 @@ import {
   zoomActionFor,
 } from "./lib/font-size";
 import {
+  forgetLastNote,
+  lastNoteFor,
   restoreLastVault,
+  saveLastNote,
   saveLastVault,
   vaultErrorText,
 } from "./lib/last-vault";
@@ -267,6 +270,7 @@ function App() {
     onCloseNote: () => {
       selectNote(null);
       setDoc(null);
+      forgetLastNote(localStorage);
     },
     onRecovered: async (written) => {
       if (written[0]) await openNote(written[0]);
@@ -1056,7 +1060,8 @@ function App() {
     return () => media.removeEventListener("change", apply);
   }, [settings.theme]);
 
-  // 開いた vault の**一番上のノートを開く**（要望 2026-09-04）。
+  // 開いた vault で**前回開いていたノート**を開く（要望 2026-09-08）。
+  // 覚えが無い・もう無ければ**一番上のノート**（要望 2026-09-04）。
   //
   // **vault ごとに一度だけ。** 一覧が変わるたびに開き直すと、ノートを
   // 捨てたり絞り込んだりしたときに、勝手に別のノートへ飛んでしまう。
@@ -1065,13 +1070,18 @@ function App() {
   useEffect(() => {
     if (!vaultRoot || currentPath) return;
     if (openedFirstFor.current === vaultRoot) return;
-    const first = sortedNotes[0];
-    if (!first) return; // 空の vault では何もしない
+    const remembered = lastNoteFor(localStorage, vaultRoot);
+    const target =
+      remembered && notes.some((entry) => entry.path === remembered)
+        ? remembered
+        : sortedNotes[0]?.path;
+    if (!target) return; // 空の vault では何もしない
+    if (remembered && target !== remembered) forgetLastNote(localStorage);
     openedFirstFor.current = vaultRoot;
-    void openNote(first.path);
+    void openNote(target);
     // openNote は毎描画で作り直されるが、開くかどうかは上の条件で決まる
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultRoot, currentPath, sortedNotes]);
+  }, [vaultRoot, currentPath, notes, sortedNotes]);
 
   // 前回の vault を開き直す（TASKS 1-1）。覚えが無ければ既定の場所を開く
   // （ADR-0032 決定 3）。開けなければ黙って選択画面のまま
@@ -1108,6 +1118,7 @@ function App() {
       return;
     }
     selectNote(path);
+    saveLastNote(localStorage, vaultRoot, path); // 次回の起動で開き直す
     setInitialCursor(cursor);
     setDoc(text);
     sync.markOpened();
@@ -1340,6 +1351,7 @@ function App() {
     if (path === currentPath) {
       selectNote(null);
       setDoc(null);
+      forgetLastNote(localStorage);
     }
     setStatus("");
   }
