@@ -277,7 +277,10 @@ export const imageResolver = Facet.define<ImageResolver, ImageResolver>({
 // 遠隔参照は絵にしない（参照実装 core/paths.py の REMOTE_SCHEMES と同じ）
 const REMOTE_RE = /^(https?:|data:)/i;
 
-class ImageWidget extends WidgetType {
+/// 本文の画像。`![説明](…)` の説明は画像の下にキャプションとして出し、
+/// 載せたときの Tip にも入れる（要望 2026-09-08。PPTX 書き出しの「画像の
+/// 下に説明を出す」と同じ見せ方）。テストのために export する。
+export class ImageWidget extends WidgetType {
   constructor(
     readonly url: string,
     readonly alt: string,
@@ -304,13 +307,21 @@ class ImageWidget extends WidgetType {
       const image = document.createElement("img");
       image.src = src;
       image.alt = this.alt;
+      image.title = this.alt; // 載せたときの Tip
       // 大きさ指定（6-8）。**幅だけのときは縦を自動に**（形が崩れない）
       if (this.width !== undefined) {
         image.style.width = `${this.width}px`;
         image.style.height =
           this.height === undefined ? "auto" : `${this.height}px`;
       }
-      holder.replaceChildren(image);
+      if (this.alt) {
+        const caption = document.createElement("span");
+        caption.className = "cm-image-caption";
+        caption.textContent = this.alt;
+        holder.replaceChildren(image, caption);
+      } else {
+        holder.replaceChildren(image);
+      }
       // 画像の高さが後から確定するので、行レイアウトを測り直させる
       view.requestMeasure();
     });

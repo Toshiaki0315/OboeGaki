@@ -863,6 +863,25 @@ body.resizing {
   font-variant-numeric: tabular-nums;
 }
 
+/* 本文の画像の説明（要望 2026-09-08）。絵の下に小さく、中央に。
+   **説明があるときだけ**絵をブロックにする — 文中の小さな絵（説明なし）の
+   行を割らない */
+.cm-image-widget:has(.cm-image-caption) {
+  display: inline-block;
+  max-width: 100%;
+  text-align: center;
+}
+.cm-image-widget:has(.cm-image-caption) img {
+  max-width: 100%;
+  display: block;
+}
+.cm-image-caption {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
 /* 文体の指摘（U-4）。指摘した文字と、どう書けるかを並べる */
 .palette li button .style-text {
   display: block;
