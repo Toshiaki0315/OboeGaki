@@ -4,8 +4,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+const unlisten = vi.fn();
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(unlisten)),
+}));
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   historyUsage,
   imageSource,
@@ -16,10 +21,12 @@ import {
   llmStop,
   llmUnload,
   saveAttachment,
+  subscribeVaultChanged,
   toEntry,
 } from "./ipc";
 
 const invoked = vi.mocked(invoke);
+const listened = vi.mocked(listen);
 
 beforeEach(() => {
   invoked.mockReset();
@@ -146,5 +153,22 @@ describe("LLM の包み", () => {
     ]);
     expect(invoked).toHaveBeenCalledWith("llm_loaded", { port: 1, model: "m" });
     expect(invoked).toHaveBeenCalledWith("history_usage", { root: "/v" });
+  });
+});
+
+describe("subscribeVaultChanged", () => {
+  test("test_vault-changed の payload を渡し_外すと止まる", async () => {
+    const seen: unknown[] = [];
+    const stop = subscribeVaultChanged((change) => seen.push(change));
+    await Promise.resolve();
+    const registered = listened.mock.calls.find(
+      (c) => c[0] === "vault-changed",
+    );
+    expect(registered).toBeTruthy();
+    const handler = registered![1] as (e: { payload: unknown }) => void;
+    handler({ payload: { path: "/v/a.md", kind: "modified" } });
+    expect(seen).toEqual([{ path: "/v/a.md", kind: "modified" }]);
+    stop();
+    expect(unlisten).toHaveBeenCalled();
   });
 });

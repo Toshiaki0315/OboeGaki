@@ -18,6 +18,7 @@ import {
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { useAssistant } from "./hooks/useAssistant";
+import { useNoteSync } from "./hooks/useNoteSync";
 import { useSearch } from "./hooks/useSearch";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
@@ -142,14 +143,12 @@ import {
 } from "./lib/settings";
 import type { SortOrder } from "./lib/note-order";
 import {
-  conflictCopy,
   createNote,
   deleteForever,
   emptyTrash,
   historyList,
   historyUsage,
   llmModels,
-  clearRecovery,
   createFolder,
   duplicateNote,
   registerTemplate,
@@ -159,15 +158,10 @@ import {
   linkMap,
   moveNote,
   noteBacklinks,
-  noteExists,
-  pendingRecovery,
   renameFolder,
-  restoreRecovery,
-  stashNote,
   syncIndex,
   trashAttachments,
   unusedAttachments,
-  discardStash,
   historyRestore,
   imageSource,
   placeManual,
@@ -189,13 +183,6 @@ import "./App.css";
 // Phase 1 の骨格 UI: フォルダを開く → ノート一覧 → 編集 → 800ms 自動保存 →
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
 
-const AUTOSAVE_DELAY_MS = 800; // spec §7.4
-/// 退避の間隔（H-1）。打つたびに書くとディスクを叩きすぎるので間を空ける。
-/// 自動保存が 800ms で走るのでここまで来ることは少ないが、**打ち続けて
-/// いる間**（デバウンスが伸び続ける）と保存できない状態の保険になる
-const STASH_INTERVAL_MS = 2000;
-
-/// バイト数の見せ方（設定画面の「履歴の使用量」）。
 function App() {
   const {
     vaultRoot,
@@ -210,16 +197,12 @@ function App() {
   } = useAppStore();
   const [doc, setDoc] = useState<string | null>(null);
   const [status, setStatus] = useState("");
-  const autosave = useMemo(() => createDebouncer(AUTOSAVE_DELAY_MS), []);
-  // flush 時に「どのノートの内容か」を取り違えないよう、保存関数ごと持つ
-  const pendingSave = useRef<(() => Promise<void>) | null>(null);
   const editorRef = useRef<EditorHandle>(null);
-  // 外部変更イベントのハンドラは一度だけ登録するので、最新値は ref で読む
+  // メニューのハンドラは一度だけ登録するので、最新値は ref で読む
   const vaultRootRef = useRef(vaultRoot);
   vaultRootRef.current = vaultRoot;
   const currentPathRef = useRef(currentPath);
   currentPathRef.current = currentPath;
-  const dirtyRef = useRef(false); // 保存されていない編集があるか
   // 検索・絞り込み・並び順は hook に（ADR-0049）。欄のフォーカスと
   // 「検索を保存」の窓だけをここで持つ
   const search = useSearch({
@@ -263,6 +246,25 @@ function App() {
   );
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  // 自動保存・退避・外部変更・競合は hook に（ADR-0049）。本文はエディタ
+  // から手で読み書きし、hook は EditorView を持たない
+  const sync = useNoteSync({
+    vaultRoot,
+    currentPath,
+    historyMinutes: settings.historyMinutes,
+    readText: () => editorRef.current?.getText() ?? "",
+    replaceText: (text) => editorRef.current?.replaceText(text),
+    onStatus: setStatus,
+    refreshLists: refresh,
+    onCloseNote: () => {
+      selectNote(null);
+      setDoc(null);
+    },
+    onRecovered: async (written) => {
+      if (written[0]) await openNote(written[0]);
+    },
+  });
+  const { savedAt } = sync;
   // 環境設定ダイアログ（components/PreferencesDialog）。**開閉だけ**をここで
   // 持ち、タブやキャンセル用のスナップショットはダイアログの中で閉じる
   const [preferences, setPreferences] = useState(false);
@@ -498,7 +500,7 @@ function App() {
       // クリックのたびに 2 つ目のノートができる（レビュー 2026-09-04）
       const created = noteStem(path);
       editorRef.current?.replaceSelection(`[[${created}]]`);
-      await autosave.flush();
+      await sync.flush();
       await refresh();
       setStatus(`「${created}」に切り出しました`);
     } catch (error) {
@@ -508,7 +510,7 @@ function App() {
 
   async function handleDuplicate(path: string) {
     if (!vaultRoot) return;
-    await autosave.flush(); // 打ちかけを書き切ってから写す
+    await sync.flush(); // 打ちかけを書き切ってから写す
     try {
       const copy = await duplicateNote(vaultRoot, path);
       await refresh();
@@ -681,7 +683,7 @@ function App() {
     if (forPdf) {
       setStatus("印刷の窓の左下［PDF］から「PDF として保存」を選べます");
     }
-    await autosave.flush(); // 保存前の本文を刷らない
+    await sync.flush(); // 保存前の本文を刷らない
     const text = await readNote(vaultRoot, currentPath);
     const body = renderBody(
       text,
@@ -695,7 +697,7 @@ function App() {
   /// **ざっくり作って手で整える**前提。割り方は lib/slides.ts が決める。
   async function handleExportPptx() {
     if (!vaultRoot || !currentPath) return;
-    await autosave.flush(); // 保存前の本文を書き出さない
+    await sync.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
     const target = await save({
@@ -845,7 +847,7 @@ function App() {
 
   async function handleExport() {
     if (!vaultRoot || !currentPath) return;
-    await autosave.flush(); // 保存前の本文を書き出さない
+    await sync.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
     const html = await embedImages(
@@ -884,7 +886,7 @@ function App() {
 
   async function openHistory() {
     if (!vaultRoot || !currentPath) return;
-    await autosave.flush(); // 未保存分を書き切ってから一覧を出す
+    await sync.flush(); // 未保存分を書き切ってから一覧を出す
     try {
       setHistoryEntries(await historyList(vaultRoot, currentPath));
     } catch (error) {
@@ -897,7 +899,7 @@ function App() {
     // **予約は聞く前に破棄する。** 確認ダイアログ中や書き戻しの直後に
     // 自動保存が発火すると、戻したはずの版が今の本文で潰れる
     //（レビュー 2026-09-04。openHistory が書き切っているので失うものは無い）
-    autosave.cancel();
+    sync.cancel();
     const ok = await confirm(
       `${entry.stamp} の版に戻しますか？\n（今の内容も履歴に残ります）`,
       { title: APP_NAME, kind: "warning" },
@@ -910,9 +912,7 @@ function App() {
       setStatus(`版を戻せませんでした: ${String(error)}`);
       return;
     }
-    pendingSave.current = null;
-    dirtyRef.current = false;
-    editorRef.current?.replaceText(text);
+    sync.adopt(text);
     setHistoryEntries(null);
     setStatus(`${entry.stamp} の版に戻しました`);
   }
@@ -940,7 +940,6 @@ function App() {
   // （全文の走査は 16ms の予算を食う）。打ち終わってからまとめて数える
   const [stats, setStats] = useState<TextStats>({ characters: 0, lines: 0 });
   const statsSoon = useMemo(() => createDebouncer(300), []);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   function toggleOutline() {
     const next = togglePane(rightPane, "outline");
@@ -964,7 +963,7 @@ function App() {
   async function chooseVault() {
     const picked = await open({ directory: true });
     if (typeof picked !== "string") return;
-    await autosave.flush(); // 前の vault の未保存分を書き切ってから移る
+    await sync.flush(); // 前の vault の未保存分を書き切ってから移る
     try {
       await openVault(picked, settingsRef.current.trashDays);
     } catch (error) {
@@ -990,7 +989,7 @@ function App() {
     currentPath,
     notes,
     settings,
-    flushEdits: () => autosave.flush(),
+    flushEdits: () => sync.flush(),
     noteText: () => editorRef.current?.getText() ?? "",
     onStatus: setStatus,
   });
@@ -1078,37 +1077,9 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 前回の未保存内容があれば知らせる（H-1）。**勝手には復元しない** —
-  // 復元は別ファイルとして書き出すので、要らないものが増えては困る
-  useEffect(() => {
-    if (!vaultRoot) return;
-    let alive = true;
-    void pendingRecovery(vaultRoot)
-      .then((found) => {
-        if (alive) setRecovery(found.length);
-      })
-      .catch(() => {}); // 退避が読めないせいで起動を止めない
-    return () => {
-      alive = false;
-    };
-  }, [vaultRoot]);
-
-  async function handleRecovery(restore: boolean) {
-    if (!vaultRoot) return;
-    setRecovery(0);
-    if (!restore) {
-      await clearRecovery(vaultRoot);
-      return;
-    }
-    const written = await restoreRecovery(vaultRoot);
-    await refresh();
-    if (written[0]) await openNote(written[0]);
-    setStatus(`未保存の内容を ${written.length} 件、別ファイルに復元しました`);
-  }
-
   async function openNote(path: string, cursor: number | null = null) {
     if (!vaultRoot) return;
-    await autosave.flush(); // 前のノートの未保存分を書き切ってから切り替える
+    await sync.flush(); // 前のノートの未保存分を書き切ってから切り替える
     let text: string;
     try {
       text = await readNote(vaultRoot, path);
@@ -1120,9 +1091,8 @@ function App() {
     selectNote(path);
     setInitialCursor(cursor);
     setDoc(text);
-    dirtyRef.current = false;
+    sync.markOpened();
     setStatus("");
-    setSavedAt(null);
     setPrintBody(null); // 前のノートの印刷用の組みは捨てる（ADR-0038）
   }
 
@@ -1209,7 +1179,7 @@ function App() {
             `${vaultRoot}/${dialog.folder}/`,
             `${vaultRoot}/${renamed}/`,
           );
-          await autosave.flush();
+          await sync.flush();
           await openNote(moved);
         }
         if (folderFilter === dialog.folder) filterByFolder(renamed);
@@ -1261,7 +1231,7 @@ function App() {
   async function handleDropOnFolder(path: string, folder: string) {
     if (!vaultRoot || !canDropInto(vaultRoot, path, folder)) return;
     const open = path === currentPath;
-    if (open) await autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    if (open) await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const moved = await moveNote(vaultRoot, path, folder);
       await refresh();
@@ -1283,7 +1253,7 @@ function App() {
     if (!vaultRoot || !path) return;
     setMoveOpen(false);
     setMoveTarget(null);
-    await autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const moved = await moveNote(vaultRoot, path, folder);
       await refresh();
@@ -1303,7 +1273,7 @@ function App() {
     const trimmed = title.trim();
     if (!trimmed || trimmed === noteStem(currentPath)) return;
     renaming.current = true;
-    await autosave.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const renamed = await renameNote(vaultRoot, currentPath, trimmed);
       await refresh();
@@ -1333,8 +1303,7 @@ function App() {
     if (!ok) return;
     // 捨てるのが開いているノートなら、保存予約も破棄する
     if (path === currentPath) {
-      autosave.cancel();
-      pendingSave.current = null;
+      sync.dropPending();
     }
     try {
       await trashNote(vaultRoot, path);
@@ -1356,7 +1325,7 @@ function App() {
     const path = target ?? currentPath;
     if (!vaultRoot || !path) return;
     const current = notes.find((entry) => entry.path === path);
-    await autosave.flush(); // 未保存分を書き切ってから front matter を触る
+    await sync.flush(); // 未保存分を書き切ってから front matter を触る
     let text: string;
     try {
       text = await pinNote(vaultRoot, path, !current?.pinned);
@@ -1366,8 +1335,7 @@ function App() {
     }
     // 開いているノートなら、書き換わった front matter を読み直す
     if (path === currentPath) {
-      dirtyRef.current = false;
-      editorRef.current?.replaceText(text);
+      sync.adopt(text);
     }
     await refresh();
     setStatus(current?.pinned ? "ピンを外しました" : "ピン留めしました");
@@ -1630,63 +1598,8 @@ function App() {
     await refresh();
   }
 
-  // 退避してあるノート（保存できたら捨てに行くため覚えておく）
-  const stashed = useRef(new Set<string>());
-  const lastStash = useRef(0);
-
-  async function keepStash(root: string, path: string, text: string) {
-    try {
-      await stashNote(root, path, text);
-      stashed.current.add(path);
-    } catch (error) {
-      // 退避に失敗しても編集は続けられる。ここで止めない
-      console.warn("未保存内容の退避に失敗した", error);
-    }
-  }
-
   function handleDocChanged(getText: () => string) {
-    if (!vaultRoot || !currentPath) return;
-    const root = vaultRoot;
-    const path = currentPath;
-    dirtyRef.current = true;
-    setStatus("未保存");
-    pendingSave.current = async () => {
-      await writeNote(
-        root,
-        path,
-        getText(),
-        settingsRef.current.historyMinutes,
-      );
-      // 完了する頃には別のノートが開いているかもしれない。共有の
-      // dirty と表示を触るのは**今もそのノートを開いているときだけ**
-      //（レビュー 2026-09-04: 取り違えると次の外部変更が「未編集」と
-      // 判定され、打ったばかりの内容が静かにリロードで消える）
-      if (currentPathRef.current === path) {
-        dirtyRef.current = false;
-        setStatus("保存済み");
-        setSavedAt(Date.now());
-      }
-      // 書けたので保険は要らない。**退避したときだけ**捨てに行く
-      // （毎回の保存でディスクを余分に叩かない）
-      if (stashed.current.delete(path)) void discardStash(root, path);
-    };
-    // 打ち続けている間はデバウンスが伸びて保存が走らない。その間も
-    // 一定の間隔で退避しておく（H-1）
-    const now = Date.now();
-    if (now - lastStash.current >= STASH_INTERVAL_MS) {
-      lastStash.current = now;
-      void keepStash(root, path, getText());
-    }
-    autosave.schedule(async () => {
-      // Promise を返す（= flush が完了を待てる）。失敗はここで受け止める
-      await pendingSave.current?.().catch((error) => {
-        if (currentPathRef.current === path) {
-          setStatus(`保存に失敗: ${String(error)}`);
-        }
-        // 保存できないまま落ちても書いたものを失わない（H-1）
-        void keepStash(root, path, getText());
-      });
-    });
+    sync.noteChanged(getText);
     if (outlineOpenRef.current) {
       outlineSoon.schedule(() =>
         setOutlineItems(editorRef.current?.getOutline() ?? []),
@@ -1703,14 +1616,6 @@ function App() {
     statsSoon.cancel();
     setStats(editorRef.current?.getStats() ?? { characters: 0, lines: 0 });
   }, [doc, currentPath, statsSoon]);
-
-  // アンマウント時（ウィンドウを閉じる直前の React 破棄）にも書き切る
-  useEffect(
-    () => () => {
-      void autosave.flush(); // 完了は待てない（React の破棄は同期）
-    },
-    [autosave],
-  );
 
   // グローバルショートカット（spec §5.4）。ハンドラは一度だけ登録し、
   // 最新の状態は ref 経由で読む
@@ -1760,7 +1665,7 @@ function App() {
     resync: () => void handleSync(false),
     "rebuild-index": () => void handleSync(true),
     "cleanup-attachments": () => void handleCleanupAttachments(),
-    save: () => autosave.flush(),
+    save: () => sync.flush(),
     "export-html": () => void handleExport(),
     "export-pptx": () => void handleExportPptx(),
     "export-pdf": () => void handlePrint(true),
@@ -1831,7 +1736,7 @@ function App() {
     if (!vaultRoot) return;
     // **書きかけの本文も数える。** 先に保存しないと、貼ったばかりの画像が
     // 「どこからも指されていない」ことになって消える
-    await autosave.flush();
+    await sync.flush();
     const found = await unusedAttachments(vaultRoot);
     if (found.length === 0) {
       setStatus("どの添付もノートから使われています");
@@ -1857,7 +1762,7 @@ function App() {
   /// （走査は保存済みのものを読む）。
   async function handleSync(full: boolean) {
     if (!vaultRoot) return;
-    await autosave.flush();
+    await sync.flush();
     const started = await syncIndex(vaultRoot, full);
     if (!started) {
       setStatus("いま同期しています。終わるまでお待ちください");
@@ -1928,151 +1833,6 @@ function App() {
       .then((ms) => console.info(`起動 → UI マウント: ${ms}ms`))
       .catch(() => {}); // Tauri 外（素のブラウザ）では黙って無視
   }, []);
-
-  // 外部変更（spec §7.5）。一覧は少し待ってまとめて更新し、開いている
-  // ノートは未編集なら静かにリロード、編集中なら確認を挟む
-  const refreshSoon = useMemo(() => createDebouncer(300), []);
-  useEffect(() => {
-    const unlisten = safeSubscribe(() =>
-      listen<{ path: string; kind: string }>(
-        "vault-changed",
-        (event) => void handleExternalChange(event.payload),
-      ),
-    );
-    return unlisten;
-    // eslint 相当の依存警告は無い構成だが、意図として登録は一度だけ。
-    // ハンドラが読む値はすべて ref 経由
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function handleExternalChange(change: { path: string; kind: string }) {
-    if (!vaultRootRef.current) return;
-    refreshSoon.schedule(() =>
-      useAppStore
-        .getState()
-        .refresh()
-        .catch((error) =>
-          setStatus(`一覧を更新できませんでした: ${String(error)}`),
-        ),
-    );
-    if (change.path !== currentPathRef.current) return;
-    if (change.kind === "removed") {
-      // 改名・ゴミ箱移動の途中経過でも届くので、**本当に無いときだけ聞く**
-      const root = vaultRootRef.current;
-      const gone = !(await noteExists(root, change.path));
-      if (!gone) return;
-      // **自動保存を止める。** 止めないと、聞いている間に予約が起きて
-      // 消えたファイルを黙って作り直してしまう
-      autosave.cancel();
-      // 聞いている間は保存できない状態。書いたものは退避しておく（H-1）
-      void keepStash(root, change.path, editorRef.current?.getText() ?? "");
-      setDeleted(change.path);
-      return;
-    }
-    const root = vaultRootRef.current;
-    const text = await readNote(root, change.path);
-    if (!dirtyRef.current) {
-      editorRef.current?.replaceText(text); // 静かにリロード（キャレット維持）
-      return;
-    }
-    // 競合。3 択（外部 / 自分 / 両方残す = spec §7.5）をアプリ内の
-    // ダイアログで聞く（ネイティブの ask は 2 択しかできない）。
-    // **予約は先に破棄する** — 残したまま聞くと、答える前に自動保存が
-    // 発火して自分の版で外部の変更を潰す（レビュー 2026-09-04）
-    autosave.cancel();
-    setConflict({ path: change.path, externalText: text });
-    // 競合の解決を待つ間は保存できない。**その間も保険は要る**（H-1）
-    void keepStash(root, change.path, editorRef.current?.getText() ?? "");
-  }
-
-  // 競合ダイアログ（spec §7.5）
-  const [conflict, setConflict] = useState<{
-    path: string;
-    externalText: string;
-  } | null>(null);
-
-  // 前回の未保存内容（クラッシュ退避 / H-1）。0 件なら聞かない
-  const [recovery, setRecovery] = useState<number>(0);
-
-  // 開いているノートが外で消された（spec §7.5）
-  const [deleted, setDeleted] = useState<string | null>(null);
-
-  /// 編集中の内容で作り直す。
-  async function recreateDeleted() {
-    const path = deleted;
-    if (!vaultRoot || !path) return;
-    setDeleted(null);
-    const text = editorRef.current?.getText() ?? "";
-    try {
-      await writeNote(
-        vaultRoot,
-        path,
-        text,
-        settingsRef.current.historyMinutes,
-      );
-      dirtyRef.current = false;
-      if (stashed.current.delete(path)) void discardStash(vaultRoot, path);
-      await refresh();
-      setStatus("編集中の内容で作り直しました");
-    } catch (error) {
-      setStatus(`作り直せませんでした: ${String(error)}`);
-    }
-  }
-
-  /// 作り直さずに閉じる。**本文だけ消すのでは足りない** — 題名や
-  /// 未保存の予約に消えたノートが残ると、表示が嘘をつく。
-  function closeDeleted() {
-    setDeleted(null);
-    autosave.cancel();
-    pendingSave.current = null;
-    dirtyRef.current = false;
-    selectNote(null);
-    setDoc(null);
-    setStatus("外部で削除されたので閉じました（退避は残してあります）");
-  }
-
-  function adoptExternal(text: string) {
-    autosave.cancel();
-    pendingSave.current = null;
-    dirtyRef.current = false;
-    editorRef.current?.replaceText(text);
-  }
-
-  async function resolveConflict(choice: "external" | "mine" | "both") {
-    if (!conflict || !vaultRoot) return;
-    const found = conflict;
-    setConflict(null);
-    // どの道を選んでも「保存できない状態」は終わる。保険は捨てる
-    if (stashed.current.delete(found.path)) {
-      void discardStash(vaultRoot, found.path);
-    }
-    if (choice === "external") {
-      adoptExternal(found.externalText);
-      setStatus("外部の変更を読み込みました");
-      return;
-    }
-    if (choice === "mine") {
-      // flush は予約が無いと何もしない（保存が一度失敗した後など）。
-      // 予約の有無に関わらず、必ず今の本文を書く（レビュー 2026-09-04）
-      await autosave.flush();
-      if (dirtyRef.current) {
-        try {
-          await pendingSave.current?.();
-        } catch (error) {
-          setStatus(`保存に失敗: ${String(error)}`);
-          return;
-        }
-      }
-      setStatus("自分の版で上書きしました");
-      return;
-    }
-    // 両方残す: 自分の版を競合コピーへ、このノートは外部の版に
-    const mine = editorRef.current?.getText() ?? "";
-    const copy = await conflictCopy(vaultRoot, found.path, mine);
-    adoptExternal(found.externalText);
-    await refresh();
-    setStatus(`自分の版を「${noteLabel(vaultRoot, copy)}」に残しました`);
-  }
 
   if (!vaultRoot) {
     return (
@@ -2515,18 +2275,18 @@ function App() {
               onClose={() => setTableDialog(false)}
             />
           )}
-          {recovery > 0 && (
+          {sync.recovery > 0 && (
             <ChoiceDialog
               title="保存されていない変更が見つかりました"
-              text={`前回終了したときに保存されていない変更が ${recovery} 件あります。別のファイルとして復元しますか？（今あるノートは書き換えません）`}
+              text={`前回終了したときに保存されていない変更が ${sync.recovery} 件あります。別のファイルとして復元しますか？（今あるノートは書き換えません）`}
               choices={[
                 {
                   label: "復元しない",
-                  onChoose: () => void handleRecovery(false),
+                  onChoose: () => void sync.handleRecovery(false),
                 },
                 {
                   label: "復元する",
-                  onChoose: () => void handleRecovery(true),
+                  onChoose: () => void sync.handleRecovery(true),
                 },
               ]}
             />
@@ -2986,31 +2746,34 @@ function App() {
               onClose={() => setTemplateName(null)}
             />
           )}
-          {deleted !== null && (
+          {sync.deleted !== null && (
             <ChoiceDialog
               title="ファイルが削除されました"
-              text={`「${noteStem(deleted)}」は外部で削除されました。編集中の内容で作り直しますか？`}
+              text={`「${noteStem(sync.deleted)}」は外部で削除されました。編集中の内容で作り直しますか？`}
               choices={[
-                { label: "閉じる", onChoose: closeDeleted },
-                { label: "作り直す", onChoose: () => void recreateDeleted() },
+                { label: "閉じる", onChoose: sync.closeDeleted },
+                {
+                  label: "作り直す",
+                  onChoose: () => void sync.recreateDeleted(),
+                },
               ]}
             />
           )}
-          {conflict !== null && (
+          {sync.conflict !== null && (
             <ChoiceDialog
               title="このノートは外部でも変更されています。どうしますか？"
               choices={[
                 {
                   label: "外部の変更を採用（自分の編集を捨てる）",
-                  onChoose: () => void resolveConflict("external"),
+                  onChoose: () => void sync.resolveConflict("external"),
                 },
                 {
                   label: "自分の版で上書き（外部の変更を捨てる）",
-                  onChoose: () => void resolveConflict("mine"),
+                  onChoose: () => void sync.resolveConflict("mine"),
                 },
                 {
                   label: "両方残す（自分の版を「名前 (競合 日付)」に保存）",
-                  onChoose: () => void resolveConflict("both"),
+                  onChoose: () => void sync.resolveConflict("both"),
                 },
               ]}
             />

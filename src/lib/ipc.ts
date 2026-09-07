@@ -496,3 +496,15 @@ export function subscribeLlm(handlers: {
 export function historyUsage(root: string): Promise<number> {
   return invoke<number>("history_usage", { root });
 }
+
+/// 保管フォルダの外部変更（watcher）。`kind` は "modified" / "removed" など
+export type VaultChange = { path: string; kind: string };
+
+/// 外部変更を受ける。返り値で購読を外す
+export function subscribeVaultChanged(
+  handler: (change: VaultChange) => void,
+): () => void {
+  return safeSubscribe(() =>
+    listen<VaultChange>("vault-changed", (event) => handler(event.payload)),
+  );
+}

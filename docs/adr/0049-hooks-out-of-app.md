@@ -43,4 +43,4 @@ docs/manual_test.md の保存・競合の項を実機で通す。
 
 - [x] `useAssistant`（2026-09-07）
 - [x] `useSearch`（2026-09-07）
-- [ ] `useNoteSync`
+- [x] `useNoteSync`（2026-09-07。App.tsx は 3,443 行 → 2,869 行）
