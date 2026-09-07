@@ -165,7 +165,7 @@ CM6 は composition 中の DOM 更新を保留する。この性質を壊す拡�
 
 spec と実装が食い違ったら、まず spec（の意図）が正しいと考える。
 覆すなら理由を述べて確認を取り、`docs/adr/` に記録を残す（番号は
-hitofude から通しで継続。次は 0049）。
+hitofude から通しで継続。次は 0050）。
 
 ---
 
@@ -181,6 +181,7 @@ OboeGaki/
 ├── src/                   # フロントエンド（React + TS）
 │   ├── editor/            # CM6 エディタ層（拡張は DOM 非依存に保つ）
 │   ├── components/        # App.tsx から切り出した UI 部品（ダイアログなど。ADR-0048）
+│   ├── hooks/             # App.tsx から切り出した状態と処理（ADR-0049。Tauri は lib/ipc 経由）
 │   └── ...                # アプリ UI 層（Zustand / dnd-kit はここ）
 └── src-tauri/             # Rust 側（vault・保存・索引・監視 = 旧 core/ + storage/）
     └── src/

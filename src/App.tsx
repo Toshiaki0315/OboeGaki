@@ -17,6 +17,7 @@ import {
   writeText as writeClipboard,
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
+import { useAssistant } from "./hooks/useAssistant";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -65,8 +66,6 @@ import { folderDepth, folderLabel, splitFolders } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel } from "./lib/trash-label";
 import { canDropInto, isNoteDrag } from "./lib/note-drop";
-import { terms } from "./lib/keywords";
-import { packSources, pickSources } from "./lib/sources";
 import {
   availableFonts,
   BODY_FONTS,
@@ -91,7 +90,6 @@ import {
   togglePane,
 } from "./lib/right-pane";
 import { safeSubscribe } from "./lib/subscribe";
-import { appendChunk, llmErrorText, loadingNotice } from "./lib/assistant-text";
 import { createDebouncer } from "./lib/debounce";
 import {
   codeKey,
@@ -155,6 +153,8 @@ import {
   deleteForever,
   emptyTrash,
   historyList,
+  historyUsage,
+  llmModels,
   clearRecovery,
   createFolder,
   duplicateNote,
@@ -166,7 +166,6 @@ import {
   moveNote,
   noteBacklinks,
   noteExists,
-  noteRelated,
   notesInFolder,
   pendingRecovery,
   renameFolder,
@@ -190,7 +189,6 @@ import {
   trashNote,
   writeNote,
   type Backlink,
-  type RelatedNote,
   type HistoryEntry,
   type SearchHit,
   type SyncResult,
@@ -309,15 +307,12 @@ function App() {
   /// ダイアログが開いている間に何度も聞かないよう、参照を固定する
   const loadHistoryUsage = useCallback((): Promise<number> => {
     const root = vaultRootRef.current;
-    return root
-      ? invoke<number>("history_usage", { root })
-      : Promise.resolve(0);
+    return root ? historyUsage(root) : Promise.resolve(0);
   }, []);
 
   /// Ollama に入っているモデル名（設定のモデル欄の選択肢）
   const loadInstalledModels = useCallback(
-    (): Promise<string[]> =>
-      invoke<string[]>("llm_models", { port: settingsRef.current.llmPort }),
+    (): Promise<string[]> => llmModels(settingsRef.current.llmPort),
     [],
   );
 
@@ -1020,222 +1015,17 @@ function App() {
   useEffect(() => {
     if (!settings.assistantEnabled && assistantOpen) setRightPane("none");
   }, [settings.assistantEnabled, assistantOpen]);
-  const [llmReady, setLlmReady] = useState<boolean | null>(null);
-  const [answer, setAnswer] = useState("");
-  const [thinking, setThinking] = useState(false);
-
-  // 関連するノート（L-3）。**モデルは通さない**ので、Ollama が無くても出る
-  const [related, setRelated] = useState<RelatedNote[]>([]);
-  const [relatedShown, setRelatedShown] = useState(false);
-  // vault 全体への質問（L-2）と、そのとき渡した材料
-  const [question, setQuestion] = useState("");
-  const [sources, setSources] = useState<SearchHit[]>([]);
-
-  // 開いているノートが変わったら引き直す（索引が更新されたときも）
-  useEffect(() => {
-    if (!assistantOpen || !vaultRoot || !currentPath || !relatedShown) {
-      setRelated([]);
-      return;
-    }
-    let alive = true;
-    void noteRelated(vaultRoot, currentPath, noteStem(currentPath))
-      .then((found) => {
-        if (alive) setRelated(found);
-      })
-      .catch(() => {
-        if (alive) setRelated([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [assistantOpen, vaultRoot, currentPath, notes, relatedShown]);
-
-  // 別のノートに移ったら畳む（前のノートの関連が残っていると読み違える）
-  useEffect(() => {
-    setRelatedShown(false);
-    setSources([]);
-  }, [currentPath]);
-
-  // 開いたときだけ動いているか確かめる（**押してから断らない**）
-  useEffect(() => {
-    if (!assistantOpen) return;
-    let alive = true;
-    void invoke<boolean>("llm_available", { port: settings.llmPort })
-      .then((found) => {
-        if (alive) setLlmReady(found);
-      })
-      .catch(() => {
-        if (alive) setLlmReady(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [assistantOpen, settings.llmPort]);
-
-  // 流れてきたぶんから順に出す（最初の 1 文字まで数秒あり、黙って待たせない）
-  useEffect(() => {
-    const chunks = safeSubscribe(() =>
-      listen<string>("llm-chunk", (event) => {
-        setAnswer((current) => appendChunk(current, event.payload));
-      }),
-    );
-    const done = safeSubscribe(() =>
-      listen<string>("llm-done", () => setThinking(false)),
-    );
-    const failed = safeSubscribe(() =>
-      listen<string>("llm-failed", (event) => {
-        setThinking(false);
-        setAnswer(
-          llmErrorText(
-            event.payload,
-            settingsRef.current.llmTimeoutMinutes,
-            settingsRef.current.llmModel,
-          ),
-        );
-      }),
-    );
-    return () => {
-      chunks();
-      done();
-      failed();
-    };
-  }, []);
-
-  /// 生成を始める。**入口を 1 つにする** — 要約・レビュー・質問で
-  /// 送るものは違っても、設定の渡し方と断り方は同じ。
-  async function startGeneration(order: {
-    task: string;
-    title: string;
-    body: string;
-    question?: string;
-    sources?: [string, string][];
-  }): Promise<boolean> {
-    return invoke<boolean>("llm_generate", {
-      port: settings.llmPort,
-      model: settings.llmModel,
-      context: settings.llmContext,
-      timeoutMinutes: settings.llmTimeoutMinutes,
-      keepAlive: settings.llmKeepAlive,
-      ...order,
-    });
-  }
-
-  /// 押すたびに画面を空にする（要望 2026-09-04）。**前の答えを残さない** —
-  /// 残っていると、新しい問いの答えが出るまでのあいだ、前の答えを新しい
-  /// ものと読み違える。
-  function clearAssistant() {
-    setAnswer("");
-    setSources([]);
-    setRelatedShown(false);
-  }
-
-  /// 走っている生成を止める（L-1）。**受け取ったぶんは消さない。**
-  function stopAssistant() {
-    void invoke("llm_stop").catch(() => {});
-  }
-
-  /// 関連するノートを出す（L-3）。**モデルを通さない** — 関係の根拠は
-  /// 索引の中にある（同じタグ・`[[…]]` の指し合い・題名の言及）。
-  function showRelated() {
-    clearAssistant();
-    setRelatedShown(true);
-  }
-
-  /// vault 全体に質問する（L-2 / ADR-0025）。
-  ///
-  /// **材料はこちらが選ぶ。** 索引で候補を引き、その本文を渡す。渡した
-  /// ノートを画面に出せるのはこちら側だけなので、出典を作文させない。
-  async function askQuestion() {
-    const asked = question.trim();
-    if (!vaultRoot || !asked || thinking) return;
-    clearAssistant();
-    // **質問をそのまま探さない。** 全文検索は打った通りの並びを探すので、
-    // 「予算について何が決まった？」ではどこにも当たらない（lib/keywords）
-    const words = terms(asked);
-    const hits: SearchHit[] = [];
-    for (const word of words.length > 0 ? words : [asked]) {
-      try {
-        const outcome = await searchNotes(vaultRoot, word);
-        hits.push(...outcome.hits);
-      } catch {
-        // 1 語探せなくても、残りの語で続ける
-      }
-    }
-    const picked = pickSources(hits);
-    if (picked.length === 0) {
-      // 材料の無い問いに答えさせない（作り話が出る）
-      setAnswer(
-        "材料になるノートが見つかりませんでした。言葉を変えて試してください。",
-      );
-      return;
-    }
-    // **出典は答えより先に出す。** 待っている間、何を見ているのか分かる
-    setSources(picked);
-    const bodies = await Promise.all(
-      picked.map((hit) =>
-        readNote(vaultRoot, `${vaultRoot}/${hit.path}`).catch(() => ""),
-      ),
-    );
-    const packed = packSources(
-      picked.map((hit, index) => ({ title: hit.title, body: bodies[index] })),
-    );
-    setThinking(true);
-    const started = await startGeneration({
-      task: "question",
-      title: "",
-      body: "",
-      question: asked,
-      sources: packed,
-    });
-    if (!started) {
-      setThinking(false);
-      setAnswer("いま考えています。終わるまでお待ちください。");
-    }
-  }
-
-  /// ノートを読ませる。**本文は書き換えない**（答えは横に出すだけ）。
-  async function askAssistant(task: string) {
-    if (!vaultRoot || !currentPath) return;
-    await autosave.flush(); // 打ちかけを書き切ってから読ませる
-    const text = editorRef.current?.getText() ?? "";
-    clearAssistant();
-    setThinking(true);
-    const started = await startGeneration({
-      task,
-      title: noteStem(currentPath),
-      body: text,
-    });
-    if (!started) {
-      setThinking(false);
-      setAnswer("いま考えています。終わるまでお待ちください。");
-      return;
-    }
-    // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）。
-    // **先に届いた断りや答えを上書きしない**（loadingNotice が判断する）—
-    // モデル名の間違いの 404 は、この確認より速く返ることがある
-    const loaded = await invoke<boolean>("llm_loaded", {
-      port: settings.llmPort,
-      model: settings.llmModel,
-    });
-    if (!loaded) setAnswer(loadingNotice);
-  }
-
-  async function handleUnloadModel() {
-    // 使わない設定なら、載っているモデルも無い（触りに行かない）
-    if (!settings.assistantEnabled) {
-      setStatus("アシスタントは環境設定で切ってあります");
-      return;
-    }
-    const done = await invoke<boolean>("llm_unload", {
-      port: settings.llmPort,
-      model: settings.llmModel,
-    });
-    setStatus(
-      done
-        ? "モデルを降ろしました"
-        : "いま考えています（終わってから降ろせます）",
-    );
-  }
+  // Ollama の状態と処理は hook に（ADR-0049）。本文はエディタから手で読む
+  const assistant = useAssistant({
+    open: assistantOpen,
+    vaultRoot,
+    currentPath,
+    notes,
+    settings,
+    flushEdits: () => autosave.flush(),
+    noteText: () => editorRef.current?.getText() ?? "",
+    onStatus: setStatus,
+  });
 
   // 表示モード（通常 / ソース）。**ノートを跨いで続く** — 切り替えボタンが
   // 見えているのに、ノートを開き直すと戻るのは筋が悪い
@@ -2125,7 +1915,7 @@ function App() {
       }
       setRightPane((pane) => togglePane(pane, "assistant"));
     },
-    "llm-unload": () => void handleUnloadModel(),
+    "llm-unload": () => void assistant.unloadModel(),
     "heading-palette": openHeadingPalette,
     "style-check": checkStyleNow,
     "toggle-trees": () =>
@@ -3362,18 +3152,18 @@ function App() {
           {assistantOpen && (
             <AssistantPane
               hasNote={currentPath !== null}
-              llmReady={llmReady}
-              thinking={thinking}
-              answer={answer}
-              question={question}
-              onQuestionChange={setQuestion}
-              sources={sources}
-              related={related}
-              relatedShown={relatedShown}
-              onStop={() => void stopAssistant()}
-              onRelated={() => void showRelated()}
-              onAsk={(task) => void askAssistant(task)}
-              onAskQuestion={() => void askQuestion()}
+              llmReady={assistant.llmReady}
+              thinking={assistant.thinking}
+              answer={assistant.answer}
+              question={assistant.question}
+              onQuestionChange={assistant.setQuestion}
+              sources={assistant.sources}
+              related={assistant.related}
+              relatedShown={assistant.relatedShown}
+              onStop={assistant.stop}
+              onRelated={assistant.showRelated}
+              onAsk={(task) => void assistant.ask(task)}
+              onAskQuestion={() => void assistant.askQuestion()}
               onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
             />
           )}

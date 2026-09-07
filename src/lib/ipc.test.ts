@@ -6,7 +6,18 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { imageSource, saveAttachment, toEntry } from "./ipc";
+import {
+  historyUsage,
+  imageSource,
+  llmAvailable,
+  llmGenerate,
+  llmLoaded,
+  llmModels,
+  llmStop,
+  llmUnload,
+  saveAttachment,
+  toEntry,
+} from "./ipc";
 
 const invoked = vi.mocked(invoke);
 
@@ -82,5 +93,58 @@ describe("imageSource", () => {
   test("test_読めなければ null（壊れた参照で描画ごと止めない）", async () => {
     invoked.mockRejectedValue(new Error("no file"));
     expect(await imageSource("/v", "attachments/missing.png")).toBeNull();
+  });
+});
+
+describe("LLM の包み", () => {
+  test("test_llmAvailable は port を渡す", async () => {
+    invoked.mockResolvedValue(true);
+    expect(await llmAvailable(11434)).toBe(true);
+    expect(invoked).toHaveBeenCalledWith("llm_available", { port: 11434 });
+  });
+
+  test("test_llmGenerate は設定と注文を 1 つにして渡す", async () => {
+    invoked.mockResolvedValue(true);
+    await llmGenerate(
+      {
+        llmPort: 1,
+        llmModel: "m",
+        llmContext: 8192,
+        llmTimeoutMinutes: 6,
+        llmKeepAlive: "5m",
+      },
+      { task: "summary", title: "題", body: "本文" },
+    );
+    expect(invoked).toHaveBeenCalledWith("llm_generate", {
+      port: 1,
+      model: "m",
+      context: 8192,
+      timeoutMinutes: 6,
+      keepAlive: "5m",
+      task: "summary",
+      title: "題",
+      body: "本文",
+    });
+  });
+
+  test("test_llmStop は失敗しても投げない（止める操作で落ちない）", async () => {
+    invoked.mockRejectedValue(new Error("gone"));
+    await expect(llmStop()).resolves.toBeUndefined();
+  });
+
+  test("test_llmLoaded / llmUnload / llmModels / historyUsage の相手先", async () => {
+    invoked.mockResolvedValue(true);
+    await llmLoaded(1, "m");
+    await llmUnload(1, "m");
+    await llmModels(1);
+    await historyUsage("/v");
+    expect(invoked.mock.calls.map((call) => call[0])).toEqual([
+      "llm_loaded",
+      "llm_unload",
+      "llm_models",
+      "history_usage",
+    ]);
+    expect(invoked).toHaveBeenCalledWith("llm_loaded", { port: 1, model: "m" });
+    expect(invoked).toHaveBeenCalledWith("history_usage", { root: "/v" });
   });
 });
