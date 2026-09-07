@@ -85,6 +85,7 @@ ci:               ## CI と同じ手順をローカルで（コミット済み�
 
 check:            ## コミット前チェック（lint + 型 + テスト全部）
 	npx prettier --check src
+	npx eslint . --max-warnings 0
 	npx vitest run
 	npx tsc --noEmit
 	cd src-tauri && cargo fmt --check

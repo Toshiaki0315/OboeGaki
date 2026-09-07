@@ -28,6 +28,7 @@ const PAGE_NUMBER_RE =
   /^\s*(?:[-–—]\s*\d{1,3}\s*[-–—]|\d{1,3}\s*\/\s*\d{1,3}|[Pp]\.?\s*\d{1,3}|\d{1,3}\s*(?:ページ|頁)|\d{1,3})\s*$/;
 
 /// 落とす制御文字。PDF には改ページ（\f）や NUL が混ざる。
+// eslint-disable-next-line no-control-regex -- 制御文字そのものを狙う正規表現
 const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 
 const CJK_RE = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/;
@@ -49,9 +50,12 @@ export function normalizeText(text: string): string {
       marks.push(mark);
       return ` \u0001${marks.length - 1}\u0001 `;
     });
-  return stashed
-    .normalize("NFKC")
-    .replace(/ \u0001(\d+)\u0001 /g, (_, index) => marks[Number(index)]);
+  return (
+    stashed
+      .normalize("NFKC")
+      // eslint-disable-next-line no-control-regex -- \u0001 は退避の目印
+      .replace(/ \u0001(\d+)\u0001 /g, (_, index) => marks[Number(index)])
+  );
 }
 
 /// その行がページ番号だけか。

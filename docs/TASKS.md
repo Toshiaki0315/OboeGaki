@@ -345,10 +345,10 @@ App.tsx の分割（①、ADR-0048。23 段で 6,020 行 → 3,443 行）。
       `tauri.conf.json` の `security.csp` が `null`。WebView から fetch /
       convertFileSrc / 外部フォントは使っていないので
       `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-  img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMirror
+img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMirror
       の style-mod と Mermaid の SVG に必須）。**`make run` で Temml・Mermaid・
       画像・Ollama 連携が壊れないことを見ながら**入れる。dev は `devCsp` も
-- [ ] **9-2. ESLint（react-hooks）を `make check` に入れる**（⑤）
+- [x] **9-2. ESLint（react-hooks）を `make check` に入れる**（⑤）— 2026-09-07。React Compiler 向けの 4 規則は理由を書いて切った（eslint.config.js）
       `eslint-disable-next-line react-hooks/exhaustive-deps` が App.tsx に 3 箇所
       あるのにリンタが無い。`eslint` + `eslint-plugin-react-hooks`（または
       oxlint / biome）を devDeps に足し、Makefile の check と CI に加える。

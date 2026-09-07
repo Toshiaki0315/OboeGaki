@@ -46,7 +46,7 @@ export function AssistantPane({
   onOpen,
 }: AssistantPaneProps) {
   // 質問欄の Enter。変換中の確定と見分ける（T5、lib/ime）
-  const ime = useMemo(imeEnterGuard, []);
+  const ime = useMemo(() => imeEnterGuard(), []);
   return (
     <aside className="assistant-pane">
       <header>アシスタント</header>

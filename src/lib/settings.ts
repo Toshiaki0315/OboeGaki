@@ -140,7 +140,7 @@ export function resolveTheme(
 }
 
 export function loadSettings(storage: StorageLike): Settings {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = storage.getItem(SETTINGS_KEY);
   } catch {

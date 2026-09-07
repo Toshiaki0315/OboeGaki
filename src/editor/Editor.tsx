@@ -476,6 +476,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       view.current?.destroy();
       view.current = null;
     };
+    // **mount / unmount だけ。** props の変化は各 Compartment の effect が
+    // 追いかける（T2: 文書を React state にミラーしない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDoc]);
 
   return (

@@ -14,7 +14,7 @@ export function NoteTitle({
 }) {
   // 変換中の Enter は IME の確定（T5）。外すと確定と同時に改名が走る
   // （実機報告 2026-09-07）。見分け方は lib/ime
-  const ime = useMemo(imeEnterGuard, []);
+  const ime = useMemo(() => imeEnterGuard(), []);
   return (
     <header className="note-header">
       <input

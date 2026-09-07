@@ -36,7 +36,7 @@ export async function restoreLastVault(
   storage: StorageLike,
   openVault: (root: string) => Promise<void>,
 ): Promise<string | null> {
-  let root: string | null = null;
+  let root: string | null;
   try {
     root = storage.getItem(VAULT_KEY);
   } catch {

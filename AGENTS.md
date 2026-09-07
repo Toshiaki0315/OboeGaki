@@ -31,6 +31,7 @@ make check
 
 - [ ] vitest が全件緑
 - [ ] `tsc --noEmit` が緑
+- [ ] `eslint . --max-warnings 0` が緑（hooks の依存配列・未使用の変数）
 - [ ] `cargo test` / `cargo clippy` / `cargo fmt --check` が緑
 - [ ] 実装だけ、またはテストだけのコミットになっていない
 

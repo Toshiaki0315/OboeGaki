@@ -21,6 +21,7 @@ jobs:
 
       - run: npm ci
       - run: npx prettier --check src
+      - run: npx eslint . --max-warnings 0
       - run: npx vitest run
       - run: npx tsc --noEmit
 

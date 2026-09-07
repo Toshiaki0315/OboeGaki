@@ -274,9 +274,8 @@ async function embedImages(
   return found;
 }
 
-type Page = Awaited<ReturnType<typeof pageType>>;
-declare function pageType(): Promise<
-  ReturnType<InstanceType<typeof import("pptxgenjs").default>["addSlide"]>
+type Page = ReturnType<
+  InstanceType<typeof import("pptxgenjs").default>["addSlide"]
 >;
 
 /// 装飾つきの 1 かたまりを pptxgenjs の形に直す（TASKS 5-1）。

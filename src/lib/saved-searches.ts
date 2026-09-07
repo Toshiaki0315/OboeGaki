@@ -17,7 +17,7 @@ export type SavedSearch = {
 };
 
 export function loadSearches(storage: StorageLike): SavedSearch[] {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = storage.getItem(SEARCHES_KEY);
   } catch {

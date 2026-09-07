@@ -214,7 +214,7 @@ export const extendedInline: MarkdownConfig = {
         if (pos > cx.offset && /[\w/]/.test(cx.slice(pos - 1, pos))) return -1;
         // 参照実装の止め文字（\s <>()[] "' 、。）に全角の括弧類を足した。
         // 「（URL）」の形は日本語で頻出で、）を含めると必ず切れたリンクになる
-        const stop = /[\s<>()\[\]"'、。（）「」]/;
+        const stop = /[\s<>()[\]"'、。（）「」]/;
         let end = pos + (head.startsWith("https") ? 8 : 7);
         let advanced = false;
         while (end < cx.end) {

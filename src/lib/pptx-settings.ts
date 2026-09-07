@@ -352,7 +352,7 @@ export const PPTX_SETTINGS_KEY = "oboegaki.pptx";
 /// 保存してあるものを読む。**読めなければ既定で立ち上げる** —
 /// 設定が壊れているだけで書き出しが使えなくなるほうが困る。
 export function loadPptxSettings(storage: StorageLike): PptxSettings {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = storage.getItem(PPTX_SETTINGS_KEY);
   } catch {

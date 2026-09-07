@@ -147,7 +147,7 @@ export function graphToMermaid(graph: Graph, starts: string[]): string {
 /// 名札に入れられる形にする。**引用符と角括弧は Mermaid の構文を壊す。**
 function escapeLabel(text: string): string {
   return text
-    .replace(/["\[\]|]/g, " ")
+    .replace(/["[\]|]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
