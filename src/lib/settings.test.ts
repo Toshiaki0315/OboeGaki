@@ -9,6 +9,7 @@ import {
   loadSettings,
   MAX_PANE_WIDTH,
   MIN_PANE_WIDTH,
+  OCR_ENGINES,
   resolveTheme,
   saveSettings,
   SETTINGS_KEY,
@@ -233,5 +234,24 @@ describe("hitofude と揃える追加項目（2026-09-04）", () => {
     expect(loaded.lineSpacing).toBe("normal");
     expect(loaded.indentedCode).toBe(true);
     expect(loaded.bodyFont).toBe("");
+  });
+});
+
+describe("文字の読み取りの読み手（ADR-0027 決定 1）", () => {
+  const storage = (json: string) => ({
+    getItem: () => json,
+    setItem: () => {},
+    removeItem: () => {},
+  });
+  test("test_選べるのは macOS とローカルLLM", () => {
+    expect(OCR_ENGINES).toEqual(["mac", "llm"]);
+  });
+  test("test_覚えたローカルLLM を読み戻す", () => {
+    expect(loadSettings(storage('{"ocrEngine":"llm"}')).ocrEngine).toBe("llm");
+  });
+  test("test_知らない値は既定の macOS", () => {
+    expect(loadSettings(storage('{"ocrEngine":"cloud"}')).ocrEngine).toBe(
+      "mac",
+    );
   });
 });

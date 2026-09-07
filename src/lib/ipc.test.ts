@@ -20,6 +20,8 @@ import {
   llmModels,
   llmStop,
   llmUnload,
+  ocrImage,
+  ocrPdfPage,
   saveAttachment,
   subscribeVaultChanged,
   toEntry,
@@ -170,5 +172,30 @@ describe("subscribeVaultChanged", () => {
     expect(seen).toEqual([{ path: "/v/a.md", kind: "modified" }]);
     stop();
     expect(unlisten).toHaveBeenCalled();
+  });
+});
+
+describe("読み取りの包み", () => {
+  const reader = {
+    engine: "llm" as const,
+    port: 1,
+    model: "m",
+    context: 4096,
+    timeoutMinutes: 1,
+    keepAlive: "5m",
+  };
+  test("test_ocrImage は読み手ごと渡す", async () => {
+    invoked.mockResolvedValue("読めた");
+    expect(await ocrImage("QUJD", reader)).toBe("読めた");
+    expect(invoked).toHaveBeenCalledWith("ocr_image", { data: "QUJD", reader });
+  });
+  test("test_ocrPdfPage はページ番号（1 始まり）と読み手を渡す", async () => {
+    invoked.mockResolvedValue("");
+    await ocrPdfPage("QUJD", 2, reader);
+    expect(invoked).toHaveBeenCalledWith("ocr_pdf_page", {
+      data: "QUJD",
+      page: 2,
+      reader,
+    });
   });
 });

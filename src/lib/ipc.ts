@@ -6,6 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { NoteEntry } from "./note-order";
+import type { OcrReader } from "./ocr";
 import type { Settings } from "./settings";
 import { safeSubscribe } from "./subscribe";
 
@@ -507,4 +508,20 @@ export function subscribeVaultChanged(
   return safeSubscribe(() =>
     listen<VaultChange>("vault-changed", (event) => handler(event.payload)),
   );
+}
+
+// ---- 文字の読み取り（OCR）。読み手（ADR-0027 決定 1）は環境設定から。
+
+/// 画像（base64）から文字を読む。読めなければ空、Ollama が無ければ Err
+export function ocrImage(data: string, reader: OcrReader): Promise<string> {
+  return invoke<string>("ocr_image", { data, reader });
+}
+
+/// PDF（base64）のページ（1 始まり）を絵にして文字を読む
+export function ocrPdfPage(
+  data: string,
+  page: number,
+  reader: OcrReader,
+): Promise<string> {
+  return invoke<string>("ocr_pdf_page", { data, page, reader });
 }

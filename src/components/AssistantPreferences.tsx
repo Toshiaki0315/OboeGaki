@@ -4,6 +4,7 @@
 import {
   CONTEXT_CHOICES,
   KEEP_ALIVE_CHOICES,
+  type OcrEngine,
   type Settings,
 } from "../lib/settings";
 
@@ -171,10 +172,24 @@ export function AssistantPreferences({
       <div className="preferences-fields">
         <label>
           <span>文字の読み取り</span>
-          <select value="mac" onChange={() => {}}>
+          <select
+            value={settings.ocrEngine}
+            onChange={(event) =>
+              onChangeSettings({
+                ocrEngine: event.currentTarget.value as OcrEngine,
+              })
+            }
+          >
             <option value="mac">macOS（デフォルト）</option>
+            <option value="llm">ローカルLLM</option>
           </select>
         </label>
+        {/* ADR-0027 の実測: 4b 級は 20 倍遅くて読み違える。それでも
+          大きなモデルを積める人向けに選べるようにしておく（決め打たない） */}
+        <p className="pref-note">
+          ローカルLLM は画像を読めるモデル（qwen2.5vl など）が要り、macOS
+          より遅くなります。アシスタントを切ってあるときは macOS で読みます。
+        </p>
       </div>
     </div>
   );

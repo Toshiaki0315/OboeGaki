@@ -64,6 +64,7 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem } from "./lib/note-path";
+import { ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
   folderLabel,
@@ -154,6 +155,8 @@ import {
   historyList,
   historyUsage,
   llmModels,
+  ocrImage,
+  ocrPdfPage,
   createFolder,
   duplicateNote,
   registerTemplate,
@@ -778,10 +781,11 @@ function App() {
       }
       setStatus(`文字を読み取っています… ${index + 1}/${count} ページ`);
       // **絵にするのも Rust の仕事**（同じ機械の中で完結させる）
-      const read = await invoke<string>("ocr_pdf_page", {
+      const read = await ocrPdfPage(
         data,
-        page: index + 1,
-      });
+        index + 1,
+        ocrReaderFrom(settingsRef.current),
+      );
       // **読み取りが元より短ければ捨てる**（外すこともあるので、短くても
       // 本物の文字が入っているページを潰さない）
       found.push(read.trim().length > page.trim().length ? read : page);
@@ -822,7 +826,7 @@ function App() {
       let markdown: string;
       if (/\.(png|jpe?g|heic|tiff?)$/i.test(name)) {
         markdown = toMarkdown(
-          [await invoke<string>("ocr_image", { data })],
+          [await ocrImage(data, ocrReaderFrom(settingsRef.current))],
           title,
         );
       } else if (/\.pdf$/i.test(name)) {

@@ -16,7 +16,10 @@ export type Theme = "system" | "light" | "dark";
 /// 名前で選ばせて、実際の余白は対応表が決める。
 export type LineSpacing = "tight" | "normal" | "relaxed";
 /// 文字の読み取り（OCR）。今は macOS の Vision だけ（ADR-0041）。
-export type OcrEngine = "mac";
+/// 文字の読み取りの読み手（ADR-0027 決定 1）。既定は macOS の Vision
+/// （速くて正確）。ローカルLLM は画像を読めるモデルを選べる人向け
+export type OcrEngine = "mac" | "llm";
+export const OCR_ENGINES: OcrEngine[] = ["mac", "llm"];
 /// 本文の横幅（ADR-0018）。**px では持たない** — 名前で選ばせて、実際の
 /// 幅は対応表が決める。
 export type ContentWidth = "standard" | "wide" | "full";
@@ -166,7 +169,7 @@ export function loadSettings(storage: StorageLike): Settings {
       LINE_SPACINGS,
       DEFAULT_SETTINGS.lineSpacing,
     ),
-    ocrEngine: "mac",
+    ocrEngine: pick(stored.ocrEngine, OCR_ENGINES, DEFAULT_SETTINGS.ocrEngine),
     contentWidth: pick(
       stored.contentWidth,
       CONTENT_WIDTHS,

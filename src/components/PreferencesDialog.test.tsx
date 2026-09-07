@@ -130,6 +130,19 @@ describe("PreferencesDialog", () => {
     expect(screen.queryByText("（Ollama に入っていません）")).toBeNull();
   });
 
+  test("test_アシスタント_文字の読み取りは macOS とローカルLLM から選ぶ（ADR-0027）", () => {
+    const { props } = setup();
+    fireEvent.click(screen.getByRole("tab", { name: "アシスタント" }));
+    const select = screen.getByLabelText("文字の読み取り") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual([
+      "mac",
+      "llm",
+    ]);
+    expect(select.value).toBe("mac");
+    fireEvent.change(select, { target: { value: "llm" } });
+    expect(props.onChangeSettings).toHaveBeenCalledWith({ ocrEngine: "llm" });
+  });
+
   test("test_アシスタント_切ってあれば欄をまとめて押せなくする", () => {
     const { view } = setup({
       settings: { ...DEFAULT_SETTINGS, assistantEnabled: false },
