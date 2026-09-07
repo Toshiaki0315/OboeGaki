@@ -18,6 +18,7 @@ import {
 } from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { useAssistant } from "./hooks/useAssistant";
+import { useSearch } from "./hooks/useSearch";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -131,13 +132,6 @@ import {
   vaultErrorText,
 } from "./lib/last-vault";
 import {
-  loadSearches,
-  removeSearch,
-  saveSearches,
-  upsertSearch,
-  type SavedSearch,
-} from "./lib/saved-searches";
-import {
   clampPaneWidth,
   contentWidthCss,
   DEFAULT_SETTINGS,
@@ -146,7 +140,7 @@ import {
   saveSettings,
   type Settings,
 } from "./lib/settings";
-import { sortNotes, type NoteEntry, type SortOrder } from "./lib/note-order";
+import type { SortOrder } from "./lib/note-order";
 import {
   conflictCopy,
   createNote,
@@ -166,7 +160,6 @@ import {
   moveNote,
   noteBacklinks,
   noteExists,
-  notesInFolder,
   pendingRecovery,
   renameFolder,
   restoreRecovery,
@@ -177,7 +170,6 @@ import {
   discardStash,
   historyRestore,
   imageSource,
-  notesWithTag,
   placeManual,
   templateList,
   pinNote,
@@ -185,12 +177,10 @@ import {
   saveAttachment,
   renameNote,
   restoreNote,
-  searchNotes,
   trashNote,
   writeNote,
   type Backlink,
   type HistoryEntry,
-  type SearchHit,
   type SyncResult,
 } from "./lib/ipc";
 import { useAppStore } from "./stores/app";
@@ -230,65 +220,43 @@ function App() {
   const currentPathRef = useRef(currentPath);
   currentPathRef.current = currentPath;
   const dirtyRef = useRef(false); // 保存されていない編集があるか
-  const [query, setQuery] = useState("");
+  // 検索・絞り込み・並び順は hook に（ADR-0049）。欄のフォーカスと
+  // 「検索を保存」の窓だけをここで持つ
+  const search = useSearch({
+    vaultRoot,
+    notes,
+    storage: localStorage,
+    onStatus: setStatus,
+  });
+  const {
+    query,
+    hits,
+    searches,
+    tagFilter,
+    folderFilter,
+    trashView,
+    sortOrder,
+    sortedNotes,
+    setQuery: handleQueryChanged,
+    filterByTag,
+    filterByFolder,
+    changeSort,
+  } = search;
   // メニューのハンドラは一度だけ登録するので、最新の式は ref で読む
   const queryRef = useRef(query);
   queryRef.current = query;
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  // 保存した検索（K-4）。名前を付けた検索式をサイドバーに置く
-  const [searches, setSearches] = useState<SavedSearch[]>(() =>
-    loadSearches(localStorage),
-  );
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // 「検索を保存…」の名前入力。null は閉じている
   const [savingSearch, setSavingSearch] = useState<string | null>(null);
-
-  function keepSearches(next: SavedSearch[]) {
-    setSearches(next);
-    saveSearches(localStorage, next);
-  }
 
   function confirmSaveSearch(name: string) {
     const typed = savingSearch?.trim() ?? "";
     if (!typed) return;
     setSavingSearch(null);
-    // 同じ名前は上書き（検索式の更新に使う）
-    keepSearches(upsertSearch(searches, { name, query: typed }));
+    search.rememberSearch(name, typed);
     setStatus(`検索「${name}」を保存しました`);
   }
 
-  // タグでの絞り込み（C-4）。検索とは排他 — どちらも一覧の中身を差し替える
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [tagNotes, setTagNotes] = useState<NoteEntry[]>([]);
-  // フォルダでの絞り込み（ADR-0024）。null は絞っていない、"" は直下
-  const [folderFilter, setFolderFilter] = useState<string | null>(null);
-  const [folderNotes, setFolderNotes] = useState<NoteEntry[]>([]);
-  const searchSoon = useMemo(() => createDebouncer(200), []);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  // 一覧の並び順（C-3 相当）。選び直したら覚える
-  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
-    try {
-      return localStorage.getItem("oboegaki.sort") === "title"
-        ? "title"
-        : "modified";
-    } catch {
-      return "modified";
-    }
-  });
-  /// ゴミ箱を見ているか（一覧の中身が捨てたノートに変わる）。
-  const trashView = folderFilter === TRASH_FOLDER;
-  const sortedNotes = useMemo(() => {
-    const listed =
-      folderFilter !== null ? folderNotes : tagFilter ? tagNotes : notes;
-    return sortNotes(listed, sortOrder);
-  }, [notes, tagNotes, tagFilter, folderNotes, folderFilter, sortOrder]);
-  function changeSort(order: SortOrder) {
-    setSortOrder(order);
-    try {
-      localStorage.setItem("oboegaki.sort", order);
-    } catch {
-      // 保存できなくても切り替え自体は生かす
-    }
-  }
   // 環境設定（TASKS 3-9）。変えたらすぐ効かせて覚える
   const [settings, setSettings] = useState<Settings>(() =>
     loadSettings(localStorage),
@@ -1244,7 +1212,7 @@ function App() {
           await autosave.flush();
           await openNote(moved);
         }
-        if (folderFilter === dialog.folder) setFolderFilter(renamed);
+        if (folderFilter === dialog.folder) filterByFolder(renamed);
         setStatus(`フォルダの名前を「${typed}」に変えました`);
       }
       await refresh();
@@ -1264,7 +1232,7 @@ function App() {
     if (!ok) return;
     try {
       await deleteFolder(vaultRoot, folder);
-      if (folderFilter === folder) setFolderFilter(null);
+      if (folderFilter === folder) filterByFolder(null);
       await refresh();
       setStatus(`フォルダ「${folder}」を削除しました`);
     } catch (error) {
@@ -1405,44 +1373,6 @@ function App() {
     setStatus(current?.pinned ? "ピンを外しました" : "ピン留めしました");
   }
 
-  function handleQueryChanged(next: string) {
-    setQuery(next);
-    if (next.trim()) {
-      // 検索・タグ・フォルダは排他（どれも一覧の中身を差し替える）
-      setTagFilter(null);
-      setFolderFilter(null);
-    }
-    if (!next.trim()) {
-      searchSoon.cancel();
-      setHits([]);
-      return;
-    }
-    searchSoon.schedule(() => {
-      const root = vaultRootRef.current;
-      if (!root) return;
-      searchNotes(root, next)
-        .then((outcome) => {
-          // 世代ガード: 遅いクエリの結果が、後から打った新しいクエリの
-          // 結果を上書きしない（レビュー 2026-09-04）。デバウンスは予約を
-          // 絞るだけで、発射済みの invoke は絞れない
-          if (queryRef.current !== next) return;
-          setHits(outcome.hits);
-          // 読めない日付を黙って絞りに使わない。0 件になった理由が
-          // 画面から読めないと、打ち間違いに気づけない
-          setStatus(
-            outcome.unreadable.length > 0
-              ? `日付として読めません: ${outcome.unreadable.join(" ")}（例: after:2026-09-03）`
-              : "",
-          );
-        })
-        .catch((error) => {
-          if (queryRef.current !== next) return;
-          setStatus(`検索に失敗: ${String(error)}`);
-        });
-    });
-  }
-
-  /// タグで一覧を絞る（null で解除）。検索とは排他。
   /// テンプレートから借りる配色と書体（TASKS 5-6）。**読めなければ null** —
   /// テンプレートが壊れていても書き出しは止めない。
   async function borrowedTheme() {
@@ -1623,61 +1553,6 @@ function App() {
     handleQueryChanged(`#${tag}`);
     searchInputRef.current?.focus();
   }
-
-  function filterByTag(tag: string | null) {
-    setTagFilter(tag);
-    if (tag) {
-      setFolderFilter(null);
-      searchSoon.cancel();
-      setQuery("");
-      setHits([]);
-    }
-  }
-
-  // 絞り込み中のタグのノートを引き直す。notes が変わったとき（= 索引が
-  // 更新されたとき）も引き直して、絞った一覧を置き去りにしない
-  useEffect(() => {
-    if (!vaultRoot || !tagFilter) {
-      setTagNotes([]);
-      return;
-    }
-    let alive = true;
-    void notesWithTag(vaultRoot, tagFilter).then((found) => {
-      if (alive) setTagNotes(found);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [vaultRoot, tagFilter, notes]);
-
-  /// フォルダで一覧を絞る（null で解除）。検索・タグとは排他。
-  function filterByFolder(folder: string | null) {
-    setFolderFilter(folder);
-    if (folder !== null) {
-      searchSoon.cancel();
-      setQuery("");
-      setHits([]);
-      setTagFilter(null);
-    }
-  }
-
-  // 絞り込み中のフォルダのノートを引き直す（notes が変わったとき =
-  // 索引が更新されたときも）
-  useEffect(() => {
-    // **ゴミ箱は索引に無い**（T7 の走査対象外）。引きに行っても空なので、
-    // trash_list から来る `trashNotes` をそのまま一覧に出す
-    if (!vaultRoot || folderFilter === null || folderFilter === TRASH_FOLDER) {
-      setFolderNotes([]);
-      return;
-    }
-    let alive = true;
-    void notesInFolder(vaultRoot, folderFilter).then((found) => {
-      if (alive) setFolderNotes(found);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [vaultRoot, folderFilter, notes]);
 
   // このノートを指しているノートを引き直す（索引が更新されたときも）
   useEffect(() => {
@@ -2384,9 +2259,7 @@ function App() {
                     }
                     handleQueryChanged(query);
                   }}
-                  onRemove={(name) =>
-                    keepSearches(removeSearch(searches, name))
-                  }
+                  onRemove={search.forgetSearch}
                 />
               )}
               {settings.treesVisible && (

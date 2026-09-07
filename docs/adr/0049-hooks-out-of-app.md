@@ -42,5 +42,5 @@ docs/manual_test.md の保存・競合の項を実機で通す。
 ## 進み具合
 
 - [x] `useAssistant`（2026-09-07）
-- [ ] `useSearch`
+- [x] `useSearch`（2026-09-07）
 - [ ] `useNoteSync`
