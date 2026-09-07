@@ -188,14 +188,14 @@ import {
   restoreNote,
   searchNotes,
   trashNote,
-  useAppStore,
   writeNote,
   type Backlink,
   type RelatedNote,
   type HistoryEntry,
   type SearchHit,
   type SyncResult,
-} from "./stores/app";
+} from "./lib/ipc";
+import { useAppStore } from "./stores/app";
 import "./App.css";
 
 // Phase 1 の骨格 UI: フォルダを開く → ノート一覧 → 編集 → 800ms 自動保存 →

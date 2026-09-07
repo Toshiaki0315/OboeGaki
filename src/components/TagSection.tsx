@@ -1,7 +1,7 @@
 // サイドバーのタグ一覧（C-4）。開閉はフォルダと排他なので親が持つ
 // （ユーザー要望 2026-09-04: 両方開くと一覧が痩せすぎる）。
 
-import type { TagCount } from "../stores/app";
+import type { TagCount } from "../lib/ipc";
 import { MenuIcon } from "./MenuIcon";
 
 export type TagSectionProps = {

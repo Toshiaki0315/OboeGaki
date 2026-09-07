@@ -1,7 +1,7 @@
 // 版の履歴（ADR-0023）。一覧を見せて「戻す」を親に知らせるだけ —
 // 書き戻しと自動保存の取り回しは親（App）が持つ。
 
-import type { HistoryEntry } from "../stores/app";
+import type { HistoryEntry } from "../lib/ipc";
 
 export function HistoryDialog({
   entries,

@@ -358,7 +358,7 @@ img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMi
       退避・競合）、`useSearch`（検索・絞り込み・保存した検索）、`useAssistant`
       （Ollama・答え・関連）のような hooks に分け、テストは
       `@testing-library/react` の `renderHook` で。別の ADR を書いてから
-- [ ] **9-4. `stores/app.ts` の IPC ラッパーを分ける**（⑥）
+- [x] **9-4. `stores/app.ts` の IPC ラッパーを分ける**（⑥）— 2026-09-07。`src/lib/ipc.ts` へ（ストアは 437 行 → 52 行）
       Zustand のストア定義と 40 件超の `invoke` ラッパーが同居。ラッパーを
       `src/lib/ipc.ts` に移し、ストアはストアだけにする。9-3 と一緒にやると
       import の張り替えが 1 回で済む

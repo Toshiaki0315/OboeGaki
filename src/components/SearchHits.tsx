@@ -1,6 +1,6 @@
 // 検索結果の一覧。検索欄に字があるあいだ、一覧ペインの中身がこれに変わる。
 
-import type { SearchHit } from "../stores/app";
+import type { SearchHit } from "../lib/ipc";
 
 export function SearchHits({
   hits,

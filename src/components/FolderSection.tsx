@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { TRASH_FOLDER } from "../lib/finder";
 import { folderDepth, folderLabel } from "../lib/folder-tree";
 import { isNoteDrag, NOTE_DRAG_TYPE } from "../lib/note-drop";
-import type { FolderCount } from "../stores/app";
+import type { FolderCount } from "../lib/ipc";
 import { MenuIcon } from "./MenuIcon";
 
 type DragLike = { dataTransfer: DataTransfer };

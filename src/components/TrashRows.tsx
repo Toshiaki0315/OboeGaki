@@ -4,7 +4,7 @@
 
 import { formatStamp } from "../lib/note-order";
 import { trashLabel, trashParts } from "../lib/trash-label";
-import type { TrashEntry } from "../stores/app";
+import type { TrashEntry } from "../lib/ipc";
 
 export type TrashRowsProps = {
   vaultRoot: string;

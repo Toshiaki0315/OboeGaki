@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import type { AssistantAction } from "../lib/assistant-actions";
 import { imeEnterGuard } from "../lib/ime";
 import { ASK_ACTION, ASSISTANT_ACTIONS } from "../lib/assistant-actions";
-import type { RelatedNote, SearchHit } from "../stores/app";
+import type { RelatedNote, SearchHit } from "../lib/ipc";
 import { PathIcon } from "./MenuIcon";
 
 export type AssistantPaneProps = {

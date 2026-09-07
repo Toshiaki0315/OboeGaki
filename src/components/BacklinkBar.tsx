@@ -1,6 +1,6 @@
 // バックリンク（E-6）。このノートを指しているノートを本文の下に畳んで出す。
 
-import type { Backlink } from "../stores/app";
+import type { Backlink } from "../lib/ipc";
 
 export function BacklinkBar({
   backlinks,
