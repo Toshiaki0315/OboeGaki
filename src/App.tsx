@@ -29,6 +29,7 @@ import { FormatToolbar } from "./components/FormatToolbar";
 import { FuzzyPalette } from "./components/FuzzyPalette";
 import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
+import { ListControls } from "./components/ListControls";
 
 import { ListPalette } from "./components/ListPalette";
 import { MenuIcon, PathIcon } from "./components/MenuIcon";
@@ -147,7 +148,6 @@ import {
   saveSettings,
   type Settings,
 } from "./lib/settings";
-import type { SortOrder } from "./lib/note-order";
 import {
   createNote,
   deleteForever,
@@ -1108,6 +1108,11 @@ function App() {
   /// 新しいノート（Cmd+N・フォルダの右クリック）。
   /// フォルダを渡すとその中に作る（空文字は直下）。渡さなければ
   /// **絞っているフォルダの中**（要望 2026-09-07。lib/folder-tree）
+  /// 「＋ 新規」に添える置き場所の説明
+  const newNoteTitle = newNoteFolder(folderFilter)
+    ? `「${newNoteFolder(folderFilter)}」の中に作る`
+    : "直下に作る";
+
   async function handleCreate(folder = newNoteFolder(folderFilter)) {
     if (!vaultRoot) return;
     try {
@@ -1922,40 +1927,34 @@ function App() {
         >
           {leftVisible && (
             <aside className="note-list">
-              <header>
-                {/* 保管フォルダの変更は環境設定にある（要望 2026-09-04）。
-                  同じことをする入口を一覧の上にも置かない */}
-                <button
-                  title={
-                    newNoteFolder(folderFilter)
-                      ? `「${newNoteFolder(folderFilter)}」の中に作る`
-                      : "直下に作る"
-                  }
-                  onClick={() => void handleCreate()}
-                >
-                  ＋ 新規
-                </button>
-              </header>
-              {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
-              {settings.notesVisible && (
-                <input
-                  ref={searchInputRef}
-                  className="search-input"
-                  type="search"
-                  placeholder="検索"
-                  value={query}
-                  onChange={(event) =>
-                    handleQueryChanged(event.currentTarget.value)
-                  }
-                />
+              {/* 一覧を畳んでいるときだけ、見出しに「＋ 新規」を残す。
+                保管フォルダの変更は環境設定にある（要望 2026-09-04）。
+                同じことをする入口を一覧の上にも置かない */}
+              {!settings.notesVisible && (
+                <header>
+                  <button
+                    title={newNoteTitle}
+                    onClick={() => void handleCreate()}
+                  >
+                    ＋ 新規
+                  </button>
+                </header>
               )}
-              {!settings.notesVisible ? null : query.trim() ? (
-                <SearchHits
-                  hits={hits}
-                  onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
-                />
-              ) : (
-                <div className="note-scroll">
+              {/* 検索欄 → 絞り込みのラベル → 並び順と「＋ 新規」の 3 段
+                （要望 2026-09-07）。一覧と一緒に出し入れし、一覧より上に
+                固定する（一緒にスクロールしない） */}
+              {settings.notesVisible && (
+                <>
+                  <input
+                    ref={searchInputRef}
+                    className="search-input"
+                    type="search"
+                    placeholder="検索"
+                    value={query}
+                    onChange={(event) =>
+                      handleQueryChanged(event.currentTarget.value)
+                    }
+                  />
                   {tagFilter && (
                     <div className="tag-filter-row">
                       <span className="tag-filter-name">#{tagFilter}</span>
@@ -1982,19 +1981,23 @@ function App() {
                       </button>
                     </div>
                   )}
-                  {!trashView && (
-                    <div className="sort-row">
-                      <select
-                        value={sortOrder}
-                        onChange={(event) =>
-                          changeSort(event.currentTarget.value as SortOrder)
-                        }
-                      >
-                        <option value="modified">更新順</option>
-                        <option value="title">名前順</option>
-                      </select>
-                    </div>
-                  )}
+                  <ListControls
+                    sortOrder={sortOrder}
+                    onSort={changeSort}
+                    // 並び順はゴミ箱と検索の結果には効かない
+                    showSort={!trashView && !query.trim()}
+                    newTitle={newNoteTitle}
+                    onNew={() => void handleCreate()}
+                  />
+                </>
+              )}
+              {!settings.notesVisible ? null : query.trim() ? (
+                <SearchHits
+                  hits={hits}
+                  onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
+                />
+              ) : (
+                <div className="note-scroll">
                   {trashView ? (
                     <TrashRows
                       vaultRoot={vaultRoot}

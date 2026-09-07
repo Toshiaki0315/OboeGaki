@@ -347,7 +347,8 @@ body {
 }
 
 .note-header button,
-.note-list header button {
+.note-list header button,
+.new-note-button {
   font: inherit;
   font-size: 0.85rem;
   color: inherit;
@@ -752,8 +753,17 @@ body.resizing {
   cursor: pointer;
 }
 
+/* 並び順と「＋ 新規」を横に並べる（要望 2026-09-07）。並び順が無いときは
+   「＋ 新規」だけが右に残る */
 .sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0 0 0.4rem;
+}
+.sort-row .new-note-button {
+  margin-left: auto;
 }
 
 /* タグ絞り込み中の帯（C-4）。今どの条件で一覧が絞られているかを常に見せる */
