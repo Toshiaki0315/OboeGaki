@@ -83,6 +83,17 @@ describe("FuzzyPalette", () => {
     expect(props.onChoose).not.toHaveBeenCalled();
   });
 
+  test("test_T5_変換中の Enter では選ばない（日本語のノート名を打つ途中）", () => {
+    const props = setup();
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "みかん" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 }); // WebKit
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter" }); // WebKit: 確定の直後
+    expect(props.onChoose).not.toHaveBeenCalled();
+  });
+
   test("test_Escape と外側で閉じる", () => {
     const props = setup();
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });

@@ -2,7 +2,8 @@
 // テンプレートへの登録、日付を選んで開く（7-5）が同じ形なので 1 つにする。
 // 打った値は **入力欄だけが持つ**（打鍵ごとに親を描き直さない）。
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
+import { imeEnterGuard } from "../lib/ime";
 
 export type PromptDialogProps = {
   title: string;
@@ -28,6 +29,9 @@ export function PromptDialog({
   onClose,
 }: PromptDialogProps) {
   const input = useRef<HTMLInputElement>(null);
+  // 変換中の Enter は IME の確定（T5）。決定まで押すと、日本語の名前が
+  // 確定と同時に通ってしまう（実機報告 2026-09-08）。見分け方は lib/ime
+  const ime = useMemo(() => imeEnterGuard(), []);
 
   function confirm() {
     const value = input.current?.value.trim() ?? "";
@@ -52,9 +56,13 @@ export function PromptDialog({
               type={type}
               autoFocus
               defaultValue={defaultValue}
+              onCompositionEnd={(event) =>
+                ime.onCompositionEnd(event.nativeEvent)
+              }
               onKeyDown={(event) => {
-                if (event.key === "Enter") confirm();
-                else if (event.key === "Escape") onClose();
+                if (event.key === "Enter") {
+                  if (!ime.isImeEnter(event.nativeEvent)) confirm();
+                } else if (event.key === "Escape") onClose();
               }}
             />
           </label>

@@ -52,6 +52,18 @@ describe("PromptDialog", () => {
     expect(props.onConfirm).toHaveBeenCalledWith("既定");
   });
 
+  test("test_T5_変換中の Enter は確定であって決定ではない（実機報告 2026-09-08）", () => {
+    // 日本語を打って未確定のまま Enter → 確定だけ。次の Enter で決定
+    const props = setup();
+    const input = screen.getByLabelText("名前");
+    fireEvent.change(input, { target: { value: "かいぎ" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 }); // WebKit
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter" }); // WebKit: 確定の直後
+    expect(props.onConfirm).not.toHaveBeenCalled();
+  });
+
   test("test_Escape と「やめる」と外側で閉じる", () => {
     const props = setup();
     fireEvent.keyDown(screen.getByLabelText("名前"), { key: "Escape" });

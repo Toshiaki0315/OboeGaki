@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { rankCandidates } from "../lib/fuzzy";
+import { imeEnterGuard } from "../lib/ime";
 
 export type FuzzyPaletteProps = {
   placeholder: string;
@@ -27,6 +28,8 @@ export function FuzzyPalette({
 }: FuzzyPaletteProps) {
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
+  // 変換中の Enter は IME の確定（T5）。選ぶのは確定後の Enter
+  const ime = useMemo(() => imeEnterGuard(), []);
   const ranked = useMemo(
     () => rankCandidates(query, [...labels]).slice(0, limit),
     [query, labels, limit],
@@ -55,6 +58,7 @@ export function FuzzyPalette({
             setQuery(event.currentTarget.value);
             setAt(0);
           }}
+          onCompositionEnd={(event) => ime.onCompositionEnd(event.nativeEvent)}
           onKeyDown={(event) => {
             if (event.key === "Escape") onClose();
             else if (event.key === "ArrowDown") {
@@ -65,7 +69,7 @@ export function FuzzyPalette({
               setAt((i) => Math.max(i - 1, 0));
             } else if (event.key === "Enter") {
               event.preventDefault();
-              choose(at);
+              if (!ime.isImeEnter(event.nativeEvent)) choose(at);
             }
           }}
         />
