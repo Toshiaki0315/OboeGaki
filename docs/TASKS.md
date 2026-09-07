@@ -353,7 +353,7 @@ img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMi
       あるのにリンタが無い。`eslint` + `eslint-plugin-react-hooks`（または
       oxlint / biome）を devDeps に足し、Makefile の check と CI に加える。
       最初は既存の指摘を洗い出し、直すものと許すものを分けてから緑にする
-- [x] **9-3. App.tsx の状態と処理を hooks に切り出す**（ADR-0049）— 2026-09-07。useAssistant / useSearch / useNoteSync の 3 本（App.tsx 3,443 → 2,869 行）。保存・競合は実機確認待ち
+- [x] **9-3. App.tsx の状態と処理を hooks に切り出す**（ADR-0049）— 2026-09-07。useAssistant / useSearch / useNoteSync の 3 本（App.tsx 3,443 → 2,869 行）。保存・外部変更・競合・外部削除は実機で確認
       部品化で残った 3,443 行の大半は状態と処理。`useAutosave`（自動保存・
       退避・競合）、`useSearch`（検索・絞り込み・保存した検索）、`useAssistant`
       （Ollama・答え・関連）のような hooks に分け、テストは
