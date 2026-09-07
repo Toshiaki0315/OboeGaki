@@ -64,7 +64,12 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem } from "./lib/note-path";
-import { folderDepth, folderLabel, splitFolders } from "./lib/folder-tree";
+import {
+  folderDepth,
+  folderLabel,
+  newNoteFolder,
+  splitFolders,
+} from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel } from "./lib/trash-label";
 import { canDropInto, isNoteDrag } from "./lib/note-drop";
@@ -1097,8 +1102,9 @@ function App() {
   }
 
   /// 新しいノート（Cmd+N・フォルダの右クリック）。
-  /// フォルダを渡すとその中に作る（空文字は直下）。
-  async function handleCreate(folder = "") {
+  /// フォルダを渡すとその中に作る（空文字は直下）。渡さなければ
+  /// **絞っているフォルダの中**（要望 2026-09-07。lib/folder-tree）
+  async function handleCreate(folder = newNoteFolder(folderFilter)) {
     if (!vaultRoot) return;
     try {
       const path = await createNote(vaultRoot, "無題", folder);
@@ -1915,7 +1921,16 @@ function App() {
               <header>
                 {/* 保管フォルダの変更は環境設定にある（要望 2026-09-04）。
                   同じことをする入口を一覧の上にも置かない */}
-                <button onClick={() => void handleCreate()}>＋ 新規</button>
+                <button
+                  title={
+                    newNoteFolder(folderFilter)
+                      ? `「${newNoteFolder(folderFilter)}」の中に作る`
+                      : "直下に作る"
+                  }
+                  onClick={() => void handleCreate()}
+                >
+                  ＋ 新規
+                </button>
               </header>
               {/* 検索欄は一覧の絞り込みなので、一覧と一緒に出し入れする */}
               {settings.notesVisible && (

@@ -1,7 +1,13 @@
 // 「直下」の行を見出しに畳む（要望 2026-09-05）。
 
 import { describe, expect, it } from "vitest";
-import { folderDepth, folderLabel, splitFolders } from "./folder-tree";
+import { TRASH_FOLDER } from "./finder";
+import {
+  folderDepth,
+  folderLabel,
+  newNoteFolder,
+  splitFolders,
+} from "./folder-tree";
 
 const folders = [
   { folder: "", count: 12 },
@@ -35,5 +41,21 @@ describe("folderLabel / folderDepth", () => {
   it("test_深さは直下が 0", () => {
     expect(folderDepth("")).toBe(0);
     expect(folderDepth("仕事/会議")).toBe(2);
+  });
+});
+
+describe("newNoteFolder", () => {
+  it("test_絞っていなければ直下", () => {
+    expect(newNoteFolder(null)).toBe("");
+  });
+  it("test_フォルダで絞っていればその中（要望 2026-09-07）", () => {
+    expect(newNoteFolder("仕事")).toBe("仕事");
+    expect(newNoteFolder("仕事/会議")).toBe("仕事/会議");
+  });
+  it("test_直下で絞っていれば直下", () => {
+    expect(newNoteFolder("")).toBe("");
+  });
+  it("test_ゴミ箱を見ているときは直下（ゴミ箱の中には作らない）", () => {
+    expect(newNoteFolder(TRASH_FOLDER)).toBe("");
   });
 });

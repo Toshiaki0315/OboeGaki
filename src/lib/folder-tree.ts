@@ -4,6 +4,8 @@
 // 保管フォルダそのものを指し、件数も他の行と同じ形で右端に出す。同じ場所を
 // 指す行が 2 つ並んでいると、どちらを押せばよいのか分からない。
 
+import { TRASH_FOLDER } from "./finder";
+
 export type FolderCount = { folder: string; count: number };
 
 /// 見出しに出す件数（直下のノートの数）と、木に並べる中のフォルダ。
@@ -26,4 +28,12 @@ export function folderLabel(folder: string): string {
 /// 階層の深さ（直下は 0）。ツリーの字下げに使う。
 export function folderDepth(folder: string): number {
   return folder ? folder.split("/").length : 0;
+}
+
+/// 新しいノートを置くフォルダ（要望 2026-09-07）。**絞っているフォルダの中に
+/// 作る** — 一覧に出ないところへ作ると、作ったのに見えない。絞っていない・
+/// 直下・ゴミ箱のときは直下（ゴミ箱の中には作らない）。
+export function newNoteFolder(folderFilter: string | null): string {
+  if (folderFilter === null || folderFilter === TRASH_FOLDER) return "";
+  return folderFilter;
 }
