@@ -828,6 +828,12 @@ pub struct OcrReader {
     pub keep_alive: String,
 }
 
+/// 読み取りの待ち時間。生成（llm_generate）と同じ 1〜120 分に丸める —
+/// 設定の欄から 0 や巨大な値が来ても、即切れ・無限待ちにしない
+fn ocr_timeout(minutes: u64) -> std::time::Duration {
+    std::time::Duration::from_secs(minutes.clamp(1, 120) * 60)
+}
+
 /// 読み手に応じて画像を読む。**どちらも無ければ畳む**（ADR-0027 決定 4）—
 /// Ollama が動いていなければ Err で知らせ、Vision は読めなければ空。
 fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> Result<String, String> {
@@ -838,7 +844,7 @@ fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> Result<String, St
                 model: &reader.model,
                 prompt: crate::llm::OCR_PROMPT,
                 context: reader.context,
-                timeout: std::time::Duration::from_secs(reader.timeout_minutes * 60),
+                timeout: ocr_timeout(reader.timeout_minutes),
                 keep_alive: &reader.keep_alive,
             },
             image,
@@ -848,9 +854,31 @@ fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> Result<String, St
     }
 }
 
+/// PDF のページを読み手に応じて読む。LLM には絵をファイルの形（PNG）で
+/// 渡し、Vision には描いた絵をそのまま渡す。描けないページは空
+fn read_pdf_page_with(
+    bytes: &[u8],
+    page: usize,
+    reader: Option<&OcrReader>,
+) -> Result<String, String> {
+    match reader {
+        Some(chosen) if chosen.engine == "llm" => match crate::pdf::render_png(bytes, page) {
+            Some(png) => recognize_with(Some(chosen), &png),
+            None => Ok(String::new()),
+        },
+        _ => Ok(crate::pdf::read_page(bytes, page)),
+    }
+}
+
+/// 読み取りは**別スレッドで待つ**。LLM は設定どおり分単位で待つことがあり、
+/// async の中で同期に待つと保存・監視・検索の IPC まで詰まる
+/// （ADR-0027 の「読み込みで固まる」と同じ種類。レビュー 2026-09-07）
 #[tauri::command]
 pub async fn ocr_image(data: String, reader: Option<OcrReader>) -> Result<String, String> {
-    recognize_with(reader.as_ref(), &decode(&data)?)
+    let bytes = decode(&data)?;
+    tauri::async_runtime::spawn_blocking(move || recognize_with(reader.as_ref(), &bytes))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// 選んだ文字を渡す先のアプリを開く（要望 2026-09-05）。
@@ -941,15 +969,9 @@ pub async fn ocr_pdf_page(
     reader: Option<OcrReader>,
 ) -> Result<String, String> {
     let bytes = decode(&data)?;
-    match reader.as_ref() {
-        // LLM には絵をファイルの形（PNG）で渡す。描けないページは空
-        Some(chosen) if chosen.engine == "llm" => match crate::pdf::render_png(&bytes, page) {
-            Some(png) => recognize_with(Some(chosen), &png),
-            None => Ok(String::new()),
-        },
-        // Vision には描いた絵をそのまま渡す（PNG を経由しない）
-        _ => Ok(crate::pdf::read_page(&bytes, page)),
-    }
+    tauri::async_runtime::spawn_blocking(move || read_pdf_page_with(&bytes, page, reader.as_ref()))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 fn decode(data: &str) -> Result<Vec<u8>, String> {
@@ -1425,6 +1447,35 @@ mod tests {
         };
         let failed = recognize_with(Some(&reader), b"not an image").unwrap_err();
         assert!(failed.contains("not-running"), "{failed}");
+    }
+
+    #[test]
+    fn test_読み取りの待ち時間は生成と同じ幅に丸める() {
+        // 設定の欄から 0 や巨大な値が来ても、即切れ・無限待ちにしない
+        assert_eq!(ocr_timeout(0), std::time::Duration::from_secs(60));
+        assert_eq!(ocr_timeout(6), std::time::Duration::from_secs(6 * 60));
+        assert_eq!(ocr_timeout(9999), std::time::Duration::from_secs(120 * 60));
+    }
+
+    #[test]
+    fn test_PDFのページ_ローカルLLMならPNGにしてから読みに行く() {
+        // 絵だけの PDF の 1 ページ目を LLM に回す。誰も居ないポートなので
+        // 「動いていない」で断られる = PNG 化を経て LLM に届いたことの証
+        let pdf = include_bytes!("../../fixtures/image-only.pdf");
+        let reader = OcrReader {
+            engine: "llm".into(),
+            port: 1,
+            model: "m".into(),
+            context: 4096,
+            timeout_minutes: 1,
+            keep_alive: "5m".into(),
+        };
+        let failed = read_pdf_page_with(pdf, 1, Some(&reader)).unwrap_err();
+        assert!(failed.contains("not-running"), "{failed}");
+        // 無いページは描けないので、LLM に行かず空
+        assert_eq!(read_pdf_page_with(pdf, 99, Some(&reader)).unwrap(), "");
+        // 読み手が無ければ Vision（絵だけのページは何か読めるか空）
+        assert!(read_pdf_page_with(pdf, 1, None).is_ok());
     }
 
     #[test]
