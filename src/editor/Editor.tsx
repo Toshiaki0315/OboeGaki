@@ -38,7 +38,11 @@ import {
   activationHandler,
   type Activation,
 } from "./activation";
-import { attachmentEvents, type SaveAttachment } from "./attachments";
+import {
+  attachmentEvents,
+  dropFiles,
+  type SaveAttachment,
+} from "./attachments";
 import { csvDropEvents } from "./csv-drop";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
@@ -82,6 +86,8 @@ export type EditorHandle = {
   /// 文書全体を差し替える（外部変更のリロード用）。キャレットは同じ
   /// オフセットへ復元する（文書が縮んだら末尾に丸める）
   replaceText: (text: string) => void;
+  /// 本文の外に落とされたファイル（画像）を取り込む。画像が無ければ false
+  dropFiles: (files: File[], at: { x: number; y: number }) => boolean;
   /// 見出しの一覧（アウトライン用。呼んだときだけ数える = ADR-0022）
   getOutline: () => OutlineItem[];
   /// 文字数と行数（ステータスバー用。こちらも呼んだときだけ数える）
@@ -212,6 +218,15 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           selection: { anchor: head },
           annotations: externalReload.of(true),
         });
+      },
+      dropFiles(files, at) {
+        const current = view.current;
+        if (!current) return false;
+        return dropFiles(current, files, at, (data, name) =>
+          attachmentSaver.current
+            ? attachmentSaver.current(data, name)
+            : Promise.resolve(null),
+        );
       },
       getOutline() {
         return view.current ? outlineOf(view.current.state) : [];

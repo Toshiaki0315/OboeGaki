@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { canDropInto, folderOf, isNoteDrag, NOTE_DRAG_TYPE } from "./note-drop";
+import {
+  canDropInto,
+  folderOf,
+  isFileDrag,
+  isNoteDrag,
+  NOTE_DRAG_TYPE,
+} from "./note-drop";
 
 const root = "/v/notes";
 
@@ -38,5 +44,17 @@ describe("isNoteDrag", () => {
     expect(isNoteDrag(["Files"])).toBe(false);
     expect(isNoteDrag(["text/plain"])).toBe(false);
     expect(isNoteDrag([])).toBe(false);
+  });
+});
+
+describe("isFileDrag", () => {
+  it("test_Finder からのファイルは types に Files が載る", () => {
+    expect(isFileDrag(["Files"])).toBe(true);
+    expect(isFileDrag(["Files", "public.file-url"])).toBe(true);
+  });
+  it("test_文字やノートの落下はファイルではない", () => {
+    expect(isFileDrag(["text/plain"])).toBe(false);
+    expect(isFileDrag([NOTE_DRAG_TYPE])).toBe(false);
+    expect(isFileDrag([])).toBe(false);
   });
 });

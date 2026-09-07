@@ -74,7 +74,7 @@ import {
 } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel } from "./lib/trash-label";
-import { canDropInto, isNoteDrag } from "./lib/note-drop";
+import { canDropInto, isFileDrag, isNoteDrag } from "./lib/note-drop";
 import {
   availableFonts,
   BODY_FONTS,
@@ -1911,22 +1911,49 @@ function App() {
         // macOS が緑の ＋ を出してしまう（wry 0.55.1 の
         // wkwebview/drag_drop.rs: None を NSDragOperation::Copy にする）。
         // 実際に動かすのはフォルダの行だけで、ここは受けるふりに徹する
+        // **ファイルの落下も窓ぜんぶで受ける。** CM6 のイベントは本文の
+        // 文字の領域にしか付かず、余白や題名の周りに落とすと誰も受けない。
+        // 受けないと WebKit がそのファイルをページとして開いてしまう
+        // （実機報告 2026-09-08: 画像が窓いっぱいに出た）
         onDragEnter={(event) => {
-          if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
+          const types = Array.from(event.dataTransfer.types);
+          if (!isNoteDrag(types) && !isFileDrag(types)) return;
           event.preventDefault();
         }}
         onDragOver={(event) => {
-          if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
+          const types = Array.from(event.dataTransfer.types);
+          if (isNoteDrag(types)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          } else if (isFileDrag(types)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }
         }}
         onDrop={(event) => {
-          // フォルダの行で受けたものはそこで処理済み。ここへ来るのは
-          // 落とし先でない場所なので、静かに捨てる（本文に文字を
-          // 落とさない）
-          if (!isNoteDrag(Array.from(event.dataTransfer.types))) return;
-          event.preventDefault();
-          draggingNote.current = null;
+          const types = Array.from(event.dataTransfer.types);
+          if (isNoteDrag(types)) {
+            // フォルダの行で受けたものはそこで処理済み。ここへ来るのは
+            // 落とし先でない場所なので、静かに捨てる（本文に文字を
+            // 落とさない）
+            event.preventDefault();
+            draggingNote.current = null;
+            return;
+          }
+          if (!isFileDrag(types)) return;
+          // 本文の文字の上で落とされたぶんは CM6 が受けて preventDefault
+          // 済みで届く。二重に挿さない
+          const handled = event.defaultPrevented;
+          event.preventDefault(); // どこに落とされても WebKit にページを開かせない
+          if (handled) return;
+          const files = Array.from(event.dataTransfer.files);
+          const taken = editorRef.current?.dropFiles(files, {
+            x: event.clientX,
+            y: event.clientY,
+          });
+          if (!taken && currentPath === null) {
+            setStatus("画像を貼り込むには、先にノートを開いてください");
+          }
         }}
       >
         <div

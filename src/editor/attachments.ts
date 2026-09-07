@@ -114,22 +114,37 @@ export function attachmentEvents(save: SaveAttachment): Extension {
     },
     drop: (event, view) => {
       const files = Array.from(event.dataTransfer?.files ?? []);
-      if (!looksLikeAttachment(files)) return false;
+      if (!dropFiles(view, files, { x: event.clientX, y: event.clientY }, save))
+        return false;
       event.preventDefault();
-      // 落とした場所へ挿す。座標が本文の外なら今のカーソル位置
-      const startDoc = view.state.doc;
-      const pos =
-        view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-        view.state.selection.main.head;
-      void saveAll(save, pickImages(files)).then((text) => {
-        const target = insertionTarget(
-          startDoc,
-          { from: pos, to: pos },
-          view.state,
-        );
-        insertAt(view, target.from, target.to, text);
-      });
       return true;
     },
   });
+}
+
+/// 落とされたファイルを本文へ取り込む。画像が無ければ false（既定の処理へ）。
+///
+/// CM6 のイベントは `.cm-content` にしか付かないので、本文の外（余白・
+/// 題名の周り）に落とされたぶんは App の外側で受けてここへ渡す（ADR-0043。
+/// 誰も受けないと WebKit がそのファイルを開いてしまう）。
+/// `at` は落とした座標。本文の外なら今のカーソル位置へ挿す。
+export function dropFiles(
+  view: EditorView,
+  files: readonly File[],
+  at: { x: number; y: number } | null,
+  save: SaveAttachment,
+): boolean {
+  if (!looksLikeAttachment(files)) return false;
+  const startDoc = view.state.doc;
+  const pos =
+    (at ? view.posAtCoords(at) : null) ?? view.state.selection.main.head;
+  void saveAll(save, pickImages(files)).then((text) => {
+    const target = insertionTarget(
+      startDoc,
+      { from: pos, to: pos },
+      view.state,
+    );
+    insertAt(view, target.from, target.to, text);
+  });
+  return true;
 }

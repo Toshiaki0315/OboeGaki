@@ -33,3 +33,11 @@ export const NOTE_DRAG_TYPE = "application/x-oboegaki-note";
 export function isNoteDrag(types: readonly string[]): boolean {
   return types.includes(NOTE_DRAG_TYPE);
 }
+
+/// この落下は Finder などからのファイルか（`dataTransfer.types` に `Files`）。
+/// ファイルの落下を誰も受けないと、WebKit は**そのファイルをページとして
+/// 開いてしまう**（実機報告 2026-09-08: 画像が窓いっぱいに出た）ので、
+/// 窓の外側で必ず受ける。
+export function isFileDrag(types: readonly string[]): boolean {
+  return types.includes("Files");
+}
