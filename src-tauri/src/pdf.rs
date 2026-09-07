@@ -29,6 +29,27 @@ pub fn read_page(bytes: &[u8], page: usize) -> String {
     }
 }
 
+/// そのページ（1 始まり）を PNG にする。ローカル LLM に読ませるとき
+/// （ADR-0027 決定 1）は絵をファイルの形で渡す必要がある。描けなければ None。
+#[cfg(target_os = "macos")]
+pub fn render_png(bytes: &[u8], page: usize) -> Option<Vec<u8>> {
+    use objc2_core_foundation::{CFMutableData, CFString};
+    use objc2_image_io::CGImageDestination;
+    let image = render(bytes, page)?;
+    let data = CFMutableData::new(None, 0)?;
+    let kind = CFString::from_str("public.png");
+    // SAFETY: data / image / kind はこの関数の間だけ生きていればよく、
+    // ImageIO はここで書き切る（finalize）まで参照を持ち越さない
+    unsafe {
+        let destination = CGImageDestination::with_data(&data, &kind, 1, None)?;
+        destination.add_image(&image, None);
+        if !destination.finalize() {
+            return None;
+        }
+    }
+    Some(data.to_vec())
+}
+
 /// PDF を開く。**壊れていても落とさない**（読めないことは壊れることではない）。
 #[cfg(target_os = "macos")]
 fn document(
@@ -103,6 +124,11 @@ pub fn page_count(_bytes: &[u8]) -> usize {
 }
 
 #[cfg(not(target_os = "macos"))]
+pub fn render_png(_bytes: &[u8], _page: usize) -> Option<Vec<u8>> {
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn read_page(_bytes: &[u8], _page: usize) -> String {
     String::new()
 }
@@ -117,6 +143,14 @@ mod tests {
     /// 絵だけの PDF（macOS の「印刷 → PDF」。実機報告 2026-09-05 の実物）。
     /// **文字の層が無い**ので、ここを読めるかどうかが取り込みの成否を分ける。
     const IMAGE_ONLY: &[u8] = include_bytes!("../../fixtures/image-only.pdf");
+
+    #[test]
+    fn test_絵だけのPDFのページをPNGにできる() {
+        // ローカル LLM に渡すには絵をファイルの形（PNG）にする必要がある
+        let png = render_png(IMAGE_ONLY, 1).expect("描けるはず");
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        assert!(render_png(IMAGE_ONLY, 99).is_none()); // 無いページは None
+    }
 
     #[test]
     fn test_絵だけのPDFでもページ数が数えられる() {

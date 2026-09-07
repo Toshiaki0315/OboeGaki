@@ -814,13 +814,43 @@ pub fn llm_generate(
 ///
 /// 受け取るのは base64 の画像。**元のファイルは触らない** — 読み取った
 /// 文字を返すだけで、ノートにするのは呼び出し側の仕事。
+/// 読み取りの読み手（ADR-0027 決定 1「読み手を 2 つ持ち、設定で選ぶ」）。
+/// 画面の環境設定から来る。`engine` が "llm" のときだけ Ollama に頼み、
+/// それ以外（無指定を含む）は macOS の Vision。
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OcrReader {
+    pub engine: String,
+    pub port: u16,
+    pub model: String,
+    pub context: u32,
+    pub timeout_minutes: u64,
+    pub keep_alive: String,
+}
+
+/// 読み手に応じて画像を読む。**どちらも無ければ畳む**（ADR-0027 決定 4）—
+/// Ollama が動いていなければ Err で知らせ、Vision は読めなければ空。
+fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> Result<String, String> {
+    match reader {
+        Some(reader) if reader.engine == "llm" => crate::llm::read_image(
+            crate::llm::Generation {
+                port: reader.port,
+                model: &reader.model,
+                prompt: crate::llm::OCR_PROMPT,
+                context: reader.context,
+                timeout: std::time::Duration::from_secs(reader.timeout_minutes * 60),
+                keep_alive: &reader.keep_alive,
+            },
+            image,
+        )
+        .map_err(|error| error.to_string()),
+        _ => Ok(crate::ocr::recognize(image)),
+    }
+}
+
 #[tauri::command]
-pub async fn ocr_image(data: String) -> Result<String, String> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&data)
-        .map_err(|e| e.to_string())?;
-    Ok(crate::ocr::recognize(&bytes))
+pub async fn ocr_image(data: String, reader: Option<OcrReader>) -> Result<String, String> {
+    recognize_with(reader.as_ref(), &decode(&data)?)
 }
 
 /// 選んだ文字を渡す先のアプリを開く（要望 2026-09-05）。
@@ -905,8 +935,21 @@ pub async fn pdf_page_count(data: String) -> Result<usize, String> {
 /// **画面（pdf.js）で描かない。** ワーカーと canvas が要る経路は、
 /// そこが動かないと読み取りに辿り着く前に終わる。同じ機械の中で完結させる。
 #[tauri::command]
-pub async fn ocr_pdf_page(data: String, page: usize) -> Result<String, String> {
-    Ok(crate::pdf::read_page(&decode(&data)?, page))
+pub async fn ocr_pdf_page(
+    data: String,
+    page: usize,
+    reader: Option<OcrReader>,
+) -> Result<String, String> {
+    let bytes = decode(&data)?;
+    match reader.as_ref() {
+        // LLM には絵をファイルの形（PNG）で渡す。描けないページは空
+        Some(chosen) if chosen.engine == "llm" => match crate::pdf::render_png(&bytes, page) {
+            Some(png) => recognize_with(Some(chosen), &png),
+            None => Ok(String::new()),
+        },
+        // Vision には描いた絵をそのまま渡す（PNG を経由しない）
+        _ => Ok(crate::pdf::read_page(&bytes, page)),
+    }
 }
 
 fn decode(data: &str) -> Result<Vec<u8>, String> {
@@ -1369,6 +1412,35 @@ pub fn note_restore(
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_読み手_ローカルLLMが動いていなければ断る() {
+        let reader = OcrReader {
+            engine: "llm".into(),
+            port: 1, // 誰も居ないポート
+            model: "m".into(),
+            context: 4096,
+            timeout_minutes: 1,
+            keep_alive: "5m".into(),
+        };
+        let failed = recognize_with(Some(&reader), b"not an image").unwrap_err();
+        assert!(failed.contains("not-running"), "{failed}");
+    }
+
+    #[test]
+    fn test_読み手_指定が無ければmacOSで読む() {
+        // Vision は画像でなければ空を返す（読めないことは壊れることではない）
+        assert_eq!(recognize_with(None, b"not an image").unwrap(), "");
+        let mac = OcrReader {
+            engine: "mac".into(),
+            port: 1,
+            model: String::new(),
+            context: 0,
+            timeout_minutes: 1,
+            keep_alive: String::new(),
+        };
+        assert_eq!(recognize_with(Some(&mac), b"not an image").unwrap(), "");
+    }
 
     #[test]
     fn test_日付は年月日だけを読む() {

@@ -132,6 +132,41 @@ pub fn generate(
     Ok(answer)
 }
 
+/// 画像に書かれた文字をそのまま書き起こす頼み方（ADR-0027 決定 3。
+/// 参照実装 core/ocr.py と同じ文）。
+pub const OCR_PROMPT: &str = "この画像に書かれている文字を、**そのまま**書き起こしてください。\
+説明・要約・訳は不要です。文字が無ければ何も書かないでください。";
+
+/// 画像から文字を読む（ADR-0027 決定 1 の「手元の LLM」側）。
+///
+/// **モデルは設定のもの。** 画像を見られないモデルは空か説明を返すので、
+/// 空なら「読めなかった」と扱う（呼び出し側）。答えは一度に受ける —
+/// 読み取りは流しながら見せるものではない。
+pub fn read_image(order: Generation<'_>, image: &[u8]) -> Result<String, LlmError> {
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(image);
+    let body = serde_json::json!({
+        "model": order.model,
+        "prompt": order.prompt,
+        "images": [encoded],
+        "stream": false,
+        "keep_alive": order.keep_alive,
+        "options": { "num_ctx": order.context },
+    })
+    .to_string();
+    let collected = request(
+        order.port,
+        "POST",
+        "/api/generate",
+        Some(&body),
+        order.timeout,
+        |_| true,
+    )?;
+    let parsed = serde_json::from_str::<serde_json::Value>(collected.lines().next().unwrap_or(""))
+        .map_err(|error| LlmError::Failed(format!("答えが読めない: {error}")))?;
+    Ok(parsed["response"].as_str().unwrap_or("").trim().to_string())
+}
+
 /// モデルをメモリから降ろす（ADR-0025 追記）。
 ///
 /// 中身の無い生成に `keep_alive: 0` を付けると、Ollama は答えずに降ろす。
@@ -525,6 +560,52 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error, LlmError::NotRunning);
+    }
+
+    #[test]
+    fn test_read_image_画像を添えて頼み_答えを返す() {
+        let (port, received) = stub(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n\
+             {\"response\":\"読めた文字\",\"done\":true}\n",
+        );
+        let found = read_image(
+            Generation {
+                port,
+                model: "qwen2.5vl",
+                prompt: OCR_PROMPT,
+                context: 8192,
+                timeout: Duration::from_secs(5),
+                keep_alive: "5m",
+            },
+            b"hi",
+        )
+        .expect("読めるはず");
+        assert_eq!(found, "読めた文字");
+        let sent = received.recv().unwrap();
+        // 画像は base64 で `images` に載せ、答えは一度に受ける（ADR-0027 決定 3）
+        assert!(sent.contains("\"images\":[\"aGk=\"]"), "{sent}");
+        assert!(sent.contains("\"stream\":false"), "{sent}");
+        assert!(sent.contains("そのまま"), "{sent}");
+    }
+
+    #[test]
+    fn test_read_image_画像を読めないモデルは空を返す() {
+        // 説明も何も返さないモデル。**壊れることではない** — 空で知らせる
+        let (port, _received) =
+            stub("HTTP/1.1 200 OK\r\n\r\n{\"response\":\"  \",\"done\":true}\n");
+        let found = read_image(
+            Generation {
+                port,
+                model: "m",
+                prompt: OCR_PROMPT,
+                context: 4096,
+                timeout: Duration::from_secs(5),
+                keep_alive: "5m",
+            },
+            b"hi",
+        )
+        .expect("空でも読める");
+        assert_eq!(found, "");
     }
 
     #[test]
