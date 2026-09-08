@@ -4,8 +4,9 @@
 // 数値がずれ、「プレビューでは収まっていたのに .pptx では溢れる」が起きて
 // 原因も追えなくなる。ここが唯一の置き場所の決め手。
 
-import type { SlideBlock } from "./slides";
+import { plainText, type SlideBlock } from "./slides";
 import type { SlideMetrics } from "./slide-grid";
+import { wrapCount } from "./text-width";
 
 /// 置き場所（インチ）。**中身は持たない** — 何を描くかは呼ぶ側が決める。
 export type Box = { x: number; y: number; w: number; h: number };
@@ -84,32 +85,84 @@ export function bodyLayout(
   };
 }
 
+/// 行の高さ（字の大きさの何倍か）。PowerPoint の既定に合わせる。
+const LINE = 1.2;
+/// 段落と段落のあいだ。
+const GAP_IN = 0.12;
+/// 表のセルの上下の余白（PowerPoint の既定の内側余白ぶん）。行の高さは
+/// 字だけで決まらない — これを見ないと 4 行の表を 1 インチに押し込む
+const TABLE_CELL_PAD_IN = 0.1;
+
+/// 1 枚ぶんの高さを見積もる（インチ）。**枠を置く側・枚を割る側（8-5）・
+/// 見張り（CFG-70）が同じ物差しを使う** — 別々に測ると「割ったのに溢れて
+/// いる」「置いたら溢れた」が起きる（実機報告 2026-09-08: 本文の枠を固定の
+/// 割合で置いていて、コードと表が紙の下からはみ出た）。
+///
+/// 測り方は近似（`text-width.ts`）なので、**多めに見積もる**。溢れていると
+/// 言って収まっているほうが、逆より困らない。
+export function estimateHeightIn(
+  blocks: readonly SlideBlock[],
+  widthIn: number,
+  metrics: SlideMetrics,
+): number {
+  let total = 0;
+  for (const block of blocks) {
+    if (block.kind === "code") {
+      const lines = block.text.split("\n").length;
+      total += (lines * metrics.points.code * LINE) / 72 + GAP_IN * 2;
+      continue;
+    }
+    if (block.kind === "table") {
+      total +=
+        block.rows.length *
+          ((metrics.points.table * LINE) / 72 + TABLE_CELL_PAD_IN) +
+        GAP_IN;
+      continue;
+    }
+    const points =
+      block.kind === "heading" ? metrics.points.heading : metrics.points.body;
+    const lines = wrapCount(plainText(block.runs), widthIn, points);
+    total += (lines * points * LINE) / 72 + GAP_IN;
+  }
+  return total;
+}
+
 /// 本文の枠を上から順に置く。`pptx.ts` もプレビューもこれを描く。
+///
+/// **枠の高さは中身の分だけ**（`estimateHeightIn` と同じ物差し）。文章だけの
+/// 枚は従来どおり本文の高さいっぱいに 1 枠。コードや表が続く枚では、文章の
+/// 枠を測った高さにして、その直後からコード・表を積む。
 export function bodyFrames(
   blocks: readonly SlideBlock[],
   layout: BodyLayout,
   labelCode: boolean,
+  metrics: SlideMetrics,
 ): Frame[] {
   const frames: Frame[] = [];
   const flow = blocks.filter(
     (block) => block.kind !== "code" && block.kind !== "table",
   );
+  const mixed = flow.length < blocks.length;
   let top = layout.bodyY;
   if (flow.length > 0) {
+    const h = mixed
+      ? estimateHeightIn(flow, layout.bodyW, metrics)
+      : layout.bodyH;
     frames.push({
       kind: "flow",
       blocks: flow,
       x: layout.bodyX,
       y: top,
       w: layout.bodyW,
-      h: layout.bodyH * 0.78,
+      h,
     });
-    top += layout.bodyH * 0.82;
+    top += h;
   }
   for (const block of blocks) {
     if (block.kind === "code") {
       const label = labelCode && block.language ? block.language : null;
       if (label) top += LABEL_H;
+      const h = estimateHeightIn([block], layout.bodyW, metrics);
       frames.push({
         kind: "code",
         block,
@@ -117,19 +170,20 @@ export function bodyFrames(
         x: layout.bodyX,
         y: top,
         w: layout.bodyW,
-        h: layout.bodyH * 0.28,
+        h,
       });
-      top += layout.bodyH * 0.32;
+      top += h;
     } else if (block.kind === "table") {
+      const h = estimateHeightIn([block], layout.bodyW, metrics);
       frames.push({
         kind: "table",
         block,
         x: layout.bodyX,
         y: top,
         w: layout.bodyW,
-        h: layout.bodyH * 0.28,
+        h,
       });
-      top += layout.bodyH * 0.32;
+      top += h;
     }
   }
   return frames;

@@ -112,7 +112,12 @@ function pageOf(
       w: sheet.width - sheet.margin * 2,
       h: sheet.titleH,
     },
-    ...bodyFrames(slide.blocks, layout, settings.decoration.codeLanguageLabel),
+    ...bodyFrames(
+      slide.blocks,
+      layout,
+      settings.decoration.codeLanguageLabel,
+      sheet,
+    ),
   ];
   slide.images.forEach((image, index) => {
     const box = layout.images[index];

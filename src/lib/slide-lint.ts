@@ -7,10 +7,13 @@
 // 測り方は近似（`text-width.ts`）なので、**多めに見積もる**。溢れていると
 // 言って収まっているほうが、逆より困らない。
 
-import { plainText, type Deck, type SlideBlock } from "./slides";
+import type { Deck } from "./slides";
 import type { SlideMetrics } from "./slide-grid";
-import { wrapCount } from "./text-width";
-import { bodyLayout } from "./slide-frame";
+import { bodyLayout, estimateHeightIn } from "./slide-frame";
+
+// 見積もりは置き場所の決め手（slide-frame）と同じもの。割る側（slide-split）
+// はここから読んでいるので、入口として残す
+export { estimateHeightIn };
 
 export type Overflow = {
   /// 何枚目か（表紙を 1 枚目として数える）。
@@ -20,37 +23,6 @@ export type Overflow = {
   needIn: number;
   roomIn: number;
 };
-
-/// 行の高さ（字の大きさの何倍か）。PowerPoint の既定に合わせる。
-const LINE = 1.2;
-/// 段落と段落のあいだ。
-const GAP_IN = 0.12;
-
-/// 1 枚ぶんの高さを見積もる（インチ）。**枚を割るほう（8-5）も同じ物差しを
-/// 使う** — 別々に測ると「割ったのに溢れている」が起きる。
-export function estimateHeightIn(
-  blocks: readonly SlideBlock[],
-  widthIn: number,
-  metrics: SlideMetrics,
-): number {
-  let total = 0;
-  for (const block of blocks) {
-    if (block.kind === "code") {
-      const lines = block.text.split("\n").length;
-      total += (lines * metrics.points.code * LINE) / 72 + GAP_IN * 2;
-      continue;
-    }
-    if (block.kind === "table") {
-      total += (block.rows.length * metrics.points.table * LINE) / 72 + GAP_IN;
-      continue;
-    }
-    const points =
-      block.kind === "heading" ? metrics.points.heading : metrics.points.body;
-    const lines = wrapCount(plainText(block.runs), widthIn, points);
-    total += (lines * points * LINE) / 72 + GAP_IN;
-  }
-  return total;
-}
 
 /// 収まらないかもしれない枚（CFG-70）。**扉と表紙は数えない** —
 /// 題だけなので溢れようがない。

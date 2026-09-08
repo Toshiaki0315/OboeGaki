@@ -391,3 +391,41 @@ describe("テンプレートの配色と書体（TASKS 5-6 / ADR-0045 案 A）",
     expect(await readTemplateTheme(new Uint8Array([1, 2, 3]))).toBeNull();
   });
 });
+
+describe("枠は紙の中に収まる（実機報告 2026-09-08: コードと表が下からはみ出た）", () => {
+  const EMU = 914400;
+  /// 枚の中の枠（off / ext の組）の下端をインチで
+  const bottoms = (xml: string): number[] => {
+    const found: number[] = [];
+    const re = /<a:off x="-?\d+" y="(-?\d+)"\/><a:ext cx="\d+" cy="(\d+)"\/>/g;
+    for (const m of xml.matchAll(re)) {
+      found.push((Number(m[1]) + Number(m[2])) / EMU);
+    }
+    return found;
+  };
+  const code = (lang: string) =>
+    "```" + lang + "\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\n```\n";
+
+  it("test_本文 1 行とコード 2 つの枚で_どの枠も紙の下を越えない", async () => {
+    const { slide } = await open(
+      `## 実装\n\n短い説明。\n\n${code("python")}\n${code("javascript")}`,
+    );
+    const xml = await slide(1);
+    const found = bottoms(xml);
+    expect(found.length).toBeGreaterThanOrEqual(4); // 題・本文・コード 2 つ
+    for (const bottom of found) expect(bottom).toBeLessThanOrEqual(7.5 + 0.001);
+  });
+
+  it("test_本文と表の枚で_表が本文の直後に始まる", async () => {
+    const table = "| a | b |\n| :-- | :-- |\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |\n";
+    const { slide } = await open(`## 役割\n\n説明の文。\n\n${table}`);
+    const xml = await slide(1);
+    const frame = xml.match(
+      /<p:graphicFrame>[\s\S]*?<a:off x="\d+" y="(\d+)"\/>/,
+    );
+    expect(frame).not.toBeNull();
+    const tableTop = Number(frame![1]) / EMU;
+    // 以前は本文の枠を固定の高さ（約 4in）で置いていたので表が 6in より下に落ちた
+    expect(tableTop).toBeLessThan(4);
+  });
+});

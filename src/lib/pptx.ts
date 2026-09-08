@@ -398,7 +398,7 @@ function placeBlocks(
   labelCode = DEFAULT_PPTX_OPTIONS.decoration.codeLanguageLabel,
 ): void {
   // 置き場所は `slide-frame.ts` が決める（プレビューと同じ計算 = PV-01）
-  for (const frame of bodyFrames(blocks, layout, labelCode)) {
+  for (const frame of bodyFrames(blocks, layout, labelCode, sheet)) {
     if (frame.kind === "flow") {
       page.addText(flowRuns(frame.blocks, theme, sheet), {
         x: frame.x,
