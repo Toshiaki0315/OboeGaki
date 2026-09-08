@@ -9,12 +9,44 @@
 
 import { useEffect, useState } from "react";
 import { TRASH_FOLDER } from "../lib/finder";
-import { folderDepth, folderLabel } from "../lib/folder-tree";
+import {
+  folderDepth,
+  folderLabel,
+  hasSubfolders,
+  visibleFolders,
+} from "../lib/folder-tree";
 import { isNoteDrag, NOTE_DRAG_TYPE } from "../lib/note-drop";
 import type { FolderCount } from "../lib/ipc";
 import { MenuIcon } from "./MenuIcon";
 
 type DragLike = { dataTransfer: DataTransfer };
+
+/// 畳んだフォルダの記憶（要望 2026-09-08）。参照実装は開き直しのあいだ
+/// だけ覚えていたが、こちらは次の起動まで覚える。置き場所は注入
+/// （WebView 無しでテストできる形。useSearch と同じ作法）
+export const COLLAPSED_KEY = "oboegaki.folders-collapsed";
+type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+function loadCollapsed(storage: StorageLike): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(COLLAPSED_KEY) ?? "[]");
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((v): v is string => typeof v === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed(storage: StorageLike, collapsed: ReadonlySet<string>) {
+  try {
+    storage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+  } catch {
+    // 覚えられなくても畳めてはいる
+  }
+}
 
 export type FolderSectionProps = {
   /// 直下を除いたフォルダ（見出しが直下の役をする）
@@ -33,6 +65,8 @@ export type FolderSectionProps = {
   /// 落とされた。carried は dataTransfer に載っていた目印（無ければ空文字）
   onDrop: (folder: string, carried: string) => void;
   onDropTrash: (carried: string) => void;
+  /// 畳んだフォルダを覚える置き場所（App は localStorage）
+  storage: StorageLike;
 };
 
 export function FolderSection({
@@ -48,9 +82,23 @@ export function FolderSection({
   acceptsDrop,
   onDrop,
   onDropTrash,
+  storage,
 }: FolderSectionProps) {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [dropTrash, setDropTrash] = useState(false);
+  // 畳んでいるフォルダ。既定は全部開く（参照実装の expandAll と同じ）
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    loadCollapsed(storage),
+  );
+  function toggleCollapsed(folder: string) {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(folder)) next.delete(folder);
+      else next.add(folder);
+      saveCollapsed(storage, next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     // 掴み終わり・節の外への drop でも強調を残さない
@@ -130,7 +178,7 @@ export function FolderSection({
         </button>
       </summary>
       <ul>
-        {folders.map(({ folder, count }) => (
+        {visibleFolders(folders, collapsed).map(({ folder, count }) => (
           <li key={folder || "."} {...dropHandlers(folder)}>
             <button
               className={
@@ -144,6 +192,28 @@ export function FolderSection({
               onClick={() => onFilter(folder === folderFilter ? null : folder)}
               onContextMenu={menuHandler(folder)}
             >
+              {/* 子を持つフォルダだけ三角。押しても絞らない（開閉だけ）。
+                葉は同じ幅の空白で頭を揃える */}
+              {hasSubfolders(folder, folders) ? (
+                <span
+                  className={`side-twist folder-twist${collapsed.has(folder) ? "" : " open"}`}
+                  role="button"
+                  aria-label={
+                    collapsed.has(folder)
+                      ? `「${folderLabel(folder)}」を開く`
+                      : `「${folderLabel(folder)}」を畳む`
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleCollapsed(folder);
+                  }}
+                />
+              ) : (
+                <span
+                  className="side-twist folder-twist leaf"
+                  aria-hidden="true"
+                />
+              )}
               <MenuIcon name="folder" />
               <span className="folder-name">{folderLabel(folder)}</span>
               <span className="folder-count">{count}</span>

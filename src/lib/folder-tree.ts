@@ -37,3 +37,27 @@ export function newNoteFolder(folderFilter: string | null): string {
   if (folderFilter === null || folderFilter === TRASH_FOLDER) return "";
   return folderFilter;
 }
+
+/// そのフォルダの中に別のフォルダがあるか（子でも孫でも）。区切りで見る —
+/// 「仕事」の中に「仕事場」を数えない。
+export function hasSubfolders(
+  folder: string,
+  folders: readonly FolderCount[],
+): boolean {
+  const prefix = `${folder}/`;
+  return folders.some((entry) => entry.folder.startsWith(prefix));
+}
+
+/// 畳んだフォルダの中身を隠した一覧（要望 2026-09-08）。畳んだフォルダ
+/// そのものは残す（開き直す三角がそこにある）。
+export function visibleFolders<T extends FolderCount>(
+  folders: readonly T[],
+  collapsed: ReadonlySet<string>,
+): T[] {
+  return folders.filter((entry) => {
+    for (const shut of collapsed) {
+      if (entry.folder.startsWith(`${shut}/`)) return false;
+    }
+    return true;
+  });
+}

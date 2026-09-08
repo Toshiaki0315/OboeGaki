@@ -2144,6 +2144,7 @@ function App() {
                     // ピン留めの断りと確認は handleTrash が持っている
                     if (dragged) void handleTrash(dragged);
                   }}
+                  storage={localStorage}
                 />
               )}
               {settings.treesVisible && tags.length > 0 && (

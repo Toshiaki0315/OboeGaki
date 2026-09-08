@@ -7,7 +7,20 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TRASH_FOLDER } from "../lib/finder";
 import { NOTE_DRAG_TYPE } from "../lib/note-drop";
-import { FolderSection, type FolderSectionProps } from "./FolderSection";
+import {
+  COLLAPSED_KEY,
+  FolderSection,
+  type FolderSectionProps,
+} from "./FolderSection";
+
+function memoryStorage() {
+  const map = new Map<string, string>();
+  return {
+    getItem: (key: string) => map.get(key) ?? null,
+    setItem: (key: string, value: string) => void map.set(key, value),
+    removeItem: (key: string) => void map.delete(key),
+  };
+}
 
 afterEach(cleanup);
 
@@ -28,6 +41,7 @@ function setup(over: Partial<FolderSectionProps> = {}) {
     acceptsDrop: vi.fn(() => true),
     onDrop: vi.fn(),
     onDropTrash: vi.fn(),
+    storage: memoryStorage(),
     ...over,
   };
   const view = render(<FolderSection {...props} />);
@@ -49,6 +63,29 @@ describe("FolderSection", () => {
     expect(
       screen.getByText("ゴミ箱").closest("button")!.style.paddingLeft,
     ).toBe("1.8rem");
+  });
+
+  test("test_子を持つフォルダにだけ三角が付き_畳むと中身が隠れる（要望 2026-09-08）", () => {
+    const { props } = setup();
+    expect(screen.getByText("会議")).toBeTruthy();
+    const twist = screen.getByRole("button", { name: "「仕事」を畳む" });
+    expect(screen.queryByRole("button", { name: /「会議」を/ })).toBeNull(); // 葉には無い
+    fireEvent.click(twist);
+    expect(screen.queryByText("会議")).toBeNull();
+    expect(screen.getByText("仕事")).toBeTruthy(); // 本人は残る
+    expect(props.onFilter).not.toHaveBeenCalled(); // 三角は絞らない
+    fireEvent.click(screen.getByRole("button", { name: "「仕事」を開く" }));
+    expect(screen.getByText("会議")).toBeTruthy();
+  });
+
+  test("test_畳んだ状態は覚える", () => {
+    const storage = memoryStorage();
+    setup({ storage });
+    fireEvent.click(screen.getByRole("button", { name: "「仕事」を畳む" }));
+    expect(storage.getItem(COLLAPSED_KEY)).toContain("仕事");
+    cleanup();
+    setup({ storage }); // 次の起動 = 同じ置き場所から読む
+    expect(screen.queryByText("会議")).toBeNull();
   });
 
   test("test_名前を押すと絞り_もう一度で解除_見出しの名前は直下", () => {

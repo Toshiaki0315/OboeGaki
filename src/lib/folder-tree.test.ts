@@ -5,8 +5,10 @@ import { TRASH_FOLDER } from "./finder";
 import {
   folderDepth,
   folderLabel,
+  hasSubfolders,
   newNoteFolder,
   splitFolders,
+  visibleFolders,
 } from "./folder-tree";
 
 const folders = [
@@ -57,5 +59,33 @@ describe("newNoteFolder", () => {
   });
   it("test_ゴミ箱を見ているときは直下（ゴミ箱の中には作らない）", () => {
     expect(newNoteFolder(TRASH_FOLDER)).toBe("");
+  });
+});
+
+describe("サブフォルダを畳む（要望 2026-09-08）", () => {
+  const folders = [
+    { folder: "仕事", count: 3 },
+    { folder: "仕事/会議", count: 1 },
+    { folder: "仕事/会議/2026", count: 2 },
+    { folder: "私用", count: 0 },
+  ];
+  it("test_hasSubfolders は直下でも孫でも子がいれば真", () => {
+    expect(hasSubfolders("仕事", folders)).toBe(true);
+    expect(hasSubfolders("仕事/会議", folders)).toBe(true);
+    expect(hasSubfolders("仕事/会議/2026", folders)).toBe(false);
+    expect(hasSubfolders("私用", folders)).toBe(false);
+    // 「仕事」を畳んでも「仕事場」は隠さない（前方一致ではなく区切りで見る）
+    expect(hasSubfolders("仕", folders)).toBe(false);
+  });
+  it("test_visibleFolders は畳んだフォルダの中身を隠す（本人は残る）", () => {
+    expect(
+      visibleFolders(folders, new Set(["仕事"])).map((f) => f.folder),
+    ).toEqual(["仕事", "私用"]);
+    expect(
+      visibleFolders(folders, new Set(["仕事/会議"])).map((f) => f.folder),
+    ).toEqual(["仕事", "仕事/会議", "私用"]);
+    expect(
+      visibleFolders(folders, new Set()).map((f) => f.folder),
+    ).toHaveLength(4);
   });
 });

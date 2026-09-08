@@ -1218,6 +1218,20 @@ details[open] > summary > .side-twist::before {
   content: "▼";
 }
 
+/* 中のフォルダの三角（要望 2026-09-08）。開いていれば ▼、畳めば ▶、葉は空 */
+.folder-twist.open::before {
+  content: "▼";
+}
+.folder-twist.leaf::before {
+  content: "";
+}
+.folder-twist:not(.leaf) {
+  cursor: pointer;
+}
+.folder-twist:not(.leaf):hover {
+  opacity: 1;
+}
+
 .tag-section {
   margin-top: 1rem;
   padding-top: 0.5rem;
