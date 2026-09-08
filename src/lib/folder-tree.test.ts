@@ -9,6 +9,7 @@ import {
   newNoteFolder,
   splitFolders,
   visibleFolders,
+  folderCount,
 } from "./folder-tree";
 
 const folders = [
@@ -76,6 +77,34 @@ describe("サブフォルダを畳む（要望 2026-09-08）", () => {
     expect(hasSubfolders("私用", folders)).toBe(false);
     // 「仕事」を畳んでも「仕事場」は隠さない（前方一致ではなく区切りで見る）
     expect(hasSubfolders("仕", folders)).toBe(false);
+  });
+  it("test_folderCount は直下があればその数_中身は数えない（ADR-0024 追記 4）", () => {
+    expect(folderCount("仕事", 3, folders)).toEqual({
+      text: "3",
+      inner: false,
+    });
+    expect(folderCount("仕事/会議/2026", 2, folders)).toEqual({
+      text: "2",
+      inner: false,
+    });
+  });
+  it("test_folderCount は直下が 0 で中にノートがあれば合計を括弧で出す（要望 2026-09-08）", () => {
+    // 「仕事」の直下が 0 でも、会議 1 + 2026 の 2 = 3 件が中にある。
+    // 0 と出すと空に見える
+    expect(folderCount("仕事", 0, folders)).toEqual({
+      text: "(3)",
+      inner: true,
+    });
+    // 見出し（直下）も同じ扱い: 中のフォルダ全部の合計
+    expect(folderCount("", 0, folders)).toEqual({ text: "(6)", inner: true });
+  });
+  it("test_folderCount は中も空なら 0 のまま", () => {
+    expect(folderCount("私用", 0, folders)).toEqual({
+      text: "0",
+      inner: false,
+    });
+    // 「仕」は「仕事」の親ではない（区切りで見る）
+    expect(folderCount("仕", 0, folders)).toEqual({ text: "0", inner: false });
   });
   it("test_visibleFolders は畳んだフォルダの中身を隠す（本人は残る）", () => {
     expect(

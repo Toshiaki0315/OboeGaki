@@ -48,6 +48,24 @@ export function hasSubfolders(
   return folders.some((entry) => entry.folder.startsWith(prefix));
 }
 
+/// 右端に出す件数（要望 2026-09-08）。**数字は直下だけ**（ADR-0024 追記 4:
+/// 選んだときの一覧と一致させる）を保ちつつ、直下が 0 で中のフォルダに
+/// ノートがあるときだけ、その合計を括弧で出す — 素の 0 は「何も無い」に
+/// 見える。括弧は「選んでも一覧には出ない数」の印。
+export function folderCount(
+  folder: string,
+  count: number,
+  folders: readonly FolderCount[],
+): { text: string; inner: boolean } {
+  if (count > 0) return { text: String(count), inner: false };
+  const prefix = folder ? `${folder}/` : "";
+  const inner = folders
+    .filter((entry) => entry.folder !== "" && entry.folder.startsWith(prefix))
+    .reduce((sum, entry) => sum + entry.count, 0);
+  if (inner === 0) return { text: "0", inner: false };
+  return { text: `(${inner})`, inner: true };
+}
+
 /// 畳んだフォルダの中身を隠した一覧（要望 2026-09-08）。畳んだフォルダ
 /// そのものは残す（開き直す三角がそこにある）。
 export function visibleFolders<T extends FolderCount>(

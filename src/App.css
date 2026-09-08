@@ -1176,6 +1176,12 @@ body.resizing {
   white-space: nowrap;
 }
 
+/* 直下が 0 で中にノートがあるときの (n)。数字より少し薄くして、選んだ
+   一覧に出る数ではないと分かるようにする */
+.folder-count.inner {
+  opacity: 0.4;
+}
+
 .folder-count,
 .side-count {
   /* 件数は右端。**左に絵が入っても右に張り付く**（要望 2026-09-05） */

@@ -55,6 +55,20 @@ const transfer = (path = "/v/a.md") => ({
 });
 
 describe("FolderSection", () => {
+  test("test_直下が 0 で中にノートがあるフォルダは合計を括弧で出す（要望 2026-09-08）", () => {
+    setup({
+      folders: [
+        { folder: "仕事", count: 0 },
+        { folder: "仕事/会議", count: 4 },
+      ],
+      rootCount: 0,
+    });
+    // 「仕事」は 0 ではなく (4)。見出しの「フォルダ」も直下 0 なので (4)
+    expect(screen.queryByText("0")).toBeNull();
+    const inner = screen.getAllByText("(4)");
+    expect(inner).toHaveLength(2);
+    expect(inner[0].getAttribute("title")).toContain("直下には無く");
+  });
   test("test_見出しに直下の件数_中のフォルダは 1 段下げて件数つき", () => {
     setup();
     expect(screen.getByText("5")).toBeTruthy();

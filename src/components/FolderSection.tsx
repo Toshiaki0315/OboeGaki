@@ -14,6 +14,7 @@ import {
   folderLabel,
   hasSubfolders,
   visibleFolders,
+  folderCount,
 } from "../lib/folder-tree";
 import { isNoteDrag, NOTE_DRAG_TYPE } from "../lib/note-drop";
 import type { FolderCount } from "../lib/ipc";
@@ -68,6 +69,32 @@ export type FolderSectionProps = {
   /// 畳んだフォルダを覚える置き場所（App は localStorage）
   storage: StorageLike;
 };
+
+/// 右端の件数。直下が 0 で中にノートがあるときは合計を括弧で出す
+/// （`folderCount`）。括弧の意味は Tip で補う。
+function FolderCountBadge({
+  folder,
+  count,
+  folders,
+}: {
+  folder: string;
+  count: number;
+  folders: readonly FolderCount[];
+}) {
+  const shown = folderCount(folder, count, folders);
+  return (
+    <span
+      className={`folder-count${shown.inner ? " inner" : ""}`}
+      title={
+        shown.inner
+          ? `直下には無く、中のフォルダに ${shown.text.slice(1, -1)} 件`
+          : undefined
+      }
+    >
+      {shown.text}
+    </span>
+  );
+}
 
 export function FolderSection({
   folders,
@@ -174,7 +201,7 @@ export function FolderSection({
         >
           <MenuIcon name="folder" />
           <span className="folder-name">フォルダ</span>
-          <span className="folder-count">{rootCount}</span>
+          <FolderCountBadge folder="" count={rootCount} folders={folders} />
         </button>
       </summary>
       <ul>
@@ -216,7 +243,11 @@ export function FolderSection({
               )}
               <MenuIcon name="folder" />
               <span className="folder-name">{folderLabel(folder)}</span>
-              <span className="folder-count">{count}</span>
+              <FolderCountBadge
+                folder={folder}
+                count={count}
+                folders={folders}
+              />
             </button>
           </li>
         ))}
