@@ -107,7 +107,12 @@ import {
   renderHtml,
 } from "./lib/export-html";
 import { highlightCodeHtml } from "./lib/export-code";
-import { splitDeck } from "./lib/slides";
+import {
+  diagramsAsImages,
+  MERMAID_IMAGE_PREFIX,
+  splitDeck,
+} from "./lib/slides";
+import { svgToPng } from "./lib/svg-png";
 import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
@@ -664,6 +669,18 @@ function App() {
     return diagrams;
   }
 
+  /// Mermaid を PNG にする（PowerPoint 用。要望 2026-09-08）。**紙の上の図は
+  /// 明るいテーマで描く** — アプリがダークでも紙は白地
+  async function drawDiagramPngs(text: string): Promise<Map<string, string>> {
+    const drawn = new Map<string, string>();
+    for (const code of collectMermaid(text)) {
+      const svg = await renderMermaid(code, "light");
+      const png = svg ? await svgToPng(svg) : null;
+      if (png) drawn.set(code, png);
+    }
+    return drawn;
+  }
+
   /// コードを先に色分けする（パーサの読み込みが非同期。TASKS 4-4）。
   async function colorCode(text: string): Promise<Map<string, string>> {
     const colored = new Map<string, string>();
@@ -726,8 +743,13 @@ function App() {
       const metrics = slideMetrics(pptxSettings);
       // 収まらないぶんは次の枚へ送る（CFG-46）。**測ってから割る**ので、
       // 見張り（下）は割ったあとの姿を見ることになる
+      // Mermaid は図（画像）として置く。描けなかった図はコードのまま
+      const diagrams = await drawDiagramPngs(text);
       const deck = splitForDensity(
-        splitDeck(text, pptxSettings.layout.splitLevel),
+        diagramsAsImages(
+          splitDeck(text, pptxSettings.layout.splitLevel),
+          (source) => diagrams.has(source),
+        ),
         pptxSettings,
         metrics,
       );
@@ -747,7 +769,12 @@ function App() {
       }
       const data = await buildPptx(
         deck,
-        (url) => imageSource(vaultRoot, url),
+        (url) =>
+          url.startsWith(MERMAID_IMAGE_PREFIX)
+            ? Promise.resolve(
+                diagrams.get(url.slice(MERMAID_IMAGE_PREFIX.length)) ?? null,
+              )
+            : imageSource(vaultRoot, url),
         readSlideTheme(text, slideThemeFrom(pptxSettings)),
         await borrowedTheme(),
         {

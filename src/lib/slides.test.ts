@@ -2,7 +2,14 @@
 // 区切りは参照実装 core/slides.py と同じ（ユーザーと決めた並べ方）。
 
 import { describe, expect, it, test } from "vitest";
-import { cardsOf, plainText, splitDeck, type SlideBlock } from "./slides";
+import {
+  cardsOf,
+  diagramsAsImages,
+  MERMAID_IMAGE_PREFIX,
+  plainText,
+  splitDeck,
+  type SlideBlock,
+} from "./slides";
 
 /// 本文だけを見たいテスト用（装飾は runs が持つ）
 const said = (block: SlideBlock) =>
@@ -271,6 +278,40 @@ describe("splitDeck", () => {
       { text: "a " },
       { text: "b", bold: true },
       { text: " c" },
+    ]);
+  });
+});
+
+describe("diagramsAsImages（Mermaid を図として書き出す。要望 2026-09-08）", () => {
+  const md =
+    "## A\n\n説明。\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n```python\nprint(1)\n```\n";
+
+  test("test_Mermaid のコードは画像に置き換わり_他のコードは残る", () => {
+    const deck = diagramsAsImages(splitDeck(md));
+    const slide = deck.slides[0];
+    expect(slide.blocks.map((b) => b.kind)).toEqual(["paragraph", "code"]);
+    expect(slide.images).toEqual([
+      { url: `${MERMAID_IMAGE_PREFIX}graph TD\n  A --> B`, alt: "" },
+    ]);
+  });
+
+  test("test_描けなかった図はコードのまま残す", () => {
+    const deck = diagramsAsImages(splitDeck(md), () => false);
+    expect(deck.slides[0].blocks.map((b) => b.kind)).toEqual([
+      "paragraph",
+      "code",
+      "code",
+    ]);
+    expect(deck.slides[0].images).toEqual([]);
+  });
+
+  test("test_元の画像の後ろに並ぶ", () => {
+    const deck = diagramsAsImages(
+      splitDeck("## A\n\n![写真](a.png)\n\n```mermaid\ngraph LR\n```\n"),
+    );
+    expect(deck.slides[0].images.map((i) => i.url)).toEqual([
+      "a.png",
+      `${MERMAID_IMAGE_PREFIX}graph LR`,
     ]);
   });
 });

@@ -19,7 +19,7 @@ import { slideMetrics } from "../lib/slide-grid";
 import { overflowingSlides } from "../lib/slide-lint";
 import { previewOf, SAMPLE_DECKS } from "../lib/slide-preview";
 import { splitForDensity } from "../lib/slide-split";
-import { splitDeck } from "../lib/slides";
+import { diagramsAsImages, splitDeck } from "../lib/slides";
 import { SlidePreview } from "./SlidePreview";
 
 export type PptxPreferencesProps = {
@@ -60,7 +60,7 @@ export function PptxPreferences({
     if (!text.trim()) return null;
     const metrics = slideMetrics(pptxSettings);
     const deck = splitForDensity(
-      splitDeck(text, pptxSettings.layout.splitLevel),
+      diagramsAsImages(splitDeck(text, pptxSettings.layout.splitLevel)),
       pptxSettings,
       metrics,
     );

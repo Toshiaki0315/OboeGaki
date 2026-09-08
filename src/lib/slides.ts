@@ -410,3 +410,30 @@ function plain(text: string, node: SyntaxNode): string {
     .join(" ")
     .trim();
 }
+
+/// Mermaid の図を指す画像の url の頭。`mermaid:<ソース>` の形で、書き出し側が
+/// 描いた PNG と突き合わせる（ファイルではないので resolveImage で見分ける）。
+export const MERMAID_IMAGE_PREFIX = "mermaid:";
+
+/// Mermaid のコードブロックを図（画像）に置き換える（要望 2026-09-08）。
+/// 画像と同じ置き方（横の用紙では本文の右）になる。**描けなかった図は
+/// コードのまま残す** — 何も出ないより、コードが見えるほうがよい。
+export function diagramsAsImages(
+  deck: Deck,
+  canDraw: (source: string) => boolean = () => true,
+): Deck {
+  return {
+    ...deck,
+    slides: deck.slides.map((slide) => {
+      if (slide.kind !== "content") return slide;
+      const images = [...slide.images];
+      const blocks = slide.blocks.filter((block) => {
+        if (block.kind !== "code" || block.language !== "mermaid") return true;
+        if (!canDraw(block.text)) return true;
+        images.push({ url: `${MERMAID_IMAGE_PREFIX}${block.text}`, alt: "" });
+        return false;
+      });
+      return { ...slide, blocks, images };
+    }),
+  };
+}

@@ -9,7 +9,7 @@
 // **ただし当たると言わない**（PV-05）。字の幅は近似（`text-width.ts`）で、
 // 本物の書体で組むのは出力先の PowerPoint。**形と収まり具合の目安**まで。
 
-import { splitDeck, type Slide } from "./slides";
+import { diagramsAsImages, splitDeck, type Slide } from "./slides";
 import { splitForDensity } from "./slide-split";
 import { slideMetrics } from "./slide-grid";
 import { bodyFrames, bodyLayout, LABEL_H, type Frame } from "./slide-frame";
@@ -41,8 +41,9 @@ const MAX_PAGES = 5;
 /// Markdown と設定から、画面に出す枠を作る。
 export function previewOf(markdown: string, settings: PptxSettings): Preview {
   const sheet = slideMetrics(settings);
+  // Mermaid は図（画像）として置く（書き出しと同じ）
   const deck = splitForDensity(
-    splitDeck(markdown, settings.layout.splitLevel),
+    diagramsAsImages(splitDeck(markdown, settings.layout.splitLevel)),
     settings,
     sheet,
   );

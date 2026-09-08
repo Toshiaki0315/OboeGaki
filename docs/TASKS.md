@@ -192,6 +192,11 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       れていた。`bodyFrames` が `estimateHeightIn`（割る側・見張りと同じ物差し。
       `slide-frame.ts` に移動）で測って積む。表の行はセルの余白も見積もる
 
+- [x] **5-y. Mermaid を図として書き出す**（要望 2026-09-08）
+      `mermaid` のコードブロックを SVG → PNG（WebView の canvas、2 倍）にして
+      画像と同じ置き方（横の用紙では本文の右）に。描けなかった図はコードのまま
+      残す。プレビューと見張りも図を画像として数える
+
 ## 第 6 群 — 書くときの近道（Qiita の `/` メニュー相当）
 
 要望（2026-09-05）。Qiita のエディタは空行で `/` を打つと候補が出て、

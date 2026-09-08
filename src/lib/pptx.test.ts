@@ -11,7 +11,7 @@ import {
   readTemplateTheme,
   type PptxOptions,
 } from "./pptx";
-import { splitDeck } from "./slides";
+import { diagramsAsImages, MERMAID_IMAGE_PREFIX, splitDeck } from "./slides";
 import { DEFAULT_SLIDE_THEME, readSlideTheme } from "./slide-theme";
 import { slideMetrics } from "./slide-grid";
 import { DEFAULT_PPTX_SETTINGS, type PptxSettings } from "./pptx-settings";
@@ -427,5 +427,25 @@ describe("枠は紙の中に収まる（実機報告 2026-09-08: コードと表
     const tableTop = Number(frame![1]) / EMU;
     // 以前は本文の枠を固定の高さ（約 4in）で置いていたので表が 6in より下に落ちた
     expect(tableTop).toBeLessThan(4);
+  });
+});
+
+describe("Mermaid は図として書き出す（要望 2026-09-08）", () => {
+  const PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  const md = "## 流れ\n\n説明。\n\n```mermaid\ngraph TD\n  A --> B\n```\n";
+
+  it("test_図は画像として置かれ_コードの文字は出ない", async () => {
+    const deck = diagramsAsImages(splitDeck(md));
+    const base64 = await buildPptx(
+      deck,
+      async (url) => (url.startsWith(MERMAID_IMAGE_PREFIX) ? PNG : null),
+      readSlideTheme(md),
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    expect(xml).toContain("<p:pic>");
+    expect(xml).not.toContain("graph TD");
   });
 });
