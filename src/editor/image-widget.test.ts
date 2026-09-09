@@ -50,4 +50,28 @@ describe("ImageWidget", () => {
     expect(dom.querySelector("img")).toBeNull();
     expect(dom.textContent).toBe("図");
   });
+
+  test("test_幅の無い SVG は viewBox の大きさで置く（300×150 に潰れない。要望 2026-09-09）", async () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320"/>';
+    const b64 = Buffer.from(svg, "utf8").toString("base64");
+    const dom = new ImageWidget("attachments/a.svg", "構成図").toDOM(
+      viewResolving(`data:image/svg+xml;base64,${b64}`),
+    );
+    await settle();
+    const image = dom.querySelector("img")!;
+    expect(image.style.width).toBe("640px");
+    expect(image.style.height).toBe("auto");
+  });
+
+  test("test_SVG でも書き手が |300 と書けばそちらが勝つ", async () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320"/>';
+    const b64 = Buffer.from(svg, "utf8").toString("base64");
+    const dom = new ImageWidget("attachments/a.svg", "構成図", 300).toDOM(
+      viewResolving(`data:image/svg+xml;base64,${b64}`),
+    );
+    await settle();
+    expect(dom.querySelector("img")!.style.width).toBe("300px");
+  });
 });

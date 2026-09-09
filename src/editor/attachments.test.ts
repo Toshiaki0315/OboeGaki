@@ -15,6 +15,7 @@ describe("isImageFile", () => {
     ["MIME が image/*", { name: "x.bin", type: "image/png" }, true],
     ["拡張子が画像", { name: "photo.JPG", type: "" }, true],
     ["heic も画像", { name: "iphone.heic", type: "" }, true],
+    ["svg も画像（要望 2026-09-09）", { name: "構成図.SVG", type: "" }, true],
     ["テキストは違う", { name: "memo.txt", type: "text/plain" }, false],
     ["拡張子なし", { name: "README", type: "" }, false],
   ])("test_%s", (_label, file, expected) => {

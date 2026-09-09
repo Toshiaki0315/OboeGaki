@@ -98,3 +98,21 @@ v1.1 へ送り、**`QTextEdit` への移行とセット**で考えていた。
   「1 行 1 画像」なので切った
 - 保管フォルダの外は読まない。本文は手で編集できるので、`../` や絶対パスで
   任意のファイルを開かせない（`core/paths.py` に統一）
+
+## 追記（2026-09-09）: SVG も絵として置く
+
+参照実装は `IMAGE_SUFFIXES` に svg を入れていなかった（Qt は QtSvg 無しで
+描けない）。WebView は `<img>` で素のまま描けるので、OboeGaki では受ける。
+
+- 取り込み: `.svg` も添付として `attachments/` へ（中身はそのまま。PNG に
+  変換しない — 拡大しても荒れないのが SVG の値打ち）
+- 表示: Rust が data URL（`image/svg+xml`）で返す。**幅の無い SVG**
+  （draw.io・Excalidraw の書き出しは viewBox だけのことが多い）は、CSS の
+  既定で 300×150 に置かれるので、viewBox の大きさを `<img>` の幅にする
+  （`lib/svg-png.ts` の `svgNaturalSize`）。書き手の `|300` が勝つのは同じ
+- HTML 書き出し・印刷: 同じ幅を `width` 属性に書く
+- PowerPoint: Mermaid と同じく PNG に描き直して置く（`rasterizeIfSvg`）。
+  pptxgenjs は SVG も受けるが、幅の無い SVG を 0×0 と読んで失敗するし、
+  Keynote や古い PowerPoint は SVG を描けない。**PNG 一本**に揃える
+- スクリプト入りの SVG は `<img>` の中では動かない（ブラウザの仕様）。CSP の
+  `img-src data:` はそのまま

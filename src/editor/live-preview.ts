@@ -49,6 +49,7 @@ import {
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
 import { splitImageAlt } from "./image-size";
+import { svgFromDataUrl, svgNaturalSize } from "../lib/svg-png";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
@@ -313,6 +314,16 @@ export class ImageWidget extends WidgetType {
         image.style.width = `${this.width}px`;
         image.style.height =
           this.height === undefined ? "auto" : `${this.height}px`;
+      } else {
+        // 幅の無い SVG（draw.io や Excalidraw の書き出し）は viewBox の
+        // 大きさで置く。何もしないと 300×150 に潰れる（要望 2026-09-09）。
+        // max-width: 100% が効くので、欄より広くはならない
+        const svg = svgFromDataUrl(src);
+        const natural = svg === null ? null : svgNaturalSize(svg);
+        if (natural) {
+          image.style.width = `${natural.width}px`;
+          image.style.height = "auto";
+        }
       }
       if (this.alt) {
         const caption = document.createElement("span");

@@ -112,7 +112,12 @@ import {
   MERMAID_IMAGE_PREFIX,
   splitDeck,
 } from "./lib/slides";
-import { svgToPng } from "./lib/svg-png";
+import {
+  rasterizeIfSvg,
+  svgFromDataUrl,
+  svgNaturalSize,
+  svgToPng,
+} from "./lib/svg-png";
 import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
@@ -693,15 +698,26 @@ function App() {
 
   /// 画像を data URL にして埋める（**外部リソースを参照しない** = ADR-0007）。
   async function embedImages(html: string, root: string): Promise<string> {
-    const sources = new Set(
-      [...html.matchAll(/<img src="([^"]+)"/g)].map((found) => found[1]),
-    );
-    let embedded = html;
+    const tag = /<img src="([^"]+)"([^>]*)>/g;
+    const sources = new Set([...html.matchAll(tag)].map((found) => found[1]));
+    const resolved = new Map<string, string>();
     for (const src of sources) {
       const data = await imageSource(root, src);
-      if (data) embedded = embedded.split(`src="${src}"`).join(`src="${data}"`);
+      if (data) resolved.set(src, data);
     }
-    return embedded;
+    return html.replace(tag, (whole, src: string, rest: string) => {
+      const data = resolved.get(src);
+      if (!data) return whole;
+      // 幅の無い SVG は viewBox の大きさを書く（本文の絵と同じ理由。
+      // 書き手が `|300` と書いた幅があればそちらを残す）
+      const svg = svgFromDataUrl(data);
+      const natural = svg === null ? null : svgNaturalSize(svg);
+      const size =
+        natural && !/\swidth="/.test(rest)
+          ? ` width="${natural.width}" height="${natural.height}"`
+          : "";
+      return `<img src="${data}"${rest}${size}>`;
+    });
   }
 
   /// 印刷（ADR-0038）。**書き出しと同じ本文**を隠しの領域に組み、
@@ -774,7 +790,7 @@ function App() {
             ? Promise.resolve(
                 diagrams.get(url.slice(MERMAID_IMAGE_PREFIX.length)) ?? null,
               )
-            : imageSource(vaultRoot, url),
+            : imageSource(vaultRoot, url).then(rasterizeIfSvg),
         readSlideTheme(text, slideThemeFrom(pptxSettings)),
         await borrowedTheme(),
         {

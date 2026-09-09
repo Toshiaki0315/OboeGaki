@@ -68,3 +68,53 @@ export function svgToPng(svg: string, scale = 2): Promise<string | null> {
     }
   });
 }
+
+/// data URL に入った SVG の中身。Rust（assets.rs）は本文の画像を base64 の
+/// data URL で返すので、大きさを見るにはここで戻す。SVG でなければ null
+export function svgFromDataUrl(url: string): string | null {
+  const head = url.match(/^data:image\/svg\+xml([^,]*),/i);
+  if (!head) return null;
+  const body = url.slice(head[0].length);
+  try {
+    if (/;base64/i.test(head[1])) {
+      const bytes = Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+    return decodeURIComponent(body);
+  } catch {
+    return null;
+  }
+}
+
+/// `<img>` に置くときの自然な大きさ（px）。root に px の幅と高さがあれば
+/// ブラウザが正しく扱うので null。無い・`100%` のときは viewBox を使う —
+/// 何もしないと **300×150 に潰れる**（CSS の既定の置き換え要素の大きさ）。
+/// viewBox も無ければ null（手の打ちどころが無い）
+export function svgNaturalSize(
+  svg: string,
+): { width: number; height: number } | null {
+  const root = svg.match(/<svg[^>]*>|<svg[^>]*\/>/)?.[0] ?? "";
+  const px = (name: string) =>
+    Number(root.match(new RegExp(`\\s${name}="([\\d.]+)(?:px)?"`))?.[1]);
+  if (px("width") > 0 && px("height") > 0) return null;
+  const viewBox = root.match(
+    /viewBox="\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)"/,
+  );
+  if (!viewBox) return null;
+  const width = Number(viewBox[1]);
+  const height = Number(viewBox[2]);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/// SVG の data URL なら PNG に描き直し、それ以外はそのまま返す。PowerPoint
+/// に置く前段（要望 2026-09-09）。pptxgenjs 自身も SVG を受けるが、幅の無い
+/// SVG を 0×0 と読んで失敗するし、開く側（Keynote・古い PowerPoint）が
+/// SVG を描けないことがある。Mermaid と同じ PNG 一本に揃える
+export async function rasterizeIfSvg(
+  url: string | null,
+): Promise<string | null> {
+  if (url === null) return null;
+  const svg = svgFromDataUrl(url);
+  if (svg === null) return url;
+  return (await svgToPng(svg)) ?? url;
+}

@@ -7,7 +7,9 @@
 import { EditorView } from "@codemirror/view";
 import type { EditorState, Extension, Text } from "@codemirror/state";
 
-// 落とされたファイルを画像として扱う拡張子（参照実装 IMAGE_SUFFIXES）
+// 落とされたファイルを画像として扱う拡張子（参照実装 IMAGE_SUFFIXES に
+// svg を足した — 要望 2026-09-09。Qt は QtSvg が無いと描けなかったが、
+// WebView は `<img>` で素のまま描ける）
 const IMAGE_SUFFIXES = new Set([
   "png",
   "jpg",
@@ -17,6 +19,7 @@ const IMAGE_SUFFIXES = new Set([
   "bmp",
   "tiff",
   "heic",
+  "svg",
 ]);
 
 type FileLike = { name?: string; type?: string };
