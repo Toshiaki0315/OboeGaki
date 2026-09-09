@@ -1659,6 +1659,13 @@ const blockTheme = EditorView.baseTheme({
     textIndent: "calc(-1 * var(--hang))",
     paddingLeft: "calc(6px + var(--hang))",
   },
+  // **text-indent は継承される。** 行の中の inline-block（番号の箱・点・
+  // 数式など）にも掛かり、中の字が箱の左へはみ出して切れる（実機
+  // 2026-09-10: 番号が半分欠け、箱だけ残って広い隙間になった）。箱の中では
+  // 打ち消す。素の inline には効かない属性なので、まとめて掛けて問題ない
+  ".cm-line.cm-hang *": {
+    textIndent: "0",
+  },
   ".cm-list-number": {
     display: "inline-block",
     whiteSpace: "pre",
