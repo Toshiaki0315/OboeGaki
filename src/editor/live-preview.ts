@@ -574,6 +574,13 @@ class HrWidget extends WidgetType {
   }
 }
 
+/// 先頭の空白の幅（ch）。タブは 4 字ぶんとして数える
+function leadWidthCh(lead: string): number {
+  let width = 0;
+  for (const char of lead) width += char === "\t" ? 4 : 1;
+  return width;
+}
+
 function listDepth(node: SyntaxNode): number {
   let depth = 0;
   for (let parent = node.parent; parent; parent = parent.parent) {
@@ -760,9 +767,45 @@ export function previewDecorations(
         //     タスク（`- [ ]`）はチェックボックスに置き換える
         case "ListMark": {
           const item = node.node.parent;
-          if (!item || item.parent?.name !== "BulletList") return;
-          if (touchesLine(state, node.from)) return;
+          const kind = item?.parent?.name;
+          if (!item || (kind !== "BulletList" && kind !== "OrderedList")) {
+            return;
+          }
           const marker = item.getChild("Task")?.getChild("TaskMarker");
+          // **折り返しは点・番号の後ろに揃える**（ぶら下げ。要望 2026-09-10）。
+          // 幅は「先頭の空白の字数（ch）+ 印の幅」。印の幅は描く側と同じ値を
+          // 使う（点 1.2em / チェックボックス 1.15em+0.4em / 番号は字数 ch）。
+          // カーソルが乗って原文が見えている間も外さない — 行が跳ねる
+          const line = state.doc.lineAt(node.from);
+          const lead = state.sliceDoc(line.from, node.from);
+          const indent = /^\s*$/.test(lead) ? leadWidthCh(lead) : 0;
+          const markerText = state.sliceDoc(node.from, node.to);
+          const markWidth =
+            kind === "OrderedList"
+              ? `${markerText.length + 1}ch`
+              : marker
+                ? "1.55em"
+                : "1.2em";
+          out.push(
+            Decoration.line({
+              class: "cm-hang",
+              attributes: { style: `--hang: calc(${indent}ch + ${markWidth})` },
+            }).range(line.from),
+          );
+          if (kind === "OrderedList") {
+            // 番号は隠さない（ADR-0026）。字の幅がフォントで違っても折り返し
+            // と揃うよう、印そのものを同じ幅の箱にする
+            out.push(
+              Decoration.mark({
+                attributes: {
+                  class: "cm-list-number",
+                  style: `width: ${markWidth}`,
+                },
+              }).range(node.from, withTrailingSpace(state, node.to)),
+            );
+            return;
+          }
+          if (touchesLine(state, node.from)) return;
           if (marker) {
             const checked = state
               .sliceDoc(marker.from, marker.to)
@@ -1609,6 +1652,16 @@ const blockTheme = EditorView.baseTheme({
   ".cm-note-line-last": {
     paddingBottom: "0.5em",
     borderBottomRightRadius: "6px",
+  },
+  // ぶら下げ（要望 2026-09-10）。1 行目だけ印の幅ぶん左へ戻し、行全体を
+  // 同じ幅だけ右へ寄せる。6px は CM6 の .cm-line の既定の左 padding
+  ".cm-line.cm-hang": {
+    textIndent: "calc(-1 * var(--hang))",
+    paddingLeft: "calc(6px + var(--hang))",
+  },
+  ".cm-list-number": {
+    display: "inline-block",
+    whiteSpace: "pre",
   },
   ".cm-list-bullet": {
     display: "inline-block",

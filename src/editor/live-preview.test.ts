@@ -26,7 +26,8 @@ import {
 type Deco = {
   from: number;
   to: number;
-  kind: string; // "hide" | "line:<class>" | "bullet:<glyph>" | "checkbox:<checked>" | "hr"
+  kind: string; // "hide" | "line:<class>" | "mark:<class>" | "bullet:<glyph>" | "checkbox:<checked>" | "hr"
+  style?: string; // line / mark の style 属性（ぶら下げ幅など）
 };
 
 const LANG = markdown({
@@ -55,6 +56,7 @@ function tableWidgetOf(doc: string, anchor: number): TableData | null {
 function simplify(range: Range<Decoration>): Deco {
   const spec = range.value.spec as {
     class?: string;
+    attributes?: { class?: string; style?: string };
     widget?: {
       glyph?: string;
       checked?: boolean;
@@ -66,6 +68,7 @@ function simplify(range: Range<Decoration>): Deco {
   };
   let kind = "hide";
   if (spec.class) kind = `line:${spec.class}`;
+  else if (spec.attributes?.class) kind = `mark:${spec.attributes.class}`;
   else if (spec.widget?.glyph !== undefined)
     kind = `bullet:${spec.widget.glyph}`;
   else if (spec.widget?.checked !== undefined)
@@ -76,7 +79,10 @@ function simplify(range: Range<Decoration>): Deco {
   else if (spec.widget?.summary !== undefined)
     kind = `summary:${spec.widget.summary}`;
   else if (spec.widget) kind = "hr";
-  return { from: range.from, to: range.to, kind };
+  const style = spec.attributes?.style;
+  return style
+    ? { from: range.from, to: range.to, kind, style }
+    : { from: range.from, to: range.to, kind };
 }
 
 /// 行クラスは複数付く（帯 + 上下の端）ので、**含むか**で見る。
@@ -197,8 +203,45 @@ describe("previewDecorations（ブロック系）", () => {
       true,
     );
     const ordered = doc.indexOf("1.");
-    expect(decos.some((d) => d.from === ordered && d.kind !== "hide")).toBe(
-      false,
+    // 番号は隠さない・置き換えない（幅を揃える印は付く — 下のぶら下げのテスト）
+    expect(
+      decos.some(
+        (d) =>
+          d.from === ordered &&
+          (d.kind === "hide" || d.kind.startsWith("bullet:")),
+      ),
+    ).toBe(false);
+  });
+
+  test("箇条書きの折り返しは点や番号の後ろに揃える（ぶら下げ。要望 2026-09-10）", () => {
+    const hangOf = (decos: Deco[], from: number) =>
+      decos.find((d) => d.from === from && d.kind === "line:cm-hang")?.style;
+    // 点: 点の幅（1.2em）。入れ子は先頭の空白の字数ぶん（ch）を足す
+    const bullets = "- 親\n  - 子\n\n他";
+    const b = decorationsOf(bullets, bullets.length);
+    expect(hangOf(b, 0)).toBe("--hang: calc(0ch + 1.2em)");
+    expect(hangOf(b, bullets.indexOf("  - 子"))).toBe(
+      "--hang: calc(2ch + 1.2em)",
+    );
+    // 番号: 「1. 」は 3ch、「10. 」は 4ch。番号の印にも同じ幅を付けて、
+    // 字の幅が違うフォントでも折り返しの位置と揃う
+    const ordered = "1. 一\n\n10. 十\n\n他";
+    const o = decorationsOf(ordered, ordered.length);
+    expect(hangOf(o, 0)).toBe("--hang: calc(0ch + 3ch)");
+    expect(has(o, { from: 0, to: 3, kind: "mark:cm-list-number" })).toBe(true);
+    expect(
+      o.find((d) => d.from === 0 && d.kind === "mark:cm-list-number")?.style,
+    ).toBe("width: 3ch");
+    const ten = ordered.indexOf("10.");
+    expect(hangOf(o, ten)).toBe("--hang: calc(0ch + 4ch)");
+    // タスク: チェックボックスの幅（1.15em + 余白 0.4em）
+    const task = "- [ ] やる\n\n他";
+    expect(hangOf(decorationsOf(task, task.length), 0)).toBe(
+      "--hang: calc(0ch + 1.55em)",
+    );
+    // カーソルが乗って原文を見せている間も、ぶら下げは外さない（行が跳ねない）
+    expect(hangOf(decorationsOf(bullets, 2), 0)).toBe(
+      "--hang: calc(0ch + 1.2em)",
     );
   });
 
