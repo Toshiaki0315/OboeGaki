@@ -38,7 +38,7 @@ impl Suppressor {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(path.to_path_buf(), Instant::now());
+            .insert(nfc_key(path), Instant::now());
     }
 
     /// 抑制中か。窓を過ぎた記録はこの機会に捨てる。
@@ -49,8 +49,21 @@ impl Suppressor {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         entries.retain(|_, marked| now.duration_since(*marked) < self.window);
-        entries.contains_key(path)
+        entries.contains_key(&nfc_key(path))
     }
+}
+
+/// 無視リストのキー。自分は NFC で書き、FSEvents は書き手（Cocoa）の NFD で
+/// 届けることがあるので、丸ごと NFC に揃えて比べる（vault::nfc_under の説明）
+fn nfc_key(path: &Path) -> PathBuf {
+    use unicode_normalization::UnicodeNormalization;
+    PathBuf::from(path.to_string_lossy().nfc().collect::<String>())
+}
+
+/// フロントへ届けるパス。vault からの相対部分を NFC に揃える — 走査・索引と
+/// 同じ字面でないと、開いているノートの変更が「別のノート」に見える
+pub fn event_path(root: &Path, path: &Path) -> PathBuf {
+    crate::vault::nfc_under(root, path)
 }
 
 impl Default for Suppressor {
@@ -112,6 +125,7 @@ pub fn start(
     let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| {
         let Ok(event) = result else { return };
         for path in event.paths {
+            let path = event_path(&root, &path);
             if !is_relevant(&root, &path) || suppressor.is_suppressed(&path) {
                 continue;
             }
@@ -166,6 +180,23 @@ mod tests {
         let expired = Suppressor::new(Duration::ZERO);
         expired.mark(path);
         assert!(!expired.is_suppressed(path));
+    }
+
+    #[test]
+    fn test_suppressor_NFDとNFCを同じパスとして扱う() {
+        // 自分は NFC で書き、FSEvents は書き手（Cocoa）の NFD で届けることがある
+        let suppressor = Suppressor::default();
+        suppressor.mark(Path::new("/v/プロジェクト.md"));
+        assert!(suppressor.is_suppressed(Path::new("/v/フ\u{309A}ロシ\u{3099}ェクト.md")));
+    }
+
+    #[test]
+    fn test_event_path_相対部分をNFCに揃えて届ける() {
+        let root = Path::new("/v");
+        assert_eq!(
+            event_path(root, Path::new("/v/a/フ\u{309A}.md")),
+            PathBuf::from("/v/a/プ.md")
+        );
     }
 
     #[test]

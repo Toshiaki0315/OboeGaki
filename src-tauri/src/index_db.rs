@@ -117,6 +117,13 @@ fn day_start_ns(day: chrono::NaiveDate) -> i64 {
         .unwrap_or(i64::MAX)
 }
 
+/// 索引のキー（vault からの相対パス）。文字列としては **NFC** に揃える —
+/// 同じファイルが NFC と NFD の 2 行にならないように（vault::nfc_under）。
+fn key_of(relative: &Path) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    relative.to_string_lossy().nfc().collect()
+}
+
 fn mtime_ns(meta: &fs::Metadata) -> i64 {
     use std::os::unix::fs::MetadataExt;
     meta.mtime() * 1_000_000_000 + meta.mtime_nsec()
@@ -128,7 +135,8 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
     let Ok(relative) = absolute.strip_prefix(root) else {
         return Ok(());
     };
-    let relative = relative.to_string_lossy().into_owned();
+    // キーは NFC（vault::nfc_under の説明）。監視イベントは NFD で来ることがある
+    let relative = key_of(relative);
     // **本文は decode_text で読む**（7-6）。UTF-8 でない `.md`（ポメラや
     // Windows で書いたもの）が索引から漏れると、一覧にも検索にも出ない
     let (Ok(meta), Ok(bytes)) = (fs::metadata(absolute), fs::read(absolute)) else {
@@ -293,7 +301,7 @@ impl IndexDb {
             let Ok(relative) = absolute.strip_prefix(&root) else {
                 continue;
             };
-            let relative = relative.to_string_lossy().into_owned();
+            let relative = key_of(relative);
             let Ok(meta) = fs::metadata(&absolute) else {
                 continue;
             };
@@ -358,7 +366,7 @@ impl IndexDb {
         let Ok(relative) = absolute.strip_prefix(vault.root()) else {
             return Ok(());
         };
-        let relative = relative.to_string_lossy().into_owned();
+        let relative = key_of(relative);
         let tx = self.conn.transaction()?;
         tx.execute("DELETE FROM notes WHERE path = ?1", [&relative])?;
         tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
@@ -811,8 +819,9 @@ mod tests {
         ]);
         let db = synced(&vault);
         let signals = db.related_signals("入口.md", "入口").unwrap();
+        // 索引のキーは NFC に揃える（ADR-0050、2026-09-09）ので、返る鍵も NFC
         assert!(
-            signals.iter().any(|s| s.key == format!("{nfd}.md")),
+            signals.iter().any(|s| s.key == "会議がメモ.md"),
             "{signals:?}"
         );
     }
@@ -973,6 +982,36 @@ mod tests {
 
         let db = synced(&vault); // 作り直し
         assert_eq!(paths(&db.search("消しても戻る").unwrap()), vec!["a.md"]);
+    }
+
+    #[test]
+    fn test_upsert_NFDのパスで来てもNFCの行を更新し_2行にしない() {
+        // 実機 2026-09-09: 監視イベントの NFD パスで upsert され、同じノートが
+        // 一覧に 2 つ並んだ
+        let (root, vault) = vault_with(&[("プロジェクト.md", "# p\n\n最初。\n")]);
+        let mut db = synced(&vault);
+        let nfd = root.path().join("フ\u{309A}ロシ\u{3099}ェクト.md");
+        fs::write(&nfd, "# p\n\n書き換え。\n").unwrap();
+
+        db.upsert(&vault, &nfd).unwrap();
+
+        let rows: Vec<String> = {
+            let mut statement = db.conn.prepare("SELECT path FROM notes").unwrap();
+            let rows = statement.query_map([], |r| r.get::<_, String>(0)).unwrap();
+            rows.map(|r| r.unwrap()).collect()
+        };
+        assert_eq!(rows, vec!["プロジェクト.md".to_string()]);
+        assert_eq!(
+            paths(&db.search("書き換え").unwrap()),
+            vec!["プロジェクト.md"]
+        );
+        // 外すときも同じ
+        db.remove(&vault, &nfd).unwrap();
+        let count: i64 = db
+            .conn
+            .query_row("SELECT count(*) FROM notes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

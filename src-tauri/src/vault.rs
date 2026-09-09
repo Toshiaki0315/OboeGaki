@@ -161,6 +161,7 @@ impl Vault {
     }
 
     /// vault 内の Markdown ファイルをフォルダごとの名前順で返す。
+    /// パスの相対部分は **NFC に揃える**（`nfc_under`）。
     pub fn scan(&self) -> Vec<PathBuf> {
         let mut found = Vec::new();
         if !self.root.is_dir() {
@@ -172,6 +173,9 @@ impl Vault {
         }
         self.walk(&self.root, &ancestors, &mut found);
         found
+            .into_iter()
+            .map(|path| nfc_under(&self.root, &path))
+            .collect()
     }
 
     fn walk(&self, directory: &Path, ancestors: &HashSet<PathBuf>, found: &mut Vec<PathBuf>) {
@@ -1318,6 +1322,23 @@ pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<
 ///
 /// クリップボードやドロップ元の文字列をそのまま繋ぐと、`../` や空白で
 /// attachments の外へ書ける。英数字だけ残す（参照実装 attachment_suffix）。
+/// root からの相対部分を Unicode NFC に揃えた絶対パス（root はそのまま）。
+///
+/// macOS のファイルシステム（APFS / HFS+）は正規化の違いを**同じ名前**として
+/// 扱うが、パスの文字列としては別物になる。Cocoa のアプリ（テキストエディタ
+/// など）は NFD のパスで書くので、FSEvents から届くパスも NFD になり、索引の
+/// キー（文字列）が二重になった（実機 2026-09-09: 一覧に同じノートが 2 行）。
+/// パスが文字列になる境目（走査・索引・監視イベント）で全部ここを通す。
+/// root の外のパスは触らない（相対にできないものは判断しない）。
+pub fn nfc_under(root: &Path, path: &Path) -> PathBuf {
+    use unicode_normalization::UnicodeNormalization;
+    let Ok(relative) = path.strip_prefix(root) else {
+        return path.to_path_buf();
+    };
+    let composed: String = relative.to_string_lossy().nfc().collect();
+    root.join(composed)
+}
+
 pub fn attachment_suffix(raw: &str) -> String {
     let tail = raw.rsplit('.').next().unwrap_or("");
     let cleaned: String = tail
@@ -1792,6 +1813,37 @@ mod tests {
         let link = vault.attachment_link(&saved);
         let name = saved.file_name().unwrap().to_str().unwrap();
         assert_eq!(link, format!("![]({ATTACHMENTS_DIR}/{name})"));
+    }
+
+    #[test]
+    fn test_nfc_under_相対部分だけをNFCに揃え_rootは触らない() {
+        // 実機 2026-09-09: テキストエディタ（Cocoa）は NFD のパスで書くので、
+        // 監視イベントが NFD で届き、索引に同じノートが 2 行できた
+        let nfd = "99_テスト/2026年次世代AIフ\u{309A}ロシ\u{3099}ェクト.md";
+        let nfc = "99_テスト/2026年次世代AIプロジェクト.md";
+        let root = Path::new("/v/ノ\u{3099}ート"); // root 自体が NFD でも据え置く
+        assert_eq!(nfc_under(root, &root.join(nfd)), root.join(nfc));
+        // root の外は触らない
+        assert_eq!(
+            nfc_under(root, Path::new("/other/x.md")),
+            PathBuf::from("/other/x.md")
+        );
+    }
+
+    #[test]
+    fn test_scan_NFDの名前で置かれたファイルもNFCのパスで返す() {
+        let root = tempfile::tempdir().unwrap();
+        let nfd_name = "フ\u{309A}ロシ\u{3099}ェクト.md";
+        fs::write(root.path().join(nfd_name), "# x\n").unwrap();
+        let vault = Vault::new(root.path());
+        let found: Vec<String> = vault
+            .scan()
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(found, vec!["プロジェクト.md".to_string()]);
+        // NFC のパスでも中身は読める（APFS / HFS+ は正規化を区別しない）
+        assert!(fs::read(vault.scan()[0].clone()).is_ok());
     }
 
     #[test]
