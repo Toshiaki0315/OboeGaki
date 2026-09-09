@@ -319,6 +319,34 @@ describe("previewDecorations（ブロック系）", () => {
     expect(decos.some((d) => d.kind === "hide" && d.from >= from)).toBe(false);
   });
 
+  test("空のセルは空のまま残し、後ろのセルを前へ詰めない（実機 2026-09-10）", () => {
+    // Lezer の Table は中身の無いセルに TableCell ノードを作らないので、
+    // ノードだけ数えると左上の空セルが消えて bbb/ccc が 1 つ左へずれる
+    const head =
+      "|  | aaa | bbb | ccc |\n| --- | --- | --- | --- |\n| テスト | 123 | 456 | 789 |\n\n他";
+    const first = tableWidgetOf(head, head.length)!;
+    expect(first.header).toEqual([
+      [],
+      [{ text: "aaa", kinds: [] }],
+      [{ text: "bbb", kinds: [] }],
+      [{ text: "ccc", kinds: [] }],
+    ]);
+    expect(first.rows[0]).toHaveLength(4);
+    // 途中の空セルも同じ
+    const middle =
+      "| aaa |  | bbb | ccc |\n| --- | --- | --- | --- |\n| テスト | 123 | 456 | 789 |\n\n他";
+    const second = tableWidgetOf(middle, middle.length)!;
+    expect(
+      second.header.map((cell) => cell.map((s) => s.text).join("")),
+    ).toEqual(["aaa", "", "bbb", "ccc"]);
+    // 行の側の空セル（末尾）も残す
+    const tail = "| A | B |\n| --- | --- |\n| 1 |  |\n\n他";
+    expect(tableWidgetOf(tail, tail.length)!.rows[0]).toEqual([
+      [{ text: "1", kinds: [] }],
+      [],
+    ]);
+  });
+
   test("セル内のインライン記法を描き分ける（ADR-0031）", () => {
     const doc =
       "| A | B |\n| --- | --- |\n| `Cmd+N` を押す | a~~打ち消し~~と::目立つ:: |\n| [説明](https://x.com) | #タグ です |\n\n他";

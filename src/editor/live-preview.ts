@@ -437,12 +437,40 @@ function alignOf(delimiter: string): TableAlign {
 
 /// Table ノードからセルの中身を取り出す（EditorState だけで動く）。
 function tableData(state: EditorState, table: SyntaxNode): TableData {
+  // **セルは区切りの位置で数える。** Lezer の Table は中身の無いセルに
+  // TableCell ノードを作らないので、ノードだけ拾うと空セルが消えて後ろの
+  // セルが 1 つ左へずれる（実機 2026-09-10）。区切りで割った範囲に
+  // ノードが乗っていればその中身、乗っていなければ空セル
   const cellsOf = (row: SyntaxNode): CellSegment[][] => {
-    const cells: CellSegment[][] = [];
-    for (const cell of row.getChildren("TableCell")) {
-      cells.push(cellSegments(state, cell));
+    const nodes = row.getChildren("TableCell");
+    const text = state.sliceDoc(row.from, row.to);
+    let start = text.length - text.trimStart().length;
+    let end = text.trimEnd().length;
+    const bars: number[] = [];
+    for (let i = start; i < end; i++) {
+      if (text[i] === "\\") {
+        i++; // `\|` は区切りにしない（GFM）
+        continue;
+      }
+      if (text[i] === "|") bars.push(i);
     }
-    return cells;
+    // 行頭・行末のパイプは外側の縁（セルの区切りではない）
+    if (bars[0] === start) {
+      start++;
+      bars.shift();
+    }
+    if (bars[bars.length - 1] === end - 1) {
+      end--;
+      bars.pop();
+    }
+    const edges = [start, ...bars.map((bar) => bar + 1)];
+    return edges.map((from, index) => {
+      const to = index < bars.length ? bars[index] : end;
+      const node = nodes.find(
+        (cell) => cell.from >= row.from + from && cell.to <= row.from + to,
+      );
+      return node ? cellSegments(state, node) : [];
+    });
   };
   const header = table.getChild("TableHeader");
   const delimiter = table.getChild("TableDelimiter");
