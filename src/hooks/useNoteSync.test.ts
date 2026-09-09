@@ -190,6 +190,54 @@ describe("useNoteSync: 外部変更（spec §7.5）", () => {
     expect(mocked.writeNote).not.toHaveBeenCalled();
   });
 
+  test("test_外部の内容が最後に保存した本文と同じなら_編集中でも聞かない（自分の保存の残響・同期ソフトの触り直し）", async () => {
+    // 実機 2026-09-09: SVG を貼った直後に打っていると競合の 3 択が出た。
+    // 監視のイベントは抑制窓（1.5 秒）を過ぎて届くことがある（iCloud などの
+    // 同期が上げ終わったあとにファイルを触り直す）。中身が自分の書いたもの
+    // と同じなら、外部の変更ではない
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    act(() => result.current.noteChanged(() => "自分の版"));
+    await tick(800);
+    expect(mocked.writeNote).toHaveBeenCalledTimes(1);
+    act(() => result.current.noteChanged(() => "自分の版 1"));
+    mocked.readNote.mockResolvedValue("自分の版");
+    await act(async () => external!({ path: "/v/a.md", kind: "modified" }));
+    await tick(1);
+    expect(result.current.conflict).toBeNull();
+    expect(given.replaceText).not.toHaveBeenCalled();
+    // 予約は生きている（打ったぶんはあとで書かれる）
+    await tick(800);
+    expect(mocked.writeNote).toHaveBeenLastCalledWith(
+      "/v",
+      "/v/a.md",
+      "自分の版 1",
+      60,
+    );
+  });
+
+  test("test_開いたときの本文と同じなら_まだ保存していなくても聞かない", async () => {
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    act(() =>
+      result.current.markOpened({ path: "/v/a.md", text: "開いた本文" }),
+    );
+    act(() => result.current.noteChanged(() => "開いた本文 1"));
+    mocked.readNote.mockResolvedValue("開いた本文");
+    await act(async () => external!({ path: "/v/a.md", kind: "modified" }));
+    await tick(1);
+    expect(result.current.conflict).toBeNull();
+  });
+
+  test("test_未編集で外部の内容が今の本文と同じなら読み直さない（キャレットを動かさない）", async () => {
+    const given = input({ readText: () => "同じ本文" });
+    renderHook(() => useNoteSync(given));
+    mocked.readNote.mockResolvedValue("同じ本文");
+    await act(async () => external!({ path: "/v/a.md", kind: "modified" }));
+    await tick(1);
+    expect(given.replaceText).not.toHaveBeenCalled();
+  });
+
   test("test_別のノートの変更は一覧だけ", async () => {
     const given = input();
     renderHook(() => useNoteSync(given));

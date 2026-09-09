@@ -77,6 +77,11 @@ export function useNoteSync({
   // 予約された保存。flush が完了を待てるよう Promise を返す
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
   const dirty = useRef(false); // 保存されていない編集があるか
+  // ディスクにあると分かっている本文（開いた・書いた・採用した）。外部変更の
+  // イベントが来ても中身がこれと同じなら、外部の変更ではない — 自分の保存の
+  // 残響（抑制窓 1.5 秒を過ぎて届く）や、同期ソフト（iCloud など）が
+  // 上げ終わったあとにファイルを触り直したもの（実機 2026-09-09）
+  const known = useRef<{ path: string; text: string } | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   // 退避してあるノート（保存できたら捨てに行くため覚えておく）
@@ -104,7 +109,9 @@ export function useNoteSync({
     dirty.current = true;
     onStatusRef.current("未保存");
     pendingSave.current = async () => {
-      await writeNote(root, path, getText(), historyMinutesRef.current);
+      const text = getText();
+      await writeNote(root, path, text, historyMinutesRef.current);
+      known.current = { path, text };
       // 完了する頃には別のノートが開いているかもしれない。共有の
       // dirty と表示を触るのは**今もそのノートを開いているときだけ**
       //（レビュー 2026-09-04: 取り違えると次の外部変更が「未編集」と
@@ -147,15 +154,18 @@ export function useNoteSync({
     pendingSave.current = null;
   }
   /// ノートを開いた直後: 未編集で、保存時刻はまだ無い
-  function markOpened() {
+  function markOpened(opened?: { path: string; text: string }) {
     dirty.current = false;
     setSavedAt(null);
+    if (opened) known.current = opened;
   }
   /// 予約を捨てて本文を差し替える（版の復元・外部の採用・ピン留め）
   function adopt(text: string) {
     autosave.cancel();
     pendingSave.current = null;
     dirty.current = false;
+    const path = currentPathRef.current;
+    if (path) known.current = { path, text };
     replaceTextRef.current(text);
   }
 
@@ -196,7 +206,14 @@ export function useNoteSync({
       return;
     }
     const text = await readNote(root, change.path);
+    // 中身が変わっていなければ外部の変更ではない（known の説明を参照）。
+    // 画面と同じでも同様 — 読み直してもキャレットが動くだけ
+    const unchanged =
+      (known.current?.path === change.path && known.current.text === text) ||
+      text === readTextRef.current();
+    if (unchanged) return;
     if (!dirty.current) {
+      known.current = { path: change.path, text };
       replaceTextRef.current(text); // 静かにリロード（キャレット維持）
       return;
     }
@@ -260,12 +277,9 @@ export function useNoteSync({
     if (!root || !path) return;
     setDeleted(null);
     try {
-      await writeNote(
-        root,
-        path,
-        readTextRef.current(),
-        historyMinutesRef.current,
-      );
+      const text = readTextRef.current();
+      await writeNote(root, path, text, historyMinutesRef.current);
+      known.current = { path, text };
       dirty.current = false;
       dropStash(root, path);
       await refreshListsRef.current();

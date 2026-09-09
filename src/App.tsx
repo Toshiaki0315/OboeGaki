@@ -1164,7 +1164,7 @@ function App() {
     saveLastNote(localStorage, vaultRoot, path); // 次回の起動で開き直す
     setInitialCursor(cursor);
     setDoc(text);
-    sync.markOpened();
+    sync.markOpened({ path, text });
     setStatus("");
     setPrintBody(null); // 前のノートの印刷用の組みは捨てる（ADR-0038）
   }
