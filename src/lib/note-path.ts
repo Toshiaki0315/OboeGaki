@@ -22,3 +22,13 @@ export function labelFolder(label: string): string {
 export function noteFolder(root: string, path: string): string {
   return labelFolder(noteLabel(root, path));
 }
+
+/// root からの相対部分を Unicode NFC に揃えた絶対パス（root はそのまま）。
+/// Rust 側の `vault::nfc_under` と同じ約束（ADR-0050）。索引・監視イベントは
+/// NFC で来るので、開くときのパスもここで揃えないと「別のノート」に見える —
+/// 前回開いていたノートの記憶（last-note）に NFD が残っていることがある
+export function nfcUnder(root: string, path: string): string {
+  const prefix = `${root}/`;
+  if (!path.startsWith(prefix)) return path;
+  return prefix + path.slice(prefix.length).normalize("NFC");
+}

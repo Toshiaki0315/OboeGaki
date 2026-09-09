@@ -64,7 +64,7 @@ import {
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
-import { noteLabel, noteStem } from "./lib/note-path";
+import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { ocrFailureText, ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
@@ -1149,8 +1149,11 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function openNote(path: string, cursor: number | null = null) {
+  async function openNote(given: string, cursor: number | null = null) {
     if (!vaultRoot) return;
+    // 字面を索引・監視イベントと揃える（ADR-0050）。前回のノートの記憶などに
+    // NFD が残っていても、開いたあとは NFC で持つ
+    const path = nfcUnder(vaultRoot, given);
     await sync.flush(); // 前のノートの未保存分を書き切ってから切り替える
     let text: string;
     try {
