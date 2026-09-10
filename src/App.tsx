@@ -66,6 +66,7 @@ import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
+import { windowTitle } from "./lib/window-title";
 import { ocrFailureText, ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
@@ -192,6 +193,7 @@ import {
   readNote,
   saveAttachment,
   renameNote,
+  setWindowTitle,
   restoreNote,
   trashNote,
   writeNote,
@@ -1354,6 +1356,10 @@ function App() {
   const renaming = useRef(false);
   // エディタを作り直す単位（openNote ごとに進む。改名では進めない）
   const [editorSession, setEditorSession] = useState(0);
+  // タイトルバーに文書の題名（要望 2026-09-10）。改名にも追従する
+  useEffect(() => {
+    setWindowTitle(windowTitle(currentPath)).catch(() => {});
+  }, [currentPath]);
 
   async function handleRename(title: string) {
     if (!vaultRoot || !currentPath || renaming.current) return;

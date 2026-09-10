@@ -32,6 +32,8 @@ const SPACING_LABELS: Record<LineSpacing, string> = {
 const WIDTH_LABELS: Record<ContentWidth, string> = {
   standard: "標準",
   wide: "広め",
+  wider: "より広め",
+  widest: "さらに広め",
   full: "最大（ウィンドウ幅）",
 };
 

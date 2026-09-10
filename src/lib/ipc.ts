@@ -525,3 +525,12 @@ export function ocrPdfPage(
 ): Promise<string> {
   return invoke<string>("ocr_pdf_page", { data, page, reader });
 }
+
+// ---- ウィンドウ
+
+/// タイトルバーの文字を変える（要望 2026-09-10）。失敗しても本文には
+/// 関係ないので、呼ぶ側は待たなくてよい
+export async function setWindowTitle(title: string): Promise<void> {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().setTitle(title);
+}

@@ -3,6 +3,7 @@
 import { describe, expect, it, test } from "vitest";
 import {
   clampPaneWidth,
+  CONTENT_WIDTHS,
   contentWidthCss,
   DEFAULT_SETTINGS,
   HISTORY_CHOICES,
@@ -189,6 +190,22 @@ describe("contentWidthCss", () => {
     expect(contentWidthCss("wide")).toBe("56rem");
     // 0 ではなく none。CSS の max-width にそのまま渡せる形で持つ
     expect(contentWidthCss("full")).toBe("none");
+  });
+  it("test_広めは 3 段（要望 2026-09-10）_標準と最大の間を等間隔ではなく読みやすい刻みで", () => {
+    expect(CONTENT_WIDTHS).toEqual([
+      "standard",
+      "wide",
+      "wider",
+      "widest",
+      "full",
+    ]);
+    expect(contentWidthCss("wider")).toBe("68rem");
+    expect(contentWidthCss("widest")).toBe("82rem");
+    // 保存した設定も新しい名前を受け取る
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: '{"contentWidth":"widest"}',
+    });
+    expect(loadSettings(storage).contentWidth).toBe("widest");
   });
 });
 
