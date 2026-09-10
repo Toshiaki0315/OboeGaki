@@ -68,6 +68,12 @@ import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
 import { startupAction } from "./lib/startup-note";
+import {
+  canDropAny,
+  parseNoteDrag,
+  rangeSelection,
+  toggleSelection,
+} from "./lib/note-selection";
 import { ocrFailureText, ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
@@ -405,7 +411,10 @@ function App() {
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
   // 掴んでいるノートのパス。**ref で持つ** — dragover は毎フレーム飛ぶので、
   // 掴んだものまで state にすると打鍵と同じだけ再描画が走る
-  const draggingNote = useRef<string | null>(null);
+  // 掴んでいるノート（複数選択ならその全部。要望 2026-09-10）
+  const draggingNotes = useRef<string[]>([]);
+  // 一覧の複数選択。開いているノートとは別の集合（lib/note-selection）
+  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
   // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
   const [reference, setReference] = useState<{
     path: string;
@@ -1357,8 +1366,8 @@ function App() {
     event: { dataTransfer: DataTransfer },
     folder: string,
   ): boolean {
-    const dragged = draggingNote.current;
-    if (dragged) return canDropInto(vaultRoot ?? "", dragged, folder);
+    const dragged = draggingNotes.current;
+    if (dragged.length > 0) return canDropAny(vaultRoot ?? "", dragged, folder);
     return isNoteDrag(Array.from(event.dataTransfer.types));
   }
 
@@ -1366,22 +1375,80 @@ function App() {
   ///
   /// **メニューの「フォルダへ移動…」と同じ道を通す**（`moveNote`）。
   /// 落としたのが開いているノートなら、動いた先を開き直す。
-  async function handleDropOnFolder(path: string, folder: string) {
-    if (!vaultRoot || !canDropInto(vaultRoot, path, folder)) return;
-    const open = path === currentPath;
+  async function handleDropOnFolder(paths: string[], folder: string) {
+    if (!vaultRoot) return;
+    const moving = paths.filter((path) => canDropInto(vaultRoot, path, folder));
+    if (moving.length === 0) return;
+    const open = currentPath !== null && moving.includes(currentPath);
     if (open) await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
-    try {
-      const moved = await moveNote(vaultRoot, path, folder);
-      await refresh();
-      if (open) await openNote(moved);
-      setStatus(
-        folder
-          ? `「${noteStem(path)}」を「${folder}」へ移しました`
-          : `「${noteStem(path)}」を直下へ移しました`,
-      );
-    } catch (error) {
-      setStatus(String(error));
+    let movedOpen: string | null = null;
+    const failed: string[] = [];
+    for (const path of moving) {
+      try {
+        const moved = await moveNote(vaultRoot, path, folder);
+        if (path === currentPath) movedOpen = moved;
+      } catch (error) {
+        failed.push(`${noteStem(path)}: ${String(error)}`);
+      }
     }
+    await refresh();
+    setSelectedNotes(new Set());
+    if (movedOpen) await openNote(movedOpen);
+    const where = folder ? `「${folder}」` : "直下";
+    const done =
+      moving.length - failed.length === 1 && failed.length === 0
+        ? `「${noteStem(moving[0])}」を${where}へ移しました`
+        : `${moving.length - failed.length} 件を${where}へ移しました`;
+    setStatus(
+      failed.length ? `${done}（移せなかった: ${failed.join("、")}）` : done,
+    );
+  }
+
+  /// 複数のノートをまとめてゴミ箱へ（一覧の複数選択をゴミ箱へ落とした）。
+  /// 確認は 1 回。ピン留めは外して知らせる（spec §7.3）
+  async function handleTrashMany(paths: string[]) {
+    if (!vaultRoot) return;
+    if (paths.length === 1) {
+      await handleTrash(paths[0]);
+      return;
+    }
+    const pinned = paths.filter(
+      (path) => notes.find((entry) => entry.path === path)?.pinned,
+    );
+    const targets = paths.filter((path) => !pinned.includes(path));
+    if (targets.length === 0) {
+      setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
+      return;
+    }
+    const ok = await confirm(
+      `${targets.length} 件のノートをゴミ箱へ移しますか？` +
+        (pinned.length ? `（ピン留め中の ${pinned.length} 件は残します）` : ""),
+      { title: APP_NAME, kind: "warning" },
+    );
+    if (!ok) return;
+    if (currentPath !== null && targets.includes(currentPath)) {
+      sync.dropPending();
+    }
+    const failed: string[] = [];
+    for (const path of targets) {
+      try {
+        await trashNote(vaultRoot, path);
+      } catch (error) {
+        failed.push(`${noteStem(path)}: ${String(error)}`);
+      }
+    }
+    await refresh();
+    setSelectedNotes(new Set());
+    if (currentPath !== null && targets.includes(currentPath)) {
+      selectNote(null);
+      setDoc(null);
+      forgetLastNote(localStorage);
+    }
+    setStatus(
+      failed.length
+        ? `${targets.length - failed.length} 件をゴミ箱へ移しました（移せなかった: ${failed.join("、")}）`
+        : `${targets.length} 件をゴミ箱へ移しました`,
+    );
   }
 
   /// 開いているノートをフォルダへ移す（ADR-0024）。本文は書き換えない。
@@ -2101,7 +2168,7 @@ function App() {
             // 落とし先でない場所なので、静かに捨てる（本文に文字を
             // 落とさない）
             event.preventDefault();
-            draggingNote.current = null;
+            draggingNotes.current = [];
             return;
           }
           if (!isFileDrag(types)) return;
@@ -2220,14 +2287,32 @@ function App() {
                             ? "このフォルダにノートはありません"
                             : null
                       }
-                      onOpen={(path) => void openNote(path)}
+                      onOpen={(path) => {
+                        setSelectedNotes(new Set([path]));
+                        void openNote(path);
+                      }}
                       onMenu={setNoteMenu}
-                      onDragStart={(path) => {
-                        draggingNote.current = path;
+                      onDragStart={(paths) => {
+                        draggingNotes.current = paths;
                       }}
                       onDragEnd={() => {
-                        draggingNote.current = null;
+                        draggingNotes.current = [];
                       }}
+                      selected={selectedNotes}
+                      onToggleSelect={(path) =>
+                        setSelectedNotes((current) =>
+                          toggleSelection(current, path),
+                        )
+                      }
+                      onRangeSelect={(path) =>
+                        setSelectedNotes(
+                          rangeSelection(
+                            sortedNotes.map((entry) => entry.path),
+                            currentPath,
+                            path,
+                          ),
+                        )
+                      }
                     />
                   )}
                 </div>
@@ -2259,15 +2344,20 @@ function App() {
                   onTrashMenu={({ x, y }) => setTrashMenu({ path: null, x, y })}
                   acceptsDrop={acceptsDrop}
                   onDrop={(folder, carried) => {
-                    const dragged = draggingNote.current || carried;
-                    draggingNote.current = null;
-                    if (dragged) void handleDropOnFolder(dragged, folder);
+                    const dragged = draggingNotes.current.length
+                      ? draggingNotes.current
+                      : parseNoteDrag(carried);
+                    draggingNotes.current = [];
+                    if (dragged.length)
+                      void handleDropOnFolder(dragged, folder);
                   }}
                   onDropTrash={(carried) => {
-                    const dragged = draggingNote.current || carried;
-                    draggingNote.current = null;
-                    // ピン留めの断りと確認は handleTrash が持っている
-                    if (dragged) void handleTrash(dragged);
+                    const dragged = draggingNotes.current.length
+                      ? draggingNotes.current
+                      : parseNoteDrag(carried);
+                    draggingNotes.current = [];
+                    // ピン留めの断りと確認は handleTrash / handleTrashMany が持つ
+                    if (dragged.length) void handleTrashMany(dragged);
                   }}
                   onDropFolder={(into, folder) =>
                     void handleMoveFolder(folder, into)

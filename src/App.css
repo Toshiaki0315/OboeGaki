@@ -823,6 +823,12 @@ body.resizing {
   min-width: 0;
 }
 
+/* 複数選択の行（要望 2026-09-10）。開いている行（selected）とは別の印 —
+   薄い枠で「掴めばまとめて動く」ことを見せる */
+.note-list li button.note-row.checked {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, currentColor 45%, transparent);
+}
+
 .note-row-title {
   display: block;
   max-width: 100%;

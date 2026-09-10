@@ -35,6 +35,9 @@ function setup(over: Partial<NoteRowsProps> = {}) {
     onMenu: vi.fn(),
     onDragStart: vi.fn(),
     onDragEnd: vi.fn(),
+    selected: new Set<string>(),
+    onToggleSelect: vi.fn(),
+    onRangeSelect: vi.fn(),
     ...over,
   };
   const view = render(<NoteRows {...props} />);
@@ -96,10 +99,53 @@ describe("NoteRows", () => {
     );
     expect(dataTransfer.effectAllowed).toBe("move");
     expect(document.querySelector(".drag-ghost")?.textContent).toBe("a");
-    expect(props.onDragStart).toHaveBeenCalledWith("/v/a.md");
+    expect(props.onDragStart).toHaveBeenCalledWith(["/v/a.md"]);
     fireEvent.dragEnd(row);
     expect(document.querySelector(".drag-ghost")).toBeNull();
     expect(props.onDragEnd).toHaveBeenCalledTimes(1);
+  });
+
+  test("test_Cmd+クリックで選択を切り替え_Shift+クリックで範囲_ふつうのクリックは開く（要望 2026-09-10）", () => {
+    const { props } = setup();
+    const a = screen.getByText("a").closest("button")!;
+    fireEvent.click(a, { metaKey: true });
+    expect(props.onToggleSelect).toHaveBeenCalledWith("/v/a.md");
+    expect(props.onOpen).not.toHaveBeenCalled();
+    fireEvent.click(a, { shiftKey: true });
+    expect(props.onRangeSelect).toHaveBeenCalledWith("/v/a.md");
+    fireEvent.click(a);
+    expect(props.onOpen).toHaveBeenCalledWith("/v/a.md");
+  });
+
+  test("test_選んでいる行には印が付く", () => {
+    setup({ selected: new Set(["/v/a.md", "/v/b.md"]) });
+    expect(screen.getByText("a").closest("button")!.className).toContain(
+      "checked",
+    );
+    expect(
+      screen.getByText("議事録").closest("button")!.className,
+    ).not.toContain("checked");
+  });
+
+  test("test_選んでいる行を掴むと選んでいる全部を載せ_札は件数", () => {
+    const { props } = setup({ selected: new Set(["/v/a.md", "/v/b.md"]) });
+    const dataTransfer = {
+      effectAllowed: "",
+      setData: vi.fn(),
+      setDragImage: vi.fn(),
+    };
+    fireEvent.dragStart(screen.getByText("a").closest("button")!, {
+      dataTransfer,
+    });
+    expect(dataTransfer.setData).toHaveBeenCalledWith(
+      NOTE_DRAG_TYPE,
+      "/v/a.md\n/v/b.md",
+    );
+    expect(props.onDragStart).toHaveBeenCalledWith(["/v/a.md", "/v/b.md"]);
+    expect(document.querySelector(".drag-ghost")?.textContent).toBe(
+      "2 件のノート",
+    );
+    fireEvent.dragEnd(screen.getByText("a").closest("button")!);
   });
 
   test("test_空のときの案内は親の言葉で", () => {
