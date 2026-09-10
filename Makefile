@@ -43,15 +43,22 @@ bench: bench-search  ## 3 基準の計測（打鍵は bench.html — docs/bench.
 # フロントの組み直しは要らない。
 APP := src-tauri/target/release/bundle/macos/OboeGaki.app
 
+# 「について」に出すビルド日時（build.rs が受け取る。渡さなければ「開発版」）
+BUILD_TIME := $(shell date '+%Y-%m-%d %H:%M')
+
 app:              ## アプリ（.app）を組む。DMG は作らない
-	npm run tauri build -- --bundles app
+	OBOEGAKI_BUILD_TIME="$(BUILD_TIME)" npm run tauri build -- --bundles app
 	@echo "アプリ: $(APP)"
 	@echo "開く:   open $(APP)"
 	@echo "※ 署名・公証はまだ（Apple Developer アカウント待ち）。初回は"
 	@echo "  右クリック →「開く」で Gatekeeper を通す"
 
+icon:             ## アプリのアイコンを描き直して全サイズを作る（scripts/make_icon.swift）
+	swift scripts/make_icon.swift src-tauri/icons/icon-source.png
+	npx tauri icon src-tauri/icons/icon-source.png -o src-tauri/icons
+
 dmg:              ## インストール用 DMG を新規ビルドから作る（hitofude の make dmg と同役）
-	npm run tauri build
+	OBOEGAKI_BUILD_TIME="$(BUILD_TIME)" npm run tauri build
 	@echo "DMG: src-tauri/target/release/bundle/dmg/"
 	@echo "署名・公証は Apple Developer アカウント取得後（hitofude TASKS 0-C と同じ）"
 

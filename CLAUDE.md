@@ -69,6 +69,7 @@ make check
 | CI と同じ手順を手元で   | `make ci`（HEAD を取り出して `npm ci` から回す）              |
 | フォーマット            | `make fmt`                                                    |
 | アプリ（.app）を組む    | `make app`（DMG まで作るのは `make dmg`）                     |
+| アイコンを描き直す      | `make icon`（scripts/make_icon.swift → `tauri icon`）         |
 | 依存追加（TS）          | `npm install <pkg>` / `npm install -D <pkg>`                  |
 | 依存追加（Rust）        | `cd src-tauri && cargo add <crate>`                           |
 

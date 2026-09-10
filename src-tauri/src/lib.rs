@@ -53,8 +53,13 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 「おぼえがきについて」に出す絵（要望 2026-09-04）。**こちらから渡す** —
     // 束ねる前（`cargo tauri dev`）は .app の中に居らず、OS にはアプリの絵が
     // 分からないので、書類フォルダの絵が出てしまう
+    // 版とビルド日時（要望 2026-09-10）。macOS の窓は
+    // 「Version {short_version} ({version})」と組むので、括弧の中に日時を置く
+    let (short, stamp) = about_versions();
     let about = tauri::menu::AboutMetadataBuilder::new()
         .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png")).ok())
+        .short_version(Some(short))
+        .version(Some(stamp))
         .build();
     let application = SubmenuBuilder::new(handle, "おぼえがき")
         .about(Some(about))
@@ -190,6 +195,12 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         let _ = app.emit("menu", event.id().0.clone());
     });
     Ok(())
+}
+
+/// 「について」に出す版。Cargo の版と、`make app` が渡すビルド日時
+/// （build.rs。渡されなければ「開発版」）
+pub fn about_versions() -> (&'static str, &'static str) {
+    (env!("CARGO_PKG_VERSION"), env!("OBOEGAKI_BUILD_TIME"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -336,6 +347,42 @@ mod tests {
     fn test_aboutに渡す絵が読める() {
         let image = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png"));
         assert!(image.is_ok());
+    }
+
+    /// 「について」の窓は白いので、紙の縁が白に溶けると絵の境が消える
+    /// （実機 2026-09-10）。紙の縁のすぐ内側は白より明らかに暗いこと
+    #[test]
+    fn test_aboutの絵は白い地の上でも縁が見える() {
+        let image = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png"))
+            .expect("PNG が読める");
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let rgba = image.rgba();
+        // 左端の紙の縁（inset 6% のすぐ内側）を中央の高さで見る
+        let x = (width as f64 * 0.068) as usize;
+        let y = height / 2;
+        let at = (y * width + x) * 4;
+        let (r, g, b, a) = (rgba[at], rgba[at + 1], rgba[at + 2], rgba[at + 3]);
+        assert!(a > 200, "縁が透けている: a={a}");
+        let luminance = (0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64) / 255.0;
+        assert!(
+            luminance < 0.9,
+            "縁が白に溶ける: rgb=({r},{g},{b}) L={luminance:.3}"
+        );
+    }
+
+    /// 版は 3 箇所（Cargo / tauri.conf / package.json）が同じ字面であること。
+    /// 「について」に出るのは Cargo の版とビルド日時（要望 2026-09-10）
+    #[test]
+    fn test_版は0_5_0で3箇所が揃い_aboutにはビルド日時が付く() {
+        let (short, stamp) = super::about_versions();
+        assert_eq!(short, "0.5.0");
+        assert!(!stamp.is_empty());
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["version"], short);
+        let package: serde_json::Value =
+            serde_json::from_str(include_str!("../../package.json")).unwrap();
+        assert_eq!(package["version"], short);
     }
 
     #[test]
