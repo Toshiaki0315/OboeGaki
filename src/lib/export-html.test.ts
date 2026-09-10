@@ -246,3 +246,23 @@ describe("collectCodeBlocks", () => {
     );
   });
 });
+
+// 文字色（ADR-0061）。生の HTML は通さないまま、色の span だけ組み直して通す
+describe("文字色の span", () => {
+  test("test_受けた色は組み直して通す", () => {
+    const html = renderHtml('<span style="color: red; ">赤</span>と地', "t");
+    expect(html).toContain('<span style="color:red">赤</span>と地');
+  });
+  test("test_受けない style は素の文字として逃がす", () => {
+    const html = renderHtml(
+      '<span style="color: red; font-size: 2em">赤</span>',
+      "t",
+    );
+    expect(html).not.toContain("<span style");
+    expect(html).toContain("&lt;span");
+  });
+  test("test_閉じが無ければ通さない", () => {
+    const html = renderHtml('<span style="color: red">赤', "t");
+    expect(html).not.toContain("<span style");
+  });
+});

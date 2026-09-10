@@ -292,6 +292,7 @@ function textRun(run: Run, base: object, theme: SlideTheme) {
       ...(run.strike ? { strike: true } : {}),
       ...(run.code ? { fontFace: theme.mono } : {}),
       ...(run.link ? { hyperlink: { url: run.link } } : {}),
+      ...(run.color ? { color: run.color } : {}),
     },
   };
 }

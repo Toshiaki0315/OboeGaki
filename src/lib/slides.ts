@@ -19,6 +19,12 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
 import { splitImageAlt } from "../editor/image-size";
+import {
+  hexForPptx,
+  isSpanClose,
+  parseColorSpan,
+  spanStyleOf,
+} from "./text-color";
 import { relaxedAsterisk } from "../editor/relaxed-emphasis";
 import { extendedInline } from "../editor/extended-inline";
 
@@ -32,6 +38,8 @@ export type Run = {
   code?: boolean;
   /// リンクの行き先（`[題](url)` の url）
   link?: string;
+  /// 文字色（`RRGGBB`。ADR-0061）
+  color?: string;
 };
 
 export type SlideBlock =
@@ -295,9 +303,26 @@ function runsOf(text: string, node: SyntaxNode): Run[] {
   // 自分と取り違えて装飾を取りこぼす（実測 2026-09-05）。
   // 最初に入るのは必ず自分なので、数えて判じる
   let entered = 0;
+  // 色の span（ADR-0061）: 開きで色を積み、対になる閉じで降ろす。タグは出さない
+  const colorStack: number[] = []; // 積んだときの styles の深さ
   node.cursor().iterate(
     (child) => {
       if (++entered === 1) return true;
+      if (child.name === "HTMLTag") {
+        const tag = text.slice(child.from, child.to);
+        emit(child.from);
+        pos = Math.max(pos, child.to);
+        const style = spanStyleOf(tag);
+        if (style !== null) {
+          const parsed = parseColorSpan(style);
+          const hex = parsed?.color ? hexForPptx(parsed.color) : undefined;
+          styles.push(hex ? { text: "", color: hex } : { text: "" });
+          colorStack.push(styles.length);
+        } else if (isSpanClose(tag) && colorStack.length > 0) {
+          styles.length = colorStack.pop()! - 1;
+        }
+        return false;
+      }
       if (
         SKIP.has(child.name) ||
         MARKS.has(child.name) ||
@@ -360,6 +385,7 @@ function tidy(runs: Run[]): Run[] {
       last.bold === run.bold &&
       last.italic === run.italic &&
       last.strike === run.strike &&
+      last.color === run.color &&
       last.code === run.code &&
       last.link === run.link;
     if (sameStyle) last.text += run.text;

@@ -44,4 +44,21 @@ describe("FormatToolbar", () => {
     );
     expect(allowed).toBe(false);
   });
+
+  test("test_文字色のボタンでパレットが開き_色を選ぶと 16 進が渡り_消すは null（ADR-0061）", () => {
+    const onColor = vi.fn();
+    render(
+      <FormatToolbar onFormat={vi.fn()} onTable={vi.fn()} onColor={onColor} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "文字色" }));
+    const swatches = screen.getAllByRole("button", { name: /^色: / });
+    expect(swatches).toHaveLength(6);
+    fireEvent.click(swatches[0]);
+    expect(onColor).toHaveBeenCalledWith(
+      expect.stringMatching(/^#[0-9a-f]{6}$/),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "文字色" }));
+    fireEvent.click(screen.getByRole("button", { name: "色を消す" }));
+    expect(onColor).toHaveBeenCalledWith(null);
+  });
 });

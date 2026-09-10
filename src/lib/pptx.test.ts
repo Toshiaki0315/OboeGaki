@@ -3,7 +3,7 @@
 // **出来上がった .pptx を開いて確かめる。** pptxgenjs に渡した値が
 // そのまま形式に載るとは限らないので、zip を解いて XML を見る。
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import JSZip from "jszip";
 import {
   buildPptx,
@@ -30,6 +30,17 @@ async function open(markdown: string) {
   ).length;
   return { zip, slide, count };
 }
+
+describe("文字色（ADR-0061）", () => {
+  test("test_色の span は run の srgbClr になる", async () => {
+    const { slide } = await open(
+      '## A\n\n<span style="color: #E53935">赤い</span>字\n',
+    );
+    const xml = await slide(1);
+    expect(xml).toContain('<a:srgbClr val="E53935"');
+    expect(xml).not.toContain("&lt;span");
+  });
+});
 
 describe("環境設定からの体裁（TASKS 8-2）", () => {
   const build = async (markdown: string, options: PptxOptions) => {

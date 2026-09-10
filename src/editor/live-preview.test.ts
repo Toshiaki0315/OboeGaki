@@ -392,6 +392,32 @@ describe("previewDecorations（ブロック系）", () => {
     ]);
   });
 
+  test("文字色の span はタグを隠して中の文字に色を付け_触れると生のタグを見せる（ADR-0061）", () => {
+    const doc = '前 <span style="color: red">大事</span> 後\n\n他';
+    const open = doc.indexOf("<span");
+    const openEnd = doc.indexOf(">") + 1;
+    const close = doc.indexOf("</span>");
+    const away = decorationsOf(doc, doc.length);
+    expect(has(away, { from: open, to: openEnd, kind: "hide" })).toBe(true);
+    expect(has(away, { from: close, to: close + 7, kind: "hide" })).toBe(true);
+    const mark = away.find((d) => d.kind === "mark:cm-text-color");
+    expect(mark).toBeTruthy();
+    expect(mark!.from).toBe(openEnd);
+    expect(mark!.to).toBe(close);
+    expect(mark!.style).toBe("--text-color: red");
+    // 触れている間は隠さない（色は付いたまま）
+    const near = decorationsOf(doc, openEnd + 1);
+    expect(near.some((d) => d.kind === "hide" && d.from === open)).toBe(false);
+    expect(near.some((d) => d.kind === "mark:cm-text-color")).toBe(true);
+  });
+
+  test("受けない style の span は素のまま（隠さない・色も付けない）", () => {
+    const doc = '<span style="color: red; font-size: 3em">大</span>\n\n他';
+    const decos = decorationsOf(doc, doc.length);
+    expect(decos.some((d) => d.kind === "mark:cm-text-color")).toBe(false);
+    expect(decos.some((d) => d.kind === "hide" && d.from === 0)).toBe(false);
+  });
+
   test("セル内のインライン記法を描き分ける（ADR-0031）", () => {
     const doc =
       "| A | B |\n| --- | --- |\n| `Cmd+N` を押す | a~~打ち消し~~と::目立つ:: |\n| [説明](https://x.com) | #タグ です |\n\n他";

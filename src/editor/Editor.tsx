@@ -44,6 +44,7 @@ import {
   type SaveAttachment,
 } from "./attachments";
 import { csvDropEvents } from "./csv-drop";
+import { clearColorEdit, colorEdit } from "./text-color-commands";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
@@ -113,6 +114,8 @@ export type EditorHandle = {
   insertTable: (rows: number, columns: number) => void;
   /** 書式を当てる（メニュー・ツールバーの両方から呼ぶ。中身は 1 つ） */
   applyFormat: (kind: FormatKind) => void;
+  /// 文字色を付ける（16 進）／外す（null）。ADR-0061
+  applyColor: (hex: string | null) => void;
   /** 見出しの節を丸ごと上（-1）／下（+1）へ動かす（7-1）。動かせたら true */
   moveSection: (headingFrom: number, delta: -1 | 1) => boolean;
 };
@@ -285,6 +288,26 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         if (!current) return;
         FORMAT_COMMANDS[kind](current);
         // 押したあとは本文へ戻す。ボタンからでも打ち続けられるように
+        current.focus();
+      },
+      applyColor(hex) {
+        const current = view.current;
+        if (!current) return;
+        const { from, to } = current.state.selection.main;
+        const doc = current.state.doc.toString();
+        const edit =
+          hex === null
+            ? clearColorEdit(doc, from, to)
+            : colorEdit(doc, from, to, hex);
+        if (edit) {
+          current.dispatch({
+            changes: edit,
+            selection: {
+              anchor: edit.from,
+              head: edit.from + edit.insert.length,
+            },
+          });
+        }
         current.focus();
       },
       insertTable(rows: number, columns: number) {

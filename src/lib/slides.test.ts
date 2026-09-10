@@ -189,6 +189,17 @@ describe("splitDeck", () => {
     ]);
   });
 
+  test("test_文字色の span は run の色にし_タグは出さない（ADR-0061）", () => {
+    const deck = splitDeck(
+      '## A\n\n<span style="color: #E53935">赤い</span>字と**<span style="color: red">太い赤</span>**\n',
+    );
+    expect(runsOf(deck.slides[0].blocks[0])).toEqual([
+      { text: "赤い", color: "E53935" },
+      { text: "字と" },
+      { text: "太い赤", bold: true, color: "FF0000" },
+    ]);
+  });
+
   test("test_リンクは行き先ごと持つ", () => {
     const deck = splitDeck("## A\n\n[覚書](https://example.com/a) を見る\n");
     expect(runsOf(deck.slides[0].blocks[0])).toEqual([

@@ -50,6 +50,12 @@ import {
 import { detailsContainers, type DetailsContainer } from "./details-container";
 import { splitImageAlt } from "./image-size";
 import { svgFromDataUrl, svgNaturalSize } from "../lib/svg-png";
+import {
+  type ColorSpan,
+  isSpanClose,
+  parseColorSpan,
+  spanStyleOf,
+} from "../lib/text-color";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 import { splitFenceInfo } from "./code-blocks";
 
@@ -589,6 +595,37 @@ function leadWidthCh(lead: string): number {
   return width;
 }
 
+/// 開きの `<span style="…">` から、対になる `</span>` を同じ親の中で探す。
+/// 受けない style なら null（素のまま）。入れ子は深さで数える
+function colorSpanAt(
+  state: EditorState,
+  open: SyntaxNode,
+): { open: SyntaxNode; close: SyntaxNode; color: ColorSpan } | null {
+  const style = spanStyleOf(state.sliceDoc(open.from, open.to));
+  if (style === null) return null;
+  const color = parseColorSpan(style);
+  if (!color) return null;
+  let depth = 0;
+  for (let next = open.nextSibling; next; next = next.nextSibling) {
+    if (next.name !== "HTMLTag") continue;
+    const tag = state.sliceDoc(next.from, next.to);
+    if (/^<span[\s>]/i.test(tag)) depth++;
+    else if (isSpanClose(tag)) {
+      if (depth === 0) return { open, close: next, color };
+      depth--;
+    }
+  }
+  return null;
+}
+
+/// 色は CSS 変数で渡す。ダークテーマでの明度の持ち上げは CSS 側で行う
+function colorVariables(color: ColorSpan): string {
+  const parts: string[] = [];
+  if (color.color) parts.push(`--text-color: ${color.color}`);
+  if (color.background) parts.push(`--text-bg: ${color.background}`);
+  return parts.join("; ");
+}
+
 function listDepth(node: SyntaxNode): number {
   let depth = 0;
   for (let parent = node.parent; parent; parent = parent.parent) {
@@ -684,6 +721,29 @@ export function previewDecorations(
           }).range(node.from, node.to),
         );
         return false;
+      }
+      // --- 文字色の span（ADR-0061）: 受けるものだけ、タグを隠して中に色
+      if (node.name === "HTMLTag") {
+        const span = colorSpanAt(state, node.node);
+        if (!span) return;
+        out.push(
+          Decoration.mark({
+            attributes: {
+              class: "cm-text-color",
+              style: colorVariables(span.color),
+            },
+          }).range(span.open.to, span.close.from),
+        );
+        if (
+          !lineSelected(node.from) &&
+          !touchesSelection(state, span.open.from, span.close.to)
+        ) {
+          out.push(Decoration.replace({}).range(span.open.from, span.open.to));
+          out.push(
+            Decoration.replace({}).range(span.close.from, span.close.to),
+          );
+        }
+        return;
       }
       // --- インラインマーカー: 親の範囲にカーソルが触れている間は見せる
       if (MARK_NODES.has(node.name)) {
@@ -1677,6 +1737,12 @@ const blockTheme = EditorView.baseTheme({
   ".cm-list-number": {
     display: "inline-block",
     whiteSpace: "pre",
+  },
+  // 文字色（ADR-0061）。値は CSS 変数で受け、ダークでは明度を上げる
+  //（App.css の [data-theme="dark"] 側）
+  ".cm-text-color": {
+    color: "var(--text-color, inherit)",
+    backgroundColor: "var(--text-bg, transparent)",
   },
   ".cm-list-bullet": {
     display: "inline-block",

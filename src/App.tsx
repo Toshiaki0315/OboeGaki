@@ -2448,6 +2448,7 @@ function App() {
                 </div>
                 <FormatToolbar
                   onFormat={(kind) => editorRef.current?.applyFormat(kind)}
+                  onColor={(hex) => editorRef.current?.applyColor(hex)}
                   onTable={() => setTableDialog(true)}
                 />
                 <Editor

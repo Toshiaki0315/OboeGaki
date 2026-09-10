@@ -2131,3 +2131,22 @@ fieldset.preferences-fields:disabled {
 .context-submenu {
   min-width: 11rem;
 }
+
+/* 文字色（ADR-0061）。ダークでは白を混ぜて明度を上げる。ファイルの値は
+   変えない（画面の見せ方だけ） */
+:root[data-theme="dark"] .cm-text-color {
+  color: color-mix(in srgb, var(--text-color, currentColor) 70%, white);
+}
+.format-toolbar .color-palette {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  margin-left: 0.25rem;
+}
+.format-toolbar .color-swatch {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  padding: 0;
+}

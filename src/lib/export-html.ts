@@ -15,6 +15,7 @@ import { frontMatterRange } from "../editor/frontmatter";
 import { splitFenceInfo } from "../editor/code-blocks";
 import { DEFAULT_SUMMARY } from "../editor/details-container";
 import { splitImageAlt } from "../editor/image-size";
+import { parseColorSpan, styleAttribute } from "./text-color";
 import {
   DEFAULT_NOTE_KIND,
   NOTE_ICONS,
@@ -32,6 +33,36 @@ type InlineRule = Parameters<Md["inline"]["ruler"]["before"]>[2];
 const ASCII_WORD = /[A-Za-z0-9_]/;
 
 /// `::目立つ::` を <mark> にする独自インライン規則（エディタの Highlight と同じ記法）。
+/// `<span style="color: …">…</span>` を、受けるものだけ組み直して通す
+/// （ADR-0061）。閉じが無い・受けない style は素の文字として逃がす
+const COLOR_SPAN_OPEN_RE = /^<span\s+style\s*=\s*"([^"]*)"\s*>/i;
+const colorSpanRule: InlineRule = (state, silent) => {
+  const source = state.src;
+  const start = state.pos;
+  if (source.charCodeAt(start) !== 0x3c /* < */) return false;
+  const opened = COLOR_SPAN_OPEN_RE.exec(source.slice(start));
+  if (!opened) return false;
+  const color = parseColorSpan(opened[1]);
+  if (!color) return false;
+  const innerStart = start + opened[0].length;
+  const close = source.indexOf("</span>", innerStart);
+  if (close < 0) return false;
+  if (!silent) {
+    const open = state.push("color_span_open", "span", 1);
+    open.attrSet("style", styleAttribute(color));
+    // 中身はふつうの Markdown として組む（太字・リンクが効く）
+    state.md.inline.parse(
+      source.slice(innerStart, close),
+      state.md,
+      state.env,
+      state.tokens,
+    );
+    state.push("color_span_close", "span", -1);
+  }
+  state.pos = close + "</span>".length;
+  return true;
+};
+
 const highlightRule: InlineRule = (state, silent) => {
   const source = state.src;
   const start = state.pos;
@@ -205,6 +236,11 @@ function renderer() {
           : "</details>\n",
     });
   md.inline.ruler.before("emphasis", "oboegaki_highlight", highlightRule);
+  // 文字色の span（ADR-0061）。生の HTML は通さないまま、色だけ組み直す
+  md.inline.ruler.before("emphasis", "oboegaki_color_span", colorSpanRule);
+  md.renderer.rules.color_span_open = (tokens, index) =>
+    `<span style="${escapeHtml(String(tokens[index].attrGet("style") ?? ""))}">`;
+  md.renderer.rules.color_span_close = () => "</span>";
   // 数式はコードより後、強調より先（`$a_b$` の `_` を強調に取られない）
   md.inline.ruler.before("emphasis", "oboegaki_math", mathRule);
   md.block.ruler.before("fence", "oboegaki_math_block", mathBlockRule);
