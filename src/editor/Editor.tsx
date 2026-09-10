@@ -44,7 +44,7 @@ import {
   type SaveAttachment,
 } from "./attachments";
 import { csvDropEvents } from "./csv-drop";
-import { clearColorEdit, colorEdit } from "./text-color-commands";
+import { clearColorEdit, colorEdits } from "./text-color-commands";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
@@ -295,18 +295,21 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         if (!current) return;
         const { from, to } = current.state.selection.main;
         const doc = current.state.doc.toString();
-        const edit =
-          hex === null
-            ? clearColorEdit(doc, from, to)
-            : colorEdit(doc, from, to, hex);
-        if (edit) {
-          current.dispatch({
-            changes: edit,
-            selection: {
-              anchor: edit.from,
-              head: edit.from + edit.insert.length,
-            },
-          });
+        if (hex === null) {
+          const edit = clearColorEdit(doc, from, to);
+          if (edit) {
+            current.dispatch({
+              changes: edit,
+              selection: {
+                anchor: edit.from,
+                head: edit.from + edit.insert.length,
+              },
+            });
+          }
+        } else {
+          // 行ごとに包み、選択は中の文字へ（続けて色を選べば差し替わる）
+          const result = colorEdits(doc, from, to, hex);
+          if (result) current.dispatch(result);
         }
         current.focus();
       },

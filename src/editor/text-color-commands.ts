@@ -78,3 +78,56 @@ export function clearColorEdit(
     insert: doc.slice(around.open[1], around.close[0]),
   };
 }
+
+/// 行頭のブロックの印（見出し・箇条書き・番号・引用・チェック）。包みの外に置く
+const BLOCK_MARK_RE = /^(?:#{1,6} |[-*+] (?:\[[ xX]\] )?|\d+\. |> )+/;
+
+/// 選択範囲に色を付ける編集の一式（実機 2026-09-11）。
+///
+/// - **行ごとに包む。** インラインの HTML は空行（段落）を越えられず、
+///   箇条書きの項目も別のブロック。行の中の選ばれた部分だけを包む
+/// - 行頭から選んでいれば、ブロックの印は包みの外に残す（`# ` を span の
+///   中に入れると見出しでなくなる）
+/// - 中身が空白だけの行は飛ばす。1 つも無ければ null
+/// - 選択は**中の文字**に置き直す。続けて別の色を選べば差し替わる
+///   （colorEdit の「中身をちょうど選んでいる」規則に乗る）
+export function colorEdits(
+  doc: string,
+  from: number,
+  to: number,
+  hex: string,
+): { changes: Edit[]; selection: { anchor: number; head: number } } | null {
+  if (from >= to) return null;
+  const changes: Edit[] = [];
+  let lineStart = doc.lastIndexOf("\n", from - 1) + 1;
+  while (lineStart < to) {
+    const newline = doc.indexOf("\n", lineStart);
+    const lineEnd = newline < 0 ? doc.length : newline;
+    let segFrom = Math.max(from, lineStart);
+    const segTo = Math.min(to, lineEnd);
+    if (segFrom === lineStart) {
+      const marker = BLOCK_MARK_RE.exec(doc.slice(lineStart, lineEnd));
+      if (marker) segFrom = Math.min(segTo, lineStart + marker[0].length);
+    }
+    if (doc.slice(segFrom, segTo).trim()) {
+      const edit = colorEdit(doc, segFrom, segTo, hex);
+      if (edit) changes.push(edit);
+    }
+    if (newline < 0) break;
+    lineStart = newline + 1;
+  }
+  if (changes.length === 0) return null;
+  const open = colorSpanOpen(hex).length;
+  const close = COLOR_SPAN_CLOSE.length;
+  let offset = 0;
+  let anchor = 0;
+  let head = 0;
+  changes.forEach((edit, index) => {
+    const innerStart = edit.from + offset + open;
+    const innerLength = edit.insert.length - open - close;
+    if (index === 0) anchor = innerStart;
+    head = innerStart + innerLength;
+    offset += edit.insert.length - (edit.to - edit.from);
+  });
+  return { changes, selection: { anchor, head } };
+}
