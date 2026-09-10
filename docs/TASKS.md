@@ -481,6 +481,43 @@ img-src 'self' data: blob:` 程度から始める（`'unsafe-inline'` は CodeMi
       CI は macos-14 で問題なし。ネットワーク無効の環境で回す予定ができたら、
       `Read + Write` のトレイト境界で通信部を差し替えられるようにする
 
+## 第 10 群 — MCP サーバ（[ADR-0051](adr/0051-mcp-server.md)。読み書き両方）
+
+Claude Desktop などから保管フォルダを検索・参照・書き込みできるようにする。
+第 2 のバイナリ `oboegaki-mcp`（stdio、`rmcp`）で、索引は読み・ファイルにだけ
+書く。**10-1 → 10-3 で「読める」を先に区切り**、書きは 10-4 以降。
+
+- [ ] **10-1. バイナリの足場と接続**
+      `src-tauri/src/bin/mcp.rs` を `[[bin]]` に足し、`rmcp` で stdio の
+      サーバを立てる。引数は保管フォルダ。`initialize` に答え、ツール 0 個で
+      Claude Desktop から「接続できた」まで。`.mcp-ignore`（1 行 1 フォルダ）
+      の読み込みと、`.trash` / `templates` / 管理フォルダの除外をここで持つ
+- [ ] **10-2. 読みのツール（検索・本文・一覧）**
+      `search_notes`（`IndexDb::search`。`#タグ` / `after:` は本文と同じ書き方）
+      / `read_note`（本文と更新時刻。長いものは先頭と「続きがある」印）/
+      `list_notes`（フォルダ・タグで絞る）/ `list_folders` / `list_tags`。
+      アプリが動いていない（`instance-oboegaki.lock` が無い）ときは問い合わせの
+      前に `IndexDb::sync` を自分で走らせる。JSON 入出力のテストを純 Rust で
+- [ ] **10-3. 関連・履歴・resource**
+      `related_notes`（`backlinks` + `related_signals`）/ `note_history`（版の
+      一覧と本文。読むだけ）/ resource `oboegaki://note/<相対パス>`。
+      **ここまでで「読める」を区切る**（Claude Desktop から検索して参照できる）
+- [ ] **10-4. 書きのツール（作る・追記・今日）**
+      `create_note`（題名・本文・フォルダ・雛形）/ `append_to_note`（末尾。
+      見出しを指定すればその節の末尾）/ `daily_note`。書くのは `.md` だけ
+      （`save_atomic`）。アプリが動いていれば外部変更の流れが拾うことを
+      実機で確認（未編集なら読み直し、編集中なら競合の 3 択）
+- [ ] **10-5. 差し替えと片づけ（楽観ロック）**
+      `replace_note` は `read_note` で得た更新時刻を必須にし、違えば断る。
+      `move_note` / `trash_note`（ゴミ箱まで。空にはしない）。アプリが動いて
+      いないときは `history::snapshot` で版を残す
+- [ ] **10-6. 同梱と設定の書き出し**
+      `.app` に `oboegaki-mcp` を同梱（`tauri.conf.json` の externalBin）。
+      環境設定「一般」に「MCP の設定を書き出す」— Claude Desktop 用の JSON
+      断片（バイナリのパス・保管フォルダ）をクリップボードへ。manual_test に
+      接続手順。hitofude-gap に「参照実装には無い」として記録。`.app` の
+      サイズを実測して docs/bench.md に追記
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち
