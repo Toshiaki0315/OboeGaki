@@ -1168,6 +1168,7 @@ function App() {
     saveLastNote(localStorage, vaultRoot, path); // 次回の起動で開き直す
     setInitialCursor(cursor);
     setDoc(text);
+    setEditorSession((session) => session + 1); // 別のノート = 作り直す
     sync.markOpened({ path, text });
     headingRef.current = firstHeading(text);
     setStatus("");
@@ -1351,6 +1352,8 @@ function App() {
   // Enter とフォーカス外しの両方から呼ばれるので、二重発火を弾く
   // （1 回目の改名で旧パスが消え、2 回目が「見つからない」で落ちる）
   const renaming = useRef(false);
+  // エディタを作り直す単位（openNote ごとに進む。改名では進めない）
+  const [editorSession, setEditorSession] = useState(0);
 
   async function handleRename(title: string) {
     if (!vaultRoot || !currentPath || renaming.current) return;
@@ -2298,7 +2301,11 @@ function App() {
                   onTable={() => setTableDialog(true)}
                 />
                 <Editor
-                  key={currentPath}
+                  // **ノートを開いた回数で作り直す。パスでは作り直さない** —
+                  // 見出しに合わせた改名（3-30）でパスが変わると、開いたときの
+                  // 本文で初期化され、打った内容が消える（実機 2026-09-10）。
+                  // 打った内容はエディタだけが持つ（T2）
+                  key={editorSession}
                   ref={editorRef}
                   initialDoc={doc}
                   onDocChanged={handleDocChanged}
