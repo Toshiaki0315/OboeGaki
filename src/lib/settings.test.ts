@@ -186,26 +186,29 @@ describe("resolveTheme", () => {
 
 describe("contentWidthCss", () => {
   it("test_名前を幅に写す。最大は制限なし", () => {
-    expect(contentWidthCss("standard")).toBe("46rem");
-    expect(contentWidthCss("wide")).toBe("56rem");
+    expect(contentWidthCss("narrow")).toBe("46rem");
+    expect(contentWidthCss("standard")).toBe("56rem");
+    expect(contentWidthCss("wide")).toBe("68rem");
+    expect(contentWidthCss("wider")).toBe("82rem");
     // 0 ではなく none。CSS の max-width にそのまま渡せる形で持つ
     expect(contentWidthCss("full")).toBe("none");
   });
-  it("test_広めは 3 段（要望 2026-09-10）_標準と最大の間を等間隔ではなく読みやすい刻みで", () => {
+  it("test_5 段の並びは 狭め→標準→広め→より広め→最大_既定は標準 56rem（要望 2026-09-10）", () => {
     expect(CONTENT_WIDTHS).toEqual([
+      "narrow",
       "standard",
       "wide",
       "wider",
-      "widest",
       "full",
     ]);
-    expect(contentWidthCss("wider")).toBe("68rem");
-    expect(contentWidthCss("widest")).toBe("82rem");
-    // 保存した設定も新しい名前を受け取る
+    expect(DEFAULT_SETTINGS.contentWidth).toBe("standard");
+    expect(contentWidthCss(DEFAULT_SETTINGS.contentWidth)).toBe("56rem");
+  });
+  it("test_使わなくなった名前 widest は より広め として読む", () => {
     const storage = fakeStorage({
       [SETTINGS_KEY]: '{"contentWidth":"widest"}',
     });
-    expect(loadSettings(storage).contentWidth).toBe("widest");
+    expect(loadSettings(storage).contentWidth).toBe("wider");
   });
 });
 

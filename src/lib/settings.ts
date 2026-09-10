@@ -21,7 +21,7 @@ export type OcrEngine = "mac" | "llm";
 export const OCR_ENGINES: OcrEngine[] = ["mac", "llm"];
 /// 本文の横幅（ADR-0018）。**px では持たない** — 名前で選ばせて、実際の
 /// 幅は対応表が決める。
-export type ContentWidth = "standard" | "wide" | "wider" | "widest" | "full";
+export type ContentWidth = "narrow" | "standard" | "wide" | "wider" | "full";
 
 export type Settings = {
   theme: Theme;
@@ -83,13 +83,14 @@ export const THEMES: Theme[] = ["system", "light", "dark"];
 export const LINE_SPACINGS: LineSpacing[] = ["tight", "normal", "relaxed"];
 export const TAB_WIDTHS = [2, 4, 8];
 export const CONTEXT_CHOICES = [4096, 8192, 16384, 32768];
-// 広めは 3 段（要望 2026-09-10）。標準と最大の間が 1 つだと、広い画面で
-// 「広めでは足りず、最大では広すぎる」に落ちる
+// 5 段（要望 2026-09-10）。標準と最大の間が 1 つだと、広い画面で「広めでは
+// 足りず、最大では広すぎる」に落ちる。**既定の標準は 56rem**（従来の 46rem は
+// 「狭め」として残す）
 export const CONTENT_WIDTHS: ContentWidth[] = [
+  "narrow",
   "standard",
   "wide",
   "wider",
-  "widest",
   "full",
 ];
 export const HISTORY_CHOICES = [0, 15, 30, 60, 120];
@@ -130,12 +131,17 @@ export const DEFAULT_SETTINGS: Settings = {
 export const KEEP_ALIVE_CHOICES = ["0", "1m", "5m", "30m"];
 
 const WIDTHS: Record<ContentWidth, string> = {
-  standard: "46rem", // App.css の従来値
-  wide: "56rem",
-  wider: "68rem",
-  widest: "82rem",
+  narrow: "46rem", // 2026-09-10 までの「標準」
+  standard: "56rem",
+  wide: "68rem",
+  wider: "82rem",
   full: "none",
 };
+
+/// 使わなくなった名前の読み替え（2026-09-10 の付け直し。`widest` = 82rem は
+/// `wider` に）。それ以外の旧名は新しい意味で読む — 旧「標準」46rem で保存
+/// されていた人は新しい既定の 56rem になる（要望どおり）
+const LEGACY_WIDTHS: Record<string, ContentWidth> = { widest: "wider" };
 
 /// 本文の幅を CSS の `max-width` に渡せる形で返す。
 export function contentWidthCss(width: ContentWidth): string {
@@ -180,7 +186,10 @@ export function loadSettings(storage: StorageLike): Settings {
     ),
     ocrEngine: pick(stored.ocrEngine, OCR_ENGINES, DEFAULT_SETTINGS.ocrEngine),
     contentWidth: pick(
-      stored.contentWidth,
+      typeof stored.contentWidth === "string" &&
+        stored.contentWidth in LEGACY_WIDTHS
+        ? LEGACY_WIDTHS[stored.contentWidth]
+        : stored.contentWidth,
       CONTENT_WIDTHS,
       DEFAULT_SETTINGS.contentWidth,
     ),

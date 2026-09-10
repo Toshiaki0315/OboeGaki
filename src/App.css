@@ -181,8 +181,8 @@ body {
   overflow-y: auto;
   /* 書ける場所（紙）。沈めた余白から浮かせる */
   background: var(--app-bg);
-  /* 本文の幅は環境設定（ADR-0018）。既定は従来と同じ 46rem */
-  max-width: var(--content-width, 46rem);
+  /* 本文の幅は環境設定（ADR-0018）。既定は「標準」56rem（2026-09-10） */
+  max-width: var(--content-width, 56rem);
   width: 100%;
   margin: 0 auto;
   padding: 2rem 1rem 0;
@@ -283,7 +283,7 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   /* 題名の欄は本文と同じ幅に揃える（ずれると読み筋が折れる） */
-  max-width: var(--content-width, 46rem);
+  max-width: var(--content-width, 56rem);
   width: 100%;
   margin: 0 auto;
   padding: 0.75rem 1rem 0;
