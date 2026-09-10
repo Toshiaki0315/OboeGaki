@@ -76,6 +76,7 @@ export function useNoteSync({
   const refreshSoon = useMemo(() => createDebouncer(REFRESH_DELAY_MS), []);
   // 予約された保存。flush が完了を待てるよう Promise を返す
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
+  const pendingTarget = useRef<{ path: string } | null>(null);
   const dirty = useRef(false); // 保存されていない編集があるか
   // ディスクにあると分かっている本文（開いた・書いた・採用した）。外部変更の
   // イベントが来ても中身がこれと同じなら、外部の変更ではない — 自分の保存の
@@ -108,7 +109,12 @@ export function useNoteSync({
     if (!root || !path) return;
     dirty.current = true;
     onStatusRef.current("未保存");
+    // 書き先は**箱に入れて**持つ。見出しに合わせて改名したら `renamed` が
+    // 箱の中身を付け替える（捕まえたパスのままだと消した旧ファイルが蘇る）
+    const target = { path };
+    pendingTarget.current = target;
     pendingSave.current = async () => {
+      const path = target.path;
       const text = getText();
       await writeNote(root, path, text, historyMinutesRef.current);
       known.current = { path, text };
@@ -152,6 +158,15 @@ export function useNoteSync({
   function dropPending() {
     autosave.cancel();
     pendingSave.current = null;
+  }
+  /// 開いているノートのパスが変わった（見出しに合わせた改名。本文は同じ）。
+  /// 予約の書き先・既知の本文・今のパスを新しい方へ付け替える。props の
+  /// 更新を待たない — 直後の打鍵が旧パスを掴む
+  function renamed(from: string, to: string) {
+    if (currentPathRef.current === from) currentPathRef.current = to;
+    if (pendingTarget.current?.path === from) pendingTarget.current.path = to;
+    if (known.current?.path === from)
+      known.current = { ...known.current, path: to };
   }
   /// ノートを開いた直後: 未編集で、保存時刻はまだ無い
   function markOpened(opened?: { path: string; text: string }) {
@@ -339,6 +354,7 @@ export function useNoteSync({
     cancel,
     dropPending,
     markOpened,
+    renamed,
     adopt,
     conflict,
     resolveConflict,

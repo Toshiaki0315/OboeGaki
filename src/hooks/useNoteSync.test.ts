@@ -238,6 +238,24 @@ describe("useNoteSync: 外部変更（spec §7.5）", () => {
     expect(given.replaceText).not.toHaveBeenCalled();
   });
 
+  test("test_renamed で予約の書き先と既知の本文のパスが新しい方になる（見出しの追従）", async () => {
+    // 見出しに合わせて改名したあと、旧パスへ予約が書かれると消したはずの
+    // ファイルが蘇る。改名は本文の差し替えではないので予約は生かし、
+    // 書き先だけ付け替える
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    act(() => result.current.noteChanged(() => "本文"));
+    act(() => result.current.renamed("/v/a.md", "/v/b.md"));
+    await tick(800);
+    expect(mocked.writeNote).toHaveBeenCalledWith("/v", "/v/b.md", "本文", 60);
+    // 書いた本文は新しいパスの既知として覚える（同じ中身のイベントは無視）
+    act(() => result.current.noteChanged(() => "本文 2"));
+    mocked.readNote.mockResolvedValue("本文");
+    await act(async () => external!({ path: "/v/b.md", kind: "modified" }));
+    await tick(1);
+    expect(result.current.conflict).toBeNull();
+  });
+
   test("test_別のノートの変更は一覧だけ", async () => {
     const given = input();
     renderHook(() => useNoteSync(given));

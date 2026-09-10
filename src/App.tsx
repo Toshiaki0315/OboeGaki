@@ -65,6 +65,7 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
+import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { ocrFailureText, ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
@@ -1168,6 +1169,7 @@ function App() {
     setInitialCursor(cursor);
     setDoc(text);
     sync.markOpened({ path, text });
+    headingRef.current = firstHeading(text);
     setStatus("");
     setPrintBody(null); // 前のノートの印刷用の組みは捨てる（ADR-0038）
   }
@@ -1361,13 +1363,57 @@ function App() {
       await refresh();
       const text = await readNote(vaultRoot, renamed);
       selectNote(renamed);
-      setDoc(text);
+      saveLastNote(localStorage, vaultRoot, renamed);
+      setDoc(text); // Rust が本文の見出しも書き換えている（ADR-0005）
+      sync.markOpened({ path: renamed, text });
+      headingRef.current = firstHeading(text);
     } catch (error) {
       setStatus(`改名に失敗: ${String(error)}`);
     } finally {
       renaming.current = false;
     }
   }
+
+  // ---- 見出し → ファイル名（ADR-0005 追記、要望 2026-09-10）。保存が済んだ
+  // あとに、本文の H1 が変わっていたらファイル名を追わせる。**ファイル名が
+  // それまでの見出しに従っていたときだけ**動かす — Finder で意図して別名を
+  // 付けたノートを保存のたびに改名しない（参照実装 _rename_if_title_changed）。
+  // 見出しの無いノートはファイル名に従っているとみなす（無題に H1 を書けば
+  // その名前になる）
+  const headingRef = useRef<string | null>(null);
+  async function followHeading() {
+    if (!vaultRoot || !currentPath || renaming.current) return;
+    const text = editorRef.current?.getText();
+    if (text === undefined) return;
+    const heading = firstHeading(text);
+    const previous = headingRef.current;
+    if (heading === previous) return;
+    headingRef.current = heading;
+    const stem = noteStem(currentPath);
+    if (heading === null || sanitizeStem(previous ?? stem) !== stem) return;
+    if (sanitizeStem(heading) === stem) return;
+    renaming.current = true;
+    try {
+      const renamed = await renameNote(vaultRoot, currentPath, heading);
+      if (renamed === currentPath) return;
+      // 本文はそのまま（エディタを作り直さない = キャレットが飛ばない）。
+      // 予約の書き先と今のパスだけ付け替える
+      sync.renamed(currentPath, renamed);
+      selectNote(renamed);
+      saveLastNote(localStorage, vaultRoot, renamed);
+      await refresh();
+    } catch (error) {
+      setStatus(`見出しに合わせた改名に失敗: ${String(error)}`);
+    } finally {
+      renaming.current = false;
+    }
+  }
+  const followHeadingRef = useRef(followHeading);
+  followHeadingRef.current = followHeading;
+  useEffect(() => {
+    if (savedAt === null) return;
+    void followHeadingRef.current();
+  }, [savedAt]);
 
   async function handleTrash(target?: string) {
     const path = target ?? currentPath;
