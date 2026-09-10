@@ -67,6 +67,7 @@ import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
+import { startupAction } from "./lib/startup-note";
 import { ocrFailureText, ocrReaderFrom } from "./lib/ocr";
 import {
   folderDepth,
@@ -1113,22 +1114,33 @@ function App() {
   // **vault ごとに一度だけ。** 一覧が変わるたびに開き直すと、ノートを
   // 捨てたり絞り込んだりしたときに、勝手に別のノートへ飛んでしまう。
   // 既に何か開いていれば触らない（復元や引き継ぎを上書きしない）。
+  //
+  // 空の vault では**索引の同期が済んでから**「無題」を作る（要望 2026-09-10。
+  // 判断は lib/startup-note）
   const openedFirstFor = useRef<string | null>(null);
+  // 背景の索引同期が済み、一覧を引き直した vault
+  const [indexSyncedFor, setIndexSyncedFor] = useState<string | null>(null);
   useEffect(() => {
     if (!vaultRoot || currentPath) return;
     if (openedFirstFor.current === vaultRoot) return;
-    const remembered = lastNoteFor(localStorage, vaultRoot);
-    const target =
-      remembered && notes.some((entry) => entry.path === remembered)
-        ? remembered
-        : sortedNotes[0]?.path;
-    if (!target) return; // 空の vault では何もしない
-    if (remembered && target !== remembered) forgetLastNote(localStorage);
+    const action = startupAction({
+      remembered: lastNoteFor(localStorage, vaultRoot),
+      notes,
+      sorted: sortedNotes,
+      indexSynced: indexSyncedFor === vaultRoot,
+    });
+    if (action.kind === "wait") return;
     openedFirstFor.current = vaultRoot;
-    void openNote(target);
-    // openNote は毎描画で作り直されるが、開くかどうかは上の条件で決まる
+    if (action.kind === "create") {
+      void handleCreate("");
+      return;
+    }
+    if (action.forget) forgetLastNote(localStorage);
+    void openNote(action.path);
+    // openNote / handleCreate は毎描画で作り直されるが、開くかどうかは
+    // 上の条件で決まる
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultRoot, currentPath, notes, sortedNotes]);
+  }, [vaultRoot, currentPath, notes, sortedNotes, indexSyncedFor]);
 
   // 前回の vault を開き直す（TASKS 1-1）。覚えが無ければ既定の場所を開く
   // （ADR-0032 決定 3）。開けなければ黙って選択画面のまま
@@ -1978,9 +1990,13 @@ function App() {
   useEffect(() => {
     const unlisten = safeSubscribe(() =>
       listen("index-updated", () => {
+        const root = useAppStore.getState().vaultRoot;
         useAppStore
           .getState()
           .refresh()
+          // 引き直しが**終わってから**「同期済み」にする。先に立てると、
+          // 古い空の一覧を見て無題を作ってしまう
+          .then(() => setIndexSyncedFor(root))
           .catch((error) =>
             setStatus(`一覧を更新できませんでした: ${String(error)}`),
           );
