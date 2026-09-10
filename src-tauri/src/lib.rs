@@ -53,13 +53,13 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 「おぼえがきについて」に出す絵（要望 2026-09-04）。**こちらから渡す** —
     // 束ねる前（`cargo tauri dev`）は .app の中に居らず、OS にはアプリの絵が
     // 分からないので、書類フォルダの絵が出てしまう
-    // 版とビルド日時（要望 2026-09-10）。macOS の窓は
-    // 「Version {short_version} ({version})」と組むので、括弧の中に日時を置く
-    let (short, stamp) = about_versions();
+    // 名前・版・ビルド日時（要望 2026-09-10。順序の理由は about_lines）
+    let lines = about_lines();
     let about = tauri::menu::AboutMetadataBuilder::new()
         .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png")).ok())
-        .short_version(Some(short))
-        .version(Some(stamp))
+        .name(Some(lines.name))
+        .version(Some(lines.version))
+        .short_version(Some(lines.short_version))
         .build();
     let application = SubmenuBuilder::new(handle, "おぼえがき")
         .about(Some(about))
@@ -201,6 +201,25 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
 /// （build.rs。渡されなければ「開発版」）
 pub fn about_versions() -> (&'static str, &'static str) {
     (env!("CARGO_PKG_VERSION"), env!("OBOEGAKI_BUILD_TIME"))
+}
+
+/// 「について」の文字（要望 2026-09-10）。macOS の窓は
+/// 「Version {version} ({short_version})」の順で組む — 名前から想像する逆
+/// （実機で確認）。版を version、日時を short_version に置くと
+/// 「Version 0.5.0 (2026-09-10 13:06)」になる
+pub struct AboutLines {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub short_version: &'static str,
+}
+
+pub fn about_lines() -> AboutLines {
+    let (version, stamp) = about_versions();
+    AboutLines {
+        name: "おぼえがき(OboeGaki)",
+        version,
+        short_version: stamp,
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -368,6 +387,19 @@ mod tests {
             luminance < 0.9,
             "縁が白に溶ける: rgb=({r},{g},{b}) L={luminance:.3}"
         );
+    }
+
+    /// 「について」の 2 行（実機 2026-09-10）:
+    ///   おぼえがき(OboeGaki)
+    ///   Version 0.5.0 (2026-09-10 13:06)
+    /// macOS は「Version {version} ({short_version})」の順で組む（実機で確認。
+    /// 名前から想像する逆）ので、版を version、日時を short_version に置く
+    #[test]
+    fn test_aboutの2行_名前と_版と括弧のビルド日時() {
+        let about = super::about_lines();
+        assert_eq!(about.name, "おぼえがき(OboeGaki)");
+        assert_eq!(about.version, "0.5.0");
+        assert_eq!(about.short_version, super::about_versions().1);
     }
 
     /// 版は 3 箇所（Cargo / tauri.conf / package.json）が同じ字面であること。
