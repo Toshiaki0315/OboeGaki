@@ -216,12 +216,14 @@ describe("previewDecorations（ブロック系）", () => {
   test("箇条書きの折り返しは点や番号の後ろに揃える（ぶら下げ。要望 2026-09-10）", () => {
     const hangOf = (decos: Deco[], from: number) =>
       decos.find((d) => d.from === from && d.kind === "line:cm-hang")?.style;
-    // 点: 点の幅（1.2em）。入れ子は先頭の空白の字数ぶん（ch）を足す
+    // 点: 点の幅。点は 0.7em の字で描く（1.2em × 0.7 = 行の字で 0.84em）。
+    // 行の字で 1.2em を取ると半字ぶん右へずれる（実機 2026-09-10）。
+    // 入れ子は先頭の空白の字数ぶん（ch）を足す
     const bullets = "- 親\n  - 子\n\n他";
     const b = decorationsOf(bullets, bullets.length);
-    expect(hangOf(b, 0)).toBe("--hang: calc(0ch + 1.2em)");
+    expect(hangOf(b, 0)).toBe("--hang: calc(0ch + 0.84em)");
     expect(hangOf(b, bullets.indexOf("  - 子"))).toBe(
-      "--hang: calc(2ch + 1.2em)",
+      "--hang: calc(2ch + 0.84em)",
     );
     // 番号: 「1. 」は 3ch、「10. 」は 4ch。番号の印にも同じ幅を付けて、
     // 字の幅が違うフォントでも折り返しの位置と揃う
@@ -241,7 +243,7 @@ describe("previewDecorations（ブロック系）", () => {
     );
     // カーソルが乗って原文を見せている間も、ぶら下げは外さない（行が跳ねない）
     expect(hangOf(decorationsOf(bullets, 2), 0)).toBe(
-      "--hang: calc(0ch + 1.2em)",
+      "--hang: calc(0ch + 0.84em)",
     );
   });
 

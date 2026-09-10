@@ -131,6 +131,14 @@ function withTrailingSpace(state: EditorState, end: number): number {
   return state.sliceDoc(end, end + 1) === " " ? end + 1 : end;
 }
 
+/// 点の大きさ。**幅とぶら下げ幅は同じ値から出す。** 点は小さい字（0.7em）で
+/// 描くので、その中の 1.2em は行の字では 1.2 × 0.7 = 0.84em。ぶら下げ幅を
+/// 行の字で 1.2em と取ると、折り返しが半字ぶん右へずれる（実機 2026-09-10）
+const BULLET_FONT_SCALE = 0.7;
+const BULLET_WIDTH_EM = 1.2;
+/// 行の字で測った点の幅（ぶら下げ幅に使う）
+const BULLET_HANG = `${(BULLET_WIDTH_EM * BULLET_FONT_SCALE).toFixed(2)}em`;
+
 class BulletWidget extends WidgetType {
   constructor(readonly glyph: string) {
     super();
@@ -785,7 +793,7 @@ export function previewDecorations(
               ? `${markerText.length + 1}ch`
               : marker
                 ? "1.55em"
-                : "1.2em";
+                : BULLET_HANG;
           out.push(
             Decoration.line({
               class: "cm-hang",
@@ -1672,9 +1680,9 @@ const blockTheme = EditorView.baseTheme({
   },
   ".cm-list-bullet": {
     display: "inline-block",
-    width: "1.2em",
+    width: `${BULLET_WIDTH_EM}em`,
     opacity: "0.75",
-    fontSize: "0.7em",
+    fontSize: `${BULLET_FONT_SCALE}em`,
     verticalAlign: "middle",
   },
   // **字の大きさに合わせて大きくする**（実機報告 2026-09-06）。素の
