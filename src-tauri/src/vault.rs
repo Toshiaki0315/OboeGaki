@@ -692,6 +692,50 @@ impl Vault {
         Ok(renamed)
     }
 
+    /// フォルダを別のフォルダの中へ移す（要望 2026-09-10、ADR-0024 追記 7）。
+    /// `into` は vault からの相対（空文字は直下）。移した先の相対パスを返す。
+    ///
+    /// - 自分の中・子の中へは動かせない（フォルダが消える）
+    /// - 同じ親へは「動かない」— エラーではなく今の場所を返す（落とし所を
+    ///   間違えただけで断りの文を出さない）
+    /// - 行き先に同名があれば断る（黙って中身が合流すると、どちらのノート
+    ///   だったのか分からなくなる = rename_folder と同じ）
+    pub fn move_folder(&self, folder: &str, into: &str) -> io::Result<String> {
+        let cleaned = self.existing_folder_relative(folder)?;
+        if cleaned.is_empty() {
+            return Err(invalid("フォルダの名前が空"));
+        }
+        let source = self.root.join(&cleaned);
+        if !source.is_dir() {
+            return Err(invalid(&format!("フォルダが無い: {folder}")));
+        }
+        let destination = self.existing_folder_relative(into)?;
+        if destination == cleaned || destination.starts_with(&format!("{cleaned}/")) {
+            return Err(invalid(&format!("自分の中へは移せません: {cleaned}")));
+        }
+        if !destination.is_empty() && !self.root.join(&destination).is_dir() {
+            return Err(invalid(&format!("行き先のフォルダが無い: {into}")));
+        }
+        let name = cleaned.rsplit('/').next().unwrap_or(&cleaned);
+        let moved = if destination.is_empty() {
+            name.to_string()
+        } else {
+            format!("{destination}/{name}")
+        };
+        if moved == cleaned {
+            return Ok(cleaned);
+        }
+        let target = self.root.join(&moved);
+        if target.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("行き先に同じ名前のフォルダがあります: {moved}"),
+            ));
+        }
+        fs::rename(&source, &target)?;
+        Ok(moved)
+    }
+
     /// フォルダを消す。
     ///
     /// **ノートが 1 つでも入っていたら消さない。** フォルダの削除にゴミ箱は
@@ -2875,6 +2919,43 @@ mod tests {
         // 黙って中身が合流すると、どちらのノートだったのか分からなくなる
         assert!(vault.rename_folder("業務-2026", "日記").is_err());
         assert!(vault.rename_folder("業務-2026", "  ").is_err());
+    }
+
+    #[test]
+    fn test_move_folder_中身ごと別のフォルダの中へ移す_要望2026_09_10() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "仕事/会議/議事録.md");
+        fs::create_dir_all(root.path().join("保管")).unwrap();
+
+        let moved = vault.move_folder("仕事/会議", "保管").unwrap();
+
+        assert_eq!(moved, "保管/会議");
+        assert!(root.path().join("保管/会議/議事録.md").is_file());
+        assert!(!root.path().join("仕事/会議").exists());
+        // 直下（空文字）へも戻せる
+        assert_eq!(vault.move_folder("保管/会議", "").unwrap(), "会議");
+        assert!(root.path().join("会議/議事録.md").is_file());
+    }
+
+    #[test]
+    fn test_move_folder_自分の中_同じ親_同名との衝突は断る() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "仕事/会議/議事録.md");
+        fs::create_dir_all(root.path().join("保管/会議")).unwrap();
+
+        assert!(vault.move_folder("仕事", "仕事").is_err()); // 自分の中
+        assert!(vault.move_folder("仕事", "仕事/会議").is_err()); // 子の中
+                                                                  // 同じ親へ = 動かない。エラーではなく今の場所を返す
+        assert_eq!(vault.move_folder("仕事/会議", "仕事").unwrap(), "仕事/会議");
+        // 行き先に同名があると中身が合流する。黙って混ぜない
+        assert!(vault.move_folder("仕事/会議", "保管").is_err());
+        // 無い行き先・予約フォルダは断る
+        assert!(vault.move_folder("仕事", "無い").is_err());
+        assert!(vault.move_folder("仕事", TRASH_DIR).is_err());
     }
 
     #[test]

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   canDropInto,
+  canMoveFolderInto,
+  FOLDER_DRAG_TYPE,
+  isFolderDrag,
   folderOf,
   isFileDrag,
   isNoteDrag,
@@ -56,5 +59,28 @@ describe("isFileDrag", () => {
     expect(isFileDrag(["text/plain"])).toBe(false);
     expect(isFileDrag([NOTE_DRAG_TYPE])).toBe(false);
     expect(isFileDrag([])).toBe(false);
+  });
+});
+
+// フォルダも掴んで別のフォルダへ落とせる（要望 2026-09-10）
+describe("canMoveFolderInto", () => {
+  it("test_別のフォルダの中や直下へは動かせる", () => {
+    expect(canMoveFolderInto("仕事/会議", "保管")).toBe(true);
+    expect(canMoveFolderInto("仕事/会議", "")).toBe(true);
+  });
+  it("test_自分の中_子の中_同じ親へは動かせない", () => {
+    expect(canMoveFolderInto("仕事", "仕事")).toBe(false);
+    expect(canMoveFolderInto("仕事", "仕事/会議")).toBe(false);
+    expect(canMoveFolderInto("仕事/会議", "仕事")).toBe(false); // 今の親
+    expect(canMoveFolderInto("仕事", "")).toBe(false); // 直下のものを直下へ
+    // 「仕事」を「仕事場」の中へは動かせる（前方一致ではなく区切りで見る）
+    expect(canMoveFolderInto("仕事", "仕事場")).toBe(true);
+  });
+});
+
+describe("isFolderDrag", () => {
+  it("test_フォルダの目印で見分ける", () => {
+    expect(isFolderDrag([FOLDER_DRAG_TYPE])).toBe(true);
+    expect(isFolderDrag(["application/x-oboegaki-note"])).toBe(false);
   });
 });

@@ -1182,21 +1182,53 @@ pub fn folder_rename(
     let renamed = vault
         .rename_folder(&folder, &name)
         .map_err(|e| e.to_string())?;
+    after_folder_moved(&state, &root, &vault, &before, &renamed);
+    Ok(renamed)
+}
+
+/// フォルダを別のフォルダの中へ移す（要望 2026-09-10）。`into` は空文字で直下。
+#[tauri::command]
+pub fn folder_move(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    folder: String,
+    into: String,
+) -> Result<String, String> {
+    let vault = Vault::new(&root);
+    let before = folder.trim_matches('/').to_string();
+    let moved = vault
+        .move_folder(&folder, &into)
+        .map_err(|e| e.to_string())?;
+    if moved != before {
+        after_folder_moved(&state, &root, &vault, &before, &moved);
+    }
+    Ok(moved)
+}
+
+/// フォルダの名前が変わった・動いたあとの後追い（改名と移動で共通）。
+/// 中のノートの監視イベントを抑え、履歴の置き場を付け替え、索引を同期する
+fn after_folder_moved(
+    state: &tauri::State<'_, WatchState>,
+    root: &str,
+    vault: &Vault,
+    before: &str,
+    after_path: &str,
+) {
     let moved: Vec<std::path::PathBuf> = vault
         .scan()
         .into_iter()
         .filter(|path| {
             path.strip_prefix(vault.root())
-                .map(|relative| relative.starts_with(&renamed))
+                .map(|relative| relative.starts_with(after_path))
                 .unwrap_or(false)
         })
         .collect();
     for path in &moved {
         state.suppressor.mark(path);
-        let after = history_key(&root, path);
+        let after = history_key(root, path);
         // 旧鍵は、新しい相対パスの頭を元の名前へ戻したもの
-        let old_key = after.replacen(&format!("path:{renamed}"), &format!("path:{before}"), 1);
-        if let Err(error) = history::rekey(&history_root(&root), &old_key, &after) {
+        let old_key = after.replacen(&format!("path:{after_path}"), &format!("path:{before}"), 1);
+        if let Err(error) = history::rekey(&history_root(root), &old_key, &after) {
             eprintln!("履歴の置き場を移せなかった: {error}");
         }
     }
@@ -1205,12 +1237,11 @@ pub fn folder_rename(
             .sync_gate
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(vault))
     };
     if let Err(error) = sync_outcome {
         eprintln!("索引の更新に失敗した: {error}");
     }
-    Ok(renamed)
 }
 
 #[tauri::command]

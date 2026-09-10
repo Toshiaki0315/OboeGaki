@@ -286,6 +286,7 @@ pub fn run() {
             commands::notes_in_folder,
             commands::folder_create,
             commands::folder_rename,
+            commands::folder_move,
             commands::folder_delete,
             commands::note_move,
             commands::note_backlinks,

@@ -45,7 +45,7 @@
 | front matter の ULID id（改名・移動でも同一性が切れない索引/履歴の鍵）          | ADR-0023, core/document.py                    | 未実装（パス鍵 + rekey で代替）                                                            |
 | テンプレート（雛形から新規作成・日次テンプレート・Finder で追加可・初回シード） | E-4, core/template.py, resources/templates/   | 未実装                                                                                     |
 | 同梱マニュアル「覚書の使い方」の初回シード                                      | vault.py MANUAL_*                             | 未実装                                                                                     |
-| フォルダの作成・改名（アプリ内から）                                            | ADR-0024, vault.create_folder / rename_folder | 未実装（Finder での変更には追従する）                                                      |
+| フォルダの作成・改名（アプリ内から）                                            | ADR-0024, vault.create_folder / rename_folder | 実装済み。**Drag & Drop での移動**も足した（ADR-0024 追記 7。参照実装には無い）            |
 | サイドバーのフォルダツリー表示                                                  | ui/sidebar.py, ADR-0024                       | 未実装（一覧のラベルにフォルダ名が出るのみ）                                               |
 | 保存した検索（サイドバーに常駐）                                                | ui/sidebar.py                                 | 未実装                                                                                     |
 | ゴミ箱の自動掃除（30 日、日数設定可）                                           | §7.6, purge_trash                             | 未実装（トラッシュ移動と「戻す」のみ。無限に溜まる）                                       |

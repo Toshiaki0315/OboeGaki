@@ -6,7 +6,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TRASH_FOLDER } from "../lib/finder";
-import { NOTE_DRAG_TYPE } from "../lib/note-drop";
+import { NOTE_DRAG_TYPE, FOLDER_DRAG_TYPE } from "../lib/note-drop";
 import {
   COLLAPSED_KEY,
   FolderSection,
@@ -41,6 +41,7 @@ function setup(over: Partial<FolderSectionProps> = {}) {
     acceptsDrop: vi.fn(() => true),
     onDrop: vi.fn(),
     onDropTrash: vi.fn(),
+    onDropFolder: vi.fn(),
     storage: memoryStorage(),
     ...over,
   };
@@ -55,6 +56,73 @@ const transfer = (path = "/v/a.md") => ({
 });
 
 describe("FolderSection", () => {
+  test("test_フォルダを掴んで別のフォルダに落とすと移動を頼む（要望 2026-09-10）", () => {
+    const { props } = setup({
+      folders: [
+        { folder: "仕事", count: 3 },
+        { folder: "仕事/会議", count: 1 },
+        { folder: "保管", count: 0 },
+      ],
+    });
+    const source = screen.getByText("会議").closest("li")!;
+    expect(source.querySelector("[draggable='true']")).toBeTruthy();
+    const data = new Map<string, string>();
+    const dt = {
+      types: [] as string[],
+      setData: (type: string, value: string) => {
+        data.set(type, value);
+        dt.types.push(type);
+      },
+      getData: (type: string) => data.get(type) ?? "",
+      dropEffect: "",
+      effectAllowed: "",
+    };
+    fireEvent.dragStart(source.querySelector("[draggable='true']")!, {
+      dataTransfer: dt,
+    });
+    expect(data.get(FOLDER_DRAG_TYPE)).toBe("仕事/会議");
+    // 別のフォルダは受ける（強調が付く）
+    const target = screen.getByText("保管").closest("li")!;
+    fireEvent.dragEnter(target, { dataTransfer: dt });
+    expect(target.querySelector(".drop-target")).toBeTruthy();
+    fireEvent.drop(target, { dataTransfer: dt });
+    expect(props.onDropFolder).toHaveBeenCalledWith("保管", "仕事/会議");
+    expect(props.onDrop).not.toHaveBeenCalled();
+  });
+
+  test("test_フォルダは自分の中と今の親には落とせない", () => {
+    const { props } = setup({
+      folders: [
+        { folder: "仕事", count: 3 },
+        { folder: "仕事/会議", count: 1 },
+      ],
+    });
+    const data = new Map<string, string>();
+    const dt = {
+      types: [] as string[],
+      setData: (type: string, value: string) => {
+        data.set(type, value);
+        dt.types.push(type);
+      },
+      getData: (type: string) => data.get(type) ?? "",
+      dropEffect: "",
+      effectAllowed: "",
+    };
+    const source = screen.getByText("仕事").closest("li")!;
+    fireEvent.dragStart(source.querySelector("[draggable='true']")!, {
+      dataTransfer: dt,
+    });
+    const child = screen.getByText("会議").closest("li")!;
+    fireEvent.dragEnter(child, { dataTransfer: dt });
+    expect(child.querySelector(".drop-target")).toBeNull();
+    // 見出し（直下）= 今の親
+    const head = screen.getByText("フォルダ").closest("summary")!;
+    fireEvent.dragEnter(head, { dataTransfer: dt });
+    expect(head.querySelector(".drop-target")).toBeNull();
+    fireEvent.drop(child, { dataTransfer: dt });
+    expect(props.onDropFolder).not.toHaveBeenCalled();
+  });
+
   test("test_直下が 0 で中にノートがあるフォルダは合計を括弧で出す（要望 2026-09-08）", () => {
     setup({
       folders: [

@@ -7,7 +7,7 @@
 // 落とし先の強調（どの行に載っているか）は**この節だけが持つ**。掴み終わり
 // （dragend）や節の外への drop は窓ぜんぶで拾って消す。
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { TRASH_FOLDER } from "../lib/finder";
 import {
   folderDepth,
@@ -16,7 +16,13 @@ import {
   visibleFolders,
   folderCount,
 } from "../lib/folder-tree";
-import { isNoteDrag, NOTE_DRAG_TYPE } from "../lib/note-drop";
+import {
+  isNoteDrag,
+  NOTE_DRAG_TYPE,
+  FOLDER_DRAG_TYPE,
+  canMoveFolderInto,
+  isFolderDrag,
+} from "../lib/note-drop";
 import type { FolderCount } from "../lib/ipc";
 import { MenuIcon } from "./MenuIcon";
 
@@ -66,6 +72,8 @@ export type FolderSectionProps = {
   /// 落とされた。carried は dataTransfer に載っていた目印（無ければ空文字）
   onDrop: (folder: string, carried: string) => void;
   onDropTrash: (carried: string) => void;
+  /// フォルダをフォルダへ落とした（要望 2026-09-10）。into は空文字で直下
+  onDropFolder: (into: string, folder: string) => void;
   /// 畳んだフォルダを覚える置き場所（App は localStorage）
   storage: StorageLike;
 };
@@ -109,9 +117,13 @@ export function FolderSection({
   acceptsDrop,
   onDrop,
   onDropTrash,
+  onDropFolder,
   storage,
 }: FolderSectionProps) {
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  // 掴んでいるフォルダ。WebKit は dragover の間 getData を読ませないので、
+  // 何を掴んだかは自分で覚える（ノートの draggingNote と同じ理由）
+  const draggingFolder = useRef<string | null>(null);
   const [dropTrash, setDropTrash] = useState(false);
   // 畳んでいるフォルダ。既定は全部開く（参照実装の expandAll と同じ）
   const [collapsed, setCollapsed] = useState<Set<string>>(() =>
@@ -132,6 +144,7 @@ export function FolderSection({
     const clear = () => {
       setDropFolder(null);
       setDropTrash(false);
+      draggingFolder.current = null;
     };
     window.addEventListener("dragend", clear);
     window.addEventListener("drop", clear);
@@ -145,14 +158,25 @@ export function FolderSection({
   /// 出来事を飲んでしまう。あわせて **dragenter と dragover の両方を止める**
   /// — dragover だけで受けられるのは Chrome の甘さで、WebKit はこれが
   /// 無いと落とせない（実機で発覚 2026-09-04: 掴めるのに落とせない）
+  /// 掴んでいるものをこのフォルダへ落とせるか。フォルダなら自分で判断し、
+  /// ノートは App の acceptsDrop に聞く
+  const accepts = (event: React.DragEvent, folder: string) => {
+    const moving =
+      draggingFolder.current ??
+      (isFolderDrag(Array.from(event.dataTransfer.types))
+        ? event.dataTransfer.getData(FOLDER_DRAG_TYPE) || null
+        : null);
+    if (moving !== null) return canMoveFolderInto(moving, folder);
+    return acceptsDrop(event, folder);
+  };
   const dropHandlers = (folder: string) => ({
     onDragEnter: (event: React.DragEvent) => {
-      if (!acceptsDrop(event, folder)) return;
+      if (!accepts(event, folder)) return;
       event.preventDefault();
       setDropFolder(folder);
     },
     onDragOver: (event: React.DragEvent) => {
-      if (!acceptsDrop(event, folder)) return;
+      if (!accepts(event, folder)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       setDropFolder(folder);
@@ -162,7 +186,30 @@ export function FolderSection({
     onDrop: (event: React.DragEvent) => {
       event.preventDefault();
       setDropFolder(null);
+      // 目印は**型の一覧にあるときだけ**読む（ノートの落下で読むと、
+      // 実装によってはノートのパスが返る）
+      const carriedFolder = isFolderDrag(Array.from(event.dataTransfer.types))
+        ? event.dataTransfer.getData(FOLDER_DRAG_TYPE)
+        : "";
+      const moving = draggingFolder.current || carriedFolder;
+      draggingFolder.current = null;
+      if (moving) {
+        if (canMoveFolderInto(moving, folder)) onDropFolder(folder, moving);
+        return;
+      }
       onDrop(folder, event.dataTransfer.getData(NOTE_DRAG_TYPE));
+    },
+  });
+  /// フォルダの行を掴む（要望 2026-09-10）。目印はフォルダ専用の型
+  const dragHandlers = (folder: string) => ({
+    draggable: true,
+    onDragStart: (event: React.DragEvent) => {
+      draggingFolder.current = folder;
+      event.dataTransfer.setData(FOLDER_DRAG_TYPE, folder);
+      event.dataTransfer.effectAllowed = "move";
+    },
+    onDragEnd: () => {
+      draggingFolder.current = null;
     },
   });
 
@@ -208,6 +255,7 @@ export function FolderSection({
         {visibleFolders(folders, collapsed).map(({ folder, count }) => (
           <li key={folder || "."} {...dropHandlers(folder)}>
             <button
+              {...dragHandlers(folder)}
               className={
                 `folder-row${folder === folderFilter ? " selected" : ""}` +
                 (folder === dropFolder ? " drop-target" : "")

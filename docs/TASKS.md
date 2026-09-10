@@ -176,6 +176,10 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       日時は `make app` / `make dmg` が環境変数で build.rs に渡し、
       「Version 0.5.0 (2026-09-10 13:05)」の括弧に出る。開発版は「開発版」
 
+- [x] **3-35. フォルダを Drag & Drop で別のフォルダへ移す**（要望 2026-09-10、
+      ADR-0024 追記 7）。行を掴んで別のフォルダ／見出し（直下）に落とす。
+      自分の中・今の親には落とせない。Rust `Vault::move_folder` + `folder_move`
+
 ## 第 4 群 — 大物・専門機能（各々 ADR を書いてから）
 
 - [x] **4-1. 数式**（ADR-0036 で 0009 / 0020 を置換）

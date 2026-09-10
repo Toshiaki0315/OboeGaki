@@ -41,3 +41,22 @@ export function isNoteDrag(types: readonly string[]): boolean {
 export function isFileDrag(types: readonly string[]): boolean {
   return types.includes("Files");
 }
+
+/// フォルダを掴んでいるときの目印（要望 2026-09-10）。ノートとは別の型
+export const FOLDER_DRAG_TYPE = "application/x-oboegaki-folder";
+
+export function isFolderDrag(types: readonly string[]): boolean {
+  return types.includes(FOLDER_DRAG_TYPE);
+}
+
+/// このフォルダをこのフォルダの中へ動かせるか。自分の中・子の中は
+/// フォルダが消えるので不可。今の親へは動かないので受けない（受けても
+/// 何も起きないのに「移しました」になる）。区切りで見る — 「仕事」を
+/// 「仕事場」の中へは動かせる
+export function canMoveFolderInto(folder: string, into: string): boolean {
+  if (!folder) return false;
+  if (into === folder || into.startsWith(`${folder}${SEPARATOR}`)) return false;
+  const cut = folder.lastIndexOf(SEPARATOR);
+  const parent = cut < 0 ? "" : folder.slice(0, cut);
+  return parent !== into;
+}

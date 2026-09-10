@@ -189,6 +189,15 @@ export async function createFolder(
 }
 
 /// フォルダの名前を変える。新しい相対パスが返る。
+/// フォルダを別のフォルダの中へ移す（空文字は直下）。移した先の相対パス
+export async function moveFolder(
+  root: string,
+  folder: string,
+  into: string,
+): Promise<string> {
+  return invoke<string>("folder_move", { root, folder, into });
+}
+
 export async function renameFolder(
   root: string,
   folder: string,

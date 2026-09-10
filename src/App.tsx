@@ -181,6 +181,7 @@ import {
   linkMap,
   moveNote,
   noteBacklinks,
+  moveFolder,
   renameFolder,
   syncIndex,
   trashAttachments,
@@ -1278,6 +1279,29 @@ function App() {
     }
   }
 
+  /// フォルダを別のフォルダの中へ移す（サイドバーの Drag & Drop。要望
+  /// 2026-09-10）。開いているノートがその中なら、新しいパスで開き直す
+  async function handleMoveFolder(folder: string, into: string) {
+    if (!vaultRoot) return;
+    try {
+      const moved = await moveFolder(vaultRoot, folder, into);
+      if (moved === folder) return;
+      if (currentPath?.startsWith(`${vaultRoot}/${folder}/`)) {
+        const movedPath = currentPath.replace(
+          `${vaultRoot}/${folder}/`,
+          `${vaultRoot}/${moved}/`,
+        );
+        await sync.flush();
+        await openNote(movedPath);
+      }
+      if (folderFilter === folder) filterByFolder(moved);
+      setStatus(`フォルダ「${folder}」を「${into || "直下"}」へ移しました`);
+      await refresh();
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
   /// フォルダを消す。**ノートが入っていたら Rust 側が断る**（フォルダの
   /// 削除にゴミ箱は無いので、中身ごと消える操作は用意しない）。
   async function handleDeleteFolder(folder: string) {
@@ -2218,6 +2242,9 @@ function App() {
                     // ピン留めの断りと確認は handleTrash が持っている
                     if (dragged) void handleTrash(dragged);
                   }}
+                  onDropFolder={(into, folder) =>
+                    void handleMoveFolder(folder, into)
+                  }
                   storage={localStorage}
                 />
               )}
