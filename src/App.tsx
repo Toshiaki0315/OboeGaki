@@ -195,6 +195,7 @@ import {
   readNote,
   saveAttachment,
   renameNote,
+  vaultIsEmpty,
   setWindowTitle,
   restoreNote,
   trashNote,
@@ -1042,6 +1043,10 @@ function App() {
       setStatus(vaultErrorText(error));
       return;
     }
+    // 選び直した vault は索引を**作り直す**（要望 2026-09-10）。よそで使って
+    // いた・古いアプリで開いていた vault の索引は疑わしい。背景で走り、
+    // 終わると index-synced が知らせて一覧を引き直す
+    void syncIndex(picked, true);
     saveLastVault(localStorage, picked);
     setDoc(null);
   }
@@ -1115,11 +1120,14 @@ function App() {
   // 捨てたり絞り込んだりしたときに、勝手に別のノートへ飛んでしまう。
   // 既に何か開いていれば触らない（復元や引き継ぎを上書きしない）。
   //
-  // 空の vault では**索引の同期が済んでから**「無題」を作る（要望 2026-09-10。
+  // 空の vault では**ディスクを見てから**「無題」を作る（要望 2026-09-10。
   // 判断は lib/startup-note）
   const openedFirstFor = useRef<string | null>(null);
-  // 背景の索引同期が済み、一覧を引き直した vault
-  const [indexSyncedFor, setIndexSyncedFor] = useState<string | null>(null);
+  // ディスクにノートが無いか（一覧が空のときだけ聞く。vault ごと）
+  const [emptyOnDisk, setEmptyOnDisk] = useState<{
+    root: string;
+    empty: boolean;
+  } | null>(null);
   useEffect(() => {
     if (!vaultRoot || currentPath) return;
     if (openedFirstFor.current === vaultRoot) return;
@@ -1127,9 +1135,16 @@ function App() {
       remembered: lastNoteFor(localStorage, vaultRoot),
       notes,
       sorted: sortedNotes,
-      indexSynced: indexSyncedFor === vaultRoot,
+      emptyOnDisk: emptyOnDisk?.root === vaultRoot ? emptyOnDisk.empty : null,
     });
-    if (action.kind === "wait") return;
+    if (action.kind === "wait") return; // 索引が育つ（index-updated）のを待つ
+    if (action.kind === "ask-disk") {
+      const root = vaultRoot;
+      vaultIsEmpty(root)
+        .then((empty) => setEmptyOnDisk({ root, empty }))
+        .catch(() => {});
+      return;
+    }
     openedFirstFor.current = vaultRoot;
     if (action.kind === "create") {
       void handleCreate("");
@@ -1140,7 +1155,7 @@ function App() {
     // openNote / handleCreate は毎描画で作り直されるが、開くかどうかは
     // 上の条件で決まる
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultRoot, currentPath, notes, sortedNotes, indexSyncedFor]);
+  }, [vaultRoot, currentPath, notes, sortedNotes, emptyOnDisk]);
 
   // 前回の vault を開き直す（TASKS 1-1）。覚えが無ければ既定の場所を開く
   // （ADR-0032 決定 3）。開けなければ黙って選択画面のまま
@@ -1990,13 +2005,9 @@ function App() {
   useEffect(() => {
     const unlisten = safeSubscribe(() =>
       listen("index-updated", () => {
-        const root = useAppStore.getState().vaultRoot;
         useAppStore
           .getState()
           .refresh()
-          // 引き直しが**終わってから**「同期済み」にする。先に立てると、
-          // 古い空の一覧を見て無題を作ってしまう
-          .then(() => setIndexSyncedFor(root))
           .catch((error) =>
             setStatus(`一覧を更新できませんでした: ${String(error)}`),
           );

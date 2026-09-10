@@ -11,7 +11,7 @@ describe("startupAction", () => {
         remembered: "/v/a.md",
         notes,
         sorted: notes,
-        indexSynced: false,
+        emptyOnDisk: null,
       }),
     ).toEqual({ kind: "open", path: "/v/a.md", forget: false });
   });
@@ -21,7 +21,7 @@ describe("startupAction", () => {
         remembered: "/v/gone.md",
         notes,
         sorted: notes,
-        indexSynced: false,
+        emptyOnDisk: null,
       }),
     ).toEqual({ kind: "open", path: "/v/b.md", forget: true });
     expect(
@@ -29,27 +29,38 @@ describe("startupAction", () => {
         remembered: null,
         notes,
         sorted: notes,
-        indexSynced: true,
+        emptyOnDisk: true,
       }),
     ).toEqual({ kind: "open", path: "/v/b.md", forget: false });
   });
-  test("test_一覧が空でも索引の同期が済むまでは待つ（索引が育つ前に空と決めない）", () => {
+  test("test_一覧が空なら_ディスクを見るまで_そして中身があれば索引が育つまで待つ", () => {
+    // 開いた直後の一覧は索引から引く。索引が無い vault では中身があっても
+    // 空に見えるので、ディスクを見て決める（実機 2026-09-10: 背景同期の合図
+    // はリスナー登録より先に飛ぶことがあり、合図待ちでは永遠に待った）
     expect(
       startupAction({
         remembered: null,
         notes: [],
         sorted: [],
-        indexSynced: false,
+        emptyOnDisk: null,
+      }),
+    ).toEqual({ kind: "ask-disk" });
+    expect(
+      startupAction({
+        remembered: null,
+        notes: [],
+        sorted: [],
+        emptyOnDisk: false,
       }),
     ).toEqual({ kind: "wait" });
   });
-  test("test_同期が済んでも空なら無題を作る（要望 2026-09-10）", () => {
+  test("test_ディスクにも無ければ無題を作る（要望 2026-09-10）", () => {
     expect(
       startupAction({
         remembered: null,
         notes: [],
         sorted: [],
-        indexSynced: true,
+        emptyOnDisk: true,
       }),
     ).toEqual({ kind: "create" });
   });

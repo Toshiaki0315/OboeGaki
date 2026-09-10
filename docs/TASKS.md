@@ -181,10 +181,14 @@ hitofude（参照実装）との機能差分 [docs/hitofude-gap.md](hitofude-gap
       自分の中・今の親には落とせない。Rust `Vault::move_folder` + `folder_move`
 
 - [x] **3-36. 起動時にノートが無ければ「無題」を作る**（要望 2026-09-10）
-      判断は lib/startup-note。一覧が空でも**索引の同期（index-updated →
-      引き直し）が済むまで待つ** — 索引の無い vault で中身があるのに作らない。
-      初めて開く空の vault では種撒き（seed_manual）が先に走るので「おぼえがきの
-      使い方」が開く。無題が作られるのは、種を撒いたあとで空になった vault
+      判断は lib/startup-note。一覧が空なら**ディスクを見て**（vault_is_empty）
+      決める — 索引の無い vault で中身があるのに作らない。合図（index-updated）
+      待ちはリスナー登録より先に飛ぶと永遠に待った（実機）。初めて開く空の
+      vault では種撒き（seed_manual）が先に走るので「おぼえがきの使い方」が開く
+
+- [x] **3-37. 保管フォルダを選び直したら索引を作り直す**（要望 2026-09-10）
+      chooseVault（環境設定の「変更…」・メニュー・最初の画面）の後で
+      `index_sync(full)`。起動時の開き直しは従来どおり差分同期
 
 ## 第 4 群 — 大物・専門機能（各々 ADR を書いてから）
 

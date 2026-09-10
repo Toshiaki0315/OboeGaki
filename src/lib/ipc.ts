@@ -66,6 +66,12 @@ export async function openVaultRoot(
   await invoke<void>("vault_open", { root, trashDays });
 }
 
+/// vault にノートが 1 つも無いか（ディスクを見る）。起動時に無題を作るか
+/// の判断（lib/startup-note）
+export async function vaultIsEmpty(root: string): Promise<boolean> {
+  return invoke<boolean>("vault_is_empty", { root });
+}
+
 /// そのノートが今もあるか。改名・ゴミ箱移動の途中でも「消えた」は届くので、
 /// **本当に無いときだけ**聞くために確かめる（spec §7.5）。
 export async function noteExists(root: string, path: string): Promise<boolean> {

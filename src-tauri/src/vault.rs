@@ -2959,6 +2959,19 @@ mod tests {
     }
 
     #[test]
+    fn test_is_empty_ゴミ箱と雛形しか無い_vault_は空() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        assert!(vault.is_empty());
+        note(root.path(), &format!("{TRASH_DIR}/捨てた.md"));
+        note(root.path(), "templates/雛形.md");
+        assert!(vault.is_empty()); // 一覧に出ないものは数えない
+        note(root.path(), "仕事/a.md");
+        assert!(!vault.is_empty());
+    }
+
+    #[test]
     fn test_delete_folder_ノートが残っていたら消さない() {
         let root = TempDir::new().unwrap();
         let vault = Vault::new(root.path());

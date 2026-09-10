@@ -197,6 +197,13 @@ pub async fn vault_open(
     Ok(())
 }
 
+/// vault にノートが 1 つも無いか（ディスクを見る。索引は見ない）。起動時に
+/// 「無題」を作るかの判断に使う（要望 2026-09-10、lib/startup-note）
+#[tauri::command]
+pub fn vault_is_empty(root: String) -> bool {
+    Vault::new(&root).is_empty()
+}
+
 /// そのノートが今もあるか（spec §7.5）。
 ///
 /// 改名やゴミ箱移動の途中でも「消えた」イベントは届くので、
