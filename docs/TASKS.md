@@ -582,6 +582,17 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
       のは署名・公証と ULID id（パス鍵で代替と決めた）だけ）。行ごとにコードの
       場所（ADR・ファイル）を書いて直す。**差分表が嘘をつくと次の判断を誤る**
 
+- [ ] **12-11. 本文の文字色**（[ADR-0061](adr/0061-text-color.md)。NotePM の方式）
+      `<span style="color: …">` を `color` / `background-color` の 2 属性・色名か
+      16 進に限って受ける（判定は lib/text-color.ts に一本化）。エディタは
+      タグを隠して中の文字に色（ダークでは明度を上げる）、ツールバーに
+      「文字色」（6 色 + 消す）、HTML は組み直して通す、PowerPoint は run の色
+- [ ] **12-12. HTML 書き出しのコード配色**（ADR 無し。書き出しの見た目）
+      エディタと同じ言語パッケージで `@codemirror/language` の highlightCode
+      を使い、字句を `<span class="tok-…">` で包む。配色は code-blocks.ts の
+      HighlightStyle と同じパレットをライト固定で `<style>` に埋める（外部
+      リソースを参照しない）。PowerPoint も同じ切り方で run に色を付ける
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち
