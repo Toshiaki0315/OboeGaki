@@ -36,6 +36,11 @@ make check
 - [ ] `cargo test` / `cargo clippy` / `cargo fmt --check` が緑
 - [ ] 実装だけ、またはテストだけのコミットになっていない
 
+**挙動を変えるコミット（feat / fix / perf）では `make bump` で版を 1 つ上げる**
+（2026-09-11 の運用。0.5.x の x を上げ、0.6.0 に上げたら x は 0 から。
+docs / refactor / chore だけのコミットでは上げない）。版は 3 箇所に同じ字面で
+持ち、揃っていることは Rust のテストが見張る。
+
 **テストが赤い状態でコミットしてはいけない。** `skip` での回避も禁止。
 コミットは `make check` の**終了コードで**ゲートする（`;` で繋がない —
 過去に赤コミットを 2 回踏んでいる）。
@@ -70,6 +75,7 @@ make check
 | フォーマット            | `make fmt`                                                    |
 | アプリ（.app）を組む    | `make app`（DMG まで作るのは `make dmg`）                     |
 | アイコンを描き直す      | `make icon`（scripts/make_icon.swift → `tauri icon`）         |
+| 版を上げる              | `make bump`（0.5.x の x を +1。`LEVEL=minor` で 0.6.0）       |
 | 依存追加（TS）          | `npm install <pkg>` / `npm install -D <pkg>`                  |
 | 依存追加（Rust）        | `cd src-tauri && cargo add <crate>`                           |
 

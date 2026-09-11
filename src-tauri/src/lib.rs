@@ -440,14 +440,14 @@ mod tests {
 
     /// 「について」の 2 行（実機 2026-09-10）:
     ///   おぼえがき(OboeGaki)
-    ///   Version 0.5.0 (2026-09-10 13:06)
+    ///   Version 0.5.x (2026-09-10 13:06)
     /// macOS は「Version {version} ({short_version})」の順で組む（実機で確認。
     /// 名前から想像する逆）ので、版を version、日時を short_version に置く
     #[test]
     fn test_aboutの2行_名前と_版と括弧のビルド日時() {
         let about = super::about_lines();
         assert_eq!(about.name, "おぼえがき(OboeGaki)");
-        assert_eq!(about.version, "0.5.0");
+        assert_eq!(about.version, super::about_versions().0); // 値は固定しない（make bump）
         assert_eq!(about.short_version, super::about_versions().1);
     }
 
@@ -488,9 +488,13 @@ mod tests {
     /// 版は 3 箇所（Cargo / tauri.conf / package.json）が同じ字面であること。
     /// 「について」に出るのは Cargo の版とビルド日時（要望 2026-09-10）
     #[test]
-    fn test_版は0_5_0で3箇所が揃い_aboutにはビルド日時が付く() {
+    fn test_版は3箇所が揃い_aboutにはビルド日時が付く() {
         let (short, stamp) = super::about_versions();
-        assert_eq!(short, "0.5.0");
+        // 字面は x.y.z（make bump が上げる。値そのものは固定しない）
+        assert!(
+            short.split('.').count() == 3 && short.split('.').all(|p| p.parse::<u32>().is_ok()),
+            "版の形が違う: {short}"
+        );
         assert!(!stamp.is_empty());
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();

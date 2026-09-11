@@ -53,6 +53,10 @@ app:              ## アプリ（.app）を組む。DMG は作らない
 	@echo "※ 署名・公証はまだ（Apple Developer アカウント待ち）。初回は"
 	@echo "  右クリック →「開く」で Gatekeeper を通す"
 
+LEVEL ?= patch
+bump:             ## 版を 1 つ上げる（既定 patch。make bump LEVEL=minor で 0.6.0）
+	sh scripts/bump-version.sh $(LEVEL)
+
 icon:             ## アプリのアイコンを描き直して全サイズを作る（scripts/make_icon.swift）
 	swift scripts/make_icon.swift src-tauri/icons/icon-source.png
 	npx tauri icon src-tauri/icons/icon-source.png -o src-tauri/icons
