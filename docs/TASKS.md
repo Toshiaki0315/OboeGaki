@@ -569,7 +569,7 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
 - [x] **12-6. どこからでも書き取り**（2026-09-11）（[ADR-0057](adr/0057-quick-capture.md)）
       `tauri-plugin-global-shortcut`（既定 Cmd+Shift+Space、変更可）。小さな
       窓に書いて Cmd+Enter で今日のノートの末尾へ。IME 手動チェック（T5）を通す
-- [ ] **12-7. `![[ノート名]]` の埋め込み**（[ADR-0058](adr/0058-transclusion.md)）
+- [x] **12-7. `![[ノート名]]` の埋め込み**（2026-09-11）（[ADR-0058](adr/0058-transclusion.md)）
       行まるごとのときだけ読み専用 widget で描く（深さ 1 段）。`#見出し` で
       節だけ。HTML / PDF は展開、PowerPoint はコードのまま
 - [ ] **12-8. Word（.docx）書き出し**（[ADR-0059](adr/0059-docx-export.md)）

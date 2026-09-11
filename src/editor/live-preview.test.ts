@@ -61,6 +61,7 @@ function simplify(range: Range<Decoration>): Deco {
       glyph?: string;
       checked?: boolean;
       url?: string;
+      embedName?: string;
       mathml?: string;
       code?: string;
       summary?: string;
@@ -74,6 +75,8 @@ function simplify(range: Range<Decoration>): Deco {
   else if (spec.widget?.checked !== undefined)
     kind = `checkbox:${spec.widget.checked}`;
   else if (spec.widget?.url !== undefined) kind = `image:${spec.widget.url}`;
+  else if (spec.widget?.embedName !== undefined)
+    kind = `embed:${spec.widget.embedName}`;
   else if (spec.widget?.mathml !== undefined) kind = "math";
   else if (spec.widget?.code !== undefined) kind = "mermaid";
   else if (spec.widget?.summary !== undefined)
@@ -416,6 +419,20 @@ describe("previewDecorations（ブロック系）", () => {
     const decos = decorationsOf(doc, doc.length);
     expect(decos.some((d) => d.kind === "mark:cm-text-color")).toBe(false);
     expect(decos.some((d) => d.kind === "hide" && d.from === 0)).toBe(false);
+  });
+
+  test("行まるごとの埋め込みは widget に置き換え_触れると原文_文中は置き換えない（ADR-0058）", () => {
+    const doc = "前\n\n![[会議メモ#決定]]\n\n後";
+    const from = doc.indexOf("![[");
+    const to = from + "![[会議メモ#決定]]".length;
+    const away = decorationsOf(doc, 0);
+    expect(has(away, { from, to, kind: "embed:会議メモ#決定" })).toBe(true);
+    const onLine = decorationsOf(doc, from + 3);
+    expect(onLine.some((d) => d.kind.startsWith("embed:"))).toBe(false);
+    const mid = "文中の ![[会議メモ]] は置き換えない\n\n他";
+    expect(
+      decorationsOf(mid, mid.length).some((d) => d.kind.startsWith("embed:")),
+    ).toBe(false);
   });
 
   test("セル内のインライン記法を描き分ける（ADR-0031）", () => {

@@ -49,6 +49,7 @@ import {
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
 import { splitImageAlt } from "./image-size";
+import { EmbedWidget } from "./embed";
 import { svgFromDataUrl, svgNaturalSize } from "../lib/svg-png";
 import {
   type ColorSpan,
@@ -702,6 +703,22 @@ export function previewDecorations(
           }).range(node.from, node.to),
         );
         return false; // 中のマーカー隠しは重ねない
+      }
+      // --- 埋め込み（ADR-0058）: 行まるごとのときだけ、別のノートの中身を
+      //     読み専用の入れ子で描く。文中はリンクのまま
+      if (node.name === "Embed") {
+        const line = state.doc.lineAt(node.from);
+        const wholeLine =
+          state.sliceDoc(node.from, node.to) === line.text.trim();
+        if (!wholeLine || touchesLine(state, node.from)) return;
+        const target = state.sliceDoc(node.from + 3, node.to - 2).trim();
+        out.push(
+          Decoration.replace({ widget: new EmbedWidget(target) }).range(
+            node.from,
+            node.to,
+          ),
+        );
+        return false;
       }
       // --- 数式ブロックと Mermaid は**行をまたぐ**ので、ここでは作らない。
       //     CM6 は plugin 由来の装飾にブロック構造の変更を許さない

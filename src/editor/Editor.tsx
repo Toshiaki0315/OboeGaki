@@ -46,6 +46,12 @@ import {
 import { csvDropEvents } from "./csv-drop";
 import { clearColorEdit, colorEdits } from "./text-color-commands";
 import { selectionDrawing } from "./selection";
+import {
+  embedExtensions,
+  embedResolver,
+  NO_EMBED,
+  type EmbedResolver,
+} from "./embed";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
@@ -131,6 +137,8 @@ type Props = {
   onDocChanged?: (getText: () => string) => void;
   /** 画像参照を表示可能な src へ解決する（vault のルートを知るのはアプリ側） */
   resolveImage?: ImageResolver;
+  /// 埋め込み `![[名前]]` の解決（ADR-0058）。無ければ字面のまま
+  resolveEmbed?: EmbedResolver;
   /** Cmd+クリック時の動作（ノートを開く・タグで絞る・URL を開く） */
   onActivate?: (action: Activation) => void;
   /** キャレット位置が変わるたびに呼ぶ（アウトラインの現在地表示用） */
@@ -170,6 +178,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     initialDoc,
     onDocChanged,
     resolveImage,
+    resolveEmbed,
     onActivate,
     onCursorChanged,
     onContextMenu,
@@ -482,6 +491,28 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           headingFolding, // 見出しの折りたたみ（ADR-0019）
           editorModes,
           imageResolver.of(resolveImage ?? (async () => null)),
+          // 埋め込み（ADR-0058）。入れ子のビューには同じ解析と見た目を渡し、
+          // その中の埋め込みは解決しない（深さ 1）
+          embedResolver.of(resolveEmbed ?? NO_EMBED),
+          embedExtensions.of(() => [
+            markdown({
+              extensions: [
+                relaxedAsterisk,
+                extendedInline,
+                TaskList,
+                Table,
+                ...(indentedCode === false
+                  ? [{ remove: ["IndentedCode"] }]
+                  : []),
+              ],
+              codeLanguages: resolveCodeLanguage,
+            }),
+            livePreview,
+            highlightsFor(false),
+            imageResolver.of(resolveImage ?? (async () => null)),
+            embedResolver.of(NO_EMBED),
+            EditorView.lineWrapping,
+          ]),
           activationClicks,
           activationHandler.of((action) => activate.current?.(action)),
           attachmentEvents((data, name) =>

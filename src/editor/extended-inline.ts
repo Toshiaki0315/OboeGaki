@@ -45,6 +45,7 @@ const H_LOWER = 104; // h
 const COLON = 58; // :
 const HASH = 35; // #
 const BRACKET = 91; // [
+const BANG = 33; // `!`
 const CLOSE_BRACKET = 93; // ]
 const PIPE = 124; // |
 const DOLLAR = 36; // $
@@ -88,6 +89,9 @@ export const extendedInline: MarkdownConfig = {
     { name: "FootnoteRef", style: footnoteTag },
     { name: "BareURL", style: tags.link },
     { name: "WikiLink", style: { "WikiLink/...": wikiLinkTag } },
+    // 埋め込み `![[名前]]`（ADR-0058）。字面はリンクと同じ色
+    { name: "Embed", style: { "Embed/...": wikiLinkTag } },
+    { name: "EmbedMark", style: tags.processingInstruction },
     { name: "WikiLinkMark", style: tags.processingInstruction },
     { name: "InlineMath", style: mathTag },
     { name: "MathBlock", block: true, style: mathTag },
@@ -155,6 +159,36 @@ export const extendedInline: MarkdownConfig = {
         }
         if (end === pos + 1) return -1; // 名前が無い
         return cx.addElement(cx.elt("Hashtag", pos, end));
+      },
+    },
+    {
+      // 埋め込み `![[名前]]` / `![[名前#見出し]]`（ADR-0058）。画像 `![…](…)`
+      // より先に見る。名前の規則は WikiLink と同じ（`[` `|` と空名は拾わない）
+      name: "Embed",
+      before: "Image",
+      parse(cx, next, pos) {
+        if (
+          next !== BANG ||
+          cx.char(pos + 1) !== BRACKET ||
+          cx.char(pos + 2) !== BRACKET
+        ) {
+          return -1;
+        }
+        let end = pos + 3;
+        while (end < cx.end && cx.char(end) !== CLOSE_BRACKET) {
+          const code = cx.char(end);
+          if (code === BRACKET || code === PIPE) return -1;
+          end++;
+        }
+        if (end + 1 >= cx.end || cx.char(end + 1) !== CLOSE_BRACKET) return -1;
+        if (!cx.slice(pos + 3, end).trim()) return -1;
+        const close = end + 2;
+        return cx.addElement(
+          cx.elt("Embed", pos, close, [
+            cx.elt("EmbedMark", pos, pos + 3),
+            cx.elt("EmbedMark", close - 2, close),
+          ]),
+        );
       },
     },
     {

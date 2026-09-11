@@ -146,6 +146,61 @@ const mathBlockRule = (
   return true;
 };
 
+/// 行まるごとの `![[名前]]` / `![[名前#見出し]]`（ADR-0058）
+export const EMBED_LINE_RE = /^!\[\[([^\]|]+)\]\]\s*$/;
+
+/// 本文の中の埋め込みの対象（`名前#見出し` の字面）。書き出しの前に App が
+/// 解決して `embeds` に入れる
+export function collectEmbeds(markdownText: string): string[] {
+  const found: string[] = [];
+  let inFence = false;
+  for (const line of markdownText.split("\n")) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const match = EMBED_LINE_RE.exec(line.trim());
+    if (match && !found.includes(match[1].trim())) found.push(match[1].trim());
+  }
+  return found;
+}
+
+/// 埋め込みの展開（ADR-0058）。`env.embeds`（対象 → 本文）にあるものだけ。
+/// 中身の解析には embeds を渡さない（深さ 1。中の埋め込みは字面のまま）
+const embedRule = (
+  state: Parameters<Parameters<Md["block"]["ruler"]["before"]>[2]>[0],
+  startLine: number,
+  _endLine: number,
+  silent: boolean,
+): boolean => {
+  const line = state.src
+    .slice(
+      state.bMarks[startLine] + state.tShift[startLine],
+      state.eMarks[startLine],
+    )
+    .trim();
+  const match = EMBED_LINE_RE.exec(line);
+  if (!match) return false;
+  const embeds = (state.env as { embeds?: Map<string, string> }).embeds;
+  const text = embeds?.get(match[1].trim());
+  if (text === undefined) return false;
+  if (silent) return true;
+  const open = state.push("embed_open", "section", 1);
+  open.info = match[1].trim();
+  open.map = [startLine, startLine + 1];
+  state.md.block.parse(
+    text,
+    state.md,
+    { ...state.env, embeds: undefined },
+    state.tokens,
+  );
+  state.push("embed_close", "section", -1);
+  state.line = startLine + 1;
+  return true;
+};
+
 /// Qiita から貼った `<details><summary>…</summary>` … `</details>` を
 /// 本物の折りたたみとして通す（TASKS 6-2 の「読むときだけ受ける」）。
 ///
@@ -246,6 +301,12 @@ function renderer() {
   md.block.ruler.before("fence", "oboegaki_math_block", mathBlockRule);
   // 貼り付けた `<details>`。フェンスより後に見るので、コード例は素通り
   md.block.ruler.before("paragraph", "oboegaki_details_html", detailsHtmlRule);
+  // 埋め込み `![[名前]]`（ADR-0058）。渡された本文を Markdown として組む。
+  // 解決できないものは素の文字のまま（段落）
+  md.block.ruler.before("paragraph", "oboegaki_embed", embedRule);
+  md.renderer.rules.embed_open = (tokens, index) =>
+    `<section class="embed" data-note="${escapeHtml(tokens[index].info)}">\n`;
+  md.renderer.rules.embed_close = () => "</section>\n";
   // 画像の大きさ（6-8）。`![説明|300](道)` の `|300` を幅と高さに移す
   const image = md.renderer.rules.image;
   md.renderer.rules.image = (tokens, index, options, env, self) => {
@@ -334,6 +395,8 @@ const STYLE = `
   .tok-def { color: var(--code-def); }
   .tok-prop { color: var(--code-prop); }
   .code-block { margin: 1em 0; }
+  /* 埋め込み（ADR-0058）。左に線を引いて「別のノートの中身」と分かるように */
+  .embed { border-left: 3px solid #c8c8c8; padding-left: 0.9em; margin: 1em 0; }
   /* ラベルはコードと同じ大きさ（要望 2026-09-05） */
   .code-name { display: inline-block; font-size: 0.9em; padding: 0.1em 0.6em;
                border-radius: 6px 6px 0 0; background: var(--code-name-bg);
@@ -391,6 +454,8 @@ export function renderBody(
   markdownText: string,
   diagrams?: Map<string, string>,
   code?: Map<string, string>,
+  /// 埋め込みの対象 → 本文（ADR-0058。App が先に解決する）
+  embeds?: Map<string, string>,
 ): string {
   const md = renderer();
   const fallback = md.renderer.rules.fence;
@@ -420,7 +485,9 @@ export function renderBody(
       : body;
   };
   const range = frontMatterRange(markdownText);
-  return md.render(range ? markdownText.slice(range.bodyStart) : markdownText);
+  return md.render(range ? markdownText.slice(range.bodyStart) : markdownText, {
+    embeds,
+  });
 }
 
 /// 完結した HTML 文書を返す。
@@ -433,8 +500,9 @@ export function renderHtml(
   title: string,
   diagrams?: Map<string, string>,
   code?: Map<string, string>,
+  embeds?: Map<string, string>,
 ): string {
-  const body = renderBody(markdownText, diagrams, code);
+  const body = renderBody(markdownText, diagrams, code, embeds);
   return [
     "<!doctype html>",
     '<html lang="ja">',

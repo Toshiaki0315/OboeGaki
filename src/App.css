@@ -2301,3 +2301,37 @@ fieldset.preferences-fields:disabled {
   opacity: 1;
   color: #c62828;
 }
+
+/* 埋め込み `![[名前]]`（ADR-0058）。別のノートの中身を読み専用で見せる箱 */
+.cm-embed {
+  display: block;
+  margin: 0.3em 0;
+  padding: 0.2em 0.7em 0.3em;
+  border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.cm-embed-head {
+  font-size: 0.78em;
+  opacity: 0.6;
+  margin-bottom: 0.1em;
+}
+.cm-embed-head.is-link {
+  cursor: pointer;
+}
+.cm-embed-head.is-link:hover {
+  text-decoration: underline;
+  opacity: 0.9;
+}
+.cm-embed-body .cm-editor {
+  background: transparent;
+}
+.cm-embed-body .cm-scroller {
+  overflow: visible;
+}
+.cm-embed-body .cm-content {
+  padding: 0;
+}
+.cm-embed-body .cm-line {
+  padding-left: 0;
+}

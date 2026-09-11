@@ -73,6 +73,8 @@ import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
 import { tagRenamePlan } from "./lib/tag-rename";
 import { lineStartOffset, setTaskDone } from "./lib/tasks";
+import { sectionOf, splitEmbedTarget } from "./lib/section";
+import type { EmbedResolver } from "./editor/embed";
 import { startupAction } from "./lib/startup-note";
 import {
   canDropAny,
@@ -120,6 +122,7 @@ import {
   collectCodeBlocks,
   renderBody,
   renderHtml,
+  collectEmbeds,
 } from "./lib/export-html";
 import {
   type CodeRun,
@@ -214,6 +217,7 @@ import {
   saveAttachment,
   renameNote,
   renameTag,
+  subscribeVaultChanged,
   replaceApply,
   taskComplete,
   replacePreview,
@@ -774,6 +778,7 @@ function App() {
       text,
       await drawDiagrams(text),
       await colorCode(text),
+      await resolveEmbeds(text),
     );
     setPrintBody({ html: await embedImages(body, vaultRoot), at: Date.now() });
   }
@@ -964,7 +969,13 @@ function App() {
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
     const html = await embedImages(
-      renderHtml(text, title, await drawDiagrams(text), await colorCode(text)),
+      renderHtml(
+        text,
+        title,
+        await drawDiagrams(text),
+        await colorCode(text),
+        await resolveEmbeds(text),
+      ),
       vaultRoot,
     );
     const target = await save({
@@ -1429,6 +1440,46 @@ function App() {
     } catch (error) {
       setStatus(`完了にできませんでした: ${String(error)}`);
     }
+  }
+
+  /// 埋め込み `![[名前]]` の解決（ADR-0058）。名前はノートの題名（ファイル名の
+  /// 幹）で、`[[…]]` を開くときと同じ規則。見張りは vault-changed をパスで絞る
+  const embedResolverForEditor: EmbedResolver = {
+    resolve: async (name) => {
+      if (!vaultRoot) return null;
+      const wanted = name.toLowerCase();
+      const entry = useAppStore
+        .getState()
+        .notes.find((note) => noteStem(note.path).toLowerCase() === wanted);
+      if (!entry) return null;
+      try {
+        return {
+          path: entry.path,
+          text: await readNote(vaultRoot, entry.path),
+        };
+      } catch {
+        return null;
+      }
+    },
+    open: (path) => void openNote(path),
+    watch: (path, onChange) =>
+      subscribeVaultChanged((change) => {
+        if (change.path === path) onChange();
+      }),
+  };
+
+  /// 書き出し・印刷の前に埋め込みの中身を集める（HTML / PDF は展開する。
+  /// 読む側に元のノートは無い）。深さは 1
+  async function resolveEmbeds(text: string): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    for (const target of collectEmbeds(text)) {
+      const { name, heading } = splitEmbedTarget(target);
+      const source = await embedResolverForEditor.resolve(name);
+      if (!source) continue;
+      const body = heading ? sectionOf(source.text, heading) : source.text;
+      if (body !== null) found.set(target, body);
+    }
+    return found;
   }
 
   /// 保管フォルダ全体の置換（ADR-0055 / 12-3）。開いているノートは先に書き
@@ -2636,6 +2687,7 @@ function App() {
                   onDocChanged={handleDocChanged}
                   resolveImage={(url) => imageSource(vaultRoot, url)}
                   onActivate={(action) => void handleActivate(action)}
+                  resolveEmbed={embedResolverForEditor}
                   onCursorChanged={(pos) => {
                     if (outlineOpenRef.current) setCursorPos(pos);
                   }}

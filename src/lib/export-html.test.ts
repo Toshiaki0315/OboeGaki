@@ -266,3 +266,37 @@ describe("文字色の span", () => {
     expect(html).not.toContain("<span style");
   });
 });
+
+// 埋め込み（ADR-0058）。HTML / PDF は中身を展開して埋める（読む側に元ノートは無い）
+describe("埋め込みの展開", () => {
+  test("test_行まるごとの ![[名前]] は渡された本文を Markdown として組む", () => {
+    const embeds = new Map([["会議メモ", "## 決定\n\n- **a**\n"]]);
+    const html = renderHtml(
+      "前\n\n![[会議メモ]]\n\n後",
+      "t",
+      undefined,
+      undefined,
+      embeds,
+    );
+    expect(html).toContain("<h2>決定</h2>");
+    expect(html).toContain("<strong>a</strong>");
+    expect(html).not.toContain("![[");
+    expect(html).toContain('class="embed"');
+  });
+  test("test_解決できないものは素の文字_中の埋め込みは展開しない（深さ 1）", () => {
+    const embeds = new Map([
+      ["外", "中身 ![[内]]\n"],
+      ["内", "深い\n"],
+    ]);
+    const html = renderHtml(
+      "![[無い]]\n\n![[外]]\n",
+      "t",
+      undefined,
+      undefined,
+      embeds,
+    );
+    expect(html).toContain("![[無い]]");
+    expect(html).toContain("中身 ![[内]]");
+    expect(html).not.toContain("深い");
+  });
+});
