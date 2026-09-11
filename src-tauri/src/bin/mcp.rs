@@ -3,8 +3,8 @@
 //     oboegaki-mcp <保管フォルダ>
 //
 // 中身は lib の `mcp` モジュール（純 Rust。ここは rmcp との橋渡しだけ）。
-// 読みのツールと資源（10-2 / 10-3）と、作る・足すの書き（10-4）。
-// 差し替え・移動・ゴミ箱は 10-5 以降。
+// 読みのツールと資源（10-2 / 10-3）、作る・足す（10-4）、差し替え・移動・
+// ゴミ箱（10-5）。**消すのはゴミ箱まで** — 空にする道は作らない。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -93,6 +93,25 @@ struct AppendParams {
 struct DailyParams {
     /// 足す文（省くと今日のノートを作る・開くだけ）/ Text to append; omit to just get today's note.
     text: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ReplaceParams {
+    /// ノートの相対パス / Path of the note.
+    path: String,
+    /// 新しい本文（丸ごと差し替える）/ The complete new text; replaces the whole note.
+    text: String,
+    /// `read_note` で得た `mtime_ms`。違えば断る（**必ず読んでから書く**）
+    /// / The `mtime_ms` you got from read_note; the write is refused if it no longer matches.
+    expected_mtime_ms: i64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MoveParams {
+    /// ノートの相対パス / Path of the note.
+    path: String,
+    /// 行き先のフォルダ（相対。空文字で直下）/ Destination folder; "" for the vault root.
+    folder: String,
 }
 
 #[derive(Clone)]
@@ -226,6 +245,42 @@ impl OboegakiMcp {
             .vault
             .append_to_note(&p.path, &p.text, p.heading.as_deref())
         {
+            Ok(written) => json(&written),
+            Err(error) => format!("error: {error}"),
+        }
+    }
+
+    #[tool(
+        name = "replace_note",
+        description = "ノートの本文を丸ごと差し替える。read_note で得た mtime_ms が要る（その間に変わっていれば断る）/ Replace a note's whole text. Requires the mtime_ms from read_note; refused if the note changed since."
+    )]
+    async fn replace_note(&self, Parameters(p): Parameters<ReplaceParams>) -> String {
+        match self
+            .vault
+            .replace_note(&p.path, &p.text, p.expected_mtime_ms)
+        {
+            Ok(written) => json(&written),
+            Err(error) => format!("error: {error}"),
+        }
+    }
+
+    #[tool(
+        name = "move_note",
+        description = "ノートを別のフォルダへ移す（履歴も連れて行く）/ Move a note to another folder; its history follows."
+    )]
+    async fn move_note(&self, Parameters(p): Parameters<MoveParams>) -> String {
+        match self.vault.move_note(&p.path, &p.folder) {
+            Ok(written) => json(&written),
+            Err(error) => format!("error: {error}"),
+        }
+    }
+
+    #[tool(
+        name = "trash_note",
+        description = "ノートをゴミ箱へ移す。**消しはしない**（ゴミ箱を空にする道は無い）。ピン留め中は断る / Move a note to the trash. It is never deleted, and pinned notes are refused."
+    )]
+    async fn trash_note(&self, Parameters(p): Parameters<ReadParams>) -> String {
+        match self.vault.trash_note(&p.path) {
             Ok(written) => json(&written),
             Err(error) => format!("error: {error}"),
         }

@@ -515,6 +515,94 @@ impl McpVault {
         })
     }
 
+    /// 本文を丸ごと差し替える（10-5）。**楽観ロック** — `read_note` で得た
+    /// 更新時刻を添えさせ、違えば断る（AI が古い本文を元に上書きしない）
+    pub fn replace_note(
+        &self,
+        relative: &str,
+        text: &str,
+        expected_mtime_ms: i64,
+    ) -> Result<Written, String> {
+        let (cleaned, absolute) = self.guarded(relative)?;
+        if !absolute.is_file() {
+            return Err(format!("ノートがありません: {cleaned}"));
+        }
+        let current = self.read_note(&cleaned)?;
+        if current.mtime_ms != expected_mtime_ms {
+            return Err(format!(
+                "ノートが変わっています（read_note で読み直してから書いてください）: {cleaned}"
+            ));
+        }
+        // **版を作れるのは書いた本人だけ**（ADR-0023 の精神）。アプリが動いて
+        // いればアプリの保存が残すので、ここで二重に残さない
+        if !self.app_running() {
+            let whole = read_note(&absolute).map_err(|e| e.to_string())?;
+            let store = crate::history::store_root(&self.vault.managed_dir());
+            if let Err(error) = crate::history::keep(
+                &store,
+                &format!("path:{cleaned}"),
+                &whole,
+                chrono::Local::now().naive_local(),
+                true,
+                0,
+            ) {
+                // 版を残せなくても書きは進める（残せないより書けない方が困る）
+                eprintln!("版を残せなかった: {error}");
+            }
+        }
+        let mut text = text.to_string();
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        crate::autosave::save_atomic(&absolute, &text).map_err(|e| e.to_string())?;
+        Ok(Written { path: cleaned })
+    }
+
+    /// 別のフォルダへ移す。**履歴の鍵も付け替える**（ADR-0042: 鍵はファイルに
+    /// 付いて回る。付け替えないと移した先で履歴が行方不明になる）
+    pub fn move_note(&self, relative: &str, folder: &str) -> Result<Written, String> {
+        let (cleaned, absolute) = self.guarded(relative)?;
+        let destination = self.guarded_folder(Some(folder))?;
+        let moved = self
+            .vault
+            .move_note(&absolute, &destination)
+            .map_err(|e| e.to_string())?;
+        let after = self.relative_of(&moved);
+        if after != cleaned {
+            self.rekey(&cleaned, &after);
+        }
+        Ok(Written { path: after })
+    }
+
+    /// ゴミ箱へ移す。**消すのはここまで** — 空にする道は作らない。
+    /// ピン留め中は断る（spec §7.3 の削除ガード。先にピンを外す一拍を挟む）
+    pub fn trash_note(&self, relative: &str) -> Result<Written, String> {
+        let (cleaned, absolute) = self.guarded(relative)?;
+        if !absolute.is_file() {
+            return Err(format!("ノートがありません: {cleaned}"));
+        }
+        let text = read_note(&absolute).map_err(|e| e.to_string())?;
+        if crate::front_matter::pinned(&text) {
+            return Err("ピン留め中のノートはゴミ箱へ移せない（先にピンを外す）".to_string());
+        }
+        let moved = self.vault.trash(&absolute).map_err(|e| e.to_string())?;
+        let after = self.relative_of(&moved);
+        if after != cleaned {
+            self.rekey(&cleaned, &after);
+        }
+        Ok(Written { path: after })
+    }
+
+    /// 履歴の置き場を新しいパスへ付け替える（失敗しても書きは進める）
+    fn rekey(&self, before: &str, after: &str) {
+        let store = crate::history::store_root(&self.vault.managed_dir());
+        if let Err(error) =
+            crate::history::rekey(&store, &format!("path:{before}"), &format!("path:{after}"))
+        {
+            eprintln!("履歴の置き場を移せなかった: {error}");
+        }
+    }
+
     /// 書く先のフォルダを確かめる（空は直下）。実在は `create_in_with` が見る
     fn guarded_folder(&self, folder: Option<&str>) -> Result<String, String> {
         let cleaned = folder.unwrap_or("").trim_matches('/');
@@ -816,6 +904,90 @@ mod tests {
             .unwrap()
             .text
             .contains("思いついたこと"));
+    }
+
+    #[test]
+    fn test_replace_note_更新時刻が合わなければ断る_版を残してから差し替える() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "設計.md", "# 設計\n\n古い本文\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+        let before = mcp.read_note("設計.md").unwrap();
+
+        // 古い時刻を持ったまま書くと断られる（AI が古い本文で上書きしない）
+        assert!(mcp
+            .replace_note("設計.md", "# 設計\n\n新しい\n", before.mtime_ms - 1000)
+            .is_err());
+        assert!(mcp.read_note("設計.md").unwrap().text.contains("古い本文"));
+
+        mcp.replace_note("設計.md", "# 設計\n\n新しい本文\n", before.mtime_ms)
+            .unwrap();
+        assert!(mcp
+            .read_note("設計.md")
+            .unwrap()
+            .text
+            .contains("新しい本文"));
+
+        // アプリが動いていないので、MCP 側が差し替える前の姿を版に残す
+        let versions = mcp.note_history("設計.md").unwrap();
+        assert_eq!(versions.len(), 1);
+        let kept = mcp.history_text("設計.md", &versions[0].stamp).unwrap();
+        assert!(kept.text.contains("古い本文"));
+
+        assert!(mcp.replace_note("無い.md", "x", 0).is_err());
+        assert!(mcp.replace_note("秘密/裏.md", "x", 0).is_err());
+    }
+
+    #[test]
+    fn test_move_note_行き先へ移し_履歴も連れて行く() {
+        use chrono::NaiveDate;
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "設計.md", "# 設計\n\n本文\n");
+        fs::create_dir_all(root.path().join("仕事")).unwrap();
+        fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
+        fs::create_dir_all(root.path().join("秘密")).unwrap();
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        crate::history::keep(&store, "path:設計.md", "前の本文", at, true, 0).unwrap();
+
+        let mcp = McpVault::open(root.path()).unwrap();
+        let moved = mcp.move_note("設計.md", "仕事").unwrap();
+        assert_eq!(moved.path, "仕事/設計.md");
+        assert!(root.path().join("仕事/設計.md").is_file());
+        assert!(!root.path().join("設計.md").exists());
+        // 鍵はファイルに付いて回る（ADR-0042）
+        assert_eq!(mcp.note_history("仕事/設計.md").unwrap().len(), 1);
+
+        assert!(mcp.move_note("仕事/設計.md", "秘密").is_err());
+        assert!(mcp.move_note("仕事/設計.md", "../外").is_err());
+    }
+
+    #[test]
+    fn test_trash_note_ゴミ箱へ入れる_ピン留めは断る_空にはしない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "要らない.md", "# 要らない\n");
+        note(root.path(), "大事.md", "---\npinned: true\n---\n# 大事\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+
+        let trashed = mcp.trash_note("要らない.md").unwrap();
+        assert_eq!(trashed.path, ".trash/要らない.md");
+        // **消さない。** ゴミ箱の中に在る
+        assert!(root.path().join(".trash/要らない.md").is_file());
+        assert!(!root.path().join("要らない.md").exists());
+
+        // ピン留め中は捨てない（spec §7.3。先にピンを外す一拍を挟む）
+        assert!(mcp.trash_note("大事.md").is_err());
+        assert!(root.path().join("大事.md").is_file());
+        // ゴミ箱の中身には触れない（空にする道は作らない）
+        assert!(mcp.trash_note(".trash/要らない.md").is_err());
     }
 
     #[test]
