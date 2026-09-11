@@ -10,14 +10,29 @@ const ENTRIES = [
   { stamp: "2026-09-06 09:00", path: "h/b.md" },
 ];
 
-function setup(entries = ENTRIES) {
+const TEXTS: Record<string, string> = {
+  "h/a.md": "見出し\n二行目\n",
+  "h/b.md": "見出し\n古い二行目\n",
+};
+
+function setup(entries = ENTRIES, currentText = "見出し\n二行目\n三行目\n") {
   const onRestore = vi.fn();
   const onClose = vi.fn();
-  render(
-    <HistoryDialog entries={entries} onRestore={onRestore} onClose={onClose} />,
+  const readVersion = vi.fn(
+    async (entry: { path: string }) => TEXTS[entry.path] ?? "",
   );
-  return { onRestore, onClose };
+  render(
+    <HistoryDialog
+      entries={entries}
+      currentText={currentText}
+      readVersion={readVersion}
+      onRestore={onRestore}
+      onClose={onClose}
+    />,
+  );
+  return { onRestore, onClose, readVersion };
 }
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(cleanup);
 
@@ -47,5 +62,40 @@ describe("HistoryDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.mouseDown(dialog.parentElement!);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("test_版を選ぶと今の本文との差分が出る（ADR-0054）", async () => {
+    const { readVersion } = setup();
+    fireEvent.click(screen.getByText("2026-09-07 10:00"));
+    await settle();
+    expect(readVersion).toHaveBeenCalledWith(ENTRIES[0]);
+    // 版 → 今: 「三行目」が足された
+    const added = screen.getByText("三行目");
+    expect(added.className).toContain("diff-add");
+    expect(screen.getByText("二行目").className).toContain("diff-same");
+  });
+
+  test("test_「1 つ前の版と比べる」に切り替えられる", async () => {
+    setup();
+    fireEvent.click(screen.getByText("2026-09-07 10:00"));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "1 つ前の版と比べる" }));
+    await settle();
+    // 前の版 → この版: 「古い二行目」が消え「二行目」が足された
+    expect(screen.getByText("古い二行目").className).toContain("diff-del");
+    expect(screen.getByText("二行目").className).toContain("diff-add");
+  });
+
+  test("test_いちばん古い版では「1 つ前」は選べない", async () => {
+    setup();
+    fireEvent.click(screen.getByText("2026-09-06 09:00"));
+    await settle();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "1 つ前の版と比べる",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });

@@ -2148,3 +2148,46 @@ fieldset.preferences-fields:disabled {
   border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
   padding: 0;
 }
+
+/* 版の履歴の差分（ADR-0054）。行単位の色分けだけ。地は薄く、字は本文の色 */
+.history-palette {
+  width: min(48rem, 92vw);
+}
+.history-row .history-stamp {
+  flex: 1 1 auto;
+  text-align: left;
+}
+.history-row.selected {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.history-compare {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem 0;
+}
+.history-compare button[aria-pressed="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.diff-view {
+  margin: 0.4rem 0.6rem 0.6rem;
+  max-height: 40vh;
+  overflow: auto;
+  font-family: var(--mono-font, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.diff-add {
+  background: color-mix(in srgb, #2e7d32 18%, transparent);
+}
+.diff-del {
+  background: color-mix(in srgb, #c62828 18%, transparent);
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+.diff-skip {
+  opacity: 0.5;
+  font-style: italic;
+}

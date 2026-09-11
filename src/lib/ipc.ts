@@ -409,6 +409,15 @@ export async function historyList(
 }
 
 /// 版を書き戻す。返り値は書き戻したあとの本文。
+/// 版の本文を読む（差分表示。書き戻さない = ADR-0054）
+export async function historyRead(
+  root: string,
+  path: string,
+  version: string,
+): Promise<string> {
+  return invoke<string>("history_read", { root, path, version });
+}
+
 export async function historyRestore(
   root: string,
   path: string,

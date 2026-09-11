@@ -363,6 +363,7 @@ pub fn run() {
             commands::attachment_save,
             commands::history_list,
             commands::history_restore,
+            commands::history_read,
             commands::export_write,
             commands::print_page,
             commands::export_write_binary,

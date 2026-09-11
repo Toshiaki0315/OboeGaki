@@ -277,23 +277,17 @@ pub fn history_list(root: String, path: String) -> Result<Vec<HistoryEntry>, Str
     )
 }
 
-/// 版を書き戻す。戻す前に今の内容を 1 版残す（取り消せない操作を増やさない）。
-/// 返り値は書き戻したあとの本文（フロントがエディタへ流し込む）。
-#[tauri::command]
-pub fn history_restore(
-    state: tauri::State<'_, WatchState>,
-    root: String,
-    path: String,
-    version: String,
-) -> Result<String, String> {
-    let note = guarded(&root, &path)?;
-    let version = guarded(&root, &version)?;
-    let store = history_root(&root);
-    let key = history_key(&root, &note);
-    // version は**このノートの履歴フォルダの中**だけを受ける。vault 内なら
-    // 何でも通すと、任意のノートの中身をここへ書き戻せてしまう
-    //（レビュー 2026-09-04。フロントは history_list の戻りしか渡さないが、
-    // 境界の層として閉じる）
+/// version が**このノートの履歴フォルダの中**にあることを確かめる。vault 内
+/// なら何でも通すと、任意のノートの中身を「版」として書き戻したり覗いたり
+/// できてしまう（レビュー 2026-09-04。フロントは history_list の戻りしか
+/// 渡さないが、境界の層として閉じる）
+fn version_in_history(
+    root: &str,
+    note: &Path,
+    version: &Path,
+) -> Result<std::path::PathBuf, String> {
+    let store = history_root(root);
+    let key = history_key(root, note);
     let expected = store.join(history::folder_name(&key));
     let inside_history = version
         .parent()
@@ -304,6 +298,30 @@ pub fn history_restore(
     if !inside_history {
         return Err("このノートの版ではありません".to_string());
     }
+    Ok(version.to_path_buf())
+}
+
+/// 版の本文を読む（ADR-0054 の差分表示。書き戻さない）。
+#[tauri::command]
+pub fn history_read(root: String, path: String, version: String) -> Result<String, String> {
+    let note = guarded(&root, &path)?;
+    let version = version_in_history(&root, &note, &guarded(&root, &version)?)?;
+    fs::read_to_string(&version).map_err(|e| e.to_string())
+}
+
+/// 版を書き戻す。戻す前に今の内容を 1 版残す（取り消せない操作を増やさない）。
+/// 返り値は書き戻したあとの本文（フロントがエディタへ流し込む）。
+#[tauri::command]
+pub fn history_restore(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    path: String,
+    version: String,
+) -> Result<String, String> {
+    let note = guarded(&root, &path)?;
+    let version = version_in_history(&root, &note, &guarded(&root, &version)?)?;
+    let store = history_root(&root);
+    let key = history_key(&root, &note);
     let now = chrono::Local::now().naive_local();
     if let Ok(current) = crate::vault::read_note(&note) {
         if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
@@ -1506,6 +1524,36 @@ pub fn note_restore(
 // 小文字に崩さないため、snake_case の警告はこの mod だけ黙らせる
 #[allow(non_snake_case)]
 mod tests {
+    /// 版の読み出し（ADR-0054）は書き戻しと同じ境界で受ける: **そのノートの
+    /// 履歴フォルダの中**だけ。vault 内なら何でも読めると、任意のノートを
+    /// 「版」として覗ける
+    #[test]
+    fn test_version_in_history_そのノートの履歴フォルダの中だけ受ける() {
+        let root = tempfile::TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let root_str = root.path().to_str().unwrap();
+        let note = root.path().join("a.md");
+        std::fs::write(&note, "# a\n").unwrap();
+        let store = super::history_root(root_str);
+        let key = super::history_key(root_str, &note);
+        let kept = history::keep(
+            &store,
+            &key,
+            "# a 旧\n",
+            chrono::Local::now().naive_local(),
+            true,
+            0,
+        )
+        .unwrap()
+        .expect("版が残る");
+        assert!(super::version_in_history(root_str, &note, &kept).is_ok());
+        // 別のノートを版として渡すと断る
+        let other = root.path().join("b.md");
+        std::fs::write(&other, "# b\n").unwrap();
+        assert!(super::version_in_history(root_str, &note, &other).is_err());
+    }
+
     use super::*;
 
     #[test]

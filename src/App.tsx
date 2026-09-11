@@ -181,6 +181,7 @@ import {
   deleteForever,
   emptyTrash,
   historyList,
+  historyRead,
   historyUsage,
   llmModels,
   ocrImage,
@@ -979,11 +980,14 @@ function App() {
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(
     null,
   );
+  // 差分の「今の本文」（開いた時点で書き切ったもの。ADR-0054）
+  const [historyBase, setHistoryBase] = useState("");
 
   async function openHistory() {
     if (!vaultRoot || !currentPath) return;
     await sync.flush(); // 未保存分を書き切ってから一覧を出す
     try {
+      setHistoryBase(editorRef.current?.getText() ?? "");
       setHistoryEntries(await historyList(vaultRoot, currentPath));
     } catch (error) {
       setStatus(`履歴を開けませんでした: ${String(error)}`);
@@ -3144,6 +3148,12 @@ function App() {
           {historyEntries !== null && (
             <HistoryDialog
               entries={historyEntries}
+              currentText={historyBase}
+              readVersion={(entry) =>
+                vaultRoot && currentPath
+                  ? historyRead(vaultRoot, currentPath, entry.path)
+                  : Promise.resolve("")
+              }
               onRestore={(entry) => void restoreVersion(entry)}
               onClose={() => setHistoryEntries(null)}
             />
