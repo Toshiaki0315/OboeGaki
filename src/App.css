@@ -95,22 +95,20 @@ body {
   overflow-y: auto;
 }
 
-/* 下に固定のセクション。開いた側はペインの約 1/3 を使い、中身が
-   それを超えたらセクションの中でスクロールする（一覧が約 2/3 残る） */
+/* 下に固定のセクション。開いた側は中身がペインの約 1/3 を超えたら
+   セクションの中でスクロールする（一覧が約 2/3 残る）。
+
+   **details に flex を掛けて高さを割る作りはやめた**（実機 2026-09-11:
+   フォルダが増えるとタグの見出しに重なってはみ出た）。WebKit は details
+   の中身を内部のスロットに包むので、flex の高さの制約が ul まで届かない。
+   ul 自身に max-height を持たせるのが確実 */
 .note-list > details {
   flex: 0 0 auto;
-}
-.folder-section[open],
-.tag-section[open] {
-  flex: 0 0 33%;
-  display: flex;
-  flex-direction: column;
   min-height: 0;
 }
 .folder-section[open] > ul,
 .tag-section[open] > ul {
-  flex: 1 1 auto;
-  min-height: 0;
+  max-height: 36vh;
   overflow-y: auto;
 }
 /* 保存した検索は小さめに抑えて、はみ出したら中でスクロール */
