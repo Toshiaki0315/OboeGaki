@@ -500,10 +500,14 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
       `list_notes`（フォルダ・タグで絞る）/ `list_folders` / `list_tags`。
       アプリが動いていない（`instance-oboegaki.lock` が無い）ときは問い合わせの
       前に `IndexDb::sync` を自分で走らせる。JSON 入出力のテストを純 Rust で
-- [ ] **10-3. 関連・履歴・resource**
-      `related_notes`（`backlinks` + `related_signals`）/ `note_history`（版の
-      一覧と本文。読むだけ）/ resource `oboegaki://note/<相対パス>`。
-      **ここまでで「読める」を区切る**（Claude Desktop から検索して参照できる）
+- [x] **10-3. 関連・履歴・resource**（2026-09-12。stdio の煙試験で確認）
+      `related_notes`（`backlinks` + `related_signals` を `related::rank` で
+      束ね、根拠ごと返す。**見せない場所は順位付けの前に落とす** — 後で
+      落とすと limit がそのぶん減る）/ `note_history`（版の一覧。`at` に
+      時刻を渡すとその版の本文。**場所ではなく時刻で名指す** — 版の場所を
+      受けると vault の好きなファイルを覗ける）/ resource
+      `oboegaki://note/<相対パス>`（percent 符号化。素の日本語で来ても読む）。
+      **ここまでで「読める」を区切った**
 - [ ] **10-4. 書きのツール（作る・追記・今日）**
       `create_note`（題名・本文・フォルダ・雛形）/ `append_to_note`（末尾。
       見出しを指定すればその節の末尾）/ `daily_note`。書くのは `.md` だけ

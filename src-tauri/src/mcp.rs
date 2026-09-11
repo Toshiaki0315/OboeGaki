@@ -49,6 +49,73 @@ impl IgnoreList {
     }
 }
 
+/// resource の URI の頭（ADR-0051 の `oboegaki://note/<相対パス>`）
+pub const NOTE_URI_PREFIX: &str = "oboegaki://note/";
+
+/// 関連するノート 1 件（根拠ごと返す。**なぜ出たかが読めないと確かめようがない**）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RelatedNote {
+    pub path: String,
+    pub title: String,
+    pub reasons: Vec<String>,
+    pub score: i32,
+}
+
+/// 版 1 つ（一覧では時刻だけ。本文は `history_text` で名指しに引く）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HistoryEntry {
+    /// `2026-09-02 10:00:00`。`history_text` にそのまま渡す
+    pub stamp: String,
+}
+
+/// 資源として並べる 1 件
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NoteResource {
+    pub uri: String,
+    pub path: String,
+    pub title: String,
+}
+
+/// 相対パスを resource の URI にする。**符号化して渡す** — 空白や `#` を
+/// 素で置くと URI として壊れる（日本語は通るが揃えて encode する）
+pub fn note_uri(relative: &str) -> String {
+    let mut out = String::from(NOTE_URI_PREFIX);
+    for byte in relative.as_bytes() {
+        let c = *byte as char;
+        if c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '~' | '/') {
+            out.push(c);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// URI から相対パスへ戻す。おぼえがきの URI でなければ None。
+/// **符号化されていない日本語のまま来ても読む**（そうするクライアントがある）
+pub fn path_from_uri(uri: &str) -> Option<String> {
+    let rest = uri.strip_prefix(NOTE_URI_PREFIX)?;
+    let bytes = rest.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
+            match u8::from_str_radix(hex, 16) {
+                Ok(byte) => {
+                    out.push(byte);
+                    i += 3;
+                    continue;
+                }
+                Err(_) => return None,
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).ok()
+}
+
 /// read_note の答え
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NoteText {
@@ -161,8 +228,9 @@ impl McpVault {
         self.index()?.tag_list().map_err(|e| e.to_string())
     }
 
-    /// 本文。無視の中と保管フォルダの外は断る。長ければ先頭だけ
-    pub fn read_note(&self, relative: &str) -> Result<NoteText, String> {
+    /// 相対パスを確かめて（無視の中・保管フォルダの外は断る）整えた形と
+    /// 実際の場所を返す。**読みの入口はすべてここを通す**
+    fn guarded(&self, relative: &str) -> Result<(String, PathBuf), String> {
         let cleaned = relative.trim_matches('/');
         if cleaned.is_empty() || cleaned.split('/').any(|part| part == "..") {
             return Err("保管フォルダの外は読まない".to_string());
@@ -174,6 +242,13 @@ impl McpVault {
         if !crate::vault::contains(self.vault.root(), &absolute) {
             return Err("保管フォルダの外は読まない".to_string());
         }
+        Ok((cleaned.to_string(), absolute))
+    }
+
+    /// 本文。無視の中と保管フォルダの外は断る。長ければ先頭だけ
+    pub fn read_note(&self, relative: &str) -> Result<NoteText, String> {
+        let (cleaned, absolute) = self.guarded(relative)?;
+        let cleaned = cleaned.as_str();
         let text = read_note(&absolute).map_err(|e| e.to_string())?;
         let mtime_ms = std::fs::metadata(&absolute)
             .and_then(|meta| meta.modified())
@@ -195,6 +270,106 @@ impl McpVault {
             truncated,
         })
     }
+
+    /// 関係するノート（10-3）。被リンク・指している先・同じタグ・題名の出現を
+    /// 束ねて強い順に。**見せない場所は根拠の段で落とす** — 並べたあとで
+    /// 落とすと limit がそのぶん減る
+    pub fn related_notes(
+        &self,
+        relative: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<RelatedNote>, String> {
+        let (cleaned, _) = self.guarded(relative)?;
+        let db = self.index()?;
+        let title = db
+            .titles_for(std::slice::from_ref(&cleaned))
+            .map_err(|e| e.to_string())?
+            .remove(&cleaned)
+            .unwrap_or_default();
+        let signals: Vec<crate::related::Signal> = db
+            .related_signals(&cleaned, &title)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter(|signal| !self.ignore.is_ignored(&signal.key))
+            .collect();
+        let limit = limit.unwrap_or(crate::related::DEFAULT_LIMIT).max(1);
+        let ranked = crate::related::rank(&signals, &cleaned, limit);
+        let paths: Vec<String> = ranked.iter().map(|r| r.key.clone()).collect();
+        let titles = db.titles_for(&paths).map_err(|e| e.to_string())?;
+        Ok(ranked
+            .into_iter()
+            .map(|related| RelatedNote {
+                title: titles.get(&related.key).cloned().unwrap_or_default(),
+                path: related.key,
+                reasons: related.reasons,
+                score: related.score,
+            })
+            .collect())
+    }
+
+    /// 版の一覧（新しい順）。**読むだけ** — MCP から版を書き戻す道は作らない
+    pub fn note_history(&self, relative: &str) -> Result<Vec<HistoryEntry>, String> {
+        let (cleaned, _) = self.guarded(relative)?;
+        Ok(self
+            .versions(&cleaned)
+            .into_iter()
+            .map(|version| HistoryEntry {
+                stamp: stamp_of(&version),
+            })
+            .collect())
+    }
+
+    /// その版の本文。**時刻で名指す** — 版の場所を受け取ると、vault の中の
+    /// 好きなファイルを「版」として覗けてしまう（commands.rs の
+    /// version_in_history と同じ構え）
+    pub fn history_text(&self, relative: &str, stamp: &str) -> Result<NoteText, String> {
+        let (cleaned, _) = self.guarded(relative)?;
+        let version = self
+            .versions(&cleaned)
+            .into_iter()
+            .find(|version| stamp_of(version) == stamp)
+            .ok_or_else(|| format!("その版はありません: {stamp}"))?;
+        let text = read_note(&version.path).map_err(|e| e.to_string())?;
+        let (text, truncated) = clip(text);
+        Ok(NoteText {
+            path: cleaned,
+            text,
+            mtime_ms: version.saved_at.and_utc().timestamp_millis(),
+            truncated,
+        })
+    }
+
+    /// 資源として並べるノート（一覧に出るものだけ）
+    pub fn list_resources(&self) -> Result<Vec<NoteResource>, String> {
+        Ok(self
+            .list_notes(None, None)?
+            .into_iter()
+            .map(|note| NoteResource {
+                uri: note_uri(&note.path),
+                path: note.path,
+                title: note.title,
+            })
+            .collect())
+    }
+
+    fn versions(&self, cleaned: &str) -> Vec<crate::history::Version> {
+        let store = crate::history::store_root(&self.vault.managed_dir());
+        crate::history::versions(&store, &format!("path:{cleaned}"))
+    }
+}
+
+/// 一覧と引き当てで同じ形を使う（食い違うと「一覧に出た版が引けない」）
+fn stamp_of(version: &crate::history::Version) -> String {
+    version.saved_at.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+/// 長い本文は先頭だけにして印を付ける
+fn clip(text: String) -> (String, bool) {
+    if text.chars().count() <= MAX_TEXT_CHARS {
+        return (text, false);
+    }
+    let head: String = text.chars().take(MAX_TEXT_CHARS).collect();
+    (format!("{head}{TRUNCATED_MARK}"), true)
 }
 
 #[cfg(test)]
@@ -265,6 +440,106 @@ mod tests {
         assert!(read.mtime_ms > 0);
         assert!(mcp.read_note("秘密/給与.md").is_err());
         assert!(mcp.read_note("../外.md").is_err());
+    }
+
+    #[test]
+    fn test_related_notes_指している_同じタグ_題名の出現を根拠ごと返す() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(
+            root.path(),
+            "設計.md",
+            "# 設計\n\n[[議事録]] を見る #仕事\n",
+        );
+        note(root.path(), "議事録.md", "# 議事録\n\n決めたこと #仕事\n");
+        note(root.path(), "日報.md", "# 日報\n\n設計 を進めた\n");
+        note(root.path(), "秘密/裏.md", "# 裏\n\n[[設計]] の裏 #仕事\n");
+        fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
+
+        let mcp = McpVault::open(root.path()).unwrap();
+        let related = mcp.related_notes("設計.md", None).unwrap();
+        let paths: Vec<&str> = related.iter().map(|r| r.path.as_str()).collect();
+        assert!(paths.contains(&"議事録.md"));
+        assert!(paths.contains(&"日報.md"));
+        // 自分は出さない・見せない場所は出さない
+        assert!(!paths.contains(&"設計.md"));
+        assert!(!paths.iter().any(|p| p.starts_with("秘密/")));
+        // 根拠が読める形で付く（題名も引けている）
+        let first = related.iter().find(|r| r.path == "議事録.md").unwrap();
+        assert_eq!(first.title, "議事録");
+        assert!(!first.reasons.is_empty());
+        assert!(first.score > 0);
+        // 指していて同じタグの方が、題名が出てくるだけより強い
+        assert_eq!(related[0].path, "議事録.md");
+        assert!(mcp.related_notes("秘密/裏.md", None).is_err());
+    }
+
+    #[test]
+    fn test_note_history_版の一覧と本文_読むだけ() {
+        use chrono::NaiveDate;
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "設計.md", "# 設計\n\n今の本文\n");
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = |d: u32| {
+            NaiveDate::from_ymd_opt(2026, 9, d)
+                .unwrap()
+                .and_hms_opt(10, 0, 0)
+                .unwrap()
+        };
+        crate::history::keep(&store, "path:設計.md", "古い本文", at(1), true, 0).unwrap();
+        crate::history::keep(&store, "path:設計.md", "新しい本文", at(2), true, 0).unwrap();
+
+        let mcp = McpVault::open(root.path()).unwrap();
+        let versions = mcp.note_history("設計.md").unwrap();
+        assert_eq!(versions.len(), 2);
+        // 新しい順
+        assert_eq!(versions[0].stamp, "2026-09-02 10:00:00");
+        // 本文はその版を名指しで引く
+        let text = mcp.history_text("設計.md", &versions[1].stamp).unwrap();
+        assert_eq!(text.text, "古い本文");
+        assert!(mcp.history_text("設計.md", "2000-01-01 00:00:00").is_err());
+        // 見せない場所は断る
+        assert!(
+            mcp.note_history("秘密/裏.md").is_err()
+                || mcp.note_history("秘密/裏.md").unwrap().is_empty()
+        );
+    }
+
+    #[test]
+    fn test_note_uri_日本語や空白を往復できる() {
+        assert_eq!(
+            note_uri("仕事/会 議.md"),
+            "oboegaki://note/%E4%BB%95%E4%BA%8B/%E4%BC%9A%20%E8%AD%B0.md"
+        );
+        assert_eq!(
+            path_from_uri("oboegaki://note/%E4%BB%95%E4%BA%8B/%E4%BC%9A%20%E8%AD%B0.md").unwrap(),
+            "仕事/会 議.md"
+        );
+        // 素の日本語で来ても読む（クライアントが符号化しないことがある）
+        assert_eq!(
+            path_from_uri("oboegaki://note/仕事/会議.md").unwrap(),
+            "仕事/会議.md"
+        );
+        assert!(path_from_uri("file:///etc/passwd").is_none());
+    }
+
+    #[test]
+    fn test_list_resources_一覧に出るノートだけを資源として並べる() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "会議.md", "# 会議\n\n本文\n");
+        note(root.path(), "秘密/裏.md", "# 裏\n\n本文\n");
+        fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        let resources = mcp.list_resources().unwrap();
+        assert!(resources
+            .iter()
+            .any(|r| r.uri == note_uri("会議.md") && r.title == "会議"));
+        assert!(!resources.iter().any(|r| r.path.starts_with("秘密/")));
     }
 
     #[test]

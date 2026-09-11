@@ -3,22 +3,27 @@
 //     oboegaki-mcp <保管フォルダ>
 //
 // 中身は lib の `mcp` モジュール（純 Rust。ここは rmcp との橋渡しだけ）。
-// 読みのツールだけ（10-2）。書きは 10-4 以降。
+// 読みのツールと資源だけ（10-2 / 10-3）。書きは 10-4 以降。
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{Implementation, ServerCapabilities, ServerInfo},
+    model::{
+        ErrorData as McpError, Implementation, ListResourcesResult, PaginatedRequestParams,
+        ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+        ResourceContents, ServerCapabilities, ServerInfo,
+    },
+    service::RequestContext,
     tool, tool_handler, tool_router,
     transport::stdio,
-    ServerHandler, ServiceExt,
+    RoleServer, ServerHandler, ServiceExt,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use oboegaki_lib::mcp::McpVault;
+use oboegaki_lib::mcp::{path_from_uri, McpVault};
 
 #[derive(Deserialize, JsonSchema)]
 struct SearchParams {
@@ -40,6 +45,23 @@ struct ListParams {
     folder: Option<String>,
     /// タグ（`#` 無し。配下のタグも含む）/ Tag without `#`; includes child tags.
     tag: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct RelatedParams {
+    /// 起点のノートの相対パス / Path of the note to start from.
+    path: String,
+    /// 返す件数（既定 8）/ How many notes to return (default 8).
+    limit: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct HistoryParams {
+    /// ノートの相対パス / Path of the note.
+    path: String,
+    /// 版の時刻（`2026-09-02 10:00:00`）。省くと一覧
+    /// / Version stamp as returned by this tool; omit to list versions.
+    at: Option<String>,
 }
 
 #[derive(Clone)]
@@ -115,18 +137,93 @@ impl OboegakiMcp {
             Err(error) => format!("error: {error}"),
         }
     }
+
+    #[tool(
+        name = "related_notes",
+        description = "そのノートに関係するノートを、根拠（指している・同じタグ・題名の出現）ごと強い順に返す / Notes related to the given one, ranked, with the reason each was picked."
+    )]
+    async fn related_notes(&self, Parameters(p): Parameters<RelatedParams>) -> String {
+        match self
+            .vault
+            .related_notes(&p.path, p.limit.map(|n| n as usize))
+        {
+            Ok(rows) => json(&rows),
+            Err(error) => format!("error: {error}"),
+        }
+    }
+
+    #[tool(
+        name = "note_history",
+        description = "ノートの版の一覧（新しい順）。at にその時刻を渡すとその版の本文。読むだけで書き戻さない / List a note's saved versions; pass `at` to read one. Read-only."
+    )]
+    async fn note_history(&self, Parameters(p): Parameters<HistoryParams>) -> String {
+        let answer = match p.at.as_deref() {
+            Some(stamp) => self
+                .vault
+                .history_text(&p.path, stamp)
+                .map(|note| json(&note)),
+            None => self.vault.note_history(&p.path).map(|rows| json(&rows)),
+        };
+        match answer {
+            Ok(text) => text,
+            Err(error) => format!("error: {error}"),
+        }
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for OboegakiMcp {
     fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build());
+        let mut info = ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
+        );
         info.server_info = Implementation::new("oboegaki-mcp", env!("CARGO_PKG_VERSION"));
         info.with_instructions(format!(
                 "おぼえがき（OboeGaki）の保管フォルダ {} を読む。`.mcp-ignore` に書かれたフォルダは見えない。\
                  / Read-only access to an OboeGaki vault. Folders listed in .mcp-ignore are hidden.",
                 self.vault.root().display()
             ))
+    }
+
+    /// ノートを資源として並べる（10-3）。一覧に出ないものは資源にもしない
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let rows = self
+            .vault
+            .list_resources()
+            .map_err(|error| McpError::internal_error(error, None))?;
+        Ok(ListResourcesResult::with_all_items(
+            rows.into_iter()
+                .map(|row| {
+                    Resource::new(row.uri, row.path)
+                        .with_title(row.title)
+                        .with_mime_type("text/markdown")
+                })
+                .collect(),
+        ))
+    }
+
+    /// `oboegaki://note/<相対パス>` を読む。**読みの門は read_note と同じ** —
+    /// 見せない場所と保管フォルダの外はここでも断られる
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        let path = path_from_uri(&request.uri).ok_or_else(|| {
+            McpError::resource_not_found(format!("知らない URI です: {}", request.uri), None)
+        })?;
+        let note = self
+            .vault
+            .read_note(&path)
+            .map_err(|error| McpError::resource_not_found(error, None))?;
+        Ok(ReadResourceResult::new(vec![ResourceContents::text(note.text, request.uri)]).into())
     }
 }
 
