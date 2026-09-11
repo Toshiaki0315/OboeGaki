@@ -1243,7 +1243,8 @@ details[open] > summary > .side-twist::before {
   opacity: 1;
 }
 
-.tag-section {
+.tag-section,
+.task-section {
   margin-top: 1rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--pane-line);
@@ -1251,7 +1252,8 @@ details[open] > summary > .side-twist::before {
 }
 
 .search-section summary,
-.tag-section summary {
+.tag-section summary,
+.task-section summary {
   display: flex;
   align-items: center;
   /* 三角と字の間はフォルダの見出しと同じ（あちらは 0.1 + 中のボタンの 0.3） */
@@ -1264,7 +1266,8 @@ details[open] > summary > .side-twist::before {
 }
 
 .search-section summary::-webkit-details-marker,
-.tag-section summary::-webkit-details-marker {
+.tag-section summary::-webkit-details-marker,
+.task-section summary::-webkit-details-marker {
   display: none;
 }
 
@@ -2228,13 +2231,9 @@ fieldset.preferences-fields:disabled {
   opacity: 0.7;
 }
 
-/* やること（ADR-0056）。箱 + 文 + 小さくノート名と期限 */
-.task-section {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--pane-line);
-  font-size: 0.9rem;
-}
+/* やること（ADR-0056）。箱 + 文 + 小さくノート名と期限。節の箱と見出し
+   （既定の三角を隠す）はタグの節と同じ規則を共有する（実機 2026-09-11:
+   三角が 2 つ出た） */
 .task-row {
   display: flex;
   align-items: flex-start;
