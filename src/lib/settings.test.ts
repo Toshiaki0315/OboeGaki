@@ -220,6 +220,18 @@ describe("hitofude と揃える追加項目（2026-09-04）", () => {
     expect(DEFAULT_SETTINGS.indentedCode).toBe(true);
     expect(DEFAULT_SETTINGS.lineSpacing).toBe("normal");
     expect(DEFAULT_SETTINGS.ocrEngine).toBe("mac");
+    // どこからでも書き取り（ADR-0057）。空なら無効
+    expect(DEFAULT_SETTINGS.captureShortcut).toBe(
+      "CommandOrControl+Shift+Space",
+    );
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: '{"captureShortcut":"Alt+Space"}',
+    });
+    expect(loadSettings(storage).captureShortcut).toBe("Alt+Space");
+    const broken = fakeStorage({ [SETTINGS_KEY]: '{"captureShortcut":7}' });
+    expect(loadSettings(broken).captureShortcut).toBe(
+      "CommandOrControl+Shift+Space",
+    );
   });
 
   test("test_保存して読み戻せる", () => {

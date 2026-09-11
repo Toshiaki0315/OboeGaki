@@ -19,6 +19,7 @@ import {
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { useAssistant } from "./hooks/useAssistant";
 import { useNoteSync } from "./hooks/useNoteSync";
+import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
@@ -1620,6 +1621,9 @@ function App() {
   const renaming = useRef(false);
   // エディタを作り直す単位（openNote ごとに進む。改名では進めない）
   const [editorSession, setEditorSession] = useState(0);
+  // どこからでも書き取り（ADR-0057）。設定のショートカットを OS に登録する
+  useCaptureShortcut(settings.captureShortcut);
+
   // タイトルバーに文書の題名（要望 2026-09-10）。改名にも追従する
   useEffect(() => {
     setWindowTitle(windowTitle(currentPath)).catch(() => {});

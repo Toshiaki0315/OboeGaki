@@ -871,6 +871,25 @@ impl Vault {
         self.create_with(MANUAL_TITLE, MANUAL)
     }
 
+    /// 今日のノートの末尾に追記する（どこからでも書き取り = ADR-0057）。
+    /// 無ければ作る。前の行に繋げない（末尾に改行が無ければ挟む）。空白だけ
+    /// なら書かない。監視の抑制はしない — 主窓が同じノートを開いていれば
+    /// 外部変更として読み直させる
+    pub fn append_to_daily(&self, now: &DateTime<Local>, text: &str) -> io::Result<PathBuf> {
+        if text.trim().is_empty() {
+            return Err(invalid("書くものが空"));
+        }
+        let path = self.daily_note(now)?.path;
+        let mut current = read_note(&path)?;
+        if !current.is_empty() && !current.ends_with('\n') {
+            current.push('\n');
+        }
+        current.push_str(text.trim_end_matches('\n'));
+        current.push('\n');
+        crate::autosave::save_atomic(&path, &current)?;
+        Ok(path)
+    }
+
     /// タイトル変更に合わせてファイル名を変える。
     ///
     /// 元のフォルダに留める（参照実装 K-1: サブフォルダのノートが改名だけで
@@ -2503,6 +2522,31 @@ mod tests {
         assert!(vault
             .create_from_template(&outside, "x", &at(2026, 9, 3, 14, 5))
             .is_err());
+    }
+
+    // どこからでも書き取り（ADR-0057 / 12-6）: 今日のノートの末尾に追記
+    #[test]
+    fn test_append_to_daily_無ければ作り_末尾に改行を挟んで足す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let now = at(2026, 9, 11, 9, 0);
+
+        let path = vault.append_to_daily(&now, "思いつき").unwrap();
+        assert_eq!(path, root.path().join("2026-09-11.md"));
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("# 2026-09-11\n"));
+        assert!(text.ends_with("\n思いつき\n"), "{text:?}");
+
+        // 末尾に改行が無いファイルでも、前の行に繋げない
+        fs::write(&path, "# 2026-09-11\n\n前の行").unwrap();
+        vault.append_to_daily(&now, "次の行\n").unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "# 2026-09-11\n\n前の行\n次の行\n"
+        );
+        // 空白だけは書かない
+        assert!(vault.append_to_daily(&now, "  \n").is_err());
     }
 
     #[test]

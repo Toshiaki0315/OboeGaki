@@ -309,6 +309,8 @@ pub fn run() {
         )
         // クリップボード（要望 2026-09-04）。**WebView の読み取りは通らない** —
         // 本文の右クリックからの貼り付けが動かなかったので、Rust 側から読む
+        // どこからでも書き取り（ADR-0057）。登録はフロントが設定を見て行う
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -371,6 +373,7 @@ pub fn run() {
             commands::tag_rename,
             commands::task_list,
             commands::task_complete,
+            commands::note_append_daily,
             commands::export_write,
             commands::print_page,
             commands::export_write_binary,

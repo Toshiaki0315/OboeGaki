@@ -138,6 +138,17 @@ export function GeneralPreferences({
           </datalist>
         </label>
         <label>
+          <span>どこからでも書き取り</span>
+          <input
+            aria-label="書き取りのショートカット"
+            value={settings.captureShortcut}
+            placeholder="空で無効（例: CommandOrControl+Shift+Space）"
+            onChange={(event) =>
+              onChangeSettings({ captureShortcut: event.currentTarget.value })
+            }
+          />
+        </label>
+        <label>
           <span>本文の幅</span>
           <select
             value={settings.contentWidth}

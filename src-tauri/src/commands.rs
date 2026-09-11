@@ -1378,6 +1378,22 @@ pub fn note_rename(
     })
 }
 
+/// 今日のノートの末尾に追記（どこからでも書き取り = ADR-0057 / 12-6）。
+/// 書き取りの窓から呼ぶ。監視の抑制はしない（主窓が読み直す）
+#[tauri::command]
+pub fn note_append_daily(root: String, text: String) -> Result<String, String> {
+    let vault = Vault::new(&root);
+    let path = vault
+        .append_to_daily(&chrono::Local::now(), &text)
+        .map_err(|e| e.to_string())?;
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// 未完了のやること（ADR-0056 / 12-5）
 #[tauri::command]
 pub fn task_list(root: String) -> Result<Vec<crate::index_db::TaskRow>, String> {

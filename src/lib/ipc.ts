@@ -632,3 +632,9 @@ export async function renameTag(
 ): Promise<ReplaceOutcome> {
   return invoke<ReplaceOutcome>("tag_rename", { root, from, to });
 }
+
+/// 今日のノートの末尾に追記（どこからでも書き取り = ADR-0057）。置いた
+/// ノートのパスを返す
+export async function appendDaily(root: string, text: string): Promise<string> {
+  return invoke<string>("note_append_daily", { root, text });
+}

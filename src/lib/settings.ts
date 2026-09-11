@@ -28,6 +28,8 @@ export type Settings = {
   contentWidth: ContentWidth;
   /// 本文のフォント。空 = システムの既定のまま。
   bodyFont: string;
+  /// どこからでも書き取り（ADR-0057）のショートカット。空なら無効
+  captureShortcut: string;
   /// コード・数式・Mermaid のソースのフォント。空 = 既定の等幅スタック。
   /// **等幅に限らない**（ADR-0044 で桁揃えをやめたので縛る理由が無い）。
   monoFont: string;
@@ -103,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   contentWidth: "standard",
   bodyFont: "",
+  captureShortcut: "CommandOrControl+Shift+Space",
   monoFont: "",
   tabWidth: 4,
   indentedCode: true,
@@ -176,6 +179,10 @@ export function loadSettings(storage: StorageLike): Settings {
   return {
     theme: pick(stored.theme, THEMES, DEFAULT_SETTINGS.theme),
     bodyFont: typeof stored.bodyFont === "string" ? stored.bodyFont : "",
+    captureShortcut:
+      typeof stored.captureShortcut === "string"
+        ? stored.captureShortcut
+        : DEFAULT_SETTINGS.captureShortcut,
     monoFont: typeof stored.monoFont === "string" ? stored.monoFont : "",
     tabWidth: pick(stored.tabWidth, TAB_WIDTHS, DEFAULT_SETTINGS.tabWidth),
     indentedCode: readFlag(stored.indentedCode, DEFAULT_SETTINGS.indentedCode),
