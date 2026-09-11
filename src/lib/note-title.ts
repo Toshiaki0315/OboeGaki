@@ -28,7 +28,10 @@ export function firstHeading(text: string): string | null {
     if (inFence) continue;
     const found = /^# +(\S.*)$/.exec(line);
     if (found) {
-      const cleaned = found[1].split(/\s+/).filter(Boolean).join(" ");
+      const cleaned = stripInline(found[1])
+        .split(/\s+/)
+        .filter(Boolean)
+        .join(" ");
       if (cleaned) return cleaned;
     }
   }
@@ -45,4 +48,25 @@ export function sanitizeStem(title: string): string {
     text += /[/:\\]/.test(character) ? "-" : character;
   }
   return text.split(/\s+/).filter(Boolean).join(" ").replace(/^\.+/, "").trim();
+}
+
+/// 見出しの装飾を落として素の文字にする（実機 2026-09-11: 色と打ち消しを
+/// 付けた H1 がそのままファイル名とタイトルバーに出た）。本文は触らない —
+/// 題名に持ち込まないだけ。
+/// - HTML タグは全部落とす（色の span も、受けない style も）
+/// - 画像は説明、リンクは文字、WikiLink は表示名（無ければ名前）
+/// - 強調・打ち消し・コード・マーカーの記号を落とす
+export function stripInline(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(
+      /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+      (_, name: string, shown?: string) => shown ?? name,
+    )
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|~~|::|`)/g, "")
+    .replace(/(^|[\s(（])[*_](?=\S)/g, "$1")
+    .replace(/(?<=\S)[*_](?=[\s)）,.。、]|$)/g, "")
+    .trim();
 }
