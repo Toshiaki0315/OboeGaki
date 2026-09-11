@@ -22,7 +22,7 @@ function setup(over: Partial<PreferencesProps> = {}) {
     onChangeFontSize: vi.fn(),
     vaultRoot: "/vault",
     onChooseVault: vi.fn(),
-    onCopyMcpConfig: vi.fn(),
+    onCopyMcpConfig: vi.fn(() => Promise.resolve(true)),
     onChooseSlideTemplate: vi.fn(),
     pptxSettings: DEFAULT_PPTX_SETTINGS,
     onChangePptxSettings: vi.fn(),

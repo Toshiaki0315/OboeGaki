@@ -1844,6 +1844,12 @@ button.danger {
   gap: 0.4rem;
   min-width: 0;
 }
+/* 押した結果をボタンの隣に出す（要望 2026-09-12）。クリップボードは
+   目に見えないので、何も起きないと押せたのか分からない */
+.pref-notice {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
 .pref-vault-row input {
   flex: 1 1 auto;
   min-width: 0;

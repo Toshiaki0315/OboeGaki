@@ -602,16 +602,20 @@ function App() {
   /// MCP の設定（Claude Desktop 用の JSON 断片）をクリップボードへ（10-6）。
   /// **パスを手で打たせない** — 束ねた `.app` の中のバイナリの場所も、
   /// 保管フォルダの場所も、アプリ側が知っている
-  async function copyMcpConfig() {
-    if (!vaultRoot) return;
+  async function copyMcpConfig(): Promise<boolean> {
+    if (!vaultRoot) return false;
     try {
       const snippet = await invoke<string>("mcp_config", { root: vaultRoot });
       await writeClipboard(snippet);
       setStatus(
         "MCP の設定をコピーしました（Claude Desktop の設定に貼って開き直してください）",
       );
+      return true;
     } catch (error) {
+      // 画面下の知らせは環境設定の裏に隠れる。**閉じたあとに残る**ぶんは
+      // ここで、**その場で見えるぶん**は MCP タブが出す
       setStatus(`コピーできませんでした: ${String(error)}`);
+      return false;
     }
   }
 
@@ -2868,7 +2872,7 @@ function App() {
               onChangeFontSize={changeFontSize}
               vaultRoot={vaultRoot}
               onChooseVault={() => void chooseVault()}
-              onCopyMcpConfig={() => void copyMcpConfig()}
+              onCopyMcpConfig={copyMcpConfig}
               onChooseSlideTemplate={() => void chooseSlideTemplate()}
               pptxSettings={pptxSettings}
               onChangePptxSettings={changePptxSettings}

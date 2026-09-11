@@ -20,8 +20,8 @@ export type PreferencesProps = {
   onChangeFontSize: (px: number) => void;
   vaultRoot: string | null;
   onChooseVault: () => void;
-  /// MCP の設定をクリップボードへ（10-6）
-  onCopyMcpConfig: () => void;
+  /// MCP の設定をクリップボードへ（10-6）。写せたかを返す
+  onCopyMcpConfig: () => Promise<boolean>;
   onChooseSlideTemplate: () => void;
   pptxSettings: PptxSettings;
   onChangePptxSettings: (patch: Partial<PptxSettings>) => void;

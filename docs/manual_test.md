@@ -659,6 +659,7 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 ### 繋ぐまで（10-6）
 
 1. 環境設定 →「MCP」タブ →「設定をコピー」を押す
+   （ボタンの隣に「コピーしました」と出る。しばらくすると消える）
 2. Claude Desktop の設定ファイル
    （`~/Library/Application Support/Claude/claude_desktop_config.json`）に貼る
 3. Claude Desktop を開き直す
