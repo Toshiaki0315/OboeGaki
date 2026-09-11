@@ -162,6 +162,9 @@ impl Vault {
         ] {
             fs::create_dir_all(directory)?;
         }
+        // 「何を渡さないか」を書く場所は、最初から在った方が気付ける
+        // （中身は説明だけで、何も隠さない）
+        crate::mcp::ensure_ignore_file(&self.root)?;
         Ok(())
     }
 

@@ -591,6 +591,26 @@ pub fn parse_day(text: &str) -> Option<chrono::DateTime<chrono::Local>> {
 }
 
 /// 使い方のノートを今の内容で置き直す（ヘルプメニュー）。
+/// `.mcp-ignore` に書いてある道の一覧（画面の印に使う）
+#[tauri::command]
+pub fn mcp_hidden(root: String) -> Vec<String> {
+    crate::mcp::hidden_list(std::path::Path::new(&root))
+}
+
+/// 「Claude に渡さない」の付け外し（ピン留めと同じ手触り）。
+/// 絶対パスでも相対でも受ける（ノートは絶対、フォルダは相対で来る）。
+/// 付け外したあとの一覧を返す — 画面が聞き直さなくて済む
+#[tauri::command]
+pub fn mcp_set_hidden(root: String, path: String, hidden: bool) -> Result<Vec<String>, String> {
+    let root_path = std::path::Path::new(&root);
+    let relative = match std::path::Path::new(&path).strip_prefix(root_path) {
+        Ok(rest) => rest.to_string_lossy().into_owned(),
+        Err(_) => path.clone(),
+    };
+    crate::mcp::set_hidden(root_path, &relative, hidden).map_err(|e| e.to_string())?;
+    Ok(crate::mcp::hidden_list(root_path))
+}
+
 /// Claude Desktop などに貼る MCP の設定（10-6）。**パスを手で打たせない** —
 /// 束ねた `.app` の中の場所は人が知らない。本体の隣に居る前提で組み立てる
 #[tauri::command]

@@ -205,6 +205,20 @@ export async function placeManual(root: string): Promise<string> {
   return invoke<string>("manual_place", { root });
 }
 
+/// `.mcp-ignore` に書いてある道（Claude に渡さないもの）。
+export async function mcpHidden(root: string): Promise<string[]> {
+  return invoke<string[]>("mcp_hidden", { root });
+}
+
+/// 「Claude に渡さない」を付け外しする。付け外したあとの一覧を返す。
+export async function setMcpHidden(
+  root: string,
+  path: string,
+  hidden: boolean,
+): Promise<string[]> {
+  return invoke<string[]>("mcp_set_hidden", { root, path, hidden });
+}
+
 /// MCP の手引きのノートを置く。置いた場所を返す。
 export async function placeMcpManual(root: string): Promise<string> {
   return invoke<string>("mcp_manual_place", { root });

@@ -368,6 +368,8 @@ pub fn run() {
             commands::note_pin,
             commands::history_usage,
             commands::mcp_config,
+            commands::mcp_hidden,
+            commands::mcp_set_hidden,
             commands::mcp_manual_place,
             commands::trash_delete,
             commands::trash_empty,

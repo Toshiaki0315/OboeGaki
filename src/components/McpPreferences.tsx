@@ -65,9 +65,12 @@ export function McpPreferences({ onCopyMcpConfig }: McpPreferencesProps) {
       </p>
       <h3 className="pref-section">見せない場所</h3>
       <p className="pref-note">
-        見せたくないフォルダは、保管フォルダ直下の .mcp-ignore に 1 行 1 つ
-        書いてください。そこは探しても出てこず、読むことも書くこともできません
-        （ゴミ箱と雛形は、書かなくても最初から見えません）。
+        見せたくないフォルダやノートは、サイドバー・一覧で
+        <strong>右クリック →「Claude に渡さない」</strong>
+        で切り替えられます（ピン留めと同じ手触りです）。そこは探しても出て
+        こず、読むことも書くこともできません。中身は保管フォルダ直下の
+        .mcp-ignore に溜まります。ゴミ箱と雛形は、書かなくても最初から
+        見えません。
       </p>
     </div>
   );

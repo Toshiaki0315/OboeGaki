@@ -13,6 +13,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   historyUsage,
+  mcpHidden,
+  setMcpHidden,
   imageSource,
   llmAvailable,
   llmGenerate,
@@ -196,6 +198,27 @@ describe("読み取りの包み", () => {
       data: "QUJD",
       page: 2,
       reader,
+    });
+  });
+});
+
+describe("MCP に渡さないもの（.mcp-ignore）", () => {
+  test("test_一覧を聞く", async () => {
+    invoked.mockResolvedValue(["秘密"]);
+    expect(await mcpHidden("/v")).toEqual(["秘密"]);
+    expect(invoked).toHaveBeenCalledWith("mcp_hidden", { root: "/v" });
+  });
+
+  test("test_付け外しは道と真偽を渡し_新しい一覧を受け取る", async () => {
+    invoked.mockResolvedValue(["秘密", "仕事/評価"]);
+    expect(await setMcpHidden("/v", "仕事/評価", true)).toEqual([
+      "秘密",
+      "仕事/評価",
+    ]);
+    expect(invoked).toHaveBeenCalledWith("mcp_set_hidden", {
+      root: "/v",
+      path: "仕事/評価",
+      hidden: true,
     });
   });
 });

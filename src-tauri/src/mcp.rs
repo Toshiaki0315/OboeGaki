@@ -18,6 +18,63 @@ pub const IGNORE_FILE: &str = ".mcp-ignore";
 pub const MAX_TEXT_CHARS: usize = 20_000;
 pub const TRUNCATED_MARK: &str = "\n…（続きがあります。先頭だけを返しました）";
 
+/// 置いておく `.mcp-ignore` の中身（保管フォルダを作るときに 1 度だけ）。
+/// **説明だけで、何も隠さない。** 隠すのは人が決めること — 勝手に決めない
+pub const DEFAULT_IGNORE: &str = "\
+# ここに書いたフォルダ・ノートは、Claude（MCP）から見えません。
+# 1 行に 1 つ、保管フォルダからの道を書きます。
+#
+#   プライベート
+#   仕事/評価
+#   秘密のメモ.md
+#
+# サイドバーやノートの右クリック →「Claude に渡さない」でも切り替えられます。
+# ゴミ箱・雛形・管理フォルダは、書かなくても最初から見えません。
+";
+
+/// `.mcp-ignore` が無ければ置く（**上書きはしない**）。保管フォルダを
+/// 開くたびに通るので、消した人のところに空のまま戻ることはある
+pub fn ensure_ignore_file(root: &Path) -> std::io::Result<()> {
+    let path = root.join(IGNORE_FILE);
+    if path.exists() {
+        return Ok(());
+    }
+    std::fs::write(path, DEFAULT_IGNORE)
+}
+
+/// いま隠しているものの一覧（コメントと空行は除く）。画面の印に使う
+pub fn hidden_list(root: &Path) -> Vec<String> {
+    IgnoreList::load(root).folders
+}
+
+/// 1 つを隠す / 隠すのをやめる（GUI から。ピン留めと同じ手触り）。
+///
+/// **人が書いた行は消さない** — コメントも、他の行も、並びもそのまま。
+/// 触るのは名指しされた 1 行だけ
+pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<()> {
+    let cleaned = relative.trim().trim_matches('/');
+    if cleaned.is_empty() || cleaned.split('/').any(|part| part == ".." || part == ".") {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("保管フォルダの中の道ではありません: {relative}"),
+        ));
+    }
+    let path = root.join(IGNORE_FILE);
+    let current = std::fs::read_to_string(&path).unwrap_or_else(|_| DEFAULT_IGNORE.to_string());
+    let mut lines: Vec<String> = current.lines().map(str::to_string).collect();
+    let listed = |line: &str| line.trim().trim_matches('/') == cleaned;
+    if hidden {
+        if !lines.iter().any(|line| listed(line)) {
+            lines.push(cleaned.to_string());
+        }
+    } else {
+        lines.retain(|line| !listed(line));
+    }
+    let mut text = lines.join("\n");
+    text.push('\n');
+    std::fs::write(path, text)
+}
+
 /// 見せないフォルダの一覧。`.mcp-ignore` の各行（`#` から始まる行と空行は
 /// 飛ばす）と、一覧に出ないもの（`.trash` / `templates` / 管理フォルダ）
 #[derive(Debug, Clone, Default)]
@@ -1011,6 +1068,57 @@ mod tests {
         assert!(root.path().join("大事.md").is_file());
         // ゴミ箱の中身には触れない（空にする道は作らない）
         assert!(mcp.trash_note(".trash/要らない.md").is_err());
+    }
+
+    #[test]
+    fn test_ensure_ignore_file_無ければ作る_あるものには触らない() {
+        let root = TempDir::new().unwrap();
+        ensure_ignore_file(root.path()).unwrap();
+        let path = root.path().join(IGNORE_FILE);
+        let text = fs::read_to_string(&path).unwrap();
+        // 置くだけでは**何も隠れない**（説明だけの中身）
+        assert!(IgnoreList::load(root.path()).folders.is_empty());
+        assert!(text.contains("Claude"));
+
+        fs::write(&path, "秘密\n").unwrap();
+        ensure_ignore_file(root.path()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "秘密\n");
+    }
+
+    #[test]
+    fn test_set_hidden_足す_外す_コメントと他の行を残す() {
+        let root = TempDir::new().unwrap();
+        fs::write(
+            root.path().join(IGNORE_FILE),
+            "# 見せない場所\n\n仕事/評価\n",
+        )
+        .unwrap();
+
+        set_hidden(root.path(), "プライベート", true).unwrap();
+        let text = fs::read_to_string(root.path().join(IGNORE_FILE)).unwrap();
+        assert!(text.starts_with("# 見せない場所\n"), "{text:?}");
+        assert!(text.contains("仕事/評価\n"));
+        assert!(text.contains("プライベート\n"));
+        assert_eq!(hidden_list(root.path()), vec!["仕事/評価", "プライベート"]);
+
+        // 二度足しても増えない
+        set_hidden(root.path(), "プライベート", true).unwrap();
+        assert_eq!(hidden_list(root.path()).len(), 2);
+
+        set_hidden(root.path(), "仕事/評価", false).unwrap();
+        assert_eq!(hidden_list(root.path()), vec!["プライベート"]);
+        // コメントは残る（人が書いたものを消さない）
+        assert!(fs::read_to_string(root.path().join(IGNORE_FILE))
+            .unwrap()
+            .contains("# 見せない場所"));
+
+        // 保管フォルダの外と空は断る
+        assert!(set_hidden(root.path(), "../外", true).is_err());
+        assert!(set_hidden(root.path(), "  ", true).is_err());
+        // ファイルが無ければ作ってから足す
+        let fresh = TempDir::new().unwrap();
+        set_hidden(fresh.path(), "秘密", true).unwrap();
+        assert_eq!(hidden_list(fresh.path()), vec!["秘密"]);
     }
 
     #[test]

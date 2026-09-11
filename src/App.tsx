@@ -68,6 +68,7 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
+import { isHiddenFromMcp, relativeIn } from "./lib/mcp-hidden";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
@@ -213,6 +214,8 @@ import {
   imageSource,
   placeManual,
   placeMcpManual,
+  mcpHidden,
+  setMcpHidden,
   templateList,
   pinNote,
   readNote,
@@ -257,6 +260,9 @@ function App() {
   } = useAppStore();
   const [doc, setDoc] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  // Claude（MCP）に渡さないもの。真実は `.mcp-ignore`（T1 と同じ構え）で、
+  // ここはその写し。付け外した戻り値で入れ替える
+  const [mcpHiddenList, setMcpHiddenList] = useState<string[]>([]);
   const editorRef = useRef<EditorHandle>(null);
   // メニューのハンドラは一度だけ登録するので、最新値は ref で読む
   const vaultRootRef = useRef(vaultRoot);
@@ -596,6 +602,40 @@ function App() {
       setStatus(`「${typed}」として登録しました（Cmd+Shift+N で使えます）`);
     } catch (error) {
       setStatus(String(error));
+    }
+  }
+
+  // 保管フォルダが決まったら、渡さないものの一覧を読む（画面の印に使う）
+  useEffect(() => {
+    if (!vaultRoot) {
+      setMcpHiddenList([]);
+      return;
+    }
+    let alive = true;
+    mcpHidden(vaultRoot)
+      .then((list) => alive && setMcpHiddenList(list))
+      .catch(() => alive && setMcpHiddenList([]));
+    return () => {
+      alive = false;
+    };
+  }, [vaultRoot]);
+
+  /// 「Claude に渡さない」の付け外し（ピン留めと同じ手触り）。
+  /// **フォルダでもノートでも同じ道**（`.mcp-ignore` に 1 行増える・減る）
+  async function toggleMcpHidden(path: string) {
+    if (!vaultRoot) return;
+    const relative = relativeIn(vaultRoot, path);
+    if (!relative) return;
+    const hidden = isHiddenFromMcp(mcpHiddenList, relative);
+    try {
+      setMcpHiddenList(await setMcpHidden(vaultRoot, relative, !hidden));
+      setStatus(
+        hidden
+          ? `「${relative}」を Claude に渡します`
+          : `「${relative}」は Claude に渡しません`,
+      );
+    } catch (error) {
+      setStatus(`変えられませんでした: ${String(error)}`);
     }
   }
 
@@ -2951,6 +2991,18 @@ function App() {
                         icon: <MenuIcon name="pin" />,
                         onSelect: () => void handlePin(target),
                       },
+                      // 渡す / 渡さないはピンと同じ手触りで（要望 2026-09-12）。
+                      // 中身は `.mcp-ignore` の 1 行
+                      {
+                        label: isHiddenFromMcp(
+                          mcpHiddenList,
+                          relativeIn(vaultRoot ?? "", target),
+                        )
+                          ? "Claude に渡す"
+                          : "Claude に渡さない",
+                        icon: <MenuIcon name="mcp" />,
+                        onSelect: () => void toggleMcpHidden(target),
+                      },
                       // **本文を入れ替える「開く」とは別の道**（U-1）。
                       // 書いているノートを奪わずに、もう 1 枚を並べる
                       {
@@ -3254,6 +3306,20 @@ function App() {
                         icon: <MenuIcon name="finder" />,
                         onSelect: () => void openInFinder(target),
                       },
+                      // 保管フォルダそのもの（直下の行）は出さない —
+                      // 全部を隠すのは `.mcp-ignore` の仕事ではなく、
+                      // 設定を外す仕事
+                      ...(isRoot
+                        ? []
+                        : ([
+                            {
+                              label: isHiddenFromMcp(mcpHiddenList, target)
+                                ? "Claude に渡す"
+                                : "Claude に渡さない",
+                              icon: <MenuIcon name="mcp" />,
+                              onSelect: () => void toggleMcpHidden(target),
+                            },
+                          ] as const)),
                       ...(isRoot
                         ? []
                         : ([

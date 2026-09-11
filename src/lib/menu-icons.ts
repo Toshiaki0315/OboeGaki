@@ -31,7 +31,8 @@ export type MenuIconName =
   | "preferences"
   | "table"
   | "beside"
-  | "handoff";
+  | "handoff"
+  | "mcp";
 
 export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   // ピン留め（一覧の上のボタンと同じ絵）
@@ -58,6 +59,13 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
     "M3 2.5h5.5L12 6v7.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z",
     "M8.2 2.6V6h3.4",
     "M13.6 10.4v4M11.6 12.4h4",
+  ],
+  // Claude に渡す / 渡さない（差し込み口と、その先の線）。渡さないときも
+  // 同じ絵にする — 同じ言葉には同じ絵（このファイルの決まり）
+  mcp: [
+    "M4.5 2.8h7a1 1 0 0 1 1 1v4.4a4.5 4.5 0 0 1-9 0V3.8a1 1 0 0 1 1-1z",
+    "M6.2 2.8V1.2M9.8 2.8V1.2",
+    "M8 12.7v2.1",
   ],
   // Finder で表示（開いたフォルダ）
   finder: [
