@@ -8,9 +8,10 @@ import type { PptxSettings } from "../lib/pptx-settings";
 import type { Settings } from "../lib/settings";
 import { AssistantPreferences } from "./AssistantPreferences";
 import { GeneralPreferences } from "./GeneralPreferences";
+import { McpPreferences } from "./McpPreferences";
 import { PptxPreferences } from "./PptxPreferences";
 
-type Tab = "general" | "pptx" | "assistant";
+type Tab = "general" | "pptx" | "mcp" | "assistant";
 
 export type PreferencesProps = {
   settings: Settings;
@@ -80,6 +81,8 @@ export function PreferencesDialog(props: PreferencesProps) {
   const tabs: { id: Tab; label: string }[] = [
     { id: "general", label: "一般" },
     { id: "pptx", label: "PowerPoint" },
+    // 使う人の方が少ない。「一般」に混ぜると、要らない人の目にも毎回入る
+    { id: "mcp", label: "MCP" },
     { id: "assistant", label: "アシスタント" },
   ];
 
@@ -113,11 +116,12 @@ export function PreferencesDialog(props: PreferencesProps) {
             onChangeFontSize={onChangeFontSize}
             vaultRoot={props.vaultRoot}
             onChooseVault={props.onChooseVault}
-            onCopyMcpConfig={props.onCopyMcpConfig}
             historyUsage={usage}
             bodyFontChoices={props.bodyFontChoices}
             codeFontChoices={props.codeFontChoices}
           />
+        ) : tab === "mcp" ? (
+          <McpPreferences onCopyMcpConfig={props.onCopyMcpConfig} />
         ) : tab === "pptx" ? (
           <PptxPreferences
             settings={settings}

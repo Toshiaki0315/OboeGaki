@@ -528,7 +528,8 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
       **externalBin は要らなかった** — `[[bin]]` は Tauri の bundler が
       そのまま `Contents/MacOS/` へ入れる（計測ツールを features で外したのと
       同じ仕組み。実測 2026-09-12: `make app` した `.app` に
-      `oboegaki-mcp` が入っている）。環境設定「一般」に「設定をコピー」を置き、
+      `oboegaki-mcp` が入っている）。環境設定に「MCP」タブを置き（使う人の方が少ないので「一般」から分けた。
+      要望 2026-09-12）「設定をコピー」で
       Claude Desktop 用の JSON 断片（本体の隣のバイナリのパス + 保管フォルダ）を
       クリップボードへ。manual_test に接続手順、hitofude-gap に「参照実装には
       無い」として記録、`.app` の大きさ（22MB = 本体 16.9 + MCP 6.3）を

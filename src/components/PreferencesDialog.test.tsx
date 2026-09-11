@@ -57,8 +57,17 @@ describe("PreferencesDialog", () => {
     expect(await screen.findByText("0B")).toBeTruthy();
   });
 
+  test("test_MCP_は別のタブに分ける_一般には出さない（使わない人が多い）", () => {
+    setup();
+    // 「一般」を開いた時点では MCP のものは 1 つも出さない
+    expect(screen.queryByRole("button", { name: "設定をコピー" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
+    expect(screen.getByRole("button", { name: "設定をコピー" })).toBeTruthy();
+  });
+
   test("test_MCP_の設定を押すと親に頼む（10-6）", () => {
     const { props } = setup();
+    fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
     fireEvent.click(screen.getByRole("button", { name: "設定をコピー" }));
     expect(props.onCopyMcpConfig).toHaveBeenCalled();
   });

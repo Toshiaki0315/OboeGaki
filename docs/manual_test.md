@@ -658,11 +658,12 @@ NG は直す前に回帰テストを書く（CLAUDE.md §1）。
 
 ### 繋ぐまで（10-6）
 
-1. 環境設定 →「一般」→ MCP の「設定をコピー」を押す
+1. 環境設定 →「MCP」タブ →「設定をコピー」を押す
 2. Claude Desktop の設定ファイル
    （`~/Library/Application Support/Claude/claude_desktop_config.json`）に貼る
 3. Claude Desktop を開き直す
 
+- [ ] 「一般」タブに MCP のものが出ていない（使わない人の目に入らない）
 - [ ] 束ねた `.app` から起動した状態でコピーすると、`command` が
       `…/OboeGaki.app/Contents/MacOS/oboegaki-mcp`、`args` が保管フォルダ
 - [ ] 貼って開き直すと、Claude Desktop に「oboegaki」の道具が並ぶ

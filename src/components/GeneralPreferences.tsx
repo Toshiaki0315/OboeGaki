@@ -54,8 +54,6 @@ export type GeneralPreferencesProps = {
   historyUsage: number | null;
   bodyFontChoices: readonly FontChoice[];
   codeFontChoices: readonly FontChoice[];
-  /// MCP の設定（Claude Desktop 用の JSON 断片）をクリップボードへ
-  onCopyMcpConfig: () => void;
 };
 
 export function GeneralPreferences({
@@ -68,7 +66,6 @@ export function GeneralPreferences({
   historyUsage,
   bodyFontChoices,
   codeFontChoices,
-  onCopyMcpConfig,
 }: GeneralPreferencesProps) {
   return (
     <div className="pref-page">
@@ -311,23 +308,6 @@ export function GeneralPreferences({
             {historyUsage === null ? "計算中…" : formatBytes(historyUsage)}
           </span>
         </label>
-      </div>
-      <h3 className="pref-section">MCP（Claude Desktop などから使う）</h3>
-      <p className="pref-note">
-        押すと設定の断片をクリップボードへ写します。Claude Desktop の設定
-        ファイル（claude_desktop_config.json）に貼って、Claude Desktop を開き
-        直してください。<strong>ノートは手元から出ません</strong>
-        （ネットワークには出ず、このパソコンの中だけで読み書きします）。
-        見せたくないフォルダは、保管フォルダ直下の .mcp-ignore に 1 行 1 つ
-        書いてください。はじめての方は、ヘルプメニューの「Claude とつなぐ
-        （MCP）の手引きを置く」から手順のノートを出せます。
-      </p>
-      <div className="preferences-fields">
-        {/* ここは label で包まない。button を label で包むと、読み上げの
-            名前が label の字になって「設定をコピー」が消える */}
-        <div className="pref-vault-row">
-          <button onClick={() => onCopyMcpConfig()}>設定をコピー</button>
-        </div>
       </div>
     </div>
   );
