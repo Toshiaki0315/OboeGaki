@@ -57,6 +57,13 @@ LEVEL ?= patch
 bump:             ## 版を 1 つ上げる（既定 patch。make bump LEVEL=minor で 0.6.0）
 	sh scripts/bump-version.sh $(LEVEL)
 
+MCP_BIN := src-tauri/target/release/oboegaki-mcp
+mcp:              ## MCP サーバ（ADR-0051）を組み、Claude Desktop 用の設定断片を出す
+	cd src-tauri && cargo build --release --bin oboegaki-mcp
+	@echo "バイナリ: $(MCP_BIN)"
+	@echo '~/Library/Application Support/Claude/claude_desktop_config.json に足す断片:'
+	@echo '{ "mcpServers": { "oboegaki": { "command": "$(abspath $(MCP_BIN))", "args": ["<保管フォルダの絶対パス>"] } } }'
+
 icon:             ## アプリのアイコンを描き直して全サイズを作る（scripts/make_icon.swift）
 	swift scripts/make_icon.swift src-tauri/icons/icon-source.png
 	npx tauri icon src-tauri/icons/icon-source.png -o src-tauri/icons

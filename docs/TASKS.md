@@ -489,12 +489,12 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
 第 2 のバイナリ `oboegaki-mcp`（stdio、`rmcp`）で、索引は読み・ファイルにだけ
 書く。**10-1 → 10-3 で「読める」を先に区切り**、書きは 10-4 以降。
 
-- [ ] **10-1. バイナリの足場と接続**
+- [x] **10-1. バイナリの足場と接続**（2026-09-11。rmcp 3.3、`make mcp`）
       `src-tauri/src/bin/mcp.rs` を `[[bin]]` に足し、`rmcp` で stdio の
       サーバを立てる。引数は保管フォルダ。`initialize` に答え、ツール 0 個で
       Claude Desktop から「接続できた」まで。`.mcp-ignore`（1 行 1 フォルダ）
       の読み込みと、`.trash` / `templates` / 管理フォルダの除外をここで持つ
-- [ ] **10-2. 読みのツール（検索・本文・一覧）**
+- [x] **10-2. 読みのツール（検索・本文・一覧）**（2026-09-11。search_notes / read_note / list_notes / list_folders / list_tags。stdio の煙試験で確認）
       `search_notes`（`IndexDb::search`。`#タグ` / `after:` は本文と同じ書き方）
       / `read_note`（本文と更新時刻。長いものは先頭と「続きがある」印）/
       `list_notes`（フォルダ・タグで絞る）/ `list_folders` / `list_tags`。

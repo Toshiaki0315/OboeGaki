@@ -1,7 +1,7 @@
 [package]
 name = "oboegaki"
 default-run = "oboegaki"
-version = "0.5.9"
+version = "0.5.10"
 description = "覚書 — ライブプレビュー型 Markdown エディタ"
 authors = ["NOMURA Toshiaki"]
 edition = "2021"
@@ -31,6 +31,11 @@ required-features = ["bench"]
 name = "oboegaki"
 path = "src/main.rs"
 
+# MCP サーバ（ADR-0051）。同じライブラリを stdio で開く第 2 のバイナリ
+[[bin]]
+name = "oboegaki-mcp"
+path = "src/bin/mcp.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -59,6 +64,9 @@ objc2-core-foundation = "0.3.2"
 encoding_rs = "0.8.35"
 objc2-image-io = { version = "0.3.2", features = ["CGImageDestination"] }
 tauri-plugin-global-shortcut = "2.3.2"
+rmcp = { version = "3.3.0", features = ["server", "transport-io", "macros", "schemars"] }
+schemars = "1"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "io-std"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

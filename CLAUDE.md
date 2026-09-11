@@ -76,6 +76,7 @@ docs / refactor / chore だけのコミットでは上げない）。版は 3 �
 | アプリ（.app）を組む    | `make app`（DMG まで作るのは `make dmg`）                     |
 | アイコンを描き直す      | `make icon`（scripts/make_icon.swift → `tauri icon`）         |
 | 版を上げる              | `make bump`（0.5.x の x を +1。`LEVEL=minor` で 0.6.0）       |
+| MCP サーバを組む        | `make mcp`（ADR-0051。Claude Desktop 用の設定断片も出す）     |
 | 依存追加（TS）          | `npm install <pkg>` / `npm install -D <pkg>`                  |
 | 依存追加（Rust）        | `cd src-tauri && cargo add <crate>`                           |
 
