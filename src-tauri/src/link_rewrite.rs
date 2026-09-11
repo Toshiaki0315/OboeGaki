@@ -70,6 +70,36 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    /// 実機 2026-09-11: 改名しても「1 件のノートのリンクを直しました」が出な
+    /// かった。アプリの索引は自動保存の upsert で育つ（sync ではない）ので、
+    /// その経路で backlinks が引けることを確かめる
+    #[test]
+    fn test_rewrite_links_to_自動保存の_upsert_で育てた索引でも引ける() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        db.sync(&vault).unwrap(); // 空で開いた
+        note(root.path(), "99_テスト/会議メモ.md", "# 会議メモ\n");
+        db.upsert(&vault, &root.path().join("99_テスト/会議メモ.md"))
+            .unwrap();
+        note(
+            root.path(),
+            "99_テスト/A.md",
+            "# A\n\n[[会議メモ]] を見よ\n",
+        );
+        db.upsert(&vault, &root.path().join("99_テスト/A.md"))
+            .unwrap();
+
+        let outcome = rewrite_links_to(&vault, &mut db, "会議メモ", "定例");
+
+        assert_eq!(outcome.rewritten, 1, "{:?}", outcome.failed);
+        assert_eq!(
+            fs::read_to_string(root.path().join("99_テスト/A.md")).unwrap(),
+            "# A\n\n[[定例]] を見よ\n"
+        );
+    }
+
     #[test]
     fn test_rewrite_links_to_指しているノートだけ書き換え_件数を返す() {
         let root = TempDir::new().unwrap();

@@ -67,7 +67,7 @@ import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
-import { linksRewrittenText } from "./lib/rename-status";
+import { renameStatusText } from "./lib/rename-status";
 import { startupAction } from "./lib/startup-note";
 import {
   canDropAny,
@@ -1496,7 +1496,7 @@ function App() {
       setDoc(text); // Rust が本文の見出しも書き換えている（ADR-0005）
       sync.markOpened({ path: renamed, text });
       headingRef.current = firstHeading(text);
-      setStatus(linksRewrittenText(outcome));
+      setStatus(renameStatusText(outcome));
     } catch (error) {
       setStatus(`改名に失敗: ${String(error)}`);
     } finally {
@@ -1527,7 +1527,7 @@ function App() {
       const outcome = await renameNote(vaultRoot, currentPath, heading);
       const renamed = outcome.path;
       if (renamed === currentPath) return;
-      setStatus(linksRewrittenText(outcome));
+      setStatus(renameStatusText(outcome));
       // 本文はそのまま（エディタを作り直さない = キャレットが飛ばない）。
       // 予約の書き先と今のパスだけ付け替える
       sync.renamed(currentPath, renamed);
