@@ -45,6 +45,7 @@ import {
 } from "./attachments";
 import { csvDropEvents } from "./csv-drop";
 import { clearColorEdit, colorEdits } from "./text-color-commands";
+import { selectionDrawing } from "./selection";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
@@ -480,6 +481,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           ),
           urlPasteLink, // 画像の取り込みが先、URL のリンク化が後
           EditorView.lineWrapping,
+          selectionDrawing, // 選択は状態から描く（WebKit の塗り残しを断つ）
           EditorView.updateListener.of((update) => {
             // `Cmd+/` でも切り替わるので、変わったことを外へ知らせる
             if (
