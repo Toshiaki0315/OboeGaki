@@ -572,7 +572,7 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
 - [x] **12-7. `![[ノート名]]` の埋め込み**（2026-09-11）（[ADR-0058](adr/0058-transclusion.md)）
       行まるごとのときだけ読み専用 widget で描く（深さ 1 段）。`#見出し` で
       節だけ。HTML / PDF は展開、PowerPoint はコードのまま
-- [ ] **12-8. Word（.docx）書き出し**（[ADR-0059](adr/0059-docx-export.md)）
+- [x] **12-8. Word（.docx）書き出し**（2026-09-11）（[ADR-0059](adr/0059-docx-export.md)）
       `docx`（npm）で見出しスタイルに割り当てて組む。数式・Mermaid は PNG。
       設定タブは作らない。出来上がりの XML でテスト
 - [ ] **12-9. 自動更新**（[ADR-0060](adr/0060-auto-update.md)。**署名・公証の後**）

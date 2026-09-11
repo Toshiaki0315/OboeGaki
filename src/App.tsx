@@ -71,6 +71,7 @@ import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
+import { buildDocx } from "./lib/export-docx";
 import { tagRenamePlan } from "./lib/tag-rename";
 import { lineStartOffset, setTaskDone } from "./lib/tasks";
 import { sectionOf, splitEmbedTarget } from "./lib/section";
@@ -785,6 +786,35 @@ function App() {
 
   /// PowerPoint に書き出す（TASKS 4-5 / F-5）。
   /// **ざっくり作って手で整える**前提。割り方は lib/slides.ts が決める。
+  /// Word に書き出す（ADR-0059 / 12-8）。HTML と同じ解析から組む。数式は
+  /// 元の LaTeX、Mermaid は PNG（PowerPoint と同じ経路）、埋め込みは展開
+  async function handleExportDocx() {
+    if (!vaultRoot || !currentPath) return;
+    await sync.flush(); // 保存前の本文を書き出さない
+    const text = await readNote(vaultRoot, currentPath);
+    const title = noteStem(currentPath);
+    const target = await save({
+      defaultPath: `${title}.docx`,
+      filters: [{ name: "Word", extensions: ["docx"] }],
+    });
+    if (!target) return;
+    setStatus("Word を組んでいます…");
+    try {
+      const data = await buildDocx(text, {
+        title,
+        resolveImage: (url) => imageSource(vaultRoot, url).then(rasterizeIfSvg),
+        diagrams: await drawDiagramPngs(text),
+        embeds: await resolveEmbeds(text),
+        bodyFont: settings.bodyFont,
+        monoFont: settings.monoFont,
+      });
+      await invoke("export_write_binary", { path: target, data });
+      setStatus(`書き出しました: ${target}`);
+    } catch (error) {
+      setStatus(`Word の書き出しに失敗: ${String(error)}`);
+    }
+  }
+
   async function handleExportPptx() {
     if (!vaultRoot || !currentPath) return;
     await sync.flush(); // 保存前の本文を書き出さない
@@ -2129,6 +2159,7 @@ function App() {
     save: () => sync.flush(),
     "export-html": () => void handleExport(),
     "export-pptx": () => void handleExportPptx(),
+    "export-docx": () => void handleExportDocx(),
     "export-pdf": () => void handlePrint(true),
     "import-pptx": () => void handleImportPptx(),
     print: () => void handlePrint(),

@@ -110,6 +110,7 @@ const mathRule: InlineRule = (state, silent) => {
   if (!silent) {
     const token = state.push("html_inline", "", 0);
     token.content = mathml;
+    token.meta = { latex: found.latex }; // Word 書き出しは MathML を置けないので元の字を使う
   }
   state.pos = found.end;
   return true;
@@ -140,6 +141,7 @@ const mathBlockRule = (
   if (!silent) {
     const token = state.push("html_block", "", 0);
     token.content = `${mathml}\n`;
+    token.meta = { latex: latex.join("\n").trim() };
     token.map = [startLine, line + 1];
   }
   state.line = line + 1;
@@ -440,6 +442,20 @@ export function collectCodeBlocks(
 /// 色分け済みコードの鍵（言語 + 中身）。
 export function codeKey(info: string, code: string): string {
   return `${info}\n${code}`;
+}
+
+/// 本文を markdown-it のトークンにする（Word 書き出し = ADR-0059 が使う）。
+/// HTML と**同じ解析**（同じ規則・同じ拡張）なので、書き出し先で崩れ方が
+/// 違わない。front matter は落とす
+export function markdownTokens(
+  markdownText: string,
+  embeds?: Map<string, string>,
+): ReturnType<Md["parse"]> {
+  const md = renderer();
+  const range = frontMatterRange(markdownText);
+  return md.parse(range ? markdownText.slice(range.bodyStart) : markdownText, {
+    embeds,
+  });
 }
 
 /// 本文だけを HTML にする（印刷 = ADR-0038 が使う）。
