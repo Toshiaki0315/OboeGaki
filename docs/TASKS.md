@@ -524,12 +524,15 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
       spec §7.3）。どちらも `history::rekey` で履歴を連れて行く（ADR-0042）。
       アプリが動いていないときは差し替えの前に `history::keep` で版を残す
       （動いていればアプリの保存が残すので二重に残さない）
-- [ ] **10-6. 同梱と設定の書き出し**
-      `.app` に `oboegaki-mcp` を同梱（`tauri.conf.json` の externalBin）。
-      環境設定「一般」に「MCP の設定を書き出す」— Claude Desktop 用の JSON
-      断片（バイナリのパス・保管フォルダ）をクリップボードへ。manual_test に
-      接続手順。hitofude-gap に「参照実装には無い」として記録。`.app` の
-      サイズを実測して docs/bench.md に追記
+- [x] **10-6. 同梱と設定の書き出し**（2026-09-12）
+      **externalBin は要らなかった** — `[[bin]]` は Tauri の bundler が
+      そのまま `Contents/MacOS/` へ入れる（計測ツールを features で外したのと
+      同じ仕組み。実測 2026-09-12: `make app` した `.app` に
+      `oboegaki-mcp` が入っている）。環境設定「一般」に「設定をコピー」を置き、
+      Claude Desktop 用の JSON 断片（本体の隣のバイナリのパス + 保管フォルダ）を
+      クリップボードへ。manual_test に接続手順、hitofude-gap に「参照実装には
+      無い」として記録、`.app` の大きさ（22MB = 本体 16.9 + MCP 6.3）を
+      docs/bench.md に追記
 
 ## 第 11 群 — 共有フォルダで複数人が使う（[ADR-0052](adr/0052-shared-vault.md)）
 

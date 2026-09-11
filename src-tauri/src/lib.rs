@@ -362,6 +362,7 @@ pub fn run() {
             commands::note_restore,
             commands::note_pin,
             commands::history_usage,
+            commands::mcp_config,
             commands::trash_delete,
             commands::trash_empty,
             commands::note_search,

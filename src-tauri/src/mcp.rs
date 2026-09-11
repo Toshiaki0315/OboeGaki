@@ -76,6 +76,29 @@ pub struct NoteResource {
     pub title: String,
 }
 
+/// MCP サーバのバイナリの名前（本体の隣に同梱する）
+pub const MCP_BINARY: &str = "oboegaki-mcp";
+
+/// 本体（`oboegaki`）の場所から、隣に居る MCP サーバのバイナリを指す。
+/// 束ねた `.app` でも `cargo tauri dev` でも同じ並びになる
+pub fn binary_next_to(exe: &Path) -> PathBuf {
+    exe.parent().unwrap_or(Path::new(".")).join(MCP_BINARY)
+}
+
+/// Claude Desktop などに貼る設定の断片（10-6）。**パスを手で打たせない**。
+/// serde_json で組む — 空白や引用符を含むパスを自分で埋め込むと壊れる
+pub fn config_snippet(binary: &Path, root: &Path) -> String {
+    let value = serde_json::json!({
+        "mcpServers": {
+            "oboegaki": {
+                "command": binary.to_string_lossy(),
+                "args": [root.to_string_lossy()],
+            }
+        }
+    });
+    serde_json::to_string_pretty(&value).unwrap_or_default()
+}
+
 /// 相対パスを resource の URI にする。**符号化して渡す** — 空白や `#` を
 /// 素で置くと URI として壊れる（日本語は通るが揃えて encode する）
 pub fn note_uri(relative: &str) -> String {
@@ -988,6 +1011,31 @@ mod tests {
         assert!(root.path().join("大事.md").is_file());
         // ゴミ箱の中身には触れない（空にする道は作らない）
         assert!(mcp.trash_note(".trash/要らない.md").is_err());
+    }
+
+    #[test]
+    fn test_config_snippet_クライアントに貼る_JSON_を作る() {
+        let snippet = config_snippet(
+            std::path::Path::new("/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp"),
+            std::path::Path::new("/Users/だれか/書類/覚 書"),
+        );
+        // **JSON として読めること**（貼って壊れない）。空白入りのパスも通る
+        let parsed: serde_json::Value = serde_json::from_str(&snippet).unwrap();
+        let server = &parsed["mcpServers"]["oboegaki"];
+        assert_eq!(
+            server["command"],
+            "/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp"
+        );
+        assert_eq!(server["args"][0], "/Users/だれか/書類/覚 書");
+    }
+
+    #[test]
+    fn test_binary_next_to_本体の隣の_MCP_を指す() {
+        let exe = std::path::Path::new("/Applications/OboeGaki.app/Contents/MacOS/oboegaki");
+        assert_eq!(
+            binary_next_to(exe),
+            std::path::Path::new("/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp")
+        );
     }
 
     #[test]

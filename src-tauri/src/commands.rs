@@ -591,6 +591,18 @@ pub fn parse_day(text: &str) -> Option<chrono::DateTime<chrono::Local>> {
 }
 
 /// 使い方のノートを今の内容で置き直す（ヘルプメニュー）。
+/// Claude Desktop などに貼る MCP の設定（10-6）。**パスを手で打たせない** —
+/// 束ねた `.app` の中の場所は人が知らない。本体の隣に居る前提で組み立てる
+#[tauri::command]
+pub fn mcp_config(root: String) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let binary = crate::mcp::binary_next_to(&exe);
+    Ok(crate::mcp::config_snippet(
+        &binary,
+        std::path::Path::new(&root),
+    ))
+}
+
 #[tauri::command]
 pub fn manual_place(state: tauri::State<'_, WatchState>, root: String) -> Result<String, String> {
     let vault = Vault::new(&root);

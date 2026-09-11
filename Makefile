@@ -57,6 +57,9 @@ LEVEL ?= patch
 bump:             ## 版を 1 つ上げる（既定 patch。make bump LEVEL=minor で 0.6.0）
 	sh scripts/bump-version.sh $(LEVEL)
 
+# 開発中に手で繋ぐとき用。**束ねた .app には自動で入る** — [[bin]] は
+# bundler が Contents/MacOS/ へ写すので externalBin は要らない（10-6 で実測）。
+# 配った .app を使う人は、環境設定 →「一般」→ MCP の「設定をコピー」で済む
 MCP_BIN := src-tauri/target/release/oboegaki-mcp
 mcp:              ## MCP サーバ（ADR-0051）を組み、Claude Desktop 用の設定断片を出す
 	cd src-tauri && cargo build --release --bin oboegaki-mcp

@@ -22,6 +22,7 @@ function setup(over: Partial<PreferencesProps> = {}) {
     onChangeFontSize: vi.fn(),
     vaultRoot: "/vault",
     onChooseVault: vi.fn(),
+    onCopyMcpConfig: vi.fn(),
     onChooseSlideTemplate: vi.fn(),
     pptxSettings: DEFAULT_PPTX_SETTINGS,
     onChangePptxSettings: vi.fn(),
@@ -54,6 +55,12 @@ describe("PreferencesDialog", () => {
   test("test_使用量が読めなければ 0 として出す", async () => {
     setup({ historyUsage: () => Promise.reject(new Error("no vault")) });
     expect(await screen.findByText("0B")).toBeTruthy();
+  });
+
+  test("test_MCP_の設定を押すと親に頼む（10-6）", () => {
+    const { props } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "設定をコピー" }));
+    expect(props.onCopyMcpConfig).toHaveBeenCalled();
   });
 
   test("test_タブを押すとページが替わる", () => {

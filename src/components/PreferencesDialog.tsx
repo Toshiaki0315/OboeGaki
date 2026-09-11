@@ -19,6 +19,8 @@ export type PreferencesProps = {
   onChangeFontSize: (px: number) => void;
   vaultRoot: string | null;
   onChooseVault: () => void;
+  /// MCP の設定をクリップボードへ（10-6）
+  onCopyMcpConfig: () => void;
   onChooseSlideTemplate: () => void;
   pptxSettings: PptxSettings;
   onChangePptxSettings: (patch: Partial<PptxSettings>) => void;
@@ -111,6 +113,7 @@ export function PreferencesDialog(props: PreferencesProps) {
             onChangeFontSize={onChangeFontSize}
             vaultRoot={props.vaultRoot}
             onChooseVault={props.onChooseVault}
+            onCopyMcpConfig={props.onCopyMcpConfig}
             historyUsage={usage}
             bodyFontChoices={props.bodyFontChoices}
             codeFontChoices={props.codeFontChoices}
