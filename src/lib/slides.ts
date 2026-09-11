@@ -463,3 +463,17 @@ export function diagramsAsImages(
     }),
   };
 }
+
+/// デッキの中のコードの塊（言語と本文）。書き出しの前に字句の色分けを
+/// 済ませるために使う（TASKS 12-12）
+export function codeBlocksOf(deck: Deck): { language: string; text: string }[] {
+  const found: { language: string; text: string }[] = [];
+  for (const slide of deck.slides) {
+    for (const block of slide.blocks) {
+      if (block.kind === "code") {
+        found.push({ language: block.language, text: block.text });
+      }
+    }
+  }
+  return found;
+}

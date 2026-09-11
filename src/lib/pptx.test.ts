@@ -11,6 +11,8 @@ import {
   readTemplateTheme,
   type PptxOptions,
 } from "./pptx";
+import { CODE_RUN_COLORS } from "./export-code";
+import { codeKey } from "./export-html";
 import { diagramsAsImages, MERMAID_IMAGE_PREFIX, splitDeck } from "./slides";
 import { DEFAULT_SLIDE_THEME, readSlideTheme } from "./slide-theme";
 import { slideMetrics } from "./slide-grid";
@@ -30,6 +32,48 @@ async function open(markdown: string) {
   ).length;
   return { zip, slide, count };
 }
+
+describe("コードの色分け（TASKS 12-12）", () => {
+  test("test_run の色分けを渡すと_コードの枠が字句ごとの色になる", async () => {
+    const markdown = "## A\n\n```js\nconst x = 1;\n```\n";
+    const deck = splitDeck(markdown);
+    const block = deck.slides[0].blocks.find((b) => b.kind === "code")!;
+    const runs = new Map([
+      [
+        codeKey(block.language, block.text),
+        [
+          { text: "const", cls: "tok-keyword", breakLine: false },
+          { text: " x = ", cls: null, breakLine: false },
+          { text: "1", cls: "tok-number", breakLine: false },
+          { text: ";", cls: null, breakLine: true },
+        ],
+      ],
+    ]);
+    const base64 = await buildPptx(
+      deck,
+      async () => null,
+      readSlideTheme(markdown),
+      null,
+      {
+        ...DEFAULT_PPTX_OPTIONS,
+        codeRuns: runs,
+      },
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    expect(xml).toContain(`<a:srgbClr val="${CODE_RUN_COLORS["tok-keyword"]}"`);
+    expect(xml).toContain(`<a:srgbClr val="${CODE_RUN_COLORS["tok-number"]}"`);
+    expect(xml).toContain("const");
+  });
+  test("test_渡さなければ今までどおり単色", async () => {
+    const { slide } = await open("## A\n\n```js\nconst x = 1;\n```\n");
+    const xml = await slide(1);
+    expect(xml).not.toContain(
+      `<a:srgbClr val="${CODE_RUN_COLORS["tok-keyword"]}"`,
+    );
+  });
+});
 
 describe("文字色（ADR-0061）", () => {
   test("test_色の span は run の srgbClr になる", async () => {

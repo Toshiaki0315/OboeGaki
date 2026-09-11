@@ -589,11 +589,11 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
       16 進に限って受ける（判定は lib/text-color.ts に一本化）。エディタは
       タグを隠して中の文字に色（ダークでは明度を上げる）、ツールバーに
       「文字色」（6 色 + 消す）、HTML は組み直して通す、PowerPoint は run の色
-- [ ] **12-12. HTML 書き出しのコード配色**（ADR 無し。書き出しの見た目）
-      エディタと同じ言語パッケージで `@codemirror/language` の highlightCode
-      を使い、字句を `<span class="tok-…">` で包む。配色は code-blocks.ts の
-      HighlightStyle と同じパレットをライト固定で `<style>` に埋める（外部
-      リソースを参照しない）。PowerPoint も同じ切り方で run に色を付ける
+- [x] **12-12. コードの配色を PowerPoint にも**（2026-09-11。ADR 無し）
+      HTML の配色は既に 4-4 で実装済みだった（export-code.ts。棚卸しで見落と
+      した）。PowerPoint は単色だったので、同じ字句の切り方で run に色を付ける
+      （highlightCodeRuns。明るい地で読める組 CODE_RUN_COLORS）。解析は
+      書き出しの前に App が済ませ、options.codeRuns で渡す
 
 ## 待ち — 外部要因でブロック中
 

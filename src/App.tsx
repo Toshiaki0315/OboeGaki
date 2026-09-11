@@ -116,11 +116,16 @@ import {
   renderBody,
   renderHtml,
 } from "./lib/export-html";
-import { highlightCodeHtml } from "./lib/export-code";
+import {
+  type CodeRun,
+  highlightCodeHtml,
+  highlightCodeRuns,
+} from "./lib/export-code";
 import {
   diagramsAsImages,
   MERMAID_IMAGE_PREFIX,
   splitDeck,
+  codeBlocksOf,
 } from "./lib/slides";
 import {
   rasterizeIfSvg,
@@ -799,6 +804,14 @@ function App() {
         );
         return;
       }
+      // コードは字句ごとに色を付ける（12-12。HTML と同じ切り方）。解析は
+      // 非同期なので先に済ませて渡す
+      const codeRuns = new Map<string, CodeRun[]>();
+      for (const block of codeBlocksOf(deck)) {
+        if (!block.language) continue;
+        const runs = await highlightCodeRuns(block.text, block.language);
+        if (runs) codeRuns.set(codeKey(block.language, block.text), runs);
+      }
       const data = await buildPptx(
         deck,
         (url) =>
@@ -813,6 +826,7 @@ function App() {
           footer: pptxSettings.footer,
           decoration: pptxSettings.decoration,
           metrics,
+          codeRuns,
         },
       );
       await invoke("export_write_binary", { path: target, data });

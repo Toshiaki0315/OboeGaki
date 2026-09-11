@@ -9,6 +9,7 @@ import {
   plainText,
   splitDeck,
   type SlideBlock,
+  codeBlocksOf,
 } from "./slides";
 
 /// 本文だけを見たいテスト用（装飾は runs が持つ）
@@ -323,6 +324,18 @@ describe("diagramsAsImages（Mermaid を図として書き出す。要望 2026-0
     expect(deck.slides[0].images.map((i) => i.url)).toEqual([
       "a.png",
       `${MERMAID_IMAGE_PREFIX}graph LR`,
+    ]);
+  });
+});
+
+describe("codeBlocksOf", () => {
+  test("test_全部のスライドのコードの塊を言語つきで集める（12-12）", () => {
+    const deck = splitDeck(
+      "## A\n\n```js\nconst x = 1;\n```\n\n## B\n\n本文\n\n```\nplain\n```\n",
+    );
+    expect(codeBlocksOf(deck)).toEqual([
+      { language: "js", text: "const x = 1;" },
+      { language: "", text: "plain" },
     ]);
   });
 });

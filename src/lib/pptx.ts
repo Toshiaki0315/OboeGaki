@@ -12,6 +12,8 @@
 //
 // pptxgenjs は大きいので動的 import にする（図 = ADR-0037 と同じ）。
 
+import { CODE_RUN_COLORS, type CodeRun } from "./export-code";
+import { codeKey } from "./export-html";
 import {
   cardsOf,
   type Card,
@@ -54,6 +56,10 @@ export type PptxOptions = {
   today?: Date;
   /// 用紙と余白と字の大きさ（8-3）。**唯一の入口は `slideMetrics()`**。
   metrics: SlideMetrics;
+  /// コードの字句ごとの色分け（TASKS 12-12）。鍵は `codeKey(言語, 本文)`。
+  /// 字句の解析は非同期なので、呼ぶ側が先に済ませて渡す（図と同じ手口）。
+  /// 無ければ単色
+  codeRuns?: Map<string, CodeRun[]>;
 };
 
 export const DEFAULT_PPTX_OPTIONS: PptxOptions = {
@@ -214,6 +220,7 @@ export async function buildPptx(
         theme,
         sheet,
         options.decoration.codeLanguageLabel,
+        options.codeRuns,
       );
     placeImages(page, images, layout, sheet, options.decoration.imageCaption);
     if (slide.notes) page.addNotes(slide.notes);
@@ -397,6 +404,7 @@ function placeBlocks(
   theme: SlideTheme,
   sheet: SlideMetrics,
   labelCode = DEFAULT_PPTX_OPTIONS.decoration.codeLanguageLabel,
+  codeRuns?: Map<string, CodeRun[]>,
 ): void {
   // 置き場所は `slide-frame.ts` が決める（プレビューと同じ計算 = PV-01）
   for (const frame of bodyFrames(blocks, layout, labelCode, sheet)) {
@@ -420,7 +428,23 @@ function placeBlocks(
           color: "tx2",
         });
       }
-      page.addText(frame.block.text, {
+      // 字句ごとの色分けが渡っていれば run に割る（TASKS 12-12）。
+      // 無ければ今までどおりの単色
+      const runs = codeRuns?.get(
+        codeKey(frame.block.language, frame.block.text),
+      );
+      const codeText = runs
+        ? runs.map((run) => ({
+            text: run.text,
+            options: {
+              ...(run.cls && CODE_RUN_COLORS[run.cls]
+                ? { color: CODE_RUN_COLORS[run.cls] }
+                : {}),
+              ...(run.breakLine ? { breakLine: true } : {}),
+            },
+          }))
+        : frame.block.text;
+      page.addText(codeText, {
         x: frame.x,
         y: frame.y,
         w: frame.w,

@@ -2,8 +2,7 @@
 
 - 作成: 2026-09-03。**棚卸し: 2026-09-11**（TASKS 12-10。「未実装」だった 45 行の
   ほぼ全部が実装済みになっていたので、行ごとにコードの場所を書いて直した。
-  本当に開いているのは「署名・公証」「ショートカット一覧」「HTML のコード
-  配色」だけ。ULID id はやらないと決めた）
+  本当に開いているのは「署名・公証」「ショートカット一覧」だけ。ULID id はやらないと決めた）
 - 出典: hitofude の docs/TASKS.md（タスク群 A〜U）・docs/adr/・全モジュール
   （core / storage / editor / ui）を走査して突き合わせた
 - 「部分実装」= 目的は果たせるが挙動や範囲が hitofude と異なるもの
@@ -93,7 +92,7 @@
 | 機能                                                             | 根拠                                                   | 状態                                                                                                                      |
 | ---------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | PDF 書き出し・印刷                                               | ADR-0007, editor/exporter.py                           | 実装済み（ADR-0038。印刷の窓から PDF）                                                                                    |
-| HTML 書き出しのコード色分け（Pygments 相当）                     | core/html._code_html                                   | 部分実装（言語クラスは付くが配色なし。画面の色分けを写すかは未決）                                                        |
+| HTML 書き出しのコード色分け（Pygments 相当）                     | core/html._code_html                                   | 実装済み（HTML は 4-4 の export-code.ts、画面と同じ字句解析。PowerPoint も 12-12 で run 単位の色に）                      |
 | PowerPoint 取り込み（F-3）・書き出し（F-5）・スライド分割（F-4） | editor/pptx_import.py / pptx_export.py, core/slides.py | 実装済み（lib/pptx-import.ts / pptx.ts / slides.ts、第 5・8 群。Mermaid は PNG）                                          |
 | 外部形式の取り込み（F-1。貼り付け・PDF 経由含む）                | editor/importer.py, core/imported.py                   | 実装済み（lib/imported.ts、PDF は pdf.rs + OCR）                                                                          |
 | OCR（画像・PDF から文字を読む。Swift 製ツール同梱）              | ADR-0027, tools/ocr/                                   | 実装済み（macOS は Rust から Vision を直に = ADR-0041。ローカルLLM は Ollama に画像を添える。2026-09-07 に 2 択が揃った） |

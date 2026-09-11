@@ -77,3 +77,56 @@ export async function highlightCodeHtml(
   );
   return html;
 }
+
+/// PowerPoint の run（TASKS 12-12）。`cls` は HTML と同じ字句の種類、
+/// `breakLine` はその run のあとで行を折る印（改行は文字として持たない —
+/// pptxgenjs は run の breakLine で段落を切る）
+export type CodeRun = { text: string; cls: string | null; breakLine: boolean };
+
+/// 字句の種類 → 色（`RRGGBB`）。**明るい地で読める組**。PowerPoint の
+/// コードの枠は薄い地（bg2）なので、書き出し HTML の暗い地の組は使えない。
+/// GitHub の light に近い並び
+export const CODE_RUN_COLORS: Record<string, string> = {
+  "tok-keyword": "CF222E",
+  "tok-string": "0A3069",
+  "tok-comment": "6E7781",
+  "tok-number": "0550AE",
+  "tok-type": "953800",
+  "tok-func": "8250DF",
+  "tok-def": "8250DF",
+  "tok-prop": "116329",
+};
+
+/// コードを字句ごとの run にする。HTML（highlightCodeHtml）と**同じ切り方**。
+/// 知らない言語は null
+export async function highlightCodeRuns(
+  code: string,
+  info: string,
+): Promise<CodeRun[] | null> {
+  const description = resolveCodeLanguage(info);
+  if (!description) return null;
+  let support;
+  try {
+    support = description.support ?? (await description.load());
+  } catch {
+    return null;
+  }
+  const tree = support.language.parser.parse(code);
+  const runs: CodeRun[] = [];
+  highlightCode(
+    code,
+    tree,
+    exportHighlighter,
+    (text, classes) => {
+      runs.push({ text, cls: classes || null, breakLine: false });
+    },
+    () => {
+      if (runs.length === 0) {
+        runs.push({ text: "", cls: null, breakLine: true });
+      } else {
+        runs[runs.length - 1].breakLine = true;
+      }
+    },
+  );
+  return runs;
+}
