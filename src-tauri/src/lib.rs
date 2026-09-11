@@ -8,6 +8,7 @@ pub mod commands;
 pub mod front_matter;
 mod history;
 pub mod index_db;
+pub mod link_rewrite;
 pub mod llm;
 pub mod ocr;
 pub mod pdf;

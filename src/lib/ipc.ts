@@ -100,12 +100,20 @@ export async function createNote(
   return invoke<string>("note_create", { root, title, folder });
 }
 
+/// 改名の結果。`rewritten` は `[[リンク]]` を書き換えた他のノートの数
+/// （ADR-0053）、`failed` は書き換えられなかったノートの名前
+export type RenameOutcome = {
+  path: string;
+  rewritten: number;
+  failed: string[];
+};
+
 export async function renameNote(
   root: string,
   path: string,
   title: string,
-): Promise<string> {
-  return invoke<string>("note_rename", { root, path, title });
+): Promise<RenameOutcome> {
+  return invoke<RenameOutcome>("note_rename", { root, path, title });
 }
 
 export async function trashNote(root: string, path: string): Promise<string> {

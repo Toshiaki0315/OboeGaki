@@ -113,6 +113,87 @@ fn links_in_line(line: &str) -> Vec<String> {
     found
 }
 
+/// 改名に合わせて `[[旧]]` / `[[旧|表示]]` を `[[新]]` / `[[新|表示]]` に
+/// 書き換えた本文（ADR-0053）。照合は `normalize` + 大小無視（backlinks の
+/// COLLATE NOCASE と同じ）。front matter・コードフェンス・インラインコードの
+/// 中は触らない。1 箇所も変わらなければ None
+pub fn rewrite_wikilinks(text: &str, old: &str, new: &str) -> Option<String> {
+    let target = normalize(old).to_lowercase();
+    if target.is_empty() || normalize(old) == normalize(new) {
+        return None;
+    }
+    let (head, body) = match crate::front_matter::block_len(text) {
+        Some(len) => text.split_at(len),
+        None => ("", text),
+    };
+    let mut out = String::with_capacity(text.len());
+    out.push_str(head);
+    let mut changed = false;
+    let mut in_fence = false;
+    // 行末の改行を保つため split_inclusive
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            out.push_str(line);
+            continue;
+        }
+        if in_fence {
+            out.push_str(line);
+            continue;
+        }
+        let rewritten = rewrite_line(line, &target, new);
+        if rewritten != line {
+            changed = true;
+        }
+        out.push_str(&rewritten);
+    }
+    if changed {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+/// 1 行の中の `[[…]]` を書き換える。インラインコードの位置は mask で見て、
+/// 元の文字列から取り出す（mask は文字数を変えない）
+fn rewrite_line(line: &str, target_lower: &str, new: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let masked: Vec<char> = crate::tags::mask_inline_code(line).chars().collect();
+    let mut out = String::with_capacity(line.len());
+    let mut index = 0;
+    while index < chars.len() {
+        if index + 1 < chars.len() && masked[index] == '[' && masked[index + 1] == '[' {
+            // 名前の終わり: `|` か `]]`。`[` と改行は名前に入らない
+            let mut end = index + 2;
+            let mut ok = false;
+            while end < chars.len() {
+                let c = masked[end];
+                if c == '[' || c == '\n' {
+                    break;
+                }
+                if c == '|' || (c == ']' && masked.get(end + 1) == Some(&']')) {
+                    ok = true;
+                    break;
+                }
+                end += 1;
+            }
+            if ok {
+                let name: String = chars[index + 2..end].iter().collect();
+                if !name.trim().is_empty() && normalize(&name).to_lowercase() == target_lower {
+                    out.push_str("[[");
+                    out.push_str(new);
+                    index = end;
+                    continue;
+                }
+            }
+        }
+        out.push(chars[index]);
+        index += 1;
+    }
+    out
+}
+
 /// 続柄の長さの上限（M-3）。**関係の名前は短い**（参考文献・元ネタ・前提）。
 /// 長い一文は、たまたまコロンが入った地の文なので拾わない。
 const MAX_RELATION: usize = 12;
@@ -300,5 +381,38 @@ mod tests {
     fn test_context_line_大小は無視する() {
         let text = "参照: [[Meeting]]\n";
         assert_eq!(context_line(text, "meeting"), "参照: [[Meeting]]");
+    }
+
+    // 改名で `[[リンク]]` を書き換える（ADR-0053 / TASKS 12-1）
+    #[test]
+    fn test_rewrite_wikilinks_旧名を新名に_別名付きも_正規化して照合() {
+        // 前後の空白は normalize が落とす。中の空白は名前の一部（別の名前）
+        let text = "[[ 会議メモ ]] と [[会議メモ|きょうの]] と [[別]] と [[会議 メモ]]\n";
+        let out = rewrite_wikilinks(text, "会議メモ", "定例").unwrap();
+        assert_eq!(
+            out,
+            "[[定例]] と [[定例|きょうの]] と [[別]] と [[会議 メモ]]\n"
+        );
+        // 大小は無視（backlinks の COLLATE NOCASE と同じ）
+        assert_eq!(
+            rewrite_wikilinks("[[Todo]]", "todo", "やること").unwrap(),
+            "[[やること]]"
+        );
+    }
+
+    #[test]
+    fn test_rewrite_wikilinks_コードと_front_matter_の中は書き換えない() {
+        let text = "---\ntitle: [[旧]]\n---\n[[旧]]\n```\n[[旧]]\n```\n`[[旧]]` と [[旧]]\n";
+        let out = rewrite_wikilinks(text, "旧", "新").unwrap();
+        assert_eq!(
+            out,
+            "---\ntitle: [[旧]]\n---\n[[新]]\n```\n[[旧]]\n```\n`[[旧]]` と [[新]]\n"
+        );
+    }
+
+    #[test]
+    fn test_rewrite_wikilinks_変わらなければ_none() {
+        assert!(rewrite_wikilinks("[[別]] だけ", "旧", "新").is_none());
+        assert!(rewrite_wikilinks("[[旧]]", "旧", "旧").is_none());
     }
 }

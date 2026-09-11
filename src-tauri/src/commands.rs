@@ -1307,20 +1307,43 @@ pub fn note_rename(
     root: String,
     path: String,
     title: String,
-) -> Result<String, String> {
+) -> Result<RenameOutcome, String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
     let renamed = Vault::new(&root)
         .rename(&path, &title)
         .map_err(|e| e.to_string())?;
     state.suppressor.mark(&renamed);
-    // 索引: 旧パスを外し、新パスを載せ直す
+    let stem = |p: &Path| {
+        p.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let (old_title, new_title) = (stem(&path), stem(&renamed));
+    // 索引: 旧パスを外し、新パスを載せ直す。続けて、旧題名を指している
+    // ノートの `[[リンク]]` を新題名に書き換える（ADR-0053）
     let vault = Vault::new(&root);
-    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
-        db.remove(&vault, &path)?;
-        db.upsert(&vault, &renamed)
-    }) {
-        eprintln!("索引の更新に失敗した: {error}");
+    let mut rewritten = 0;
+    let mut failed = Vec::new();
+    match IndexDb::open(&vault.managed_dir()) {
+        Ok(mut db) => {
+            if let Err(error) = db
+                .remove(&vault, &path)
+                .and_then(|_| db.upsert(&vault, &renamed))
+            {
+                eprintln!("索引の更新に失敗した: {error}");
+            }
+            if old_title != new_title {
+                let outcome =
+                    crate::link_rewrite::rewrite_links_to(&vault, &mut db, &old_title, &new_title);
+                for written in &outcome.paths {
+                    state.suppressor.mark(written);
+                }
+                rewritten = outcome.rewritten;
+                failed = outcome.failed;
+            }
+        }
+        Err(error) => eprintln!("索引を開けなかった: {error}"),
     }
     // 鍵がパスなので、置き場を付け替えないと履歴が見えなくなる
     if let Err(error) = history::rekey(
@@ -1330,7 +1353,19 @@ pub fn note_rename(
     ) {
         eprintln!("履歴の置き場を移せなかった: {error}");
     }
-    Ok(renamed.to_string_lossy().into_owned())
+    Ok(RenameOutcome {
+        path: renamed.to_string_lossy().into_owned(),
+        rewritten,
+        failed,
+    })
+}
+
+/// 改名の結果。`rewritten` は `[[リンク]]` を書き換えた他のノートの数
+#[derive(serde::Serialize)]
+pub struct RenameOutcome {
+    pub path: String,
+    pub rewritten: usize,
+    pub failed: Vec<String>,
 }
 
 #[tauri::command]
