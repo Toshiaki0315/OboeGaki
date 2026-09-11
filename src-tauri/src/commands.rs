@@ -1378,6 +1378,69 @@ pub fn note_rename(
     })
 }
 
+/// 置換の下見（ADR-0055 / 12-3）。書かずに、何件のノートの何箇所が当たるかだけ
+#[tauri::command]
+pub fn replace_preview(
+    root: String,
+    from: String,
+    case_sensitive: bool,
+    include_code: bool,
+) -> Result<ReplaceCount, String> {
+    let vault = Vault::new(&root);
+    let outcome = crate::link_rewrite::rewrite_all(&vault, None, |text| {
+        crate::text_rewrite::replace_outside_code(text, &from, "", case_sensitive, include_code)
+    });
+    Ok(ReplaceCount {
+        notes: outcome.rewritten,
+        occurrences: outcome.occurrences,
+    })
+}
+
+/// 置換を実行する。書いたノートは監視から抑制し、フロントが開いている
+/// ノートを読み直す（戻りの `paths`）
+#[tauri::command]
+pub fn replace_apply(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    from: String,
+    to: String,
+    case_sensitive: bool,
+    include_code: bool,
+) -> Result<ReplaceOutcome, String> {
+    let vault = Vault::new(&root);
+    let mut db = IndexDb::open(&vault.managed_dir()).map_err(|e| e.to_string())?;
+    let outcome = crate::link_rewrite::rewrite_all(&vault, Some(&mut db), |text| {
+        crate::text_rewrite::replace_outside_code(text, &from, &to, case_sensitive, include_code)
+    });
+    for written in &outcome.paths {
+        state.suppressor.mark(written);
+    }
+    Ok(ReplaceOutcome {
+        notes: outcome.rewritten,
+        occurrences: outcome.occurrences,
+        paths: outcome
+            .paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect(),
+        failed: outcome.failed,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct ReplaceCount {
+    pub notes: usize,
+    pub occurrences: usize,
+}
+
+#[derive(serde::Serialize)]
+pub struct ReplaceOutcome {
+    pub notes: usize,
+    pub occurrences: usize,
+    pub paths: Vec<String>,
+    pub failed: Vec<String>,
+}
+
 /// 改名の結果。`rewritten` は `[[リンク]]` を書き換えた他のノートの数
 #[derive(serde::Serialize)]
 pub struct RenameOutcome {

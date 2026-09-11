@@ -18,6 +18,7 @@ pub mod related;
 pub mod search_query;
 pub mod tags;
 pub mod template;
+pub mod text_rewrite;
 pub mod vault;
 pub mod vault_lock;
 pub mod watcher;
@@ -364,6 +365,8 @@ pub fn run() {
             commands::history_list,
             commands::history_restore,
             commands::history_read,
+            commands::replace_preview,
+            commands::replace_apply,
             commands::export_write,
             commands::print_page,
             commands::export_write_binary,

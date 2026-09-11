@@ -42,6 +42,7 @@ import { PreferencesDialog } from "./components/PreferencesDialog";
 import { PromptDialog } from "./components/PromptDialog";
 import { SavedSearchSection } from "./components/SavedSearchSection";
 import { SearchHits } from "./components/SearchHits";
+import { ReplacePanel } from "./components/ReplacePanel";
 import { StatusBar } from "./components/StatusBar";
 import { StyleCheckDialog } from "./components/StyleCheckDialog";
 
@@ -208,6 +209,9 @@ import {
   readNote,
   saveAttachment,
   renameNote,
+  replaceApply,
+  replacePreview,
+  type ReplaceOptions,
   vaultIsEmpty,
   setWindowTitle,
   restoreNote,
@@ -1334,6 +1338,37 @@ function App() {
     }
   }
 
+  /// 保管フォルダ全体の置換（ADR-0055 / 12-3）。開いているノートは先に書き
+  /// 切り、置換の対象だったら読み直して本文を差し替える（Rust は書いた
+  /// ノートを監視から抑制しているので、ここで自分で追いかける）
+  async function handleReplaceAll(to: string, options: ReplaceOptions) {
+    if (!vaultRoot) return;
+    const from = query;
+    const ok = await confirm(
+      `「${from}」を「${to}」に置き換えます。元には戻せません（各ノートの履歴には残ります）。続けますか？`,
+      { title: APP_NAME, kind: "warning" },
+    );
+    if (!ok) return;
+    await sync.flush();
+    try {
+      const outcome = await replaceApply(vaultRoot, from, to, options);
+      if (currentPath && outcome.paths.includes(currentPath)) {
+        const text = await readNote(vaultRoot, currentPath);
+        sync.adopt(text);
+        headingRef.current = firstHeading(text);
+      }
+      await refresh();
+      const head = `${outcome.notes} 件のノート・${outcome.occurrences} 箇所を置換しました`;
+      setStatus(
+        outcome.failed.length
+          ? `${head}（書けなかった: ${outcome.failed.join("、")}）`
+          : head,
+      );
+    } catch (error) {
+      setStatus(`置換に失敗: ${String(error)}`);
+    }
+  }
+
   /// フォルダを別のフォルダの中へ移す（サイドバーの Drag & Drop。要望
   /// 2026-09-10）。開いているノートがその中なら、新しいパスで開き直す
   async function handleMoveFolder(folder: string, into: string) {
@@ -2284,10 +2319,21 @@ function App() {
                 </>
               )}
               {!settings.notesVisible ? null : query.trim() ? (
-                <SearchHits
-                  hits={hits}
-                  onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
-                />
+                <>
+                  <SearchHits
+                    hits={hits}
+                    onOpen={(path) => void openNote(`${vaultRoot}/${path}`)}
+                  />
+                  {/* 保管フォルダ全体の置換（ADR-0055）。検索欄の字を置き換える */}
+                  <ReplacePanel
+                    key={query}
+                    query={query}
+                    onPreview={(options) =>
+                      replacePreview(vaultRoot, query, options)
+                    }
+                    onApply={(to, options) => handleReplaceAll(to, options)}
+                  />
+                </>
               ) : (
                 <div className="note-scroll">
                   {trashView ? (

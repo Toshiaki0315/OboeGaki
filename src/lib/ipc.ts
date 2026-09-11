@@ -566,3 +566,41 @@ export async function setWindowTitle(title: string): Promise<void> {
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   await getCurrentWindow().setTitle(title);
 }
+
+// ---- 保管フォルダ全体の置換（ADR-0055 / 12-3）
+
+export type ReplaceOptions = { caseSensitive: boolean; includeCode: boolean };
+export type ReplaceCount = { notes: number; occurrences: number };
+export type ReplaceOutcome = ReplaceCount & {
+  paths: string[];
+  failed: string[];
+};
+
+/// 書かずに数えるだけ（押す前に件数を見せる）
+export async function replacePreview(
+  root: string,
+  from: string,
+  options: ReplaceOptions,
+): Promise<ReplaceCount> {
+  return invoke<ReplaceCount>("replace_preview", {
+    root,
+    from,
+    caseSensitive: options.caseSensitive,
+    includeCode: options.includeCode,
+  });
+}
+
+export async function replaceApply(
+  root: string,
+  from: string,
+  to: string,
+  options: ReplaceOptions,
+): Promise<ReplaceOutcome> {
+  return invoke<ReplaceOutcome>("replace_apply", {
+    root,
+    from,
+    to,
+    caseSensitive: options.caseSensitive,
+    includeCode: options.includeCode,
+  });
+}
