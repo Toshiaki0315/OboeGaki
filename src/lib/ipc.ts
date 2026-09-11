@@ -604,3 +604,12 @@ export async function replaceApply(
     includeCode: options.includeCode,
   });
 }
+
+/// タグの改名・統合（ADR-0055 / 12-4）。統合かどうかの判断と確認はフロント
+export async function renameTag(
+  root: string,
+  from: string,
+  to: string,
+): Promise<ReplaceOutcome> {
+  return invoke<ReplaceOutcome>("tag_rename", { root, from, to });
+}

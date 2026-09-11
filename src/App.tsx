@@ -69,6 +69,7 @@ import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
+import { tagRenamePlan } from "./lib/tag-rename";
 import { startupAction } from "./lib/startup-note";
 import {
   canDropAny,
@@ -209,6 +210,7 @@ import {
   readNote,
   saveAttachment,
   renameNote,
+  renameTag,
   replaceApply,
   replacePreview,
   type ReplaceOptions,
@@ -969,6 +971,8 @@ function App() {
   // テンプレートの選択（E-4）。null は閉じている
   const [templates, setTemplates] = useState<string[] | null>(null);
   // フォルダの作成・改名の入力（ADR-0024）。null は閉じている
+  // タグの改名・統合（ADR-0055 / 12-4）。右クリックの「名前を変更…」から
+  const [tagDialog, setTagDialog] = useState<string | null>(null);
   const [folderDialog, setFolderDialog] = useState<{
     kind: "create" | "rename";
     folder: string; // create: 親（"" は直下）/ rename: 対象
@@ -1335,6 +1339,52 @@ function App() {
       await refresh();
     } catch (error) {
       setStatus(String(error));
+    }
+  }
+
+  /// タグの改名・統合（ADR-0055 / 12-4）。統合なら確認を 1 回挟む。開いて
+  /// いるノートは先に書き切り、対象だったら読み直す
+  async function confirmTagName(typed: string) {
+    const from = tagDialog;
+    setTagDialog(null);
+    if (!vaultRoot || !from) return;
+    const plan = tagRenamePlan(
+      tags.map((entry) => entry.tag),
+      from,
+      typed,
+    );
+    if (plan.kind === "same") return;
+    if (plan.kind === "invalid") {
+      setStatus("タグの名前に空白と # は使えません");
+      return;
+    }
+    if (plan.kind === "merge") {
+      const ok = await confirm(
+        `「#${from}」を「#${plan.to}」に統合しますか？\n（全ノートの #${from} が #${plan.to} になります）`,
+        { title: APP_NAME, kind: "warning" },
+      );
+      if (!ok) return;
+    }
+    await sync.flush();
+    try {
+      const outcome = await renameTag(vaultRoot, from, plan.to);
+      if (currentPath && outcome.paths.includes(currentPath)) {
+        const text = await readNote(vaultRoot, currentPath);
+        sync.adopt(text);
+      }
+      if (tagFilter === from) filterByTag(plan.to.toLowerCase());
+      await refresh();
+      const head =
+        plan.kind === "merge"
+          ? `「#${from}」を「#${plan.to}」に統合しました（${outcome.notes} 件のノート）`
+          : `「#${from}」を「#${plan.to}」にしました（${outcome.notes} 件のノート）`;
+      setStatus(
+        outcome.failed.length
+          ? `${head}（書けなかった: ${outcome.failed.join("、")}）`
+          : head,
+      );
+    } catch (error) {
+      setStatus(`タグの改名に失敗: ${String(error)}`);
     }
   }
 
@@ -2602,6 +2652,17 @@ function App() {
               onClose={() => setDayDialog(null)}
             />
           )}
+          {tagDialog !== null && (
+            <PromptDialog
+              title={`タグ「#${tagDialog}」の名前を変更`}
+              label="新しい名前"
+              defaultValue={tagDialog}
+              note="全ノートの本文の #タグ を書き換えます。既にある名前にすると、そのタグに統合されます。"
+              confirmLabel="決定"
+              onConfirm={(typed) => void confirmTagName(typed)}
+              onClose={() => setTagDialog(null)}
+            />
+          )}
           {folderDialog !== null && (
             <PromptDialog
               title={
@@ -2980,6 +3041,13 @@ function App() {
                         label: "タグ名をコピー",
                         icon: <MenuIcon name="copy" />,
                         onSelect: () => void copyTag(target),
+                      },
+                      { kind: "separator" },
+                      // 全ノートの #タグ を書き換える（ADR-0055）。既にある
+                      // 名前なら統合
+                      {
+                        label: "名前を変更…",
+                        onSelect: () => setTagDialog(target),
                       },
                     ]}
                   />

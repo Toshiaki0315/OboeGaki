@@ -367,6 +367,7 @@ pub fn run() {
             commands::history_read,
             commands::replace_preview,
             commands::replace_apply,
+            commands::tag_rename,
             commands::export_write,
             commands::print_page,
             commands::export_write_binary,

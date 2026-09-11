@@ -45,6 +45,68 @@ pub fn replace_outside_code(
     }
 }
 
+/// タグ `#old` を `#new` に（ADR-0055 / 12-4）。判定は tags.rs のスキャナと
+/// 同じ規則（直前が行頭か空白、空白か `#` まで、normalize で比べる）なので、
+/// `#旧い話` や `#旧/子` のような別のタグは巻き込まない。front matter と
+/// コードの中は触らない。1 箇所も無ければ None
+pub fn rename_tag(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
+    let target = crate::tags::normalize(old);
+    if target.is_empty() || new.is_empty() {
+        return None;
+    }
+    let (head, body) = match crate::front_matter::block_len(text) {
+        Some(len) => text.split_at(len),
+        None => ("", text),
+    };
+    let mut out = String::with_capacity(text.len());
+    out.push_str(head);
+    let mut count = 0;
+    let mut in_fence = false;
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            out.push_str(line);
+            continue;
+        }
+        if in_fence {
+            out.push_str(line);
+            continue;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        let masked: Vec<char> = crate::tags::mask_inline_code(line).chars().collect();
+        let mut index = 0;
+        while index < chars.len() {
+            let at_tag = masked[index] == '#'
+                && chars[index] == '#'
+                && (index == 0 || chars[index - 1].is_whitespace());
+            if at_tag {
+                let mut end = index + 1;
+                while end < chars.len() && !masked[end].is_whitespace() && masked[end] != '#' {
+                    end += 1;
+                }
+                if end > index + 1 {
+                    let name: String = chars[index + 1..end].iter().collect();
+                    if crate::tags::normalize(&name) == target {
+                        out.push('#');
+                        out.push_str(new);
+                        count += 1;
+                        index = end;
+                        continue;
+                    }
+                }
+            }
+            out.push(chars[index]);
+            index += 1;
+        }
+    }
+    if count == 0 {
+        None
+    } else {
+        Some((out, count))
+    }
+}
+
 /// 1 行の中を置き換える。インラインコードの位置は mask で見て飛ばす
 /// （mask は文字数を変えない）。大小無視は文字ごとの小文字化で比べる
 fn replace_line(
@@ -115,6 +177,27 @@ mod tests {
         let (out, count) = replace_outside_code(text, "旧い", "新", true, true).unwrap();
         assert_eq!(out, "---\ntitle: 旧い\n---\n新\n```\n新\n```\n`新` と 新\n");
         assert_eq!(count, 4);
+    }
+
+    // タグの改名（ADR-0055 / 12-4）。判定は tags.rs のスキャナと同じ規則
+    #[test]
+    fn test_rename_tag_同じタグだけを変え_前方一致の別タグと階層は巻き込まない() {
+        let text = "#旧 と #旧い話 と #旧/子 と 文中#旧 と\n#旧\n";
+        let (out, count) = rename_tag(text, "旧", "新").unwrap();
+        assert_eq!(out, "#新 と #旧い話 と #旧/子 と 文中#旧 と\n#新\n");
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_rename_tag_大小は正規化で同じ_コードとfront_matterは触らない() {
+        let text = "---\ntags: [Work]\n---\n#Work と #work\n```\n#work\n```\n`#work` #WORK\n";
+        let (out, count) = rename_tag(text, "work", "業務").unwrap();
+        assert_eq!(
+            out,
+            "---\ntags: [Work]\n---\n#業務 と #業務\n```\n#work\n```\n`#work` #業務\n"
+        );
+        assert_eq!(count, 3);
+        assert!(rename_tag("#別", "旧", "新").is_none());
     }
 
     #[test]

@@ -1427,6 +1427,35 @@ pub fn replace_apply(
     })
 }
 
+/// タグの改名・統合（ADR-0055 / 12-4）。`to` が既にあるタグなら統合になる
+/// （判断と確認はフロント）。書いたノートは監視から抑制する
+#[tauri::command]
+pub fn tag_rename(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    from: String,
+    to: String,
+) -> Result<ReplaceOutcome, String> {
+    let vault = Vault::new(&root);
+    let mut db = IndexDb::open(&vault.managed_dir()).map_err(|e| e.to_string())?;
+    let outcome = crate::link_rewrite::rewrite_all(&vault, Some(&mut db), |text| {
+        crate::text_rewrite::rename_tag(text, &from, &to)
+    });
+    for written in &outcome.paths {
+        state.suppressor.mark(written);
+    }
+    Ok(ReplaceOutcome {
+        notes: outcome.rewritten,
+        occurrences: outcome.occurrences,
+        paths: outcome
+            .paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect(),
+        failed: outcome.failed,
+    })
+}
+
 #[derive(serde::Serialize)]
 pub struct ReplaceCount {
     pub notes: usize,
