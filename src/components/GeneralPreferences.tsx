@@ -319,7 +319,8 @@ export function GeneralPreferences({
         直してください。<strong>ノートは手元から出ません</strong>
         （ネットワークには出ず、このパソコンの中だけで読み書きします）。
         見せたくないフォルダは、保管フォルダ直下の .mcp-ignore に 1 行 1 つ
-        書いてください。
+        書いてください。はじめての方は、ヘルプメニューの「Claude とつなぐ
+        （MCP）の手引きを置く」から手順のノートを出せます。
       </p>
       <div className="preferences-fields">
         {/* ここは label で包まない。button を label で包むと、読み上げの

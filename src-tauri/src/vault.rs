@@ -94,6 +94,11 @@ pub const MANUAL: &str = include_str!("../resources/manual.md");
 /// 一度置いたら二度と置き直さない印。消したマニュアルを復活させない。
 const MANUAL_MARKER: &str = "seeded";
 
+/// 同梱の「Claude とつなぐ（MCP）の使い方」。**初回には置かない** —
+/// 繋ぐ気のない人の一覧に増やさない。ヘルプメニューから頼まれたら置く
+pub const MCP_MANUAL_TITLE: &str = "Claude とつなぐ（MCP）の使い方";
+pub const MCP_MANUAL: &str = include_str!("../resources/mcp-manual.md");
+
 /// 作ったばかりのノート。`cursor` は `{{cursor}}` があった位置
 /// （**UTF-16 コード単位**。CM6 のオフセットにそのまま渡せる）。
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -894,6 +899,12 @@ impl Vault {
     /// 別のファイルとして置く（`unique_path` が名前をずらす）。
     pub fn place_manual(&self) -> io::Result<PathBuf> {
         self.create_with(MANUAL_TITLE, MANUAL)
+    }
+
+    /// MCP の手引きを今の内容で置く（ヘルプメニューから）。
+    /// 使い方ノートと同じ構え — **既にあるノートは消さず**別に置く
+    pub fn place_mcp_manual(&self) -> io::Result<PathBuf> {
+        self.create_with(MCP_MANUAL_TITLE, MCP_MANUAL)
     }
 
     /// 今日のノートの末尾に追記する（どこからでも書き取り = ADR-0057）。
@@ -2634,6 +2645,25 @@ mod tests {
         note(root.path(), "先にあるノート.md");
 
         assert!(vault.seed_manual().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_mcp_manual_同梱の手引きは題が見出しと揃い_タグを増やさない() {
+        // 説明のための `#` でタグ一覧を汚さない（使い方ノートと同じ約束）
+        assert_eq!(crate::tags::extract_tags(MCP_MANUAL), Vec::<String>::new());
+        assert!(MCP_MANUAL.starts_with(&format!("# {MCP_MANUAL_TITLE}\n")));
+    }
+
+    #[test]
+    fn test_place_mcp_manual_置いた場所を返し_既にあるノートを消さない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let first = vault.place_mcp_manual().unwrap();
+        assert_eq!(first, root.path().join(format!("{MCP_MANUAL_TITLE}.md")));
+        let second = vault.place_mcp_manual().unwrap();
+        assert_ne!(first, second);
+        assert!(first.is_file() && second.is_file());
     }
 
     #[test]

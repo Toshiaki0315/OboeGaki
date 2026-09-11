@@ -205,6 +205,11 @@ export async function placeManual(root: string): Promise<string> {
   return invoke<string>("manual_place", { root });
 }
 
+/// MCP の手引きのノートを置く。置いた場所を返す。
+export async function placeMcpManual(root: string): Promise<string> {
+  return invoke<string>("mcp_manual_place", { root });
+}
+
 /// そのフォルダ**直下**のノート（ADR-0024 追記 4。子孫は含めない）。
 export async function notesInFolder(
   root: string,

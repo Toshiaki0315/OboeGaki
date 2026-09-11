@@ -212,6 +212,7 @@ import {
   historyRestore,
   imageSource,
   placeManual,
+  placeMcpManual,
   templateList,
   pinNote,
   readNote,
@@ -1380,6 +1381,15 @@ function App() {
     await openNote(placed);
   }
 
+  /// MCP（Claude とつなぐ）の手引きを置いて開く。初回には置かないので、
+  /// 繋ぎたくなった人がここから出す
+  async function handlePlaceMcpManual() {
+    if (!vaultRoot) return;
+    const placed = await placeMcpManual(vaultRoot);
+    await refresh();
+    await openNote(placed);
+  }
+
   async function confirmFolderName(typed: string) {
     const dialog = folderDialog;
     if (!vaultRoot || !dialog) return;
@@ -2167,6 +2177,7 @@ function App() {
       if (currentPathRef.current) setMoveOpen(true);
     },
     "place-manual": () => void handlePlaceManual(),
+    "place-mcp-manual": () => void handlePlaceMcpManual(),
     preferences: openPreferences,
     "open-vault": () => void chooseVault(),
     resync: () => void handleSync(false),

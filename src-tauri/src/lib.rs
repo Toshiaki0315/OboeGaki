@@ -206,6 +206,11 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .build()?;
     let help = SubmenuBuilder::new(handle, "ヘルプ")
         .item(&item("place-manual", "使い方のノートを置き直す", None)?)
+        .item(&item(
+            "place-mcp-manual",
+            "Claude とつなぐ（MCP）の手引きを置く",
+            None,
+        )?)
         .build()?;
     let menu = MenuBuilder::new(handle)
         .items(&[&application, &file, &edit, &view, &help])
@@ -363,6 +368,7 @@ pub fn run() {
             commands::note_pin,
             commands::history_usage,
             commands::mcp_config,
+            commands::mcp_manual_place,
             commands::trash_delete,
             commands::trash_empty,
             commands::note_search,

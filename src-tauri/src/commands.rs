@@ -603,6 +603,18 @@ pub fn mcp_config(root: String) -> Result<String, String> {
     ))
 }
 
+/// MCP の手引きのノートを置く（10-6 の続き。ヘルプメニューから）
+#[tauri::command]
+pub fn mcp_manual_place(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+) -> Result<String, String> {
+    let vault = Vault::new(&root);
+    let placed = vault.place_mcp_manual().map_err(|e| e.to_string())?;
+    state.suppressor.mark(&placed);
+    Ok(placed.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 pub fn manual_place(state: tauri::State<'_, WatchState>, root: String) -> Result<String, String> {
     let vault = Vault::new(&root);
