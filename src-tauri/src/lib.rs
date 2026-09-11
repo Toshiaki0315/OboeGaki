@@ -40,7 +40,7 @@ pub fn started() -> Instant {
 /// 書式ショートカット（Cmd+B 等）は CM6 のキーマップに残し、メニューには
 /// 載せない（載せると入力中のキーを横取りしてしまう）。
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
     let handle = app.handle();
     let item = |id: &str, label: &str, accelerator: Option<&str>| {
         let mut builder = MenuItemBuilder::with_id(id, label);
@@ -61,16 +61,29 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .version(Some(lines.version))
         .short_version(Some(lines.short_version))
         .build();
+    // 標準の項目は**呼び名を日本語で渡す**（実機 2026-09-11: Tauri の既定は
+    // 英語）。呼び名は macOS 標準の日本語に合わせる（STANDARD_LABELS）
+    let labels = &STANDARD_LABELS;
     let application = SubmenuBuilder::new(handle, "おぼえがき")
-        .about(Some(about))
+        .item(&PredefinedMenuItem::about(
+            handle,
+            Some(labels.about),
+            Some(about),
+        )?)
         .separator()
         .item(&item("preferences", "環境設定…", Some("CmdOrCtrl+,"))?)
         .separator()
-        .hide()
-        .hide_others()
-        .show_all()
+        .item(&PredefinedMenuItem::hide(handle, Some(labels.hide))?)
+        .item(&PredefinedMenuItem::hide_others(
+            handle,
+            Some(labels.hide_others),
+        )?)
+        .item(&PredefinedMenuItem::show_all(
+            handle,
+            Some(labels.show_all),
+        )?)
         .separator()
-        .quit()
+        .item(&PredefinedMenuItem::quit(handle, Some(labels.quit))?)
         .build()?;
     let file = SubmenuBuilder::new(handle, "ファイル")
         .item(&item("new-note", "新規ノート", Some("CmdOrCtrl+N"))?)
@@ -113,13 +126,16 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("trash", "ゴミ箱へ移動", None)?)
         .build()?;
     let edit = SubmenuBuilder::new(handle, "編集")
-        .undo()
-        .redo()
+        .item(&PredefinedMenuItem::undo(handle, Some(labels.undo))?)
+        .item(&PredefinedMenuItem::redo(handle, Some(labels.redo))?)
         .separator()
-        .cut()
-        .copy()
-        .paste()
-        .select_all()
+        .item(&PredefinedMenuItem::cut(handle, Some(labels.cut))?)
+        .item(&PredefinedMenuItem::copy(handle, Some(labels.copy))?)
+        .item(&PredefinedMenuItem::paste(handle, Some(labels.paste))?)
+        .item(&PredefinedMenuItem::select_all(
+            handle,
+            Some(labels.select_all),
+        )?)
         .separator()
         // 書式（B-1）。エディタのキー（Cmd+B 等）は横取りしないよう
         // アクセラレータを付けない
@@ -196,6 +212,36 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     });
     Ok(())
 }
+
+/// 標準メニューの呼び名（macOS の日本語に合わせる。実機 2026-09-11: Tauri の
+/// 既定は英語）。表に持つのは、テストで「英語のまま残っていない」を見るため
+pub struct StandardLabels {
+    pub about: &'static str,
+    pub hide: &'static str,
+    pub hide_others: &'static str,
+    pub show_all: &'static str,
+    pub quit: &'static str,
+    pub undo: &'static str,
+    pub redo: &'static str,
+    pub cut: &'static str,
+    pub copy: &'static str,
+    pub paste: &'static str,
+    pub select_all: &'static str,
+}
+
+pub const STANDARD_LABELS: StandardLabels = StandardLabels {
+    about: "おぼえがきについて",
+    hide: "おぼえがきを隠す",
+    hide_others: "ほかを隠す",
+    show_all: "すべてを表示",
+    quit: "おぼえがきを終了",
+    undo: "取り消す",
+    redo: "やり直す",
+    cut: "カット",
+    copy: "コピー",
+    paste: "ペースト",
+    select_all: "すべてを選択",
+};
 
 /// 「について」に出す版。Cargo の版と、`make app` が渡すビルド日時
 /// （build.rs。渡されなければ「開発版」）
@@ -402,6 +448,40 @@ mod tests {
         assert_eq!(about.name, "おぼえがき(OboeGaki)");
         assert_eq!(about.version, "0.5.0");
         assert_eq!(about.short_version, super::about_versions().1);
+    }
+
+    /// 標準メニューは英語のまま残さない（実機 2026-09-11）。日本語対応の
+    /// 宣言（Info.plist）と ja.lproj もここで見張る
+    #[test]
+    fn test_標準メニューの呼び名は日本語_日本語対応を宣言している() {
+        let l = &super::STANDARD_LABELS;
+        for label in [
+            l.about,
+            l.hide,
+            l.hide_others,
+            l.show_all,
+            l.quit,
+            l.undo,
+            l.redo,
+            l.cut,
+            l.copy,
+            l.paste,
+            l.select_all,
+        ] {
+            assert!(label.chars().any(|c| !c.is_ascii()), "英語のまま: {label}");
+        }
+        let plist = include_str!("../Info.plist");
+        assert!(plist.contains("<string>ja</string>"));
+        assert!(plist.contains("CFBundleAllowMixedLocalizations"));
+        assert!(include_str!("../locales/ja.lproj/InfoPlist.strings").contains("おぼえがき"));
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert!(conf["bundle"]["resources"]
+            .as_object()
+            .map(|m| m
+                .values()
+                .any(|v| v.as_str() == Some("ja.lproj/InfoPlist.strings")))
+            .unwrap_or(false));
     }
 
     /// 版は 3 箇所（Cargo / tauri.conf / package.json）が同じ字面であること。

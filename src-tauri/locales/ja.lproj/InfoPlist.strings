@@ -1,0 +1,4 @@
+/* Finder・Dock・「について」に出す表示名（ADR-0047）。ja.lproj が在ることで
+   macOS が日本語対応と見なし、標準の窓とメニューを日本語で出す */
+CFBundleName = "おぼえがき";
+CFBundleDisplayName = "おぼえがき";
