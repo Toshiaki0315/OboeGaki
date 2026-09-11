@@ -3,7 +3,8 @@
 //     oboegaki-mcp <保管フォルダ>
 //
 // 中身は lib の `mcp` モジュール（純 Rust。ここは rmcp との橋渡しだけ）。
-// 読みのツールと資源だけ（10-2 / 10-3）。書きは 10-4 以降。
+// 読みのツールと資源（10-2 / 10-3）と、作る・足すの書き（10-4）。
+// 差し替え・移動・ゴミ箱は 10-5 以降。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -62,6 +63,36 @@ struct HistoryParams {
     /// 版の時刻（`2026-09-02 10:00:00`）。省くと一覧
     /// / Version stamp as returned by this tool; omit to list versions.
     at: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CreateParams {
+    /// 題名（本文の見出しになる）/ Title; also becomes the note's `#` heading.
+    title: String,
+    /// 本文（省くと見出しだけ）/ Body text; omit for just the heading.
+    text: Option<String>,
+    /// 入れるフォルダ（相対。省くと直下）/ Folder to create it in; omit for the vault root.
+    folder: Option<String>,
+    /// 雛形の名前（`templates/` の中。指定すると text は使わない）
+    /// / Template name from the vault's templates folder; `text` is ignored when set.
+    template: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct AppendParams {
+    /// ノートの相対パス / Path of the note.
+    path: String,
+    /// 足す文 / Text to append.
+    text: String,
+    /// 見出し（渡すとその節の末尾へ。省くと文書の末尾）
+    /// / Heading to append under; omit to append at the end of the note.
+    heading: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema, Default)]
+struct DailyParams {
+    /// 足す文（省くと今日のノートを作る・開くだけ）/ Text to append; omit to just get today's note.
+    text: Option<String>,
 }
 
 #[derive(Clone)]
@@ -169,6 +200,47 @@ impl OboegakiMcp {
             Err(error) => format!("error: {error}"),
         }
     }
+
+    #[tool(
+        name = "create_note",
+        description = "ノートを新しく作る。題名は本文の見出しになる。folder で入れる場所、template で雛形を選べる / Create a new note; the title becomes its `#` heading."
+    )]
+    async fn create_note(&self, Parameters(p): Parameters<CreateParams>) -> String {
+        match self.vault.create_note(
+            &p.title,
+            p.text.as_deref(),
+            p.folder.as_deref(),
+            p.template.as_deref(),
+        ) {
+            Ok(written) => json(&written),
+            Err(error) => format!("error: {error}"),
+        }
+    }
+
+    #[tool(
+        name = "append_to_note",
+        description = "ノートの末尾に足す。heading を渡すとその節の末尾へ。既にある本文は書き換えない / Append text to a note, optionally at the end of a given heading's section. Existing text is never rewritten."
+    )]
+    async fn append_to_note(&self, Parameters(p): Parameters<AppendParams>) -> String {
+        match self
+            .vault
+            .append_to_note(&p.path, &p.text, p.heading.as_deref())
+        {
+            Ok(written) => json(&written),
+            Err(error) => format!("error: {error}"),
+        }
+    }
+
+    #[tool(
+        name = "daily_note",
+        description = "今日のノートを返す（無ければ作る）。text を渡すと末尾に足す / Today's note, creating it if needed; pass `text` to append to it."
+    )]
+    async fn daily_note(&self, Parameters(p): Parameters<DailyParams>) -> String {
+        match self.vault.daily_note(p.text.as_deref()) {
+            Ok(written) => json(&written),
+            Err(error) => format!("error: {error}"),
+        }
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -182,8 +254,8 @@ impl ServerHandler for OboegakiMcp {
         );
         info.server_info = Implementation::new("oboegaki-mcp", env!("CARGO_PKG_VERSION"));
         info.with_instructions(format!(
-                "おぼえがき（OboeGaki）の保管フォルダ {} を読む。`.mcp-ignore` に書かれたフォルダは見えない。\
-                 / Read-only access to an OboeGaki vault. Folders listed in .mcp-ignore are hidden.",
+                "おぼえがき（OboeGaki）の保管フォルダ {} を読み書きする。`.mcp-ignore` に書かれたフォルダは見えず、書き込みもできない。書けるのは新しいノートと末尾への追記だけで、既にある本文は書き換えない。\
+                 / Read and write an OboeGaki vault. Folders listed in .mcp-ignore are hidden and read-only. Writing is limited to creating notes and appending; existing text is never rewritten.",
                 self.vault.root().display()
             ))
     }

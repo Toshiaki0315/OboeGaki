@@ -242,6 +242,12 @@ impl Vault {
     /// **行き先は実在するフォルダ**（画面の一覧から来る）。空文字は直下。
     /// 予約フォルダや vault の外は `existing_folder_relative` が断る。
     pub fn create_in(&self, folder: &str, title: &str) -> io::Result<PathBuf> {
+        self.create_in_with(folder, title, &format!("# {title}\n\n"))
+    }
+
+    /// 本文まで決めてフォルダの中に作る（MCP の `create_note` = 10-4）。
+    /// 行き先の確かめ方は `create_in` と同じ（同じ道を通す）。
+    pub fn create_in_with(&self, folder: &str, title: &str, text: &str) -> io::Result<PathBuf> {
         let cleaned = self.existing_folder_relative(folder)?;
         let destination = if cleaned.is_empty() {
             self.root.clone()
@@ -256,8 +262,27 @@ impl Vault {
         }
         let stem = sanitize_filename(title);
         let path = unique_path(&destination, &stem, ".md", None);
-        crate::autosave::save_atomic(&path, &format!("# {title}\n\n"))?;
+        crate::autosave::save_atomic(&path, text)?;
         Ok(path)
+    }
+
+    /// 雛形の本文を埋めて返す（雛形の名前で引く。MCP の `create_note`）。
+    /// front matter は持ち込まない（`template_body`）。
+    pub fn template_text(
+        &self,
+        name: &str,
+        title: &str,
+        now: &DateTime<Local>,
+    ) -> io::Result<String> {
+        let path = self
+            .templates_dir()
+            .join(format!("{}.md", sanitize_filename(name)));
+        // パスは外から来る。templates の外のファイルを雛形にしない
+        if !self.inside_templates(&path) {
+            return Err(outside_error("その雛形はありません", &path));
+        }
+        let text = fs::read_to_string(&path)?;
+        Ok(crate::template::expand(&template_body(&text), now, title).text)
     }
 
     /// 本文を指定して新しいノートを作る（雛形から作るとき）。

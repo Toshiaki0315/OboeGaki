@@ -116,6 +116,65 @@ pub fn path_from_uri(uri: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// 書いた先（10-4）。**書くのは `.md` だけ** — 索引は触らない
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Written {
+    pub path: String,
+}
+
+/// その見出しの節の終わり（次の同じか浅い見出しの手前。無ければ末尾）を
+/// バイト位置で返す。見出しが見つからなければ None。
+///
+/// 規則は TS 側の `src/lib/section.ts`（埋め込みの `#見出し`）と同じ:
+/// 深い小見出しは節の中、コードフェンスの中の `#` は見出しに数えない。
+pub fn section_end(text: &str, heading: &str) -> Option<usize> {
+    let wanted = heading.trim().to_lowercase();
+    if wanted.is_empty() {
+        return None;
+    }
+    let mut in_fence = false;
+    let mut level = 0usize;
+    let mut found = false;
+    let mut offset = 0usize;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            offset += line.len();
+            continue;
+        }
+        if in_fence {
+            offset += line.len();
+            continue;
+        }
+        if let Some((depth, name)) = heading_of(line) {
+            if !found {
+                if name.to_lowercase() == wanted {
+                    found = true;
+                    level = depth;
+                }
+            } else if depth <= level {
+                return Some(offset);
+            }
+        }
+        offset += line.len();
+    }
+    found.then_some(text.len())
+}
+
+/// `## 見出し ##` → (深さ, 題)。見出しでなければ None
+fn heading_of(line: &str) -> Option<(usize, String)> {
+    let depth = line.chars().take_while(|c| *c == '#').count();
+    if depth == 0 || depth > 6 {
+        return None;
+    }
+    let rest = &line[depth..];
+    if !rest.starts_with(' ') && !rest.starts_with('\t') {
+        return None;
+    }
+    Some((depth, rest.trim().trim_end_matches('#').trim().to_string()))
+}
+
 /// read_note の答え
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NoteText {
@@ -352,6 +411,132 @@ impl McpVault {
             .collect())
     }
 
+    /// 新しいノートを作る（10-4）。**書くのは `.md` だけ** — アプリが動いて
+    /// いれば FSEvents が拾い、外部変更の流れ（spec §7.5）がそのまま働く
+    pub fn create_note(
+        &self,
+        title: &str,
+        text: Option<&str>,
+        folder: Option<&str>,
+        template: Option<&str>,
+    ) -> Result<Written, String> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("題名が空".to_string());
+        }
+        let folder = self.guarded_folder(folder)?;
+        let body = match template {
+            Some(name) => self
+                .vault
+                .template_text(name, title, &chrono::Local::now())
+                .map_err(|e| format!("雛形を読めない: {e}"))?,
+            // 題名は本文の見出し（ADR-0005）。本文に見出しが無ければこちらで置く
+            None => {
+                let body = text.unwrap_or("");
+                if body.trim_start().starts_with("# ") {
+                    body.to_string()
+                } else {
+                    format!("# {title}\n\n{}", body.trim_start_matches('\n'))
+                }
+            }
+        };
+        let mut body = body;
+        if !body.ends_with('\n') {
+            body.push('\n');
+        }
+        let path = self
+            .vault
+            .create_in_with(&folder, title, &body)
+            .map_err(|e| e.to_string())?;
+        Ok(Written {
+            path: self.relative_of(&path),
+        })
+    }
+
+    /// 末尾に足す。見出しを渡せばその節の末尾（次の見出しの手前）へ。
+    /// **前の行に繋げない**（末尾に改行が無ければ挟む）
+    pub fn append_to_note(
+        &self,
+        relative: &str,
+        text: &str,
+        heading: Option<&str>,
+    ) -> Result<Written, String> {
+        let (cleaned, absolute) = self.guarded(relative)?;
+        if text.trim().is_empty() {
+            return Err("書くものが空".to_string());
+        }
+        if !absolute.is_file() {
+            return Err(format!("ノートがありません: {cleaned}"));
+        }
+        let current = read_note(&absolute).map_err(|e| e.to_string())?;
+        let added = text.trim_end_matches('\n');
+        let updated = match heading {
+            Some(heading) => {
+                let end = section_end(&current, heading)
+                    .ok_or_else(|| format!("その見出しはありません: {heading}"))?;
+                let (head, tail) = current.split_at(end);
+                let mut out = head.trim_end_matches('\n').to_string();
+                out.push('\n');
+                out.push_str(added);
+                out.push('\n');
+                if !tail.trim().is_empty() {
+                    // 節の切れ目に空行を 1 つ残す（見出しが本文にくっつかない）
+                    out.push('\n');
+                    out.push_str(tail.trim_start_matches('\n'));
+                }
+                out
+            }
+            None => {
+                let mut out = current;
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str(added);
+                out.push('\n');
+                out
+            }
+        };
+        crate::autosave::save_atomic(&absolute, &updated).map_err(|e| e.to_string())?;
+        Ok(Written { path: cleaned })
+    }
+
+    /// 今日のノート。text があれば末尾に足す。**何度呼んでも同じノート**
+    pub fn daily_note(&self, text: Option<&str>) -> Result<Written, String> {
+        let now = chrono::Local::now();
+        let path = match text {
+            Some(text) if !text.trim().is_empty() => self
+                .vault
+                .append_to_daily(&now, text)
+                .map_err(|e| e.to_string())?,
+            _ => self.vault.daily_note(&now).map_err(|e| e.to_string())?.path,
+        };
+        Ok(Written {
+            path: self.relative_of(&path),
+        })
+    }
+
+    /// 書く先のフォルダを確かめる（空は直下）。実在は `create_in_with` が見る
+    fn guarded_folder(&self, folder: Option<&str>) -> Result<String, String> {
+        let cleaned = folder.unwrap_or("").trim_matches('/');
+        if cleaned.is_empty() {
+            return Ok(String::new());
+        }
+        if cleaned.split('/').any(|part| part == "..") {
+            return Err("保管フォルダの外には作れない".to_string());
+        }
+        if self.ignore.is_ignored(cleaned) {
+            return Err(format!("見せない場所です: {cleaned}"));
+        }
+        Ok(cleaned.to_string())
+    }
+
+    fn relative_of(&self, path: &std::path::Path) -> String {
+        path.strip_prefix(self.vault.root())
+            .unwrap_or(path)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     fn versions(&self, cleaned: &str) -> Vec<crate::history::Version> {
         let store = crate::history::store_root(&self.vault.managed_dir());
         crate::history::versions(&store, &format!("path:{cleaned}"))
@@ -540,6 +725,114 @@ mod tests {
             .iter()
             .any(|r| r.uri == note_uri("会議.md") && r.title == "会議"));
         assert!(!resources.iter().any(|r| r.path.starts_with("秘密/")));
+    }
+
+    #[test]
+    fn test_create_note_フォルダと雛形で作る_見せない場所には作らない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::create_dir_all(root.path().join("仕事")).unwrap();
+        fs::write(
+            vault.templates_dir().join("議事録.md"),
+            "---\npinned: true\n---\n# {{title}}\n\n## 決めたこと\n",
+        )
+        .unwrap();
+        fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
+        fs::create_dir_all(root.path().join("秘密")).unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+
+        let made = mcp
+            .create_note("覚え書き", Some("本文\n"), Some("仕事"), None)
+            .unwrap();
+        assert_eq!(made.path, "仕事/覚え書き.md");
+        let text = mcp.read_note(&made.path).unwrap().text;
+        assert!(text.starts_with("# 覚え書き\n"));
+        assert!(text.contains("本文"));
+
+        // 雛形から（front matter は持ち込まない。`{{title}}` は埋まる）
+        let from = mcp
+            .create_note("9 月定例", None, Some("仕事"), Some("議事録"))
+            .unwrap();
+        let text = mcp.read_note(&from.path).unwrap().text;
+        assert!(text.starts_with("# 9 月定例\n"));
+        assert!(text.contains("## 決めたこと"));
+        assert!(!text.contains("pinned"));
+
+        // 見せない場所・保管フォルダの外・知らない雛形は断る
+        assert!(mcp.create_note("裏", None, Some("秘密"), None).is_err());
+        assert!(mcp.create_note("外", None, Some("../外"), None).is_err());
+        assert!(mcp
+            .create_note("無い雛形", None, None, Some("無い"))
+            .is_err());
+        assert!(mcp.create_note("  ", None, None, None).is_err());
+    }
+
+    #[test]
+    fn test_append_to_note_末尾と節の末尾に足す_前の行に繋げない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(
+            root.path(),
+            "設計.md",
+            "# 設計\n\n## 決めたこと\n\n- A\n\n## 宿題\n\n- B",
+        );
+        let mcp = McpVault::open(root.path()).unwrap();
+
+        // 節を指定: その節の末尾（次の見出しの手前）へ
+        mcp.append_to_note("設計.md", "- C", Some("決めたこと"))
+            .unwrap();
+        let text = mcp.read_note("設計.md").unwrap().text;
+        assert!(text.contains("- A\n- C\n\n## 宿題"), "{text:?}");
+
+        // 節を指定しない: 文書の末尾（改行が無くても前の行に繋げない）
+        mcp.append_to_note("設計.md", "- D", None).unwrap();
+        let text = mcp.read_note("設計.md").unwrap().text;
+        assert!(text.ends_with("- B\n- D\n"), "{text:?}");
+
+        assert!(mcp.append_to_note("設計.md", "  ", None).is_err());
+        assert!(mcp
+            .append_to_note("設計.md", "x", Some("無い見出し"))
+            .is_err());
+        assert!(mcp.append_to_note("秘密/裏.md", "x", None).is_err());
+        assert!(mcp.append_to_note("無い.md", "x", None).is_err());
+    }
+
+    #[test]
+    fn test_daily_note_今日のノートを返し_文があれば末尾に足す() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+
+        let first = mcp.daily_note(None).unwrap();
+        assert!(first.path.ends_with(".md"));
+        // 何度呼んでも同じノート（2 つできると、どちらに書いたか分からない）
+        let again = mcp.daily_note(Some("思いついたこと")).unwrap();
+        assert_eq!(again.path, first.path);
+        assert!(mcp
+            .read_note(&first.path)
+            .unwrap()
+            .text
+            .contains("思いついたこと"));
+    }
+
+    #[test]
+    fn test_section_end_見出しの節の終わり_コードの中の_は数えない() {
+        let text = "# 題\n\n## A\n\n本文\n\n```\n## 中\n```\n\n## B\n\n後\n";
+        let end = section_end(text, "A").unwrap();
+        assert!(
+            text[..end].contains("## 中"),
+            "コードの中は節の切れ目にしない"
+        );
+        assert!(!text[..end].contains("## B"));
+        assert!(section_end(text, "無い").is_none());
+        // 深い小見出しは含み、同じ深さで切れる
+        let nested = "## A\n\nあ\n\n### A-1\n\nい\n\n## B\n";
+        let end = section_end(nested, "A").unwrap();
+        assert!(nested[..end].contains("### A-1"));
+        assert!(!nested[..end].contains("## B"));
     }
 
     #[test]
