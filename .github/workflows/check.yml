@@ -14,9 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # 24 は現行の LTS。手元（Homebrew）は 25 だが、奇数系統は寿命が短く
+      # 既に更新が止まっているので CI では追わない。依存の engines も
+      # `^22.13.0 || >=24` の形が多く、24 が素直に通る線
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
