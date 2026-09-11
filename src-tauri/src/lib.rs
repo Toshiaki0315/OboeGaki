@@ -17,6 +17,7 @@ pub mod references;
 pub mod related;
 pub mod search_query;
 pub mod tags;
+pub mod tasks;
 pub mod template;
 pub mod text_rewrite;
 pub mod vault;
@@ -368,6 +369,8 @@ pub fn run() {
             commands::replace_preview,
             commands::replace_apply,
             commands::tag_rename,
+            commands::task_list,
+            commands::task_complete,
             commands::export_write,
             commands::print_page,
             commands::export_write_binary,

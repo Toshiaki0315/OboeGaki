@@ -8,6 +8,7 @@ import {
   openVaultRoot,
   type FolderCount,
   type TagCount,
+  type TaskRow,
   type TrashEntry,
 } from "../lib/ipc";
 import type { NoteEntry } from "../lib/note-order";
@@ -18,6 +19,8 @@ type AppState = {
   tags: TagCount[];
   folders: FolderCount[];
   trashNotes: TrashEntry[];
+  /// 未完了のやること（ADR-0056）
+  tasks: TaskRow[];
   currentPath: string | null;
   /// `trashDays` は環境設定のゴミ箱の日数（省くと Rust 側の既定）
   openVault: (root: string, trashDays?: number) => Promise<void>;
@@ -31,6 +34,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   tags: [],
   folders: [],
   trashNotes: [],
+  tasks: [],
   currentPath: null,
 
   async openVault(root, trashDays) {

@@ -7,6 +7,7 @@
 /// 描き方は書式ツールバーと同じ（16×16・線・currentColor）。
 
 export type MenuIconName =
+  | "task"
   | "pin"
   | "copy"
   | "link"
@@ -85,6 +86,8 @@ export const MENU_ICONS: Record<MenuIconName, readonly string[]> = {
   folder: [
     "M1.8 12.5v-8a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.4a1 1 0 0 1-1 1h-9.4a1 1 0 0 1-1-1z",
   ],
+  // やること（箱とチェック）
+  task: ["M2.6 2.6h10.8v10.8H2.6z", "M4.8 8.2l2.2 2.2 4.2-4.6"],
   // タグ（札と穴）
   tag: [
     "M2.6 8.4V3.4a1 1 0 0 1 1-1h5l5 5a1 1 0 0 1 0 1.4l-4.6 4.6a1 1 0 0 1-1.4 0z",

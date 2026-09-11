@@ -54,7 +54,26 @@ export async function fetchLists(root: string) {
     path: entry.path,
     trashedMs: entry.trashed_ms,
   }));
-  return { notes, tags, folders, trashNotes };
+  const tasks = await invoke<TaskRow[]>("task_list", { root });
+  return { notes, tags, folders, trashNotes, tasks };
+}
+
+/// やること一覧の 1 行（ADR-0056）。path は vault からの相対
+export type TaskRow = {
+  path: string;
+  line: number;
+  text: string;
+  due: string | null;
+  mtime_ms: number;
+};
+
+/// 開いていないノートのやることを完了にする（開いているノートはエディタで書く）
+export async function taskComplete(
+  root: string,
+  path: string,
+  line: number,
+): Promise<void> {
+  await invoke("task_complete", { root, path, line });
 }
 
 /// レイアウト作成・監視開始・背景の索引同期を起動する。

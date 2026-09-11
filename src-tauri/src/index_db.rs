@@ -29,7 +29,7 @@ pub const INDEX_FILE: &str = "index.sqlite";
 /// 3: tags テーブルを追加（サイドバーのタグ一覧）
 /// 5: links テーブルを追加（バックリンク。E-6）
 /// 6: links に relation を足した（続柄。M-3）
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7; // 7: tasks 表（ADR-0056）
 /// この文字数以上なら trigram FTS、未満なら LIKE フォールバック。
 const FTS_MIN_CHARS: usize = 3;
 const SEARCH_LIMIT: usize = 50;
@@ -182,6 +182,14 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
             rusqlite::params![relative, tag],
         )?;
     }
+    // やること（ADR-0056）。完了も載せる（一覧に出すのは未完了だけ）
+    tx.execute("DELETE FROM tasks WHERE path = ?1", [&relative])?;
+    for task in crate::tasks::extract_tasks(&text) {
+        tx.execute(
+            "INSERT OR REPLACE INTO tasks(path, line, text, done, due) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![relative, task.line as i64, task.text, task.done, task.due],
+        )?;
+    }
     // 指しているノート（E-6）。**行き先の有無は問わない** — まだ無いノートへの
     // リンクも、作られた瞬間に繋がるべきもの（ADR-0011）
     tx.execute("DELETE FROM links WHERE path = ?1", [&relative])?;
@@ -194,6 +202,17 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
         )?;
     }
     Ok(())
+}
+
+/// やること一覧の 1 行（ADR-0056）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TaskRow {
+    /// vault からの相対パス
+    pub path: String,
+    pub line: usize,
+    pub text: String,
+    pub due: Option<String>,
+    pub mtime_ms: i64,
 }
 
 pub struct IndexDb {
@@ -233,6 +252,7 @@ impl IndexDb {
                  DROP TABLE IF EXISTS notes_fts;
                  DROP TABLE IF EXISTS tags;
                  DROP TABLE IF EXISTS links;
+                 DROP TABLE IF EXISTS tasks;
                  PRAGMA user_version = {SCHEMA_VERSION};
                  COMMIT;"
             ))?;
@@ -268,7 +288,17 @@ impl IndexDb {
                 relation TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (path, target, relation)
             );
-            CREATE INDEX IF NOT EXISTS idx_links_target ON links(target COLLATE NOCASE);",
+            CREATE INDEX IF NOT EXISTS idx_links_target ON links(target COLLATE NOCASE);
+            -- やること（ADR-0056）。行番号は 0 始まり、due は YYYY-MM-DD か NULL
+            CREATE TABLE IF NOT EXISTS tasks (
+                path TEXT NOT NULL,
+                line INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                done INTEGER NOT NULL,
+                due  TEXT,
+                PRIMARY KEY (path, line)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_open ON tasks(done, due);",
         )?;
         Ok(Self { conn })
     }
@@ -324,6 +354,7 @@ impl IndexDb {
             tx.execute("DELETE FROM notes_fts WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM tags WHERE path = ?1", [gone])?;
             tx.execute("DELETE FROM links WHERE path = ?1", [gone])?;
+            tx.execute("DELETE FROM tasks WHERE path = ?1", [gone])?;
         }
         tx.commit()?;
         Ok(result)
@@ -339,7 +370,8 @@ impl IndexDb {
             "DELETE FROM notes;
              DELETE FROM notes_fts;
              DELETE FROM tags;
-             DELETE FROM links;",
+             DELETE FROM links;
+             DELETE FROM tasks;",
         )?;
         self.sync(vault)
     }
@@ -372,6 +404,7 @@ impl IndexDb {
         tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
         tx.execute("DELETE FROM tags WHERE path = ?1", [&relative])?;
         tx.execute("DELETE FROM links WHERE path = ?1", [&relative])?;
+        tx.execute("DELETE FROM tasks WHERE path = ?1", [&relative])?;
         tx.commit()
     }
 
@@ -382,6 +415,27 @@ impl IndexDb {
              GROUP BY tag ORDER BY uses DESC, tag ASC",
         )?;
         let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect()
+    }
+
+    /// 未完了のやること（ADR-0056）。期限が近い順、無期限は後ろ、同じなら
+    /// ノートの更新が新しい順
+    pub fn open_tasks(&self) -> rusqlite::Result<Vec<TaskRow>> {
+        let mut statement = self.conn.prepare(
+            "SELECT tasks.path, tasks.line, tasks.text, tasks.due, notes.mtime_ns
+             FROM tasks JOIN notes ON notes.path = tasks.path
+             WHERE tasks.done = 0
+             ORDER BY (tasks.due IS NULL) ASC, tasks.due ASC, notes.mtime_ns DESC, tasks.line ASC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(TaskRow {
+                path: row.get(0)?,
+                line: row.get::<_, i64>(1)? as usize,
+                text: row.get(2)?,
+                due: row.get(3)?,
+                mtime_ms: row.get::<_, i64>(4)? / 1_000_000,
+            })
+        })?;
         rows.collect()
     }
 
@@ -1012,6 +1066,27 @@ mod tests {
             .query_row("SELECT count(*) FROM notes", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    // やること一覧（ADR-0056 / 12-5）
+    #[test]
+    fn test_open_tasks_未完了だけを_期限が近い順_無期限は更新順で() {
+        let (root, vault) = vault_with(&[
+            ("a.md", "- [ ] 遠い @2026-12-01\n- [x] 済み\n"),
+            ("仕事/b.md", "- [ ] 近い @2026-10-01\n- [ ] 期限なし\n"),
+        ]);
+        let db = synced(&vault);
+        let rows = db.open_tasks().unwrap();
+        let texts: Vec<&str> = rows.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            vec!["近い @2026-10-01", "遠い @2026-12-01", "期限なし"]
+        );
+        assert_eq!(rows[0].path, "仕事/b.md");
+        assert_eq!(rows[0].line, 0);
+        assert_eq!(rows[0].due.as_deref(), Some("2026-10-01"));
+        assert!(rows[2].mtime_ms > 0);
+        let _ = root;
     }
 
     #[test]

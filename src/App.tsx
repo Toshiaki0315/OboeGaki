@@ -48,6 +48,7 @@ import { StyleCheckDialog } from "./components/StyleCheckDialog";
 
 import { TableDialog } from "./components/TableDialog";
 import { TagSection } from "./components/TagSection";
+import { TaskSection } from "./components/TaskSection";
 import { TrashRows } from "./components/TrashRows";
 
 import type { FormatKind } from "./editor/format-commands";
@@ -70,6 +71,7 @@ import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
 import { tagRenamePlan } from "./lib/tag-rename";
+import { lineStartOffset, setTaskDone } from "./lib/tasks";
 import { startupAction } from "./lib/startup-note";
 import {
   canDropAny,
@@ -212,6 +214,7 @@ import {
   renameNote,
   renameTag,
   replaceApply,
+  taskComplete,
   replacePreview,
   type ReplaceOptions,
   vaultIsEmpty,
@@ -229,6 +232,9 @@ import "./App.css";
 // Phase 1 の骨格 UI: フォルダを開く → ノート一覧 → 編集 → 800ms 自動保存 →
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
 
+/// サイドバー下段の節（開くのは 1 つ。フォルダ・タグ・やること）
+type SideKind = "folders" | "tags" | "tasks";
+
 function App() {
   const {
     vaultRoot,
@@ -236,6 +242,7 @@ function App() {
     tags,
     folders,
     trashNotes,
+    tasks,
     currentPath,
     openVault,
     refresh,
@@ -668,15 +675,17 @@ function App() {
 
   // 左下のフォルダ / タグは排他で開く（ユーザー要望 2026-09-04）。
   // 両方開くと一覧が痩せすぎる。開いた側が縦の約 1/3 を使う
-  const [sideOpen, setSideOpen] = useState<"folders" | "tags" | null>(() => {
+  const [sideOpen, setSideOpen] = useState<SideKind | null>(() => {
     try {
       const kept = localStorage.getItem("oboegaki.side");
-      return kept === "folders" || kept === "tags" ? kept : "folders";
+      return kept === "folders" || kept === "tags" || kept === "tasks"
+        ? kept
+        : "folders";
     } catch {
       return "folders";
     }
   });
-  function toggleSide(kind: "folders" | "tags") {
+  function toggleSide(kind: SideKind) {
     setSideOpen((current) => {
       const next = current === kind ? null : kind;
       try {
@@ -1385,6 +1394,39 @@ function App() {
       );
     } catch (error) {
       setStatus(`タグの改名に失敗: ${String(error)}`);
+    }
+  }
+
+  /// やること一覧から、そのノートのその行へ（ADR-0056）。行番号は 0 始まり
+  async function openTask(relative: string, line: number) {
+    if (!vaultRoot) return;
+    const path = `${vaultRoot}/${relative}`;
+    try {
+      const text = await readNote(vaultRoot, path);
+      await openNote(path, lineStartOffset(text, line) ?? 0);
+    } catch (error) {
+      setStatus(`開けませんでした: ${String(error)}`);
+    }
+  }
+
+  /// やること一覧の箱を押した: 完了にする。開いているノートならエディタで
+  /// 書く（自動保存が走る）。閉じているノートは Rust が書き、索引を更新する
+  async function completeTask(relative: string, line: number) {
+    if (!vaultRoot) return;
+    const path = `${vaultRoot}/${relative}`;
+    if (path === currentPath && editorRef.current) {
+      const edit = setTaskDone(editorRef.current.getText(), line, true);
+      if (edit) editorRef.current.replaceRange(edit.from, edit.to, edit.insert);
+      // 一覧は保存のあとの索引更新で消える。待たずに手元で消す
+      await sync.flush();
+      await refresh();
+      return;
+    }
+    try {
+      await taskComplete(vaultRoot, path, line);
+      await refresh();
+    } catch (error) {
+      setStatus(`完了にできませんでした: ${String(error)}`);
     }
   }
 
@@ -2492,6 +2534,15 @@ function App() {
                   onToggle={() => toggleSide("tags")}
                   onFilter={filterByTag}
                   onMenu={setTagMenu}
+                />
+              )}
+              {settings.treesVisible && (
+                <TaskSection
+                  tasks={tasks}
+                  open={sideOpen === "tasks"}
+                  onToggle={() => toggleSide("tasks")}
+                  onOpen={(path, line) => void openTask(path, line)}
+                  onComplete={(path, line) => void completeTask(path, line)}
                 />
               )}
             </aside>

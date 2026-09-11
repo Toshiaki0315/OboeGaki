@@ -117,6 +117,9 @@ export type EditorHandle = {
   applyFormat: (kind: FormatKind) => void;
   /// 文字色を付ける（16 進）／外す（null）。ADR-0061
   applyColor: (hex: string | null) => void;
+  /// 範囲を差し替える（やることの完了など、本文の小さな編集。編集として
+  /// 数える = 自動保存が走る）
+  replaceRange: (from: number, to: number, insert: string) => void;
   /** 見出しの節を丸ごと上（-1）／下（+1）へ動かす（7-1）。動かせたら true */
   moveSection: (headingFrom: number, delta: -1 | 1) => boolean;
 };
@@ -290,6 +293,13 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         FORMAT_COMMANDS[kind](current);
         // 押したあとは本文へ戻す。ボタンからでも打ち続けられるように
         current.focus();
+      },
+      replaceRange(from, to, insert) {
+        const current = view.current;
+        if (!current) return;
+        const length = current.state.doc.length;
+        if (from < 0 || to > length || from > to) return;
+        current.dispatch({ changes: { from, to, insert } });
       },
       applyColor(hex) {
         const current = view.current;

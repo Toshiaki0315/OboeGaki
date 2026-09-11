@@ -1378,6 +1378,39 @@ pub fn note_rename(
     })
 }
 
+/// 未完了のやること（ADR-0056 / 12-5）
+#[tauri::command]
+pub fn task_list(root: String) -> Result<Vec<crate::index_db::TaskRow>, String> {
+    let vault = Vault::new(&root);
+    IndexDb::open(&vault.managed_dir())
+        .and_then(|db| db.open_tasks())
+        .map_err(|e| e.to_string())
+}
+
+/// やることを完了にする（開いていないノート用。開いているノートはエディタで
+/// 書く）。本文の編集なので、書いたノートは監視から抑制して索引を更新する
+#[tauri::command]
+pub fn task_complete(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    path: String,
+    line: usize,
+) -> Result<(), String> {
+    let note = guarded(&root, &path)?;
+    let text = crate::vault::read_note(&note).map_err(|e| e.to_string())?;
+    let rewritten = crate::tasks::set_task_done(&text, line, true)
+        .ok_or_else(|| "その行はやることではありません".to_string())?;
+    state.suppressor.mark(&note);
+    autosave::save_atomic(&note, &rewritten).map_err(|e| e.to_string())?;
+    let vault = Vault::new(&root);
+    if let Err(error) =
+        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
+    {
+        eprintln!("索引の更新に失敗した: {error}");
+    }
+    Ok(())
+}
+
 /// 置換の下見（ADR-0055 / 12-3）。書かずに、何件のノートの何箇所が当たるかだけ
 #[tauri::command]
 pub fn replace_preview(
