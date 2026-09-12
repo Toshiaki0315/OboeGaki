@@ -4,9 +4,15 @@
 // Cmd+クリックに統一する。判定は EditorState だけで動く純関数に置き、
 // 何を起こすか（開く・絞り込む）はアプリ側が Facet で注入する。
 
-import { EditorView, ViewPlugin, type PluginValue } from "@codemirror/view";
+import {
+  EditorView,
+  ViewPlugin,
+  type PluginValue,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { Facet, type EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
+import { NotePeek } from "./note-peek";
 
 export type Activation =
   | { kind: "link"; payload: string } // 既定のブラウザで開く
@@ -88,8 +94,12 @@ export function pointerAt(
 /// カーソルの形を変える
 export const POINTER_CLASS = "cm-activatable";
 
-/// Cmd を押しながらリンクに重ねたら**指差しにする**（参照実装
-/// `editor_widget._update_hover` の移植）。
+/// Cmd を押しながらリンクに重ねたら**指差しにし、冒頭を泡で出す**
+/// （参照実装 `editor_widget._update_hover` の移植）。
+///
+/// **形と泡は同じ合図から動かす。** 泡をマウスの移動からしか呼ばないと、
+/// 「リンクに触れてから Cmd を押す」で形だけ変わって泡が出ない — 押せると
+/// 見せたなら、見せられるべき（参照実装の実機報告 2026-08-30）。
 ///
 /// **形は「重ねた位置」と「Cmd の状態」の両方から決める。** 動かしたときしか
 /// 見ないと、**リンクに触れてから Cmd を押した**ときに変わらない（参照実装が
@@ -104,8 +114,10 @@ const activationCursor = ViewPlugin.fromClass(
     /// 形を変える（参照実装のレビュー指摘 2026-08-31）
     private at: { x: number; y: number } | null = null;
     private pointing = false;
+    private peek: NotePeek;
 
     constructor(private view: EditorView) {
+      this.peek = new NotePeek(view);
       window.addEventListener("keydown", this.onKey, true);
       window.addEventListener("keyup", this.onKey, true);
       // 窓から離れると keyup が来ない（Cmd+Tab）。押していない扱いに戻す
@@ -117,6 +129,13 @@ const activationCursor = ViewPlugin.fromClass(
       window.removeEventListener("keyup", this.onKey, true);
       window.removeEventListener("blur", this.onBlur);
       this.apply(false);
+      this.peek.destroy();
+    }
+
+    /// 文書が変わる・巻き取られると位置が古くなる。隠すだけ（次に触れれば
+    /// 出直す。写しの印と同じ作法）
+    update(change: ViewUpdate) {
+      if (change.docChanged || change.geometryChanged) this.peek.hide();
     }
 
     move(event: MouseEvent) {
@@ -125,19 +144,29 @@ const activationCursor = ViewPlugin.fromClass(
     }
 
     leave() {
+      // 位置を忘れないと、`Cmd+Tab` で戻った直後の Cmd 押下が、もう指して
+      // いない場所で形を変える（参照実装のレビュー指摘 2026-08-31）
       this.at = null;
       this.apply(false);
+      this.peek.hide();
     }
 
     private onKey = (event: KeyboardEvent) => this.refresh(event.metaKey);
-    private onBlur = () => this.apply(false);
+    private onBlur = () => {
+      this.apply(false);
+      this.peek.hide();
+    };
 
     /// 名前は refresh（`update` は PluginValue の予約席 = ViewUpdate 用）
     private refresh(held: boolean) {
       const pos = this.at
         ? this.view.posAtCoords({ x: this.at.x, y: this.at.y })
         : null;
-      this.apply(pointerAt(this.view.state, pos, held));
+      const found =
+        held && pos !== null ? activationAt(this.view.state, pos) : null;
+      this.apply(found !== null);
+      // 泡を出すのは**ノートへのリンクだけ**（タグや URL は覗く中身が無い）
+      this.peek.update(found?.kind === "note" ? found.payload : null, this.at);
     }
 
     private apply(pointing: boolean) {

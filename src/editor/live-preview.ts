@@ -1689,6 +1689,30 @@ const blockTheme = EditorView.baseTheme({
     cursor: "pointer",
     opacity: "0.75",
   },
+  // 覗き見の泡（U-2）。`Cmd` を押しながら `[[…]]` に触れると冒頭が出る。
+  // **黒地に白**の同じ見た目を 2 つ作らない — 補完の窓と同じ色を使う
+  ".cm-note-peek": {
+    position: "fixed",
+    zIndex: "30",
+    maxWidth: "340px",
+    padding: "0.5rem 0.7rem",
+    borderRadius: "8px",
+    background: "var(--peek-bg, rgba(40, 40, 42, 0.96))",
+    color: "var(--peek-fg, #f5f5f7)",
+    boxShadow: "0 6px 20px rgba(0, 0, 0, 0.28)",
+    fontSize: "0.85em",
+    lineHeight: "1.5",
+    pointerEvents: "none", // 泡の下のリンクを押せなくしない
+  },
+  ".cm-note-peek-title": {
+    fontWeight: "600",
+    marginBottom: "0.3rem",
+    opacity: "0.9",
+  },
+  ".cm-note-peek-body": {
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
   // Cmd を押しながら押せる場所に重ねている間だけ指差しにする
   // （activation.ts の POINTER_CLASS。参照実装と同じ合図）
   "&.cm-activatable .cm-content": {
