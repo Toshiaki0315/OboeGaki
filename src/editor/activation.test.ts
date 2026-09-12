@@ -6,7 +6,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
-import { activationAt } from "./activation";
+import { activationAt, pointerAt } from "./activation";
 
 function at(doc: string, pos: number) {
   const state = EditorState.create({
@@ -19,6 +19,50 @@ function at(doc: string, pos: number) {
   });
   return activationAt(state, pos);
 }
+
+describe("ノートリンクの範囲は [start, end)", () => {
+  test("test_閉じの直後では発火しない（行末の空きに重ねても押せない）", () => {
+    // タグ・URL と同じ規則に揃える。posAtCoords は行末に丸めるので、
+    // ここを開けておくと**本文の右の余白**で指差しになる（実測 2026-09-13）
+    const doc = "[[会議メモ]]";
+    expect(at(doc, doc.length)).toBeNull();
+    expect(at(doc, doc.length - 1)).toEqual({
+      kind: "note",
+      payload: "会議メモ",
+    });
+  });
+});
+
+describe("押せると見せる（Cmd を押しながら重ねたとき）", () => {
+  const doc = "詳細は [[会議メモ]] と #仕事 と https://example.com と 地の文";
+  const state = () =>
+    EditorState.create({
+      doc,
+      extensions: [
+        markdown({
+          extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
+        }),
+      ],
+    });
+
+  test("test_Cmd_を押していなければ指差しにしない", () => {
+    expect(pointerAt(state(), doc.indexOf("会議"), false)).toBe(false);
+  });
+
+  test("test_押せる場所なら指差し（リンク_タグ_URL）", () => {
+    expect(pointerAt(state(), doc.indexOf("会議"), true)).toBe(true);
+    expect(pointerAt(state(), doc.indexOf("仕事"), true)).toBe(true);
+    expect(pointerAt(state(), doc.indexOf("example"), true)).toBe(true);
+  });
+
+  test("test_押せない場所では変えない（地の文）", () => {
+    expect(pointerAt(state(), doc.indexOf("地の文") + 1, true)).toBe(false);
+  });
+
+  test("test_編集領域の外に出たら変えない", () => {
+    expect(pointerAt(state(), null, true)).toBe(false);
+  });
+});
 
 describe("別名つきのノートリンク（ADR-0064）", () => {
   test("test_縦棒の前を名前として開く", () => {

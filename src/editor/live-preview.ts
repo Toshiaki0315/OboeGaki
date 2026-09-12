@@ -1689,6 +1689,11 @@ const blockTheme = EditorView.baseTheme({
     cursor: "pointer",
     opacity: "0.75",
   },
+  // Cmd を押しながら押せる場所に重ねている間だけ指差しにする
+  // （activation.ts の POINTER_CLASS。参照実装と同じ合図）
+  "&.cm-activatable .cm-content": {
+    cursor: "pointer",
+  },
   ".cm-copy-code:hover": {
     opacity: "1",
     background: "color-mix(in srgb, currentColor 22%, transparent)",
