@@ -20,6 +20,34 @@ function at(doc: string, pos: number) {
   return activationAt(state, pos);
 }
 
+describe("別名つきのノートリンク（ADR-0064）", () => {
+  test("test_縦棒の前を名前として開く", () => {
+    const doc = "詳細は [[会議メモ|前回のまとめ]] を見よ";
+    expect(at(doc, doc.indexOf("会議") + 1)).toEqual({
+      kind: "note",
+      payload: "会議メモ",
+    });
+  });
+
+  test("test_表示の側を押しても同じノートへ行く", () => {
+    const doc = "詳細は [[会議メモ|前回のまとめ]] を見よ";
+    expect(at(doc, doc.indexOf("前回") + 1)).toEqual({
+      kind: "note",
+      payload: "会議メモ",
+    });
+  });
+
+  test("test_前後の空白は名前に入れない", () => {
+    const doc = "[[ 会議メモ | 前回 ]]";
+    expect(at(doc, 4)).toEqual({ kind: "note", payload: "会議メモ" });
+  });
+
+  test("test_名前が空なら拾わない（指す先が無い）", () => {
+    const doc = "[[|表示だけ]]";
+    expect(at(doc, 5)).toBeNull();
+  });
+});
+
 describe("activationAt", () => {
   test("タグの上では絞り込み（名前は小文字に正規化）", () => {
     const doc = "本文の #Work/会議 です";

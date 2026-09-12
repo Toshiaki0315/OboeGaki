@@ -192,27 +192,35 @@ export const extendedInline: MarkdownConfig = {
       },
     },
     {
-      // ノートリンク `[[名前]]`（E-6 / ADR-0011）。ふつうのリンクより先に
-      // 見る（あとに回すと `[[a]](b)` の `[a]` が先にリンク化して範囲が
-      // ずれる）。`|` を含むものと空名は拾わない。名前の中は解釈しない
+      // ノートリンク `[[名前]]` / `[[名前|表示]]`（E-6 / ADR-0011 / ADR-0064）。
+      // ふつうのリンクより先に見る（あとに回すと `[[a]](b)` の `[a]` が先に
+      // リンク化して範囲がずれる）。空名は拾わない。名前の中は解釈しない
       // （`[[a_b_c]]` の `_` は名前の一部）
       name: "WikiLink",
       before: "Link",
       parse(cx, next, pos) {
         if (next !== BRACKET || cx.char(pos + 1) !== BRACKET) return -1;
         let end = pos + 2;
+        // 名前の終わりは `]]` か、最初の `|`（そこから先は表示の字）
+        let pipe = -1;
         while (end < cx.end && cx.char(end) !== CLOSE_BRACKET) {
           const code = cx.char(end);
-          if (code === BRACKET || code === PIPE) return -1;
+          if (code === BRACKET) return -1;
+          if (code === PIPE && pipe < 0) pipe = end;
           end++;
         }
         if (end + 1 >= cx.end && cx.char(end + 1) !== CLOSE_BRACKET) return -1;
         if (cx.char(end + 1) !== CLOSE_BRACKET) return -1;
-        if (!cx.slice(pos + 2, end).trim()) return -1; // 名前が無い
+        const nameEnd = pipe < 0 ? end : pipe;
+        if (!cx.slice(pos + 2, nameEnd).trim()) return -1; // 名前が無い
         const close = end + 2;
         return cx.addElement(
           cx.elt("WikiLink", pos, close, [
             cx.elt("WikiLinkMark", pos, pos + 2),
+            // 別名のときは「名前と縦棒」もマーカー扱いにする。ライブ
+            // プレビューが隠すので、読むときは**表示の字だけ**が残る
+            // （カーソルを行に置けば生の字が出る = §6.4 のリビール）
+            ...(pipe < 0 ? [] : [cx.elt("WikiLinkMark", pos + 2, pipe + 1)]),
             cx.elt("WikiLinkMark", close - 2, close),
           ]),
         );

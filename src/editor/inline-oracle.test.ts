@@ -92,10 +92,29 @@ function spansOf(text: string): Span[] | null {
 const byPos = (spans: Span[]) =>
   [...spans].sort((a, b) => a.open[0] - b.open[0]);
 
+/// **意図して参照実装と違えるもの**（ADR-0064）。黙って飛ばさず、
+/// 「こちらはこう拾う」を書いて突き合わせる — 差分を持っていることを
+/// テストが覚えている状態にしておく。
+///
+/// 別名つきノートリンク `[[名前|表示]]`: 参照実装は拾わない（ただの文字）。
+/// おぼえがきは**縦棒の前を名前として拾う** — 改名の書き換え
+/// （wikilink::rewrite_wikilinks）が既に別名を見ているので、拾わないと
+/// 「書き換わるのに backlinks に出ない・Cmd+クリックで飛べない」がねじれる。
+const DIVERGENT = new Map<string, Span[]>([
+  [
+    "[[名前|別名]] は未対応なので拾わない",
+    [{ type: "WIKI_LINK", open: [0, 2], close: [7, 9] }],
+  ],
+]);
+
+function expected(c: { text: string; spans: Span[] }): Span[] {
+  return DIVERGENT.get(c.text) ?? byPos(c.spans);
+}
+
 describe("インライン検出は参照実装と一致する", () => {
   const cases = readOracle("oracle.json");
   test.each(cases.map((c) => [c.text, c] as const))("%s", (_text, c) => {
-    expect(spansOf(c.text)).toEqual(byPos(c.spans));
+    expect(spansOf(c.text)).toEqual(expected(c));
   });
 
   test("fixtures 全体（段落行のみ）で参照実装と一致する", () => {
@@ -104,7 +123,7 @@ describe("インライン検出は参照実装と一致する", () => {
       const got = spansOf(c.text);
       if (got === null) continue;
       compared++;
-      expect(got, c.text).toEqual(byPos(c.spans));
+      expect(got, c.text).toEqual(expected(c));
     }
     expect(compared).toBeGreaterThan(100);
   });

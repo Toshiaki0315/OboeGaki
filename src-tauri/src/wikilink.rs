@@ -91,12 +91,16 @@ fn links_in_line(line: &str) -> Vec<String> {
         }
         let mut end = index + 2;
         let mut broken = false;
+        // 名前の終わりは `]]` か `|`（別名の記法 `[[名前|表示]]` = ADR-0064）。
+        // `[` は名前に入らない
+        let mut pipe: Option<usize> = None;
         while end < chars.len() && chars[end] != ']' {
-            // 名前に `[` と `|` は入らない（別名の記法は未対応。中途半端に
-            // 拾うと名前が壊れる）
-            if chars[end] == '[' || chars[end] == '|' {
+            if chars[end] == '[' {
                 broken = true;
                 break;
+            }
+            if chars[end] == '|' && pipe.is_none() {
+                pipe = Some(end);
             }
             end += 1;
         }
@@ -104,7 +108,7 @@ fn links_in_line(line: &str) -> Vec<String> {
             index += 2;
             continue;
         }
-        let name: String = chars[index + 2..end].iter().collect();
+        let name: String = chars[index + 2..pipe.unwrap_or(end)].iter().collect();
         if !name.trim().is_empty() {
             found.push(normalize(&name));
         }
@@ -297,8 +301,22 @@ mod tests {
             links("[[]] と [[  ]] と [[閉じない\n"),
             Vec::<String>::new()
         );
-        // 別名の記法は未対応。中途半端に拾うと名前が壊れる
-        assert_eq!(links("[[名前|表示]]\n"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_links_別名つきは_縦棒の前を名前として拾う() {
+        // ADR-0064: 参照実装は別名を拾わないが、こちらは拾う。
+        // 改名の書き換え（rewrite_wikilinks）は既に別名を見ているので、
+        // 索引が拾わないと「書き換わるのに backlinks に出ない」がねじれる
+        assert_eq!(links("[[名前|表示]]\n"), vec!["名前".to_string()]);
+        assert_eq!(
+            links("[[ 会議メモ | 前回 ]]\n"),
+            vec!["会議メモ".to_string()]
+        );
+        // 名前が空なら拾わない（表示だけのリンクは指す先が無い）
+        assert_eq!(links("[[|表示]]\n"), Vec::<String>::new());
+        // 縦棒が 2 つあっても、名前は最初の縦棒まで
+        assert_eq!(links("[[名前|表|示]]\n"), vec!["名前".to_string()]);
     }
 
     #[test]

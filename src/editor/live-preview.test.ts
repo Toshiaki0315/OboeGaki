@@ -105,6 +105,30 @@ const has = (decos: Deco[], expected: Deco) =>
       d.kind === expected.kind,
   );
 
+describe("別名つきノートリンク（ADR-0064）", () => {
+  const doc = "詳細は [[会議メモ|前回のまとめ]] を見よ";
+  const open = doc.indexOf("[[");
+
+  test("test_読むときは表示の字だけが残る", () => {
+    const decos = decorationsOf(doc, 0); // カーソルは行の外
+    // `[[` と `名前|` と `]]` を隠す
+    expect(has(decos, { from: open, to: open + 2, kind: "hide" })).toBe(true);
+    expect(
+      has(decos, { from: open + 2, to: doc.indexOf("|") + 1, kind: "hide" }),
+    ).toBe(true);
+    const close = doc.indexOf("]]");
+    expect(has(decos, { from: close, to: close + 2, kind: "hide" })).toBe(true);
+  });
+
+  test("test_カーソルを行に置くと生の字が出る（§6.4 のリビール）", () => {
+    const decos = decorationsOf(doc, open + 3);
+    expect(has(decos, { from: open, to: open + 2, kind: "hide" })).toBe(false);
+    expect(
+      has(decos, { from: open + 2, to: doc.indexOf("|") + 1, kind: "hide" }),
+    ).toBe(false);
+  });
+});
+
 describe("bulletGlyph", () => {
   test("深さで ● ○ ■ を巡回する（ADR-0026）", () => {
     expect([0, 1, 2, 3].map(bulletGlyph)).toEqual(["●", "○", "■", "●"]);

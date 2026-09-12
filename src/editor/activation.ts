@@ -35,8 +35,11 @@ export function activationAt(
         return { kind: "tag", payload: name.toLowerCase() };
       }
       case "WikiLink": {
-        const name = state.sliceDoc(node.from + 2, node.to - 2).trim();
-        return { kind: "note", payload: name };
+        // `[[名前|表示]]` は縦棒の前が名前（ADR-0064）。表示の字の上で
+        // 押しても同じノートへ行く
+        const raw = state.sliceDoc(node.from + 2, node.to - 2);
+        const name = raw.split("|")[0].trim();
+        return name ? { kind: "note", payload: name } : null;
       }
       case "BareURL": {
         if (pos >= node.to) return null;
