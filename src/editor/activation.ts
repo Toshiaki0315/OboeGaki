@@ -90,6 +90,41 @@ export function pointerAt(
   return activationAt(state, pos) !== null;
 }
 
+/// 余白は「その行の字の上」ではない（実機報告 2026-09-13）。
+///
+/// `posAtCoords` は**一番近い位置に丸める**ので、リンクのある行の右の余白に
+/// 重ねただけでも行末の位置が返り、リンクを指したことになってしまう。
+/// その行（折り返した先も含む）の字がどこで終わり・どこから始まるかを引いて、
+/// その外なら「字の上には居ない」とみなす。
+///
+/// **丸めた結果を疑うのであって、当たり判定を作り直すのではない** — 字の上の
+/// 判定は今までどおり `posAtCoords` に任せる（半角と全角で幅が違うため、
+/// 自前で「何 px 以内」と決めると必ずどちらかで外す）。
+function onText(view: EditorView, point: { x: number; y: number }): boolean {
+  const far = 10_000;
+  // その行の字の終わり・始まり（同じ y で左右の端まで振り切って引く）
+  const end = view.posAtCoords({ x: point.x + far, y: point.y }, false);
+  const start = view.posAtCoords({ x: point.x - far, y: point.y }, false);
+  const right = view.coordsAtPos(end);
+  const left = view.coordsAtPos(start);
+  if (!right || !left) return true; // 引けないときは邪魔をしない
+  return point.x <= right.right && point.x >= left.left;
+}
+
+/// その画面座標で押せるもの。**余白は除く**。
+///
+/// 高い方の検査（`onText`）は**当たったときだけ**通す — マウスは動くたびに
+/// ここへ来るので、地の文の上で毎回 3 回も座標を引き直さない
+function activationHere(
+  view: EditorView,
+  point: { x: number; y: number },
+): Activation | null {
+  const pos = view.posAtCoords(point);
+  if (pos === null) return null;
+  const found = activationAt(view.state, pos);
+  return found && onText(view, point) ? found : null;
+}
+
 /// 押せる場所の上に居るとき、編集領域に付ける印。CSS はこれを見て
 /// カーソルの形を変える
 export const POINTER_CLASS = "cm-activatable";
@@ -159,11 +194,7 @@ const activationCursor = ViewPlugin.fromClass(
 
     /// 名前は refresh（`update` は PluginValue の予約席 = ViewUpdate 用）
     private refresh(held: boolean) {
-      const pos = this.at
-        ? this.view.posAtCoords({ x: this.at.x, y: this.at.y })
-        : null;
-      const found =
-        held && pos !== null ? activationAt(this.view.state, pos) : null;
+      const found = held && this.at ? activationHere(this.view, this.at) : null;
       this.apply(found !== null);
       // 泡を出すのは**ノートへのリンクだけ**（タグや URL は覗く中身が無い）
       this.peek.update(found?.kind === "note" ? found.payload : null, this.at);
@@ -193,9 +224,11 @@ export const activationClicks = [
   EditorView.domEventHandlers({
     mousedown(event, view) {
       if (!event.metaKey || event.button !== 0) return false;
-      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
-      if (pos === null) return false;
-      const found = activationAt(view.state, pos);
+      // 指差しに変えた場所でだけ飛ぶ（見た目と動きを同じ判定から出す）
+      const found = activationHere(view, {
+        x: event.clientX,
+        y: event.clientY,
+      });
       if (!found) return false;
       event.preventDefault();
       view.state.facet(activationHandler)(found);

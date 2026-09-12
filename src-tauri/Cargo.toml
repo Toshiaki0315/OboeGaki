@@ -1,7 +1,7 @@
 [package]
 name = "oboegaki"
 default-run = "oboegaki"
-version = "0.5.21"
+version = "0.5.22"
 description = "覚書 — ライブプレビュー型 Markdown エディタ"
 authors = ["NOMURA Toshiaki"]
 edition = "2021"
