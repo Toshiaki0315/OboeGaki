@@ -836,7 +836,53 @@ impl Vault {
         };
         let target = unique_path(&destination, &stem, &suffix, None);
         fs::rename(path, &target)?;
+        self.carry_history(path, &target);
         Ok(target)
+    }
+
+    /// ゴミ箱へ移す（ノート用）。**捨てるときの約束はここが唯一の持ち主** —
+    /// 画面からも MCP からも同じ道を通す（レビュー 2026-09-13。同じ規則が
+    /// commands.rs と mcp.rs に二重に書いてあった）。
+    ///
+    /// - ピン留め中は断る（spec §7.3 の削除ガード）。消してよいなら先に
+    ///   ピンを外す、という一拍を挟む
+    /// - 履歴の鍵は**ファイルに付いて回る**（ADR-0042）。付け替えないと、
+    ///   戻すときに履歴が行方不明になる
+    ///
+    /// 添付は `trash_attachments`（ピンも履歴も無い）。索引の更新と監視の
+    /// 抑制は呼ぶ側の持ち物 — MCP は索引を触らない
+    pub fn trash_note(&self, path: &Path) -> io::Result<PathBuf> {
+        if read_note(path)
+            .map(|text| crate::front_matter::pinned(&text))
+            .unwrap_or(false)
+        {
+            return Err(invalid(
+                "ピン留め中のノートはゴミ箱へ移せない（先にピンを外す）",
+            ));
+        }
+        let moved = self.trash(path)?;
+        self.carry_history(path, &moved);
+        Ok(moved)
+    }
+
+    /// 履歴の置き場を新しいパスへ付け替える。**失敗しても進める** —
+    /// 版を連れて行けないことより、動かせないことの方が困る
+    fn carry_history(&self, before: &Path, after: &Path) {
+        if before == after {
+            return;
+        }
+        let store = crate::history::store_root(&self.managed_dir());
+        let key = |path: &Path| {
+            format!(
+                "path:{}",
+                path.strip_prefix(&self.root)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+            )
+        };
+        if let Err(error) = crate::history::rekey(&store, &key(before), &key(after)) {
+            eprintln!("履歴の置き場を移せなかった: {error}");
+        }
     }
 
     /// 退避（クラッシュリカバリ）を**別ファイルとして**書き出す。
@@ -3096,6 +3142,59 @@ mod tests {
         vault.delete_folder("仕事").unwrap();
 
         assert!(!root.path().join("仕事").exists());
+    }
+
+    #[test]
+    fn test_trash_note_ピン留めは断り_履歴を連れて行く() {
+        use chrono::NaiveDate;
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let ordinary = root.path().join("要らない.md");
+        fs::write(&ordinary, "# 要らない\n").unwrap();
+        let pinned = root.path().join("大事.md");
+        fs::write(&pinned, "---\npinned: true\n---\n# 大事\n").unwrap();
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        crate::history::keep(&store, "path:要らない.md", "前の本文", at, true, 0).unwrap();
+
+        // ピン留め中は断る（spec §7.3。先にピンを外す一拍を挟む）
+        assert!(vault.trash_note(&pinned).is_err());
+        assert!(pinned.is_file());
+
+        let moved = vault.trash_note(&ordinary).unwrap();
+        assert_eq!(moved, vault.trash_dir().join("要らない.md"));
+        assert!(!ordinary.exists());
+        // 鍵はファイルに付いて回る（ADR-0042）
+        assert_eq!(
+            crate::history::versions(&store, "path:.trash/要らない.md").len(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_move_note_履歴も連れて行く() {
+        use chrono::NaiveDate;
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let path = note(root.path(), "設計.md");
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        crate::history::keep(&store, "path:設計.md", "前の本文", at, true, 0).unwrap();
+
+        let moved = vault.move_note(&path, "仕事").unwrap();
+        assert_eq!(moved, root.path().join("仕事/設計.md"));
+        assert_eq!(
+            crate::history::versions(&store, "path:仕事/設計.md").len(),
+            1
+        );
     }
 
     #[test]

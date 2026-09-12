@@ -1342,14 +1342,7 @@ pub fn note_move(
     }) {
         eprintln!("索引の更新に失敗した: {error}");
     }
-    // 鍵がパスなので、置き場を付け替えないと履歴が見えなくなる
-    if let Err(error) = history::rekey(
-        &history_root(&root),
-        &history_key(&root, &path),
-        &history_key(&root, &moved),
-    ) {
-        eprintln!("履歴の置き場を移せなかった: {error}");
-    }
+    // 履歴の付け替えは move_note がやる（鍵はファイルに付いて回る = ADR-0042）
     Ok(moved.to_string_lossy().into_owned())
 }
 
@@ -1578,27 +1571,11 @@ pub fn note_trash(
     path: String,
 ) -> Result<String, String> {
     let path = guarded(&root, &path)?;
-    // ピン留め中は捨てない（spec §7.3 の削除ガード）。
-    // 消してよいなら先にピンを外す、という一拍を挟む
-    if crate::vault::read_note(&path)
-        .map(|text| crate::front_matter::pinned(&text))
-        .unwrap_or(false)
-    {
-        return Err("ピン留め中のノートはゴミ箱へ移せない（先にピンを外す）".into());
-    }
     state.suppressor.mark(&path);
     let vault = Vault::new(&root);
-    let moved = vault.trash(&path).map_err(|e| e.to_string())?;
+    // 削除ガードと履歴の引っ越しは vault が持つ（MCP からも同じ道を通る）
+    let moved = vault.trash_note(&path).map_err(|e| e.to_string())?;
     state.suppressor.mark(&moved);
-    // **鍵はファイルに付いて回る**（ADR-0042）。ここで付け替えないと、
-    // 戻すときに名前が変わったノートの履歴が行方不明になる
-    if let Err(error) = history::rekey(
-        &history_root(&root),
-        &history_key(&root, &path),
-        &history_key(&root, &moved),
-    ) {
-        eprintln!("履歴の置き場を移せなかった: {error}");
-    }
     // ゴミ箱の中は索引に入れない（検索・一覧の対象外）
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.remove(&vault, &path))

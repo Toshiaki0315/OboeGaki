@@ -638,49 +638,34 @@ impl McpVault {
         Ok(Written { path: cleaned })
     }
 
-    /// 別のフォルダへ移す。**履歴の鍵も付け替える**（ADR-0042: 鍵はファイルに
-    /// 付いて回る。付け替えないと移した先で履歴が行方不明になる）
+    /// 別のフォルダへ移す。履歴の鍵も付いて回る（ADR-0042。vault が持つ）
     pub fn move_note(&self, relative: &str, folder: &str) -> Result<Written, String> {
-        let (cleaned, absolute) = self.guarded(relative)?;
+        let (_, absolute) = self.guarded(relative)?;
         let destination = self.guarded_folder(Some(folder))?;
         let moved = self
             .vault
             .move_note(&absolute, &destination)
             .map_err(|e| e.to_string())?;
-        let after = self.relative_of(&moved);
-        if after != cleaned {
-            self.rekey(&cleaned, &after);
-        }
-        Ok(Written { path: after })
+        Ok(Written {
+            path: self.relative_of(&moved),
+        })
     }
 
     /// ゴミ箱へ移す。**消すのはここまで** — 空にする道は作らない。
-    /// ピン留め中は断る（spec §7.3 の削除ガード。先にピンを外す一拍を挟む）
+    /// 削除ガード（ピン留め）と履歴の引っ越しは vault が持つ（画面からの
+    /// 「ゴミ箱へ移動」と同じ道を通す）
     pub fn trash_note(&self, relative: &str) -> Result<Written, String> {
         let (cleaned, absolute) = self.guarded(relative)?;
         if !absolute.is_file() {
             return Err(format!("ノートがありません: {cleaned}"));
         }
-        let text = read_note(&absolute).map_err(|e| e.to_string())?;
-        if crate::front_matter::pinned(&text) {
-            return Err("ピン留め中のノートはゴミ箱へ移せない（先にピンを外す）".to_string());
-        }
-        let moved = self.vault.trash(&absolute).map_err(|e| e.to_string())?;
-        let after = self.relative_of(&moved);
-        if after != cleaned {
-            self.rekey(&cleaned, &after);
-        }
-        Ok(Written { path: after })
-    }
-
-    /// 履歴の置き場を新しいパスへ付け替える（失敗しても書きは進める）
-    fn rekey(&self, before: &str, after: &str) {
-        let store = crate::history::store_root(&self.vault.managed_dir());
-        if let Err(error) =
-            crate::history::rekey(&store, &format!("path:{before}"), &format!("path:{after}"))
-        {
-            eprintln!("履歴の置き場を移せなかった: {error}");
-        }
+        let moved = self
+            .vault
+            .trash_note(&absolute)
+            .map_err(|e| e.to_string())?;
+        Ok(Written {
+            path: self.relative_of(&moved),
+        })
     }
 
     /// 書く先のフォルダを確かめる（空は直下）。実在は `create_in_with` が見る
