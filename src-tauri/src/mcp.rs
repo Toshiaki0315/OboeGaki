@@ -283,7 +283,6 @@ pub struct NoteText {
 /// 聞く前に差分同期を自分で走らせる）
 pub struct McpVault {
     vault: Vault,
-    ignore: IgnoreList,
 }
 
 impl McpVault {
@@ -293,10 +292,15 @@ impl McpVault {
         }
         let vault = Vault::new(root);
         vault.ensure_layout().map_err(|e| e.to_string())?;
-        Ok(Self {
-            vault,
-            ignore: IgnoreList::load(root),
-        })
+        Ok(Self { vault })
+    }
+
+    /// 見せない場所の一覧は**呼ばれるたびに読む**。Claude Desktop はこの
+    /// サーバを常駐させるので、起動時の控えを持つと GUI の「渡さない」が
+    /// 開き直すまで効かない（レビュー 2026-09-14）。1 つの小さな文字ファイル
+    /// なので、毎回読んでも索引を開くより安い
+    fn ignore(&self) -> IgnoreList {
+        IgnoreList::load(self.vault.root())
     }
 
     pub fn root(&self) -> &Path {
@@ -322,8 +326,9 @@ impl McpVault {
     }
 
     fn visible<T>(&self, rows: Vec<T>, path_of: impl Fn(&T) -> &str) -> Vec<T> {
+        let ignore = self.ignore();
         rows.into_iter()
-            .filter(|row| !self.ignore.is_ignored(path_of(row)))
+            .filter(|row| !ignore.is_ignored(path_of(row)))
             .collect()
     }
 
@@ -363,11 +368,12 @@ impl McpVault {
     pub fn list_folders(&self) -> Result<Vec<(String, i64)>, String> {
         let db = self.index()?;
         let counts = db.folder_counts().map_err(|e| e.to_string())?;
+        let ignore = self.ignore();
         let mut folders: Vec<(String, i64)> = self
             .vault
             .folders()
             .into_iter()
-            .filter(|folder| !self.ignore.is_ignored(folder))
+            .filter(|folder| !ignore.is_ignored(folder))
             .map(|folder| {
                 let count = counts.get(&folder).copied().unwrap_or(0);
                 (folder, count)
@@ -377,8 +383,21 @@ impl McpVault {
         Ok(folders)
     }
 
+    /// タグの一覧。**見せない場所のノートは数えない** — 索引の集計を素通し
+    /// すると、隠したノートにしか無いタグがその存在ごと漏れる
     pub fn list_tags(&self) -> Result<Vec<(String, i64)>, String> {
-        self.index()?.tag_list().map_err(|e| e.to_string())
+        let uses = self.index()?.tag_uses().map_err(|e| e.to_string())?;
+        let ignore = self.ignore();
+        let mut counts: std::collections::HashMap<String, i64> = Default::default();
+        for (path, tag) in uses {
+            if !ignore.is_ignored(&path) {
+                *counts.entry(tag).or_insert(0) += 1;
+            }
+        }
+        let mut tags: Vec<(String, i64)> = counts.into_iter().collect();
+        // 索引の `tag_list` と同じ並び（使われている順、同数なら名前順）
+        tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        Ok(tags)
     }
 
     /// 相対パスを確かめて（無視の中・保管フォルダの外は断る）整えた形と
@@ -388,7 +407,7 @@ impl McpVault {
         if cleaned.is_empty() || cleaned.split('/').any(|part| part == "..") {
             return Err("保管フォルダの外は読まない".to_string());
         }
-        if self.ignore.is_ignored(cleaned) {
+        if self.ignore().is_ignored(cleaned) {
             return Err(format!("見せない場所です: {cleaned}"));
         }
         let absolute: PathBuf = self.vault.root().join(cleaned);
@@ -439,11 +458,12 @@ impl McpVault {
             .map_err(|e| e.to_string())?
             .remove(&cleaned)
             .unwrap_or_default();
+        let ignore = self.ignore();
         let signals: Vec<crate::related::Signal> = db
             .related_signals(&cleaned, &title)
             .map_err(|e| e.to_string())?
             .into_iter()
-            .filter(|signal| !self.ignore.is_ignored(&signal.key))
+            .filter(|signal| !ignore.is_ignored(&signal.key))
             .collect();
         let limit = limit.unwrap_or(crate::related::DEFAULT_LIMIT).max(1);
         let ranked = crate::related::rank(&signals, &cleaned, limit);
@@ -597,6 +617,9 @@ impl McpVault {
     /// 今日のノート。text があれば末尾に足す。**何度呼んでも同じノート**
     pub fn daily_note(&self, text: Option<&str>) -> Result<Written, String> {
         let now = chrono::Local::now();
+        // 書く前に門を通す。今日のノートを名指しで隠していれば、作りも
+        // 追記もしない（他の書き口と同じ規則。レビュー 2026-09-14）
+        self.guarded(&self.relative_of(&self.vault.daily_path(&now)))?;
         let path = match text {
             Some(text) if !text.trim().is_empty() => self
                 .vault
@@ -691,7 +714,7 @@ impl McpVault {
         if cleaned.split('/').any(|part| part == "..") {
             return Err("保管フォルダの外には作れない".to_string());
         }
-        if self.ignore.is_ignored(cleaned) {
+        if self.ignore().is_ignored(cleaned) {
             return Err(format!("見せない場所です: {cleaned}"));
         }
         Ok(cleaned.to_string())
@@ -967,6 +990,70 @@ mod tests {
             .is_err());
         assert!(mcp.append_to_note("秘密/裏.md", "x", None).is_err());
         assert!(mcp.append_to_note("無い.md", "x", None).is_err());
+    }
+
+    #[test]
+    fn test_mcp_ignore_を書き換えたら_開き直さなくても次の呼び出しから効く() {
+        // Claude Desktop は MCP サーバを常駐させる。GUI で「渡さない」に
+        // した瞬間から効かないと、画面の印と実態が食い違う（レビュー 2026-09-14）
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "秘密/給与.md", "# 給与\n\n会議では言わない\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+        assert!(mcp.read_note("秘密/給与.md").is_ok());
+
+        set_hidden(root.path(), "秘密", true).unwrap();
+        assert!(mcp.read_note("秘密/給与.md").is_err());
+        assert!(mcp.search("会議").unwrap().is_empty());
+        assert!(mcp.list_notes(None, None).unwrap().is_empty());
+
+        set_hidden(root.path(), "秘密", false).unwrap();
+        assert!(mcp.read_note("秘密/給与.md").is_ok());
+    }
+
+    #[test]
+    fn test_list_tags_見せない場所のノートは数えない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(
+            root.path(),
+            "会議メモ.md",
+            "# 会議メモ\n\n決めたこと #会議\n",
+        );
+        note(
+            root.path(),
+            "秘密/給与.md",
+            "# 給与\n\n#会議 で言わない #転職活動\n",
+        );
+        fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+
+        let tags = mcp.list_tags().unwrap();
+        // 隠したノートにしか無いタグは、存在そのものを漏らさない
+        assert!(!tags.iter().any(|(tag, _)| tag == "転職活動"));
+        // 両方にあるタグは、見えるノートのぶんだけ数える
+        assert_eq!(
+            tags.iter().find(|(tag, _)| tag == "会議").map(|(_, n)| *n),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_daily_note_今日のノートが見せない場所なら_作らず追記もしない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        let today = mcp.daily_note(None).unwrap();
+        let before = read_note(&root.path().join(&today.path)).unwrap();
+
+        set_hidden(root.path(), &today.path, true).unwrap();
+        assert!(mcp.daily_note(Some("こっそり")).is_err());
+        assert!(mcp.daily_note(None).is_err());
+        // 断ったなら中身も変わっていない
+        assert_eq!(read_note(&root.path().join(&today.path)).unwrap(), before);
     }
 
     #[test]

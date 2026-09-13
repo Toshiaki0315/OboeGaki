@@ -309,8 +309,8 @@ impl ServerHandler for OboegakiMcp {
         );
         info.server_info = Implementation::new("oboegaki-mcp", env!("CARGO_PKG_VERSION"));
         info.with_instructions(format!(
-                "おぼえがき（OboeGaki）の保管フォルダ {} を読み書きする。`.mcp-ignore` に書かれたフォルダは見えず、書き込みもできない。書けるのは新しいノートと末尾への追記だけで、既にある本文は書き換えない。\
-                 / Read and write an OboeGaki vault. Folders listed in .mcp-ignore are hidden and read-only. Writing is limited to creating notes and appending; existing text is never rewritten.",
+                "おぼえがき（OboeGaki）の保管フォルダ {} を読み書きする。`.mcp-ignore` に書かれたフォルダとノートは見えず、書き込みもできない。新しいノートを作る・末尾や節の末尾に足す・本文を丸ごと差し替える（read_note で得た更新時刻を添える楽観ロック）・別のフォルダへ移す・ゴミ箱へ入れる（消しはしない）ができる。\
+                 / Read and write an OboeGaki vault. Folders and notes listed in .mcp-ignore are hidden and cannot be written. You can create notes, append to the end or to a section, replace a note's whole text (optimistic lock: pass the mtime from read_note), move a note to another folder, and move a note to the trash (never deleted).",
                 self.vault.root().display()
             ))
     }

@@ -418,6 +418,14 @@ impl IndexDb {
         rows.collect()
     }
 
+    /// タグの使われ方を（ノートの道, タグ）の組で全部返す。呼ぶ側が
+    /// ノート単位で選り分けたいとき用（MCP は見せない場所を落としてから数える）
+    pub fn tag_uses(&self) -> rusqlite::Result<Vec<(String, String)>> {
+        let mut statement = self.conn.prepare("SELECT path, tag FROM tags")?;
+        let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect()
+    }
+
     /// 未完了のやること（ADR-0056）。期限が近い順、無期限は後ろ、同じなら
     /// ノートの更新が新しい順
     pub fn open_tasks(&self) -> rusqlite::Result<Vec<TaskRow>> {

@@ -529,9 +529,16 @@ impl Vault {
     /// **同じ日に何度呼んでも同じノートを返す。** 2 つできると、どちらに
     /// 書いたか分からなくなる。`.md` は vault 直下に置く（日付でフォルダを
     /// 切らないのは spec §7.1 — 分類はタグで行う）。
+    /// 今日のノートが**置かれる場所**。作りはしない（作る前に「そこへ書いて
+    /// よいか」を確かめたい呼び手のため）
+    pub fn daily_path(&self, now: &DateTime<Local>) -> PathBuf {
+        self.root
+            .join(format!("{}.md", sanitize_filename(&daily_title(now))))
+    }
+
     pub fn daily_note(&self, now: &DateTime<Local>) -> io::Result<NewNote> {
         let title = daily_title(now);
-        let path = self.root.join(format!("{}.md", sanitize_filename(&title)));
+        let path = self.daily_path(now);
         if path.is_file() {
             // 既にあるものへ印を埋め直さない。書いた内容が唯一の真実（T1）
             return Ok(NewNote { path, cursor: None });
