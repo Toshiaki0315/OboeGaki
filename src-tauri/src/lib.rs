@@ -89,6 +89,20 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .separator()
         .item(&PredefinedMenuItem::quit(handle, Some(labels.quit))?)
         .build()?;
+    // 手入れ（M-6）。**ふだん触らないものを畳む**（要望 2026-09-13）— 何か
+    // おかしいときだけ使う 4 つが、毎日使う「新規・保存」の間に挟まっていた。
+    // 監視が取りこぼしたぶんは、押せば必ず合わせられる
+    let upkeep = SubmenuBuilder::new(handle, "手入れ")
+        .item(&item("resync", "最新の情報に同期", None)?)
+        .item(&item("rebuild-index", "索引を作り直す", None)?)
+        .item(&item(
+            "cleanup-attachments",
+            "使っていない添付を片づける…",
+            None,
+        )?)
+        .item(&item("llm-unload", "モデルを降ろす", None)?)
+        .build()?;
+
     // 書き出しと読み込みは**形式を 2 階層目に畳む**（要望 2026-09-13）。
     // 形式が増えるたびに「ファイル」が伸びて、日々使う項目（新規・保存）が
     // 沈んでいた
@@ -125,15 +139,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("move-note", "フォルダへ移動…", None)?)
         .item(&item("open-vault", "保管フォルダを開く…", None)?)
         .separator()
-        // 手入れ（M-6）。監視が取りこぼしたぶんを押せば必ず合わせられる
-        .item(&item("resync", "最新の情報に同期", None)?)
-        .item(&item("rebuild-index", "索引を作り直す", None)?)
-        .item(&item("llm-unload", "モデルを降ろす", None)?)
-        .item(&item(
-            "cleanup-attachments",
-            "使っていない添付を片づける…",
-            None,
-        )?)
+        .item(&upkeep)
         .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
         .item(&export)
@@ -168,44 +174,17 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         // 仮身化（M-1）。選んだところを別のノートにして、跡にリンクを残す
         .item(&item("extract", "選択範囲をノートに切り出す", None)?)
         .build()?;
-    let view = SubmenuBuilder::new(handle, "表示")
-        .item(&item(
-            "quick-open",
-            "クイックオープン",
-            Some("CmdOrCtrl+O"),
-        )?)
-        .item(&item(
-            "search-all",
-            "全ノート検索",
-            Some("CmdOrCtrl+Shift+F"),
-        )?)
-        .separator()
-        // ペインの開閉（spec §5.1 / §5.4）
-        .item(&item(
-            "toggle-trees",
-            "サイドバー（フォルダ・タグ）",
-            Some("CmdOrCtrl+1"),
-        )?)
-        .item(&item("toggle-notes", "ノート一覧", Some("CmdOrCtrl+2"))?)
-        .separator()
-        // アクセラレータを付けない: メニューのそれは US 配列の物理キーで
-        // 解釈され、JIS では Cmd+= が別のキーに化けた（実機報告）。
-        // ショートカットは WebView 側の keydown（event.key）が担う
-        .item(&item("zoom-in", "文字を大きく（Cmd+=）", None)?)
-        .item(&item("zoom-out", "文字を小さく（Cmd+-）", None)?)
-        .item(&item("zoom-reset", "標準の大きさ（Cmd+0）", None)?)
-        .separator()
-        .item(&item(
-            "heading-palette",
-            "見出しへ飛ぶ…",
-            Some("CmdOrCtrl+R"),
-        )?)
-        .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
-        .item(&item("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
-        // リンクの図（M-2）。起点は開いているノート
-        .item(&item("link-graph", "リンクの図…", None)?)
-        // 文体を見る（U-4）。**指摘するだけで直さない**
-        .item(&item("style-check", "文体を見る…", None)?)
+    // 文字の大きさ（要望 2026-09-13 で畳んだ）。アクセラレータを付けない:
+    // メニューのそれは US 配列の物理キーで解釈され、JIS では Cmd+= が別の
+    // キーに化けた（実機報告）。ショートカットは WebView 側の keydown が担う
+    let zoom = SubmenuBuilder::new(handle, "文字の大きさ")
+        .item(&item("zoom-in", "大きく（Cmd+=）", None)?)
+        .item(&item("zoom-out", "小さく（Cmd+-）", None)?)
+        .item(&item("zoom-reset", "標準（Cmd+0）", None)?)
+        .build()?;
+    // 本文の見せ方の切り替え（要望 2026-09-13 で畳んだ）。ペインの開閉とは
+    // 別の話なので、同じ並びに置かない
+    let modes = SubmenuBuilder::new(handle, "書くときの見え方")
         .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
         .item(&item(
             "focus-mode",
@@ -217,6 +196,48 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             "タイプライタモード",
             Some("CmdOrCtrl+Shift+Y"),
         )?)
+        .build()?;
+
+    // 並びは**仲間ごと**（要望 2026-09-13）: 探す → ペイン → 見せ方 → 道具
+    let view = SubmenuBuilder::new(handle, "表示")
+        .item(&item(
+            "quick-open",
+            "クイックオープン",
+            Some("CmdOrCtrl+O"),
+        )?)
+        .item(&item(
+            "search-all",
+            "全ノート検索",
+            Some("CmdOrCtrl+Shift+F"),
+        )?)
+        // 探す仲間。今までは文字サイズの後ろに離れていた
+        .item(&item(
+            "heading-palette",
+            "見出しへ飛ぶ…",
+            Some("CmdOrCtrl+R"),
+        )?)
+        // **入口が無かった**（2026-09-13 に気付いた）。受け口（save-search）は
+        // あるのにメニューに項目が無く、保存した検索を作る道が塞がっていた
+        .item(&item("save-search", "検索を保存…", None)?)
+        .separator()
+        // ペインの開閉（spec §5.1 / §5.4）
+        .item(&item(
+            "toggle-trees",
+            "サイドバー（フォルダ・タグ）",
+            Some("CmdOrCtrl+1"),
+        )?)
+        .item(&item("toggle-notes", "ノート一覧", Some("CmdOrCtrl+2"))?)
+        .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
+        .item(&item("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
+        .separator()
+        .item(&modes)
+        .item(&zoom)
+        .separator()
+        // 別の角度からノートを見る道具
+        // リンクの図（M-2）。起点は開いているノート
+        .item(&item("link-graph", "リンクの図…", None)?)
+        // 文体を見る（U-4）。**指摘するだけで直さない**
+        .item(&item("style-check", "文体を見る…", None)?)
         .build()?;
     let help = SubmenuBuilder::new(handle, "ヘルプ")
         .item(&item("place-manual", "使い方のノートを置き直す", None)?)
