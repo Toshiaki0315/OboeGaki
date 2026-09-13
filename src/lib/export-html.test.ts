@@ -5,6 +5,18 @@ import { NOTE_ICONS } from "../editor/note-container";
 import { codeKey, collectCodeBlocks, renderHtml } from "./export-html";
 
 describe("renderHtml", () => {
+  test("test_三重の強調と色つきの字が同じ段落にあっても落ちない", () => {
+    // 実機の見本づくりで発覚（2026-09-13）。色の span の中を**同じ token の
+    // 配列に**入れ子で組んでいたため、markdown-it の後処理（強調・打ち消し）が
+    // 自分の tokens_meta と食い違って undefined を触っていた
+    const text =
+      '***太字の斜体***、<span style="color: #c0392b">赤い字</span>\n';
+    const html = renderHtml(text, "見本");
+    expect(html).toContain("<strong>");
+    expect(html).toContain("<em>");
+    expect(html).toContain("#c0392b"); // style は空白を詰めて出る
+  });
+
   test("test_front_matter は出さない（アプリの管理情報）", () => {
     // 実機報告 2026-09-04: 書き出した HTML の頭に created / id / pinned が
     // 大きく出ていた。**画面には出ていないもの**を紙や配布物に出さない

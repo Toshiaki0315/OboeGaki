@@ -1,6 +1,6 @@
 # 覚書（OboeGaki）Tauri 版の開発コマンド入口。hitofude と同じ流儀。
 
-.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg
+.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg samples
 
 setup:            ## 初回セットアップ
 	npm install
@@ -66,6 +66,16 @@ mcp:              ## MCP サーバ（ADR-0051）を組み、Claude Desktop 用�
 	@echo "バイナリ: $(MCP_BIN)"
 	@echo '~/Library/Application Support/Claude/claude_desktop_config.json に足す断片:'
 	@echo '{ "mcpServers": { "oboegaki": { "command": "$(abspath $(MCP_BIN))", "args": ["<保管フォルダの絶対パス>"] } } }'
+
+samples:          ## 読み書きを試す見本を作り直す（fixtures/samples/）
+	node scripts/make-samples.mjs
+	sips -s format jpeg -s formatOptions 85 \
+	  "fixtures/samples/読み込みの見本/写真.png" \
+	  --out "fixtures/samples/読み込みの見本/写真.jpg" >/dev/null
+	swift scripts/make-sample-pdf.swift \
+	  "fixtures/samples/読み込みの見本/見本.pdf" \
+	  "fixtures/samples/読み込みの見本/写真.png"
+	@echo "見本: fixtures/samples/（中身の説明は README.md）"
 
 icon:             ## アプリのアイコンを描き直して全サイズを作る（scripts/make_icon.swift）
 	swift scripts/make_icon.swift src-tauri/icons/icon-source.png

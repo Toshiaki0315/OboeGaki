@@ -144,6 +144,31 @@ mod tests {
     /// **文字の層が無い**ので、ここを読めるかどうかが取り込みの成否を分ける。
     const IMAGE_ONLY: &[u8] = include_bytes!("../../fixtures/image-only.pdf");
 
+    /// 取り込みを試す見本（`make samples` で作る）。1 ページ目は文字だけ、
+    /// 2 ページ目は文字と絵、3 ページ目は**絵だけ**
+    const SAMPLE: &[u8] = include_bytes!("../../fixtures/samples/読み込みの見本/見本.pdf");
+
+    #[test]
+    fn test_見本のPDFは_文字のページと絵だけのページを持つ() {
+        // 見本が「何を試せる資料なのか」をここで固定する（作り直したときに
+        // 中身が変わってしまったら、ここが落ちて気付ける）
+        assert_eq!(page_count(SAMPLE), 3);
+        assert!(
+            read_page(SAMPLE, 1).contains("PDF"),
+            "1 ページ目に文字が無い"
+        );
+        assert!(
+            read_page(SAMPLE, 2).contains("絵"),
+            "2 ページ目に文字が無い"
+        );
+        // 3 ページ目は絵だけ。**文字の層が無くても**読み取りで拾える
+        let third = read_page(SAMPLE, 3);
+        assert!(
+            third.contains("OBOEGAKI") || third.contains("TEST"),
+            "絵の中の字を読めなかった: {third:?}"
+        );
+    }
+
     #[test]
     fn test_絵だけのPDFのページをPNGにできる() {
         // ローカル LLM に渡すには絵をファイルの形（PNG）にする必要がある

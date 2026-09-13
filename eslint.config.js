@@ -13,7 +13,9 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
   {
-    files: ["**/*.{ts,tsx,js}"],
+    // `.mjs` も見る（scripts/ の道具。入れ忘れると node の Buffer などが
+    // 「無い」と言われる = 2026-09-13 の見本づくりで踏んだ）
+    files: ["**/*.{ts,tsx,js,mjs}"],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

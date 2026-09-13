@@ -77,6 +77,7 @@ docs / refactor / chore だけのコミットでは上げない）。版は 3 �
 | フォーマット            | `make fmt`                                                    |
 | アプリ（.app）を組む    | `make app`（DMG まで作るのは `make dmg`）                     |
 | アイコンを描き直す      | `make icon`（scripts/make_icon.swift → `tauri icon`）         |
+| 読み書きの見本を作り直す | `make samples`（fixtures/samples/。説明はそこの README）      |
 | 版を上げる              | `make bump`（0.5.x の x を +1。`LEVEL=minor` で 0.6.0）       |
 | MCP サーバを組む        | `make mcp`（ADR-0051。Claude Desktop 用の設定断片も出す）     |
 | 依存追加（TS）          | `npm install <pkg>` / `npm install -D <pkg>`                  |

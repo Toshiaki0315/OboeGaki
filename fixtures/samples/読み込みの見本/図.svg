@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" width="320" height="160">
+  <rect x="0" y="0" width="320" height="160" fill="#f7f7fa" stroke="#1e2746" stroke-width="2"/>
+  <circle cx="80" cy="80" r="40" fill="#1e2746"/>
+  <rect x="150" y="40" width="120" height="80" rx="8" fill="#c0392b"/>
+  <text x="160" y="140" font-family="Hiragino Sans, sans-serif" font-size="16" fill="#1e2746">SVG の見本</text>
+</svg>

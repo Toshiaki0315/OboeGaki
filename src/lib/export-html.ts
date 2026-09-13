@@ -50,13 +50,19 @@ const colorSpanRule: InlineRule = (state, silent) => {
   if (!silent) {
     const open = state.push("color_span_open", "span", 1);
     open.attrSet("style", styleAttribute(color));
-    // 中身はふつうの Markdown として組む（太字・リンクが効く）
+    // 中身はふつうの Markdown として組む（太字・リンクが効く）。
+    // **入れ子の解析には別の配列を渡す。** 同じ配列に組ませると、
+    // markdown-it の後処理（強調・打ち消し）が自分の `tokens_meta` と
+    // 食い違って落ちる — `***太字の斜体***` と色つきの字が同じ段落にあると
+    // 再現した（見本づくりで発覚 2026-09-13）
+    const inner: typeof state.tokens = [];
     state.md.inline.parse(
       source.slice(innerStart, close),
       state.md,
       state.env,
-      state.tokens,
+      inner,
     );
+    state.tokens.push(...inner);
     state.push("color_span_close", "span", -1);
   }
   state.pos = close + "</span>".length;
