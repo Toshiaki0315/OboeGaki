@@ -96,7 +96,16 @@ function onText(view: EditorView, point: { x: number; y: number }): boolean {
   const right = view.coordsAtPos(end);
   const left = view.coordsAtPos(start);
   if (!right || !left) return true; // 引けないときは邪魔をしない
-  return point.x <= right.right && point.x >= left.left;
+  if (point.x <= right.right && point.x >= left.left) return true;
+  // 字の外でも、**飾りの上なら中に居る**（タグは丸い地の中に余白を持つ）。
+  // 行そのもの（`.cm-line`）と編集領域は飾りではない — そこが余白（15-6）
+  const element = document.elementFromPoint(point.x, point.y);
+  return (
+    element !== null &&
+    element !== view.contentDOM &&
+    view.contentDOM.contains(element) &&
+    !element.classList.contains("cm-line")
+  );
 }
 
 /// その画面座標で押せるもの。**余白は除く**。

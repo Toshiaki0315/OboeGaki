@@ -38,6 +38,7 @@ function setup(over: Partial<NoteRowsProps> = {}) {
     selected: new Set<string>(),
     onToggleSelect: vi.fn(),
     onRangeSelect: vi.fn(),
+    isHiddenFromMcp: () => false,
     ...over,
   };
   const view = render(<NoteRows {...props} />);
@@ -52,6 +53,17 @@ describe("NoteRows", () => {
     expect(screen.getByText("b").closest("button")?.className).toContain(
       "selected",
     );
+  });
+
+  test("test_Claude に渡さないノートには印が出る（15-6）", () => {
+    // 右クリックしないと分からない、では安心して使えない
+    const { view } = setup({
+      isHiddenFromMcp: (path) => path === "/v/a.md",
+    });
+    const marks = view.container.querySelectorAll(".mcp-hidden-mark");
+    expect(marks).toHaveLength(1);
+    expect(screen.getByText("a").closest("button")?.textContent).toContain("a");
+    expect(marks[0].getAttribute("title")).toContain("Claude");
   });
 
   test("test_行は題名_冒頭_フォルダ_日付の 4 段（要望 2026-09-07）", () => {

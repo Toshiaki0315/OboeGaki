@@ -41,9 +41,13 @@ export function peekExcerpt(text: string): string {
   for (const line of body.split("\n")) {
     const stripped = line.trim();
     if (!stripped) continue;
-    if (lines.length === 0 && !skippedTitle && stripped.startsWith("#")) {
+    // 落とすのは**題名の行（H1）だけ**。題名は本文の見出し（ADR-0005）で、
+    // 泡の見出しと重なるから。`## 節` は中身なので残す — Rust の
+    // `note_preview`（一覧の冒頭）と同じ規則にしておかないと、同じノートで
+    // 泡と一覧の中身が食い違う（レビュー 2026-09-13 / 15-6）
+    if (lines.length === 0 && !skippedTitle && stripped.startsWith("# ")) {
       skippedTitle = true;
-      continue; // 題名の行
+      continue;
     }
     lines.push(line.trimEnd());
     if (lines.length >= PEEK_LINES) break;

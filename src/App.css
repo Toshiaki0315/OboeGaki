@@ -1585,6 +1585,13 @@ button.danger {
   font-size: 0.75em;
   margin-right: 0.25em;
 }
+/* Claude に渡さないノートの印（15-6）。ピンより控えめに — 数が多くても
+   一覧がうるさくならないように */
+.mcp-hidden-mark {
+  font-size: 0.8em;
+  margin-right: 0.25em;
+  opacity: 0.55;
+}
 
 .table-dialog-fields {
   display: flex;

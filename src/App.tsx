@@ -2644,6 +2644,12 @@ function App() {
                           ),
                         )
                       }
+                      isHiddenFromMcp={(path) =>
+                        isHiddenFromMcp(
+                          mcpHiddenList,
+                          relativeIn(vaultRoot ?? "", path),
+                        )
+                      }
                     />
                   )}
                 </div>

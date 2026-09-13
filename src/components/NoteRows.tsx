@@ -21,6 +21,9 @@ export type NoteRowsProps = {
   selected: ReadonlySet<string>;
   onToggleSelect: (path: string) => void;
   onRangeSelect: (path: string) => void;
+  /// Claude（MCP）に渡さないノートか。**一覧で見えるようにする** —
+  /// 右クリックしないと分からない、では安心して使えない（15-6）
+  isHiddenFromMcp: (path: string) => boolean;
 };
 
 export function NoteRows({
@@ -34,6 +37,7 @@ export function NoteRows({
   selected,
   onToggleSelect,
   onRangeSelect,
+  isHiddenFromMcp,
 }: NoteRowsProps) {
   /// 掴んだときに持ち歩く札。**行そのものを絵にしない** — WebKit は行の
   /// 載っている層ごと写し取るので、窓の幅いっぱいの帯になって隣のペインの
@@ -104,6 +108,11 @@ export function NoteRows({
               ファイル名の幹だけにして、フォルダは自分の段に出す */}
             <span className="note-row-title">
               {entry.pinned && <span className="pin-mark">📌</span>}
+              {isHiddenFromMcp(entry.path) && (
+                <span className="mcp-hidden-mark" title="Claude に渡さない">
+                  ⊘
+                </span>
+              )}
               {noteStem(entry.path)}
             </span>
             {entry.preview && (
