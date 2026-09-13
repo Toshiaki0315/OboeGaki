@@ -12,7 +12,10 @@ describe("relativeIn", () => {
 });
 
 describe("isHiddenFromMcp", () => {
-  const hidden = ["プライベート", "仕事/評価", "秘密のメモ.md"];
+  const hidden = {
+    listed: ["プライベート", "仕事/評価", "秘密のメモ.md"],
+    builtin: [".trash", ".OboeGaki", "attachments", "templates"],
+  };
 
   it("test_名指しされていれば隠れている", () => {
     expect(isHiddenFromMcp(hidden, "プライベート")).toBe(true);
@@ -31,5 +34,16 @@ describe("isHiddenFromMcp", () => {
 
   it("test_空は隠さない（保管フォルダそのもの）", () => {
     expect(isHiddenFromMcp(hidden, "")).toBe(false);
+  });
+
+  it("test_最初から見せない場所も隠れている（Rust と同じ判断）", () => {
+    // 一覧に出ないので画面には現れないが、**判断は 1 つ**にしておく
+    expect(isHiddenFromMcp(hidden, "templates/議事録.md")).toBe(true);
+    expect(isHiddenFromMcp(hidden, ".trash/捨てた.md")).toBe(true);
+  });
+
+  it("test_ドットで始まる場所も隠れている（Rust の規則と揃える）", () => {
+    expect(isHiddenFromMcp(hidden, ".git/config")).toBe(true);
+    expect(isHiddenFromMcp(hidden, "ふつう/.隠し.md")).toBe(false);
   });
 });

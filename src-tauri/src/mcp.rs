@@ -42,9 +42,23 @@ pub fn ensure_ignore_file(root: &Path) -> std::io::Result<()> {
     std::fs::write(path, DEFAULT_IGNORE)
 }
 
-/// いま隠しているものの一覧（コメントと空行は除く）。画面の印に使う
-pub fn hidden_list(root: &Path) -> Vec<String> {
-    IgnoreList::load(root).folders
+/// 画面に渡す「見せない場所」。**最初から見せない場所も一緒に渡す** —
+/// 画面側で並べ直すと、こちらの `SKIP_DIRS` が増えたときに黙って食い違う
+/// （レビュー 2026-09-13）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Hidden {
+    /// `.mcp-ignore` に書いてある道（人が決めたもの）
+    pub listed: Vec<String>,
+    /// 書かなくても見せない場所（ゴミ箱・雛形・管理フォルダ・添付）
+    pub builtin: Vec<String>,
+}
+
+/// いま隠しているものの一覧。画面の印に使う
+pub fn hidden_list(root: &Path) -> Hidden {
+    Hidden {
+        listed: IgnoreList::load(root).folders,
+        builtin: SKIP_DIRS.iter().map(|name| name.to_string()).collect(),
+    }
 }
 
 /// 1 つを隠す / 隠すのをやめる（GUI から。ピン留めと同じ手触り）。
@@ -1084,14 +1098,17 @@ mod tests {
         assert!(text.starts_with("# 見せない場所\n"), "{text:?}");
         assert!(text.contains("仕事/評価\n"));
         assert!(text.contains("プライベート\n"));
-        assert_eq!(hidden_list(root.path()), vec!["仕事/評価", "プライベート"]);
+        assert_eq!(
+            hidden_list(root.path()).listed,
+            ["仕事/評価", "プライベート"]
+        );
 
         // 二度足しても増えない
         set_hidden(root.path(), "プライベート", true).unwrap();
-        assert_eq!(hidden_list(root.path()).len(), 2);
+        assert_eq!(hidden_list(root.path()).listed.len(), 2);
 
         set_hidden(root.path(), "仕事/評価", false).unwrap();
-        assert_eq!(hidden_list(root.path()), vec!["プライベート"]);
+        assert_eq!(hidden_list(root.path()).listed, ["プライベート"]);
         // コメントは残る（人が書いたものを消さない）
         assert!(fs::read_to_string(root.path().join(IGNORE_FILE))
             .unwrap()
@@ -1103,7 +1120,7 @@ mod tests {
         // ファイルが無ければ作ってから足す
         let fresh = TempDir::new().unwrap();
         set_hidden(fresh.path(), "秘密", true).unwrap();
-        assert_eq!(hidden_list(fresh.path()), vec!["秘密"]);
+        assert_eq!(hidden_list(fresh.path()).listed, ["秘密"]);
     }
 
     #[test]

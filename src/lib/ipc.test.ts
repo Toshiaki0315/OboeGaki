@@ -204,17 +204,23 @@ describe("読み取りの包み", () => {
 
 describe("MCP に渡さないもの（.mcp-ignore）", () => {
   test("test_一覧を聞く", async () => {
-    invoked.mockResolvedValue(["秘密"]);
-    expect(await mcpHidden("/v")).toEqual(["秘密"]);
+    invoked.mockResolvedValue({ listed: ["秘密"], builtin: [".trash"] });
+    expect(await mcpHidden("/v")).toEqual({
+      listed: ["秘密"],
+      builtin: [".trash"],
+    });
     expect(invoked).toHaveBeenCalledWith("mcp_hidden", { root: "/v" });
   });
 
   test("test_付け外しは道と真偽を渡し_新しい一覧を受け取る", async () => {
-    invoked.mockResolvedValue(["秘密", "仕事/評価"]);
-    expect(await setMcpHidden("/v", "仕事/評価", true)).toEqual([
-      "秘密",
-      "仕事/評価",
-    ]);
+    invoked.mockResolvedValue({
+      listed: ["秘密", "仕事/評価"],
+      builtin: [],
+    });
+    expect(await setMcpHidden("/v", "仕事/評価", true)).toEqual({
+      listed: ["秘密", "仕事/評価"],
+      builtin: [],
+    });
     expect(invoked).toHaveBeenCalledWith("mcp_set_hidden", {
       root: "/v",
       path: "仕事/評価",

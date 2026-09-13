@@ -68,7 +68,12 @@ import {
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
-import { isHiddenFromMcp, relativeIn } from "./lib/mcp-hidden";
+import {
+  isHiddenFromMcp,
+  NO_MCP_HIDDEN,
+  relativeIn,
+  type McpHidden,
+} from "./lib/mcp-hidden";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
@@ -262,7 +267,7 @@ function App() {
   const [status, setStatus] = useState("");
   // Claude（MCP）に渡さないもの。真実は `.mcp-ignore`（T1 と同じ構え）で、
   // ここはその写し。付け外した戻り値で入れ替える
-  const [mcpHiddenList, setMcpHiddenList] = useState<string[]>([]);
+  const [mcpHiddenList, setMcpHiddenList] = useState<McpHidden>(NO_MCP_HIDDEN);
   const editorRef = useRef<EditorHandle>(null);
   // メニューのハンドラは一度だけ登録するので、最新値は ref で読む
   const vaultRootRef = useRef(vaultRoot);
@@ -605,18 +610,26 @@ function App() {
     }
   }
 
-  // 保管フォルダが決まったら、渡さないものの一覧を読む（画面の印に使う）
+  // 渡さないものの一覧を読む（画面の印に使う）。**窓に戻るたびに読み直す** —
+  // `.mcp-ignore` は `.md` ではないので監視が拾わず、手で直しても同期で
+  // 降ってきても印が古いままだった（レビュー 2026-09-13。ADR-0052 の
+  // 共有フォルダで実際に起こる）
   useEffect(() => {
     if (!vaultRoot) {
-      setMcpHiddenList([]);
+      setMcpHiddenList(NO_MCP_HIDDEN);
       return;
     }
     let alive = true;
-    mcpHidden(vaultRoot)
-      .then((list) => alive && setMcpHiddenList(list))
-      .catch(() => alive && setMcpHiddenList([]));
+    const read = () => {
+      mcpHidden(vaultRoot)
+        .then((found) => alive && setMcpHiddenList(found))
+        .catch(() => alive && setMcpHiddenList(NO_MCP_HIDDEN));
+    };
+    read();
+    window.addEventListener("focus", read);
     return () => {
       alive = false;
+      window.removeEventListener("focus", read);
     };
   }, [vaultRoot]);
 

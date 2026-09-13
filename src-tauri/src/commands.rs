@@ -593,7 +593,7 @@ pub fn parse_day(text: &str) -> Option<chrono::DateTime<chrono::Local>> {
 /// 使い方のノートを今の内容で置き直す（ヘルプメニュー）。
 /// `.mcp-ignore` に書いてある道の一覧（画面の印に使う）
 #[tauri::command]
-pub fn mcp_hidden(root: String) -> Vec<String> {
+pub fn mcp_hidden(root: String) -> crate::mcp::Hidden {
     crate::mcp::hidden_list(std::path::Path::new(&root))
 }
 
@@ -601,7 +601,11 @@ pub fn mcp_hidden(root: String) -> Vec<String> {
 /// 絶対パスでも相対でも受ける（ノートは絶対、フォルダは相対で来る）。
 /// 付け外したあとの一覧を返す — 画面が聞き直さなくて済む
 #[tauri::command]
-pub fn mcp_set_hidden(root: String, path: String, hidden: bool) -> Result<Vec<String>, String> {
+pub fn mcp_set_hidden(
+    root: String,
+    path: String,
+    hidden: bool,
+) -> Result<crate::mcp::Hidden, String> {
     let root_path = std::path::Path::new(&root);
     let relative = match std::path::Path::new(&path).strip_prefix(root_path) {
         Ok(rest) => rest.to_string_lossy().into_owned(),

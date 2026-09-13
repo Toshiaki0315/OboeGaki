@@ -4,6 +4,7 @@
 // のもここ。
 
 import { invoke } from "@tauri-apps/api/core";
+import type { McpHidden } from "./mcp-hidden";
 import { listen } from "@tauri-apps/api/event";
 import type { NoteEntry } from "./note-order";
 import type { OcrReader } from "./ocr";
@@ -205,9 +206,9 @@ export async function placeManual(root: string): Promise<string> {
   return invoke<string>("manual_place", { root });
 }
 
-/// `.mcp-ignore` に書いてある道（Claude に渡さないもの）。
-export async function mcpHidden(root: string): Promise<string[]> {
-  return invoke<string[]>("mcp_hidden", { root });
+/// Claude に渡さない場所（`.mcp-ignore` に書いたもの + 最初から見せない場所）。
+export async function mcpHidden(root: string): Promise<McpHidden> {
+  return invoke<McpHidden>("mcp_hidden", { root });
 }
 
 /// 「Claude に渡さない」を付け外しする。付け外したあとの一覧を返す。
@@ -215,8 +216,8 @@ export async function setMcpHidden(
   root: string,
   path: string,
   hidden: boolean,
-): Promise<string[]> {
-  return invoke<string[]>("mcp_set_hidden", { root, path, hidden });
+): Promise<McpHidden> {
+  return invoke<McpHidden>("mcp_set_hidden", { root, path, hidden });
 }
 
 /// MCP の手引きのノートを置く。置いた場所を返す。
