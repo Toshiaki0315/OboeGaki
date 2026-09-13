@@ -83,7 +83,7 @@ function highlightsFor(sourceMode: boolean) {
     ? []
     : [...editorHighlights(false), syntaxHighlighting(codeHighlight)];
 }
-import { copyCode } from "./copy-code";
+import { codeCopied, copyCode } from "./copy-code";
 import { statsOf, type TextStats } from "./stats";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -141,6 +141,8 @@ type Props = {
   resolveEmbed?: EmbedResolver;
   /** Cmd+クリック時の動作（ノートを開く・タグで絞る・URL を開く） */
   onActivate?: (action: Activation) => void;
+  /// コードを写したとき（画面下の知らせに出す。要望 2026-09-13）
+  onCodeCopied?: (ok: boolean) => void;
   /** キャレット位置が変わるたびに呼ぶ（アウトラインの現在地表示用） */
   onCursorChanged?: (pos: number) => void;
   /** 本文の右クリック。**アプリ側でメニューを出す**（OS の既定を出さない） */
@@ -180,6 +182,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     resolveImage,
     resolveEmbed,
     onActivate,
+    onCodeCopied,
     onCursorChanged,
     onContextMenu,
     saveAttachment,
@@ -203,6 +206,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   notify.current = onDocChanged;
   const activate = useRef(onActivate);
   activate.current = onActivate;
+  const copied = useRef(onCodeCopied);
+  copied.current = onCodeCopied;
   const cursorChanged = useRef(onCursorChanged);
   cursorChanged.current = onCursorChanged;
   const attachmentSaver = useRef(saveAttachment);
@@ -515,6 +520,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           ]),
           activationClicks,
           activationHandler.of((action) => activate.current?.(action)),
+          codeCopied.of((ok) => copied.current?.(ok)),
           attachmentEvents((data, name) =>
             attachmentSaver.current
               ? attachmentSaver.current(data, name)

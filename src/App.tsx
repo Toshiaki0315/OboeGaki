@@ -2814,6 +2814,13 @@ function App() {
                   resolveImage={(url) => imageSource(vaultRoot, url)}
                   onActivate={(action) => void handleActivate(action)}
                   resolveEmbed={embedResolverForEditor}
+                  onCodeCopied={(ok) =>
+                    setStatus(
+                      ok
+                        ? "コードをコピーしました"
+                        : "コードをコピーできませんでした",
+                    )
+                  }
                   onCursorChanged={(pos) => {
                     if (outlineOpenRef.current) setCursorPos(pos);
                   }}

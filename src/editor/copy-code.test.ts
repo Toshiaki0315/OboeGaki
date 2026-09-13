@@ -1,4 +1,5 @@
-// コードブロックのコピー（要望 2026-09-06）。
+// @vitest-environment jsdom
+// コードブロックのコピー（要望 2026-09-06）。印の DOM を試すので jsdom。
 
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
@@ -6,7 +7,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
-import { codeBlockAt } from "./copy-code";
+import { codeBlockAt, CopyCodeWidget } from "./copy-code";
 
 function stateOf(doc: string) {
   return EditorState.create({
@@ -85,5 +86,56 @@ describe("codeBlockAt", () => {
   test("test_空のブロックは印を出さない（写すものが無い）", () => {
     const doc = "```\n```\n";
     expect(codeBlockAt(stateOf(doc), doc.indexOf("```") + 1)).toBeNull();
+  });
+});
+
+describe("CopyCodeWidget", () => {
+  /// クリップボードは jsdom に無いので差し替える
+  function withClipboard(writeText: () => Promise<void>) {
+    const before = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    return () =>
+      Object.defineProperty(navigator, "clipboard", {
+        value: before,
+        configurable: true,
+      });
+  }
+
+  test("test_押すと写して_写せたことを知らせる（要望 2026-09-13）", async () => {
+    const written: string[] = [];
+    const restore = withClipboard(async () => {
+      written.push("ok");
+    });
+    try {
+      const told: boolean[] = [];
+      const button = new CopyCodeWidget("const a = 1;", (ok) =>
+        told.push(ok),
+      ).toDOM();
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(written).toEqual(["ok"]);
+      expect(told).toEqual([true]);
+      expect(button.className).toContain("copied");
+    } finally {
+      restore();
+    }
+  });
+
+  test("test_写せなければ_そう知らせる（黙って成功に見せない）", async () => {
+    const restore = withClipboard(() => Promise.reject(new Error("no")));
+    try {
+      const told: boolean[] = [];
+      const button = new CopyCodeWidget("x", (ok) => told.push(ok)).toDOM();
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(told).toEqual([false]);
+    } finally {
+      restore();
+    }
   });
 });

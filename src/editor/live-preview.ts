@@ -1616,7 +1616,16 @@ const blockTheme = EditorView.baseTheme({
   ".cm-note-line": {
     paddingLeft: "10px",
     borderLeft: "3px solid var(--note-line, currentColor)",
-    backgroundColor: "var(--note-bg, transparent)",
+    // 地はコードの帯と同じく**行の後ろ**に敷く（選択の塗りを覆わない。
+    // 実機報告 2026-09-13 はコードの話だが、囲みも同じ作りだった）
+    position: "relative",
+  },
+  ".cm-note-line::before": {
+    content: '""',
+    position: "absolute",
+    inset: "0",
+    background: "var(--note-bg, transparent)",
+    zIndex: "-3",
   },
   ".cm-note-info": {
     "--note-line": "var(--note-info)",
@@ -1657,16 +1666,27 @@ const blockTheme = EditorView.baseTheme({
   // 色の付かない字とキャレットの色も行に持たせる — ライトのままだと
   // 黒いキャレットが沈んで、どこを打っているか分からない
   ".cm-codeblock-line": {
-    backgroundColor: "var(--code-bg)",
     color: "var(--code-fg)",
     caretColor: "var(--code-fg)",
     fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.9em",
+    // 帯は**行の後ろ**に敷く（実機報告 2026-09-13）。行そのものの
+    // background にすると、選択の塗り（drawSelection の層は z-index -2）を
+    // 覆ってしまい、コードの中で何を選んでいるか見えなくなる
+    position: "relative",
+  },
+  ".cm-codeblock-line::before": {
+    content: '""',
+    position: "absolute",
+    inset: "0",
+    background: "var(--code-bg)",
+    zIndex: "-3", // 選択の層（-2）より後ろ
   },
   // 帯の内側に余白を作る（文字が縁にくっつくと窮屈に見える）
+  ".cm-codeblock-line-first::before": { borderRadius: "6px 6px 0 0" },
+  ".cm-codeblock-line-last::before": { borderRadius: "0 0 6px 6px" },
   ".cm-codeblock-line-first": {
     paddingTop: "0.5em",
-    borderRadius: "6px 6px 0 0",
     // コピーの印を右上に置くための基準（要望 2026-09-06）。
     // **基準が無いと印は本文の右上へ飛ぶ**（実機報告 2026-09-13）
     position: "relative",
@@ -1733,7 +1753,6 @@ const blockTheme = EditorView.baseTheme({
   },
   ".cm-codeblock-line-last": {
     paddingBottom: "0.5em",
-    borderRadius: "0 0 6px 6px",
   },
   ".cm-note-line-first": {
     paddingTop: "0.5em",

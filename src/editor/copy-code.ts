@@ -17,7 +17,12 @@ import {
   WidgetType,
   type DecorationSet,
 } from "@codemirror/view";
-import { StateEffect, StateField, type EditorState } from "@codemirror/state";
+import {
+  Facet,
+  StateEffect,
+  StateField,
+  type EditorState,
+} from "@codemirror/state";
 import { splitFenceInfo } from "./code-blocks";
 import { treeOf } from "./parse-tree";
 
@@ -58,6 +63,16 @@ export function codeBlockAt(state: EditorState, pos: number): CodeBlock | null {
   return { from: node.from, to: node.to, markAt, code };
 }
 
+/// 写したことを知らせる先（画面下のステータス欄）。**印の中だけで完結させ
+/// ない** — 印は小さく、押した手応えが本人に届かないことがある
+/// （要望 2026-09-13）
+export const codeCopied = Facet.define<
+  (ok: boolean) => void,
+  (ok: boolean) => void
+>({
+  combine: (values) => values[0] ?? (() => {}),
+});
+
 /// マウスが入っているブロックの位置（外へ出たら null）。
 export const setHoveredCode = StateEffect.define<number | null>();
 
@@ -72,8 +87,11 @@ const hoveredCode = StateField.define<number | null>({
   },
 });
 
-class CopyCodeWidget extends WidgetType {
-  constructor(readonly code: string) {
+export class CopyCodeWidget extends WidgetType {
+  constructor(
+    readonly code: string,
+    private readonly notify: (ok: boolean) => void,
+  ) {
     super();
   }
   eq(other: CopyCodeWidget): boolean {
@@ -92,9 +110,11 @@ class CopyCodeWidget extends WidgetType {
       void navigator.clipboard
         ?.writeText(this.code)
         .then(() => {
-          // **写せたことを見せる。** 押した手応えが無いと、何度も押す
+          // **写せたことを 2 か所で見せる。** 印は小さいので、画面下の
+          // 知らせにも出す（要望 2026-09-13）
           button.classList.add("copied");
           button.title = "コピーしました";
+          this.notify(true);
           setTimeout(() => {
             button.classList.remove("copied");
             button.title = "コードをコピー";
@@ -102,6 +122,7 @@ class CopyCodeWidget extends WidgetType {
         })
         .catch(() => {
           button.title = "コピーできませんでした";
+          this.notify(false);
         });
     });
     return button;
@@ -140,7 +161,7 @@ const copyDecorations = EditorView.decorations.compute(
     if (!block) return Decoration.none;
     return Decoration.set([
       Decoration.widget({
-        widget: new CopyCodeWidget(block.code),
+        widget: new CopyCodeWidget(block.code, state.facet(codeCopied)),
         side: 1,
       }).range(block.markAt),
     ]);
