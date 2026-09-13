@@ -6,7 +6,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
-import { activationAt, pointerAt } from "./activation";
+import { activationAt } from "./activation";
 
 function at(doc: string, pos: number) {
   const state = EditorState.create({
@@ -33,34 +33,24 @@ describe("ノートリンクの範囲は [start, end)", () => {
   });
 });
 
-describe("押せると見せる（Cmd を押しながら重ねたとき）", () => {
+describe("押せるかどうか（指差しに変える判断と同じ）", () => {
+  // 画面の座標から引く側（activationHere）は DOM が要るので、ここでは
+  // 「何が押せるか」の判断だけを見る。押せないものは押せそうに見せない
   const doc = "詳細は [[会議メモ]] と #仕事 と https://example.com と 地の文";
-  const state = () =>
-    EditorState.create({
-      doc,
-      extensions: [
-        markdown({
-          extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-        }),
-      ],
-    });
 
-  test("test_Cmd_を押していなければ指差しにしない", () => {
-    expect(pointerAt(state(), doc.indexOf("会議"), false)).toBe(false);
+  test("test_リンク_タグ_URL は押せる", () => {
+    expect(at(doc, doc.indexOf("会議"))?.kind).toBe("note");
+    expect(at(doc, doc.indexOf("仕事"))?.kind).toBe("tag");
+    expect(at(doc, doc.indexOf("example"))?.kind).toBe("link");
   });
 
-  test("test_押せる場所なら指差し（リンク_タグ_URL）", () => {
-    expect(pointerAt(state(), doc.indexOf("会議"), true)).toBe(true);
-    expect(pointerAt(state(), doc.indexOf("仕事"), true)).toBe(true);
-    expect(pointerAt(state(), doc.indexOf("example"), true)).toBe(true);
+  test("test_地の文は押せない", () => {
+    expect(at(doc, doc.indexOf("地の文") + 1)).toBeNull();
   });
 
-  test("test_押せない場所では変えない（地の文）", () => {
-    expect(pointerAt(state(), doc.indexOf("地の文") + 1, true)).toBe(false);
-  });
-
-  test("test_編集領域の外に出たら変えない", () => {
-    expect(pointerAt(state(), null, true)).toBe(false);
+  test("test_押せない仕組みの URL は押せない（javascript: など）", () => {
+    const risky = "[危ない](javascript:alert(1)) を押しても何も起きない";
+    expect(at(risky, 2)).toBeNull();
   });
 });
 

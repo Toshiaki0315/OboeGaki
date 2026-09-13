@@ -78,18 +78,6 @@ export const activationHandler = Facet.define<
   combine: (values) => values[0] ?? (() => {}),
 });
 
-/// その場所を Cmd+クリックしたら何か起きるか（= 指差しに変えてよいか）。
-/// **押せないもの（`javascript:` など）は押せそうに見せない** — 判定は
-/// クリックと同じ `activationAt` に任せる（参照実装 `_activation_at`）
-export function pointerAt(
-  state: EditorState,
-  pos: number | null,
-  held: boolean,
-): boolean {
-  if (!held || pos === null) return false;
-  return activationAt(state, pos) !== null;
-}
-
 /// 余白は「その行の字の上」ではない（実機報告 2026-09-13）。
 ///
 /// `posAtCoords` は**一番近い位置に丸める**ので、リンクのある行の右の余白に
@@ -112,6 +100,10 @@ function onText(view: EditorView, point: { x: number; y: number }): boolean {
 }
 
 /// その画面座標で押せるもの。**余白は除く**。
+///
+/// **押せないもの（`javascript:` など）は押せそうに見せない** — 指差しに
+/// するかどうかも、飛ぶかどうかも、クリックと同じ `activationAt` に任せる
+/// （参照実装 `_activation_at` と同じ構え）。
 ///
 /// 高い方の検査（`onText`）は**当たったときだけ**通す — マウスは動くたびに
 /// ここへ来るので、地の文の上で毎回 3 回も座標を引き直さない
