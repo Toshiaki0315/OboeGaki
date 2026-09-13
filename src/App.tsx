@@ -224,6 +224,7 @@ import {
   imageSource,
   placeManual,
   placeMcpManual,
+  setMenuChecks,
   mcpHidden,
   setMcpHidden,
   templateList,
@@ -1225,6 +1226,12 @@ function App() {
   // 表示モード（通常 / ソース）。**ノートを跨いで続く** — 切り替えボタンが
   // 見えているのに、ノートを開き直すと戻るのは筋が悪い
   const [sourceMode, setSourceMode] = useState(false);
+  // 見え方の今（メニューと歯車の印に使う。要望 2026-09-13）。**持ち主は
+  // エディタ**で、ここはその写し
+  const [editorModes, setEditorModes] = useState({
+    focus: false,
+    typewriter: false,
+  });
 
   // 印刷用に組んだ本文（ADR-0038）。null なら一度も刷っていない。
   // **同じ本文をもう一度刷れるよう毎回別の値にする**（文字列だけだと
@@ -2213,6 +2220,31 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // メニューの印（✓）を今の状態に合わせる（要望 2026-09-13）。**状態を持つ
+  // のは画面**（T2）で、Rust は言われたとおりに付け外しするだけ。変わるたびに
+  // 全部まとめて送る — 1 つずつ送ると、どれかを送り忘れたときに気付けない
+  useEffect(() => {
+    void setMenuChecks({
+      "toggle-trees": settings.treesVisible,
+      "toggle-notes": settings.notesVisible,
+      outline: outlineOpen,
+      assistant: assistantOpen,
+      "source-mode": sourceMode,
+      "focus-mode": editorModes.focus,
+      typewriter: editorModes.typewriter,
+    }).catch(() => {
+      // メニューの印が付かないだけ。書けなくなるわけではない
+    });
+  }, [
+    settings.treesVisible,
+    settings.notesVisible,
+    outlineOpen,
+    assistantOpen,
+    sourceMode,
+    editorModes.focus,
+    editorModes.typewriter,
+  ]);
+
   // ネイティブメニュー（Rust 側 build_menu）からのイベント。
   // ハンドラは一度だけ登録し、最新の動作は ref 経由で読む
   const menuActions = useRef<Record<string, () => void>>({});
@@ -2841,7 +2873,13 @@ function App() {
                   initialCursor={initialCursor}
                   diagramTheme={diagramTheme}
                   sourceMode={sourceMode}
-                  onSourceModeChanged={setSourceMode}
+                  onModesChanged={(modes) => {
+                    setSourceMode(modes.source);
+                    setEditorModes({
+                      focus: modes.focus,
+                      typewriter: modes.typewriter,
+                    });
+                  }}
                 />
               </>
             ) : (
@@ -3198,12 +3236,12 @@ function App() {
                         },
                         {
                           label: "フォーカスモード",
-                          checked: false,
+                          checked: editorModes.focus,
                           onSelect: () => menu["focus-mode"]?.(),
                         },
                         {
                           label: "タイプライタモード",
-                          checked: false,
+                          checked: editorModes.typewriter,
                           onSelect: () => menu.typewriter?.(),
                         },
                       ]}

@@ -44,7 +44,9 @@ pub fn started() -> Instant {
 /// 書式ショートカット（Cmd+B 等）は CM6 のキーマップに残し、メニューには
 /// 載せない（載せると入力中のキーを横取りしてしまう）。
 fn build_menu(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+    use tauri::menu::{
+        CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+    };
     let handle = app.handle();
     let item = |id: &str, label: &str, accelerator: Option<&str>| {
         let mut builder = MenuItemBuilder::with_id(id, label);
@@ -52,6 +54,19 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             builder = builder.accelerator(keys);
         }
         builder.build(handle)
+    };
+    // 状態を持つ項目は**印つき**にする（要望 2026-09-13）。メニューを開いた
+    // ときに「今どちらか」が分かる = macOS の作法。印の付け外しは画面側から
+    // `menu_checks` で伝える（状態を持つのは画面 = T2）
+    let checks = MenuChecks::default();
+    let toggle = |id: &str, label: &str, accelerator: Option<&str>| {
+        let mut builder = CheckMenuItemBuilder::with_id(id, label).checked(false);
+        if let Some(keys) = accelerator {
+            builder = builder.accelerator(keys);
+        }
+        let built = builder.build(handle)?;
+        checks.remember(id, built.clone());
+        Ok::<_, tauri::Error>(built)
     };
 
     // 「おぼえがきについて」に出す絵（要望 2026-09-04）。**こちらから渡す** —
@@ -192,13 +207,13 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 本文の見せ方の切り替え（要望 2026-09-13 で畳んだ）。ペインの開閉とは
     // 別の話なので、同じ並びに置かない
     let modes = SubmenuBuilder::new(handle, "書くときの見え方")
-        .item(&item("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
-        .item(&item(
+        .item(&toggle("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
+        .item(&toggle(
             "focus-mode",
             "フォーカスモード",
             Some("CmdOrCtrl+Shift+D"),
         )?)
-        .item(&item(
+        .item(&toggle(
             "typewriter",
             "タイプライタモード",
             Some("CmdOrCtrl+Shift+Y"),
@@ -228,14 +243,14 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("save-search", "検索を保存…", None)?)
         .separator()
         // ペインの開閉（spec §5.1 / §5.4）
-        .item(&item(
+        .item(&toggle(
             "toggle-trees",
             "サイドバー（フォルダ・タグ）",
             Some("CmdOrCtrl+1"),
         )?)
-        .item(&item("toggle-notes", "ノート一覧", Some("CmdOrCtrl+2"))?)
-        .item(&item("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
-        .item(&item("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
+        .item(&toggle("toggle-notes", "ノート一覧", Some("CmdOrCtrl+2"))?)
+        .item(&toggle("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
+        .item(&toggle("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
         .separator()
         .item(&modes)
         .item(&zoom)
@@ -245,6 +260,12 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("link-graph", "リンクの図…", None)?)
         // 文体を見る（U-4）。**指摘するだけで直さない**
         .item(&item("style-check", "文体を見る…", None)?)
+        .separator()
+        // 標準のフルスクリーン（緑ボタンと同じ。2026-09-13 の見落とし確認）
+        .item(&PredefinedMenuItem::fullscreen(
+            handle,
+            Some(labels.fullscreen),
+        )?)
         .build()?;
     // ウインドウ（macOS の標準。2026-09-13 の見落とし確認で足した）。
     // **「閉じる」が無いと ⌘W が効かない** — 書き取りの小窓（ADR-0057）を
@@ -274,11 +295,44 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .items(&[&application, &file, &edit, &view, &window, &help])
         .build()?;
     app.set_menu(menu)?;
+    {
+        use tauri::Manager;
+        app.manage(checks);
+    }
     app.on_menu_event(|app, event| {
         use tauri::Emitter;
         let _ = app.emit("menu", event.id().0.clone());
     });
     Ok(())
+}
+
+/// 印つきメニュー項目の控え（要望 2026-09-13）。
+///
+/// **状態を持つのは画面側**（T2）。こちらは「今こうなっている」と言われた
+/// とおりに印を付け外しするだけで、自分では何も決めない。
+#[derive(Default)]
+pub struct MenuChecks {
+    items:
+        std::sync::Mutex<std::collections::HashMap<String, tauri::menu::CheckMenuItem<tauri::Wry>>>,
+}
+
+impl MenuChecks {
+    fn remember(&self, id: &str, item: tauri::menu::CheckMenuItem<tauri::Wry>) {
+        if let Ok(mut items) = self.items.lock() {
+            items.insert(id.to_string(), item);
+        }
+    }
+
+    /// 画面から届いた状態を印に写す。知らない id は黙って飛ばす
+    /// （メニューから項目が消えても画面を落とさない）
+    pub fn apply(&self, state: &std::collections::HashMap<String, bool>) {
+        let Ok(items) = self.items.lock() else { return };
+        for (id, checked) in state {
+            if let Some(item) = items.get(id) {
+                let _ = item.set_checked(*checked);
+            }
+        }
+    }
 }
 
 /// 標準メニューの呼び名（macOS の日本語に合わせる。実機 2026-09-11: Tauri の
@@ -299,6 +353,7 @@ pub struct StandardLabels {
     pub minimize: &'static str,
     pub zoom: &'static str,
     pub close_window: &'static str,
+    pub fullscreen: &'static str,
 }
 
 pub const STANDARD_LABELS: StandardLabels = StandardLabels {
@@ -317,6 +372,7 @@ pub const STANDARD_LABELS: StandardLabels = StandardLabels {
     minimize: "しまう",
     zoom: "拡大／縮小",
     close_window: "閉じる",
+    fullscreen: "フルスクリーンにする",
 };
 
 /// 「について」に出す版。Cargo の版と、`make app` が渡すビルド日時
@@ -433,6 +489,7 @@ pub fn run() {
             commands::note_restore,
             commands::note_pin,
             commands::history_usage,
+            commands::menu_checks,
             commands::mcp_config,
             commands::mcp_hidden,
             commands::mcp_set_hidden,
@@ -563,6 +620,7 @@ mod tests {
             l.minimize,
             l.zoom,
             l.close_window,
+            l.fullscreen,
         ] {
             assert!(!label.is_ascii(), "英語のまま: {label}");
         }

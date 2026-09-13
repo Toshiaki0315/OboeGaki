@@ -206,6 +206,14 @@ export async function placeManual(root: string): Promise<string> {
   return invoke<string>("manual_place", { root });
 }
 
+/// メニューの印（✓）を今の状態に合わせる。**決めるのは画面側**（T2）で、
+/// Rust は言われたとおりに付け外しする
+export async function setMenuChecks(
+  state: Record<string, boolean>,
+): Promise<void> {
+  return invoke("menu_checks", { state });
+}
+
 /// Claude に渡さない場所（`.mcp-ignore` に書いたもの + 最初から見せない場所）。
 export async function mcpHidden(root: string): Promise<McpHidden> {
   return invoke<McpHidden>("mcp_hidden", { root });

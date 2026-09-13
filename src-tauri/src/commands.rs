@@ -615,6 +615,18 @@ pub fn mcp_set_hidden(
     Ok(crate::mcp::hidden_list(root_path))
 }
 
+/// メニューの印を今の状態に合わせる（要望 2026-09-13）。
+///
+/// **決めるのは画面側**（T2: 状態は画面が持つ）。ここは言われたとおりに
+/// 付け外しするだけ。知らない id は黙って飛ばす
+#[tauri::command]
+pub fn menu_checks(
+    checks: tauri::State<'_, crate::MenuChecks>,
+    state: std::collections::HashMap<String, bool>,
+) {
+    checks.apply(&state);
+}
+
 /// Claude Desktop などに貼る MCP の設定（10-6）。**パスを手で打たせない** —
 /// 束ねた `.app` の中の場所は人が知らない。本体の隣に居る前提で組み立てる
 #[tauri::command]

@@ -32,7 +32,16 @@ import {
   type FormatKind,
   formatKeymap,
 } from "./format-commands";
-import { editorModes, toggleFocus, toggleTypewriter } from "./modes";
+import {
+  editorModes,
+  focusModeField,
+  setFocusMode,
+  setTypewriter,
+  toggleFocus,
+  toggleTypewriter,
+  typewriterField,
+  type EditorModes,
+} from "./modes";
 import {
   activationClicks,
   activationHandler,
@@ -172,7 +181,10 @@ type Props = {
       ためのもので、別のプレビューを用意しない */
   readOnly?: boolean;
   /** 表示モードが変わったら呼ぶ（`Cmd+/` でも切り替わるため） */
-  onSourceModeChanged?: (source: boolean) => void;
+  /// 見え方（ソース・フォーカス・タイプライタ）が変わったら呼ぶ。
+  /// `Cmd+/` などキーでも切り替わるので、**状態は画面へ返す** —
+  /// メニューの印（✓）と歯車の印がこれで揃う（要望 2026-09-13）
+  onModesChanged?: (modes: EditorModes) => void;
 };
 
 export const Editor = forwardRef<EditorHandle, Props>(function Editor(
@@ -194,7 +206,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     initialCursor,
     diagramTheme,
     sourceMode,
-    onSourceModeChanged,
+    onModesChanged,
     readOnly,
   },
   ref,
@@ -223,8 +235,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   tagSource.current = knownTags;
   const noteSource = useRef(knownNotes);
   noteSource.current = knownNotes;
-  const modeChanged = useRef(onSourceModeChanged);
-  modeChanged.current = onSourceModeChanged;
+  const modeChanged = useRef(onModesChanged);
+  modeChanged.current = onModesChanged;
 
   useImperativeHandle(
     ref,
@@ -530,15 +542,30 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           EditorView.lineWrapping,
           selectionDrawing, // 選択は状態から描く（WebKit の塗り残しを断つ）
           EditorView.updateListener.of((update) => {
-            // `Cmd+/` でも切り替わるので、変わったことを外へ知らせる
+            // `Cmd+/` でも切り替わるので、変わったことを外へ知らせる。
+            // フォーカス・タイプライタも同じ合図で返す（印を揃えるため）
+            const source = update.state.field(sourceModeField, false) ?? false;
+            if (
+              update.transactions.some((tr) =>
+                tr.effects.some(
+                  (effect) =>
+                    effect.is(setSourceMode) ||
+                    effect.is(setFocusMode) ||
+                    effect.is(setTypewriter),
+                ),
+              )
+            ) {
+              modeChanged.current?.({
+                source,
+                focus: update.state.field(focusModeField, false) ?? false,
+                typewriter: update.state.field(typewriterField, false) ?? false,
+              });
+            }
             if (
               update.transactions.some((tr) =>
                 tr.effects.some((effect) => effect.is(setSourceMode)),
               )
             ) {
-              const source =
-                update.state.field(sourceModeField, false) ?? false;
-              modeChanged.current?.(source);
               // **装飾を丸ごと外す / 戻す。** update の最中には流せないので、
               // 1 拍おいてから差し替える（CM6 の決まり）
               const current = update.view;

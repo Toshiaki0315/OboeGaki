@@ -9,7 +9,6 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
-  keymap,
   scrollPastEnd,
   ViewPlugin,
   type ViewUpdate,
@@ -184,8 +183,15 @@ export const editorModes = [
   typewriterScroll,
   pastEnd.of([]),
   dimTheme,
-  keymap.of([
-    { key: "Mod-Shift-d", run: toggleFocus },
-    { key: "Mod-Shift-y", run: toggleTypewriter },
-  ]),
+  // **キーはメニューに載せてある**（lib.rs の focus-mode / typewriter）。
+  // ここに同じキーを置かない — メニューのアクセラレータは WebView より先に
+  // 取るので届かず、万一両方に届けば 1 打鍵で 2 回切り替わって何も起きない
+  // （App.tsx の同じ注意書きを参照。2026-09-13 の見落とし確認で外した）
 ];
+
+/// 今の見え方（画面へ返す形。要望 2026-09-13）
+export type EditorModes = {
+  source: boolean;
+  focus: boolean;
+  typewriter: boolean;
+};

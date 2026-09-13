@@ -11,7 +11,6 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
-  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -1909,7 +1908,9 @@ const blockTheme = EditorView.baseTheme({
 
 export const livePreview = [
   sourceModeField,
-  keymap.of([{ key: "Mod-/", run: toggleSourceMode }]),
+  // `Mod-/` はメニュー（lib.rs の source-mode）が持つ。ここには置かない —
+  // 同じキーを 2 か所に置くと、届き方次第で 2 回切り替わって何も起きない
+  // （2026-09-13 の見落とし確認で外した）
   hideMarkers,
   tableField,
   blockWidgetField,
