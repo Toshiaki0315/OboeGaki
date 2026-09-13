@@ -62,7 +62,10 @@ describe("NoteRows", () => {
     });
     const marks = view.container.querySelectorAll(".mcp-hidden-mark");
     expect(marks).toHaveLength(1);
-    expect(screen.getByText("a").closest("button")?.textContent).toContain("a");
+    // 印は**その題名と同じ行**（同じ button）に出る
+    expect(marks[0].closest("button")).toBe(
+      screen.getByText("a").closest("button"),
+    );
     expect(marks[0].getAttribute("title")).toContain("Claude");
   });
 

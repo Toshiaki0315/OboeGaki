@@ -2,7 +2,7 @@
 // 判断の物差しは「間違えたときにどちらが困るか」。迷ったら残す。
 
 import { describe, expect, test } from "vitest";
-import { importFilter, toMarkdown } from "./imported";
+import { importTitle, importFilter, toMarkdown } from "./imported";
 
 describe("toMarkdown", () => {
   test("ページの頭が見出しらしければ `##` にする", () => {
@@ -63,6 +63,21 @@ describe("toMarkdown", () => {
 
   test("制御文字（改ページなど）は落とす", () => {
     expect(toMarkdown(["本文です。\f"])).not.toContain("\f");
+  });
+});
+
+describe("読み込んだファイルの題名", () => {
+  test("test_読める形式の拡張子は落とす_大小は問わない", () => {
+    // 絵の拡張子が残って「写真.png」というノートになっていた（15-14）
+    expect(importTitle("写真.png")).toBe("写真");
+    expect(importTitle("写真.JPEG")).toBe("写真");
+    expect(importTitle("資料.pptx")).toBe("資料");
+    expect(importTitle("報告.PDF")).toBe("報告");
+  });
+
+  test("test_知らない拡張子はそのまま_空なら「資料」", () => {
+    expect(importTitle("メモ.txt")).toBe("メモ.txt");
+    expect(importTitle("")).toBe("資料");
   });
 });
 

@@ -602,6 +602,37 @@ mod tests {
     /// 標準メニューは英語のまま残さない（実機 2026-09-11）。日本語対応の
     /// 宣言（Info.plist）と ja.lproj もここで見張る
     #[test]
+    fn test_印つきメニューの_id_は_TS_と同じ見本に揃っている() {
+        // fixtures/menu-checks.json は TS 側（lib/menu-checks.ts）と同じ見本。
+        // `MenuChecks::apply` は知らない id を黙って飛ばすので、typo すると
+        // ✓ が付かないだけで誰も気付かない（15-14）
+        let raw = include_str!("../../fixtures/menu-checks.json");
+        let shared: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let ids: Vec<&str> = shared["ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_str().unwrap())
+            .collect();
+        // rustfmt が `toggle(` と id を別の行に割るので、空白を除いて比べる。
+        // 探す字面はこの関数に現れないように組む（自分自身を数えない）
+        let flat: String = include_str!("lib.rs")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let needle = format!("toggle{}{}", '(', '"');
+        for id in &ids {
+            let call = format!("{needle}{id}\"");
+            assert!(flat.contains(&call), "メニューに無い id: {id}");
+        }
+        assert_eq!(
+            flat.matches(needle.as_str()).count(),
+            ids.len(),
+            "見本に無い印つき項目がある"
+        );
+    }
+
+    #[test]
     fn test_標準メニューの呼び名は日本語_日本語対応を宣言している() {
         let l = &super::STANDARD_LABELS;
         for label in [

@@ -199,3 +199,14 @@ export function importFilter(kind: ImportKind): {
       };
   }
 }
+
+/// 読み込んだファイルの題名（ノート名）。**読める形式の拡張子だけ**落とす —
+/// 絵の拡張子が残って「写真.png」というノートになっていた（15-14）。
+/// 拡張子の一覧は `importFilter` と同じところから取る（増やしたら両方に効く）
+export function importTitle(fileName: string): string {
+  const known = (["pdf", "pptx", "image"] as ImportKind[])
+    .flatMap((kind) => importFilter(kind).extensions)
+    .join("|");
+  const title = fileName.replace(new RegExp(`\\.(${known})$`, "i"), "");
+  return title || "資料";
+}

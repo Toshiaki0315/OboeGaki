@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   historyUsage,
+  mcpConfig,
   mcpHidden,
   setMcpHidden,
   imageSource,
@@ -199,6 +200,14 @@ describe("読み取りの包み", () => {
       page: 2,
       reader,
     });
+  });
+});
+
+describe("MCP の設定断片", () => {
+  test("test_保管フォルダを渡して_貼る JSON を受け取る", async () => {
+    invoked.mockResolvedValue('{"mcpServers":{}}');
+    expect(await mcpConfig("/v")).toBe('{"mcpServers":{}}');
+    expect(invoked).toHaveBeenCalledWith("mcp_config", { root: "/v" });
   });
 });
 

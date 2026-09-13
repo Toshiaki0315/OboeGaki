@@ -9,6 +9,12 @@ describe("relativeIn", () => {
     expect(relativeIn("/vault", "仕事")).toBe("仕事");
     expect(relativeIn("/vault", "/vault")).toBe("");
   });
+
+  it("test_区切りで見る（/vault2 は /vault の中ではない）", () => {
+    // 字面の前方一致だと `2/a.md` になる。Rust の strip_prefix は成分単位
+    // （レビュー 2026-09-14）
+    expect(relativeIn("/vault", "/vault2/a.md")).toBe("vault2/a.md");
+  });
 });
 
 describe("isHiddenFromMcp", () => {

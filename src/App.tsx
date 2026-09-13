@@ -21,6 +21,7 @@ import { useAssistant } from "./hooks/useAssistant";
 import { useNoteSync } from "./hooks/useNoteSync";
 import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
+import { useMcpHidden } from "./hooks/useMcpHidden";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -75,9 +76,7 @@ import { APP_NAME } from "./lib/app-name";
 import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
 import {
   isHiddenFromMcp,
-  NO_MCP_HIDDEN,
   relativeIn,
-  type McpHidden,
   hiddenByAncestor,
 } from "./lib/mcp-hidden";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
@@ -170,7 +169,12 @@ import {
   type PptxSettings,
 } from "./lib/pptx-settings";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
-import { importFilter, toMarkdown, type ImportKind } from "./lib/imported";
+import {
+  importFilter,
+  importTitle,
+  toMarkdown,
+  type ImportKind,
+} from "./lib/imported";
 import { fillBlankPages, pdfPages } from "./lib/pdf-import";
 import {
   clampFontSize,
@@ -226,8 +230,7 @@ import {
   placeManual,
   placeMcpManual,
   setMenuChecks,
-  mcpHidden,
-  setMcpHidden,
+  mcpConfig,
   templateList,
   pinNote,
   readNote,
@@ -273,8 +276,9 @@ function App() {
   const [doc, setDoc] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   // Claude（MCP）に渡さないもの。真実は `.mcp-ignore`（T1 と同じ構え）で、
-  // ここはその写し。付け外した戻り値で入れ替える
-  const [mcpHiddenList, setMcpHiddenList] = useState<McpHidden>(NO_MCP_HIDDEN);
+  // ここはその写し（読み直しと付け外しは hooks/useMcpHidden）
+  const { hidden: mcpHiddenList, setHidden: setMcpHiddenFlag } =
+    useMcpHidden(vaultRoot);
   const editorRef = useRef<EditorHandle>(null);
   // メニューのハンドラは一度だけ登録するので、最新値は ref で読む
   const vaultRootRef = useRef(vaultRoot);
@@ -617,29 +621,6 @@ function App() {
     }
   }
 
-  // 渡さないものの一覧を読む（画面の印に使う）。**窓に戻るたびに読み直す** —
-  // `.mcp-ignore` は `.md` ではないので監視が拾わず、手で直しても同期で
-  // 降ってきても印が古いままだった（レビュー 2026-09-13。ADR-0052 の
-  // 共有フォルダで実際に起こる）
-  useEffect(() => {
-    if (!vaultRoot) {
-      setMcpHiddenList(NO_MCP_HIDDEN);
-      return;
-    }
-    let alive = true;
-    const read = () => {
-      mcpHidden(vaultRoot)
-        .then((found) => alive && setMcpHiddenList(found))
-        .catch(() => alive && setMcpHiddenList(NO_MCP_HIDDEN));
-    };
-    read();
-    window.addEventListener("focus", read);
-    return () => {
-      alive = false;
-      window.removeEventListener("focus", read);
-    };
-  }, [vaultRoot]);
-
   /// 「Claude に渡さない」の付け外し（ピン留めと同じ手触り）。
   /// **フォルダでもノートでも同じ道**（`.mcp-ignore` に 1 行増える・減る）
   async function toggleMcpHidden(path: string) {
@@ -655,7 +636,7 @@ function App() {
     }
     const hidden = isHiddenFromMcp(mcpHiddenList, relative);
     try {
-      setMcpHiddenList(await setMcpHidden(vaultRoot, relative, !hidden));
+      await setMcpHiddenFlag(relative, !hidden);
       setStatus(
         hidden
           ? `「${relative}」を Claude に渡します`
@@ -672,7 +653,7 @@ function App() {
   async function copyMcpConfig(): Promise<boolean> {
     if (!vaultRoot) return false;
     try {
-      const snippet = await invoke<string>("mcp_config", { root: vaultRoot });
+      const snippet = await mcpConfig(vaultRoot);
       await writeClipboard(snippet);
       setStatus(
         "MCP の設定をコピーしました（Claude Desktop の設定に貼って開き直してください）",
@@ -1026,7 +1007,7 @@ function App() {
       const data = await invoke<string>("import_read", { path: picked });
       const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
       const name = picked.split("/").pop() ?? "資料";
-      const title = name.replace(/\.(pptx|pdf)$/i, "");
+      const title = importTitle(name);
       // 形式ごとに読み方は違うが、**整えるのは同じ**（lib/imported.ts）
       let markdown: string;
       let trouble: string | null = null; // 読み取れなかったページの知らせ

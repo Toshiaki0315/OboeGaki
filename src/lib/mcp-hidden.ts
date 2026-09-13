@@ -3,10 +3,14 @@
 // 規則は Rust の `mcp::IgnoreList::is_ignored` と同じ — **区切りで見る**
 // （「プライベート」は「プライベート2」を隠さない）。
 
-/// 保管フォルダからの相対の道。絶対パスで来たら root を外す
+/// 保管フォルダからの相対の道。絶対パスで来たら root を外す。
+/// **区切りで見る**（`/vault2/a.md` は `/vault` の中ではない）— Rust の
+/// `strip_prefix` が成分単位なのと揃える
 export function relativeIn(root: string, path: string): string {
-  if (!path.startsWith(root)) return path.replace(/^\/+|\/+$/g, "");
-  return path.slice(root.length).replace(/^\/+|\/+$/g, "");
+  const base = root.replace(/\/+$/, "");
+  const inside = path === base || path.startsWith(`${base}/`);
+  const rest = inside ? path.slice(base.length) : path;
+  return rest.replace(/^\/+|\/+$/g, "");
 }
 
 /// Rust から受け取る「見せない場所」。**最初から見せない場所（`builtin`）も

@@ -5,6 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { McpHidden } from "./mcp-hidden";
+import type { MenuChecks } from "./menu-checks";
 import { listen } from "@tauri-apps/api/event";
 import type { NoteEntry } from "./note-order";
 import type { OcrReader } from "./ocr";
@@ -208,9 +209,7 @@ export async function placeManual(root: string): Promise<string> {
 
 /// メニューの印（✓）を今の状態に合わせる。**決めるのは画面側**（T2）で、
 /// Rust は言われたとおりに付け外しする
-export async function setMenuChecks(
-  state: Record<string, boolean>,
-): Promise<void> {
+export async function setMenuChecks(state: MenuChecks): Promise<void> {
   return invoke("menu_checks", { state });
 }
 
@@ -226,6 +225,12 @@ export async function setMcpHidden(
   hidden: boolean,
 ): Promise<McpHidden> {
   return invoke<McpHidden>("mcp_set_hidden", { root, path, hidden });
+}
+
+/// Claude Desktop の設定に貼る JSON 断片（10-6）。バイナリと保管フォルダの
+/// 場所はアプリ側が知っている — 手で打たせない
+export async function mcpConfig(root: string): Promise<string> {
+  return invoke<string>("mcp_config", { root });
 }
 
 /// MCP の手引きのノートを置く。置いた場所を返す。

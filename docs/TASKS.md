@@ -794,24 +794,19 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             `~~~ts:a.ts` でファイル名の行が帯の先頭になるテスト
       - [x] `NotePeek` の出す・待つ・隠す・遅れて届いた中身を捨てる（jsdom、
             5 件）と、`activationCursor` の聞き手が destroy で全部外れる（jsdom）
-- [ ] **15-14. UI の細かいもの**（2026-09-14 のレビュー。低優先）
-      - [ ] `relativeIn`（mcp-hidden.ts）が区切りを見ない前方一致で root を剥がす
-            （`root=/v/notes`, `path=/v/notes2/a.md` → `2/a.md`）。Rust の
-            `strip_prefix` は成分単位。`root + "/"` で見る
-      - [ ] `copyMcpConfig` が `src/lib/ipc` を経由せず `invoke` を直叩き
-            （ADR-0049）。App.tsx の直叩きは 14 か所
-      - [ ] App.tsx が縮んでいない（3,494 → 3,539 行）。`mcpHiddenList` の
-            読み直しと付け外しは `useMcpHidden(vaultRoot)` として hooks/ に出せる
-      - [ ] メニュー id の TS（App.tsx の 7 id）と Rust（lib.rs の `toggle` 7 か所）
-            の対応を見張るテストが無い。`MenuChecks::apply` は知らない id を
-            黙って飛ばすので、typo すると ✓ が付かないだけで誰も気付かない。
-            15-5 と同じく見本で突き合わせる
-      - [ ] `NoteRows.test.tsx` の `getByText("a").closest("button")?.textContent`
-            に "a" が含まれる assert は自明。⊘ が題名と同じ button にあることを
-            見たいなら `marks[0].closest("button")` と比べる
-      - [ ] 画像インポートの題名に拡張子が残る（`name.replace(/\.(pptx|pdf)$/i,
-            "")` に画像を足していない）。`写真.png` → ノート名「写真.png」。
-            315cc18 以前からの既存
+- [x] **15-14. UI の細かいもの**（2026-09-14 のレビュー。低優先。同日に直した）
+      - [x] `relativeIn` は区切りで見る（`/vault2/a.md` は `/vault` の中ではない）
+      - [x] `copyMcpConfig` は `ipc.mcpConfig` を通す（`invoke` の直叩きを 1 つ減らした）
+      - [x] `.mcp-ignore` の読み直しと付け外しを `hooks/useMcpHidden` に出した
+            （jsdom で 5 件。窓に戻ると読み直す・付け外すと一覧が差し替わる・
+            読めなければ空）
+      - [x] 印つきメニューの id は `fixtures/menu-checks.json` が両側の真実。
+            TS は `lib/menu-checks.ts`（`setMenuChecks` の引数を `Record<MenuCheckId,
+            boolean>` にして送り忘れを型で止める）、Rust は lib.rs の
+            `toggle(...)` の字面を見本と突き合わせる
+      - [x] `NoteRows.test` の自明な assert は「⊘ が題名と同じ button にある」に
+      - [x] 読み込んだファイルの題名は `importTitle` で拡張子を落とす。一覧は
+            `importFilter` と同じところから取るので、形式を増やせば両方に効く
 - [ ] **15-15. 文書・ビルドの細かいもの**（2026-09-14 のレビュー。低優先）
       - [ ] `Makefile` のコメント「環境設定 →『一般』→ MCP の『設定をコピー』」
             が古い（56748d6 で「MCP」タブに移った）
