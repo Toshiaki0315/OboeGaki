@@ -12,7 +12,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
+import { extendedInline, wikilinkTarget } from "./extended-inline";
 
 type Case = { text: string; names: string[] };
 const cases: Case[] = JSON.parse(
@@ -23,16 +23,16 @@ const LANG = markdown({
   extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
 });
 
-/// その本文が指しているノート名（出現順・重複なし）。Rust の `links` と
-/// 同じ形に揃える — 空白は畳み、前後は落とす
+/// その本文が指しているノート名（出現順・重複なし）。**本番と同じ関数**
+/// （`wikilinkTarget`）で名前を取る — テストが自前で整えると、本番の
+/// `activationAt` が Rust とずれていても緑のままになる（レビュー 2026-09-14）
 function namesOf(doc: string): string[] {
   const state = EditorState.create({ doc, extensions: [LANG] });
   const found: string[] = [];
   syntaxTree(state).iterate({
     enter(node) {
       if (node.name !== "WikiLink") return;
-      const raw = doc.slice(node.from + 2, node.to - 2);
-      const name = raw.split("|")[0].trim().replace(/\s+/g, " ");
+      const name = wikilinkTarget(doc.slice(node.from + 2, node.to - 2));
       if (name && !found.includes(name)) found.push(name);
     },
   });

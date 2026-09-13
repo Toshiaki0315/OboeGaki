@@ -11,6 +11,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { Facet, type EditorState } from "@codemirror/state";
+import { wikilinkTarget } from "./extended-inline";
 import { syntaxTree } from "@codemirror/language";
 import { NotePeek } from "./note-peek";
 
@@ -43,8 +44,7 @@ export function activationAt(
       case "WikiLink": {
         // `[[名前|表示]]` は縦棒の前が名前（ADR-0064）。表示の字の上で
         // 押しても同じノートへ行く
-        const raw = state.sliceDoc(node.from + 2, node.to - 2);
-        const name = raw.split("|")[0].trim();
+        const name = wikilinkTarget(state.sliceDoc(node.from + 2, node.to - 2));
         return name ? { kind: "note", payload: name } : null;
       }
       case "BareURL": {

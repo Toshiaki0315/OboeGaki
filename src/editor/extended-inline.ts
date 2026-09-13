@@ -213,6 +213,10 @@ export const extendedInline: MarkdownConfig = {
         if (cx.char(end + 1) !== CLOSE_BRACKET) return -1;
         const nameEnd = pipe < 0 ? end : pipe;
         if (!cx.slice(pos + 2, nameEnd).trim()) return -1; // 名前が無い
+        // 表示が空（`[[名前|]]`）なら別名扱いにしない。`名前|` まで隠すと
+        // 3 つのマークが全幅を覆い、行に何も残らず押せなくなる
+        // （レビュー 2026-09-14）
+        const aliased = pipe >= 0 && cx.slice(pipe + 1, end).trim() !== "";
         const close = end + 2;
         return cx.addElement(
           cx.elt("WikiLink", pos, close, [
@@ -220,7 +224,7 @@ export const extendedInline: MarkdownConfig = {
             // 別名のときは「名前と縦棒」もマーカー扱いにする。ライブ
             // プレビューが隠すので、読むときは**表示の字だけ**が残る
             // （カーソルを行に置けば生の字が出る = §6.4 のリビール）
-            ...(pipe < 0 ? [] : [cx.elt("WikiLinkMark", pos + 2, pipe + 1)]),
+            ...(aliased ? [cx.elt("WikiLinkMark", pos + 2, pipe + 1)] : []),
             cx.elt("WikiLinkMark", close - 2, close),
           ]),
         );
@@ -308,3 +312,17 @@ export const extendedInline: MarkdownConfig = {
     },
   ],
 };
+
+/// `[[…]]` の中身からノート名を取る（ADR-0064: 縦棒の前）。**Rust の
+/// `wikilink::normalize` と同じ形に整える** — NFC に寄せ、中の空白を 1 つに
+/// 畳み、前後を落とす。索引はこの形で持つので、ここがずれると題名の照合に
+/// 外れて別のノートを新しく作ってしまう（レビュー 2026-09-14）
+export function wikilinkTarget(raw: string): string {
+  return raw
+    .split("|")[0]
+    .normalize("NFC")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+}

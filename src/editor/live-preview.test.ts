@@ -127,6 +127,19 @@ describe("別名つきノートリンク（ADR-0064）", () => {
       has(decos, { from: open + 2, to: doc.indexOf("|") + 1, kind: "hide" }),
     ).toBe(false);
   });
+
+  test("test_表示が空なら名前を隠さない（消えて押せなくなる）", () => {
+    // `[[名前|]]` で 3 つのマークが全幅を覆うと、行に何も残らない
+    // （レビュー 2026-09-14）。名前は残し、`[[` `]]` だけ隠す
+    const empty = "[[会議メモ|]] を見よ";
+    const decos = decorationsOf(empty, empty.length);
+    expect(has(decos, { from: 0, to: 2, kind: "hide" })).toBe(true);
+    const pipe = empty.indexOf("|");
+    expect(has(decos, { from: 2, to: pipe + 1, kind: "hide" })).toBe(false);
+    expect(has(decos, { from: pipe + 1, to: pipe + 3, kind: "hide" })).toBe(
+      true,
+    );
+  });
 });
 
 describe("bulletGlyph", () => {

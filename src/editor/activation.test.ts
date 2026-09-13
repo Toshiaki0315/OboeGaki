@@ -54,6 +54,20 @@ describe("押せるかどうか（指差しに変える判断と同じ）", () =
   });
 });
 
+describe("名前は Rust の索引と同じ形に整える（wikilink::normalize）", () => {
+  test("test_中の空白は_1_つに畳む", () => {
+    // 索引は「会議 メモ」で持つのに、ここが「会議  メモ」を返すと題名の
+    // 照合に外れて**別のノートを新しく作る**（レビュー 2026-09-14）
+    const doc = "[[会議  メモ]]";
+    expect(at(doc, 3)).toEqual({ kind: "note", payload: "会議 メモ" });
+  });
+
+  test("test_NFC_に寄せる", () => {
+    const doc = "[[か\u3099]]";
+    expect(at(doc, 3)).toEqual({ kind: "note", payload: "が" });
+  });
+});
+
 describe("別名つきのノートリンク（ADR-0064）", () => {
   test("test_縦棒の前を名前として開く", () => {
     const doc = "詳細は [[会議メモ|前回のまとめ]] を見よ";
