@@ -100,6 +100,9 @@ pub fn rewrite_links_to(vault: &Vault, db: &mut IndexDb, old: &str, new: &str) -
 }
 
 #[cfg(test)]
+// テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
+// 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
+#[allow(non_snake_case)]
 mod tests {
     use super::*;
     use crate::index_db::IndexDb;

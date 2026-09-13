@@ -97,7 +97,7 @@ ci:               ## CI と同じ手順をローカルで（コミット済み�
 	  npx tsc --noEmit; \
 	  cd src-tauri; \
 	  cargo fmt --check; \
-	  cargo clippy --features bench -- -D warnings; \
+	  cargo clippy --features bench --all-targets -- -D warnings; \
 	  cargo test ) || status=$$?; \
 	git worktree remove --force "$$dir"; \
 	rm -rf "$$tmp"; \
@@ -110,5 +110,5 @@ check:            ## コミット前チェック（lint + 型 + テスト全部�
 	npx vitest run
 	npx tsc --noEmit
 	cd src-tauri && cargo fmt --check
-	cd src-tauri && cargo clippy --features bench -- -D warnings
+	cd src-tauri && cargo clippy --features bench --all-targets -- -D warnings
 	cd src-tauri && cargo test

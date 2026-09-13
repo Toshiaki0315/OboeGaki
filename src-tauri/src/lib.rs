@@ -409,6 +409,9 @@ pub fn run() {
 }
 
 #[cfg(test)]
+// テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
+// 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
+#[allow(non_snake_case)]
 mod tests {
     // cargo test の配線確認。実テストは各モジュールにある
     #[test]
@@ -491,7 +494,7 @@ mod tests {
             l.paste,
             l.select_all,
         ] {
-            assert!(label.chars().any(|c| !c.is_ascii()), "英語のまま: {label}");
+            assert!(!label.is_ascii(), "英語のまま: {label}");
         }
         let plist = include_str!("../Info.plist");
         assert!(plist.contains("<string>ja</string>"));

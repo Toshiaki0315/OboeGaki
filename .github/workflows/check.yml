@@ -39,8 +39,8 @@ jobs:
       - run: cargo fmt --check
         working-directory: src-tauri
       # 計測ツール（bench）は features で切ってある（.app に入れないため）。
-      # CI では付けて lint も通す
-      - run: cargo clippy --features bench -- -D warnings
+      # CI では付けて lint も通す。--all-targets でテストの中も見る（15-3）
+      - run: cargo clippy --features bench --all-targets -- -D warnings
         working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri

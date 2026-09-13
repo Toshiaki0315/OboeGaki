@@ -69,6 +69,9 @@ pub fn rank(signals: &[Signal], exclude: &str, limit: usize) -> Vec<Related> {
 }
 
 #[cfg(test)]
+// テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
+// 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
+#[allow(non_snake_case)]
 mod tests {
     use super::*;
 
@@ -137,7 +140,19 @@ mod tests {
 
     #[test]
     fn test_手で結んだ関係がいちばん強い() {
-        // 重みの並びは判断そのもの（リンク > タグ > 言及）
-        assert!(LINK > SHARED_TAG && SHARED_TAG > TEXT);
+        // 重みの並びは判断そのもの（リンク > タグ > 言及）。**定数を比べても
+        // 何も試していない**（clippy の指摘）ので、並べ方に効くことを見る
+        let signals = [
+            signal("言及", "題名が本文に出てくる", TEXT),
+            signal("タグ", "同じタグ #仕事", SHARED_TAG),
+            signal("リンク", "このノートを指している", LINK),
+        ];
+        assert_eq!(
+            rank(&signals, "自分", 3)
+                .iter()
+                .map(|r| r.key.as_str())
+                .collect::<Vec<_>>(),
+            ["リンク", "タグ", "言及"]
+        );
     }
 }

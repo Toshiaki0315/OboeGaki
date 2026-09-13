@@ -367,6 +367,9 @@ pub fn question_prompt(question: &str, sources: &[(String, String)]) -> Option<S
 }
 
 #[cfg(test)]
+// テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
+// 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
+#[allow(non_snake_case)]
 mod tests {
     use super::*;
     use std::io::Read;
@@ -716,7 +719,7 @@ mod tests {
         let answer = generate(
             Generation {
                 port: PORT,
-                model: model,
+                model,
                 prompt: &prompt_for("summary", "会議メモ", &body),
                 context: 8192,
                 timeout: Duration::from_secs(300),

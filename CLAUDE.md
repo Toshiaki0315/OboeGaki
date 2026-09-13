@@ -33,7 +33,9 @@ make check
 - [ ] vitest が全件緑
 - [ ] `tsc --noEmit` が緑
 - [ ] `eslint . --max-warnings 0` が緑（hooks の依存配列・未使用の変数）
-- [ ] `cargo test` / `cargo clippy` / `cargo fmt --check` が緑
+- [ ] `cargo test` / `cargo clippy --all-targets` / `cargo fmt --check` が緑
+      （テストの中も lint する。日本語のテスト名は `mod tests` の
+      `#[allow(non_snake_case)]` で通す）
 - [ ] 実装だけ、またはテストだけのコミットになっていない
 
 **挙動を変えるコミット（feat / fix / perf）では `make bump` で版を 1 つ上げる**

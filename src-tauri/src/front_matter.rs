@@ -65,6 +65,9 @@ pub fn with_pinned(text: &str, value: bool) -> String {
 }
 
 #[cfg(test)]
+// テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
+// 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
+#[allow(non_snake_case)]
 mod tests {
     use super::*;
 
