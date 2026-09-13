@@ -20,5 +20,22 @@ export const selectionDrawing = [
     "&.cm-focused .cm-selectionBackground": {
       background: "color-mix(in srgb, Highlight 75%, transparent)",
     },
+    // **描かせるのは選択だけ。キャレットは素のまま使う**（実機報告
+    // 2026-09-13）。drawSelection のキャレットは本文の上の層に出るので、
+    // 自分の下に何があるか知らない — 黒のままコードの濃い帯に沈み、どこへ
+    // 打つのか分からなくなる。素のキャレットなら `caret-color` が**行ごとに**
+    // 効き、濃い帯の中では明るい色にできる（live-preview の
+    // `.cm-codeblock-line`）。ghost selection の直しは**選択の話**なので、
+    // キャレットを素に戻しても戻らない
+    ".cm-cursorLayer": { display: "none" },
+    // drawSelection は素のキャレットを消す（`caret-color: transparent` を
+    // `!important` で当てる）。こちらも同じ強さで戻す
+    // 勝たせるために `.cm-content` を挟む（drawSelection の
+    // `.cm-line { caret-color: transparent !important }` と同じ強さだと、
+    // どちらが後に入るか次第になる）
+    ".cm-content .cm-line": { caretColor: "auto !important" },
+    ".cm-content .cm-line.cm-codeblock-line": {
+      caretColor: "var(--code-fg) !important",
+    },
   }),
 ];

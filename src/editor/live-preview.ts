@@ -1667,7 +1667,9 @@ const blockTheme = EditorView.baseTheme({
   // 黒いキャレットが沈んで、どこを打っているか分からない
   ".cm-codeblock-line": {
     color: "var(--code-fg)",
-    caretColor: "var(--code-fg)",
+    // キャレットの色は**ここには書かない**。drawSelection が
+    // `caret-color: transparent !important` を当てるので、同じ強さで
+    // 戻す必要がある — その 1 か所は selection.ts（2 か所に散らさない）
     fontFamily: "var(--mono-font, ui-monospace, 'SF Mono', Menlo, monospace)",
     fontSize: "0.9em",
     // 帯は**行の後ろ**に敷く（実機報告 2026-09-13）。行そのものの
