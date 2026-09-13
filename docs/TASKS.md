@@ -759,6 +759,81 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       親フォルダ由来で隠れたノートの「Claude に渡す」は、押せるように見せず
       「「秘密」ごと隠れています」と理由を出す（`hiddenByAncestor`）。押されて
       も App 側で断る
+- [ ] **15-12. MCP の細かいもの**（2026-09-14 のレビュー。低優先）
+      - [ ] `history_text` の `mtime_ms` が時差ぶんずれる — `saved_at` は
+            `Local::now().naive_local()` 由来のローカル時刻なのに `and_utc()`
+            で UTC と読んでいる（JST で +9h）。表示用なので害は小さい
+      - [ ] `append_to_note` の read-modify-write に排他がない。rmcp は要求ごと
+            にタスクを立てるので、同じノートへの 2 つの追記が後勝ちで片方消える
+      - [ ] `is_ignored` のドット始まりの判定が先頭の成分だけ。`仕事/.secret/x.md`
+            は `scan()` が飛ばすのに MCP は読める。`read_note` が `.md` 以外も
+            読むのも同じ穴。`Hidden.builtin` にも「ドット始まり」の規則が無い
+      - [ ] `.mcp-ignore` の照合が完全一致（NFC/NFD・大小の正規化なし）。手で
+            書いた行が Finder が作った NFD のフォルダに効かない。GUI 経由なら
+            索引のパスをそのまま書くので一致する
+      - [ ] `mcp_set_hidden`（commands.rs）は `strip_prefix` に失敗すると絶対
+            パスをそのまま `set_hidden` に渡し、`Users/…/x.md` が書かれて何も
+            隠れないのに画面は「渡さない」になる（`/private/var` ↔ `/var` や
+            シンボリックリンク）。テストが無い
+      - [ ] `create_note` は `text` が `---` の front matter で始まっても、その上
+            に `# 題名` を差し込むので front matter が壊れる
+      - [ ] `section_end` はフェンスの種類と長さを見ずにトグルする（` ```` `
+            の中の ` ``` `）。TS の `section.ts` と同じ規則だと言うが未検証
+      - [ ] `list_folders` の件数はファイル単位で隠したノートも数えている
+      - [ ] `test_note_history_…` の末尾 `is_err() || …is_empty()` はどちらでも
+            通り、隠しの門を検証していない
+      - [ ] `pdf.rs` の見本テストの 3 ページ目は Vision の OCR 結果に依存する。
+            macOS ランナー更新で揺れる可能性（既存の OCR テストと同じ前例）
+- [ ] **15-13. エディタの細かいもの**（2026-09-14 のレビュー。低優先）
+      - [ ] `activation.ts` の `onBlur` が `at` を忘れない。リンクに重ねたまま
+            `Cmd+Tab` で離れ、戻ってマウスを動かさず Cmd を押すと、古い座標で
+            指差しと泡が出る。`mouseleave` と同じく null にする
+      - [ ] `peekExcerpt` の切り出し `slice(0, PEEK_CHARS)` が UTF-16 単位で
+            サロゲートペアを割る（CLAUDE.md §1 の単位差）。`Array.from` か
+            `Intl.Segmenter` で切り、非 BMP のテストを足す
+      - [ ] 泡（NotePeek）が出した瞬間の座標に固定され、ホイールの小さな
+            スクロールで置き去りになる可能性（`geometryChanged` が立つかは
+            未検証）。`scrollDOM` の `scroll` で `hide()` すれば確実
+      - [ ] 表のセル内の別名リンク `| [[a|b]] |` は縦棒で割れる（Obsidian は
+            `\|` を要求）。ADR-0064 に限界として一行書くか、テストで現状を固定
+      - [ ] `copy-code.ts` の `codeBlockAt` は ``` 専用。`~~~ts:a.ts` や 4 本
+            以上のフェンスで `fileName` の切り出しがずれ、live-preview（Lezer
+            の `CodeInfo` を読む）と帯の先頭が食い違って印が飛ぶ
+      - [ ] `activationCursor`（指差しクラスの付け外し・blur/mouseleave の後始末）
+            と `NotePeek`（400ms 待ち・世代トークン・hide の取り消し）に自動
+            テストが無い。`copy-code.test.ts` と同じ jsdom の手法で書ける
+- [ ] **15-14. UI の細かいもの**（2026-09-14 のレビュー。低優先）
+      - [ ] `relativeIn`（mcp-hidden.ts）が区切りを見ない前方一致で root を剥がす
+            （`root=/v/notes`, `path=/v/notes2/a.md` → `2/a.md`）。Rust の
+            `strip_prefix` は成分単位。`root + "/"` で見る
+      - [ ] `copyMcpConfig` が `src/lib/ipc` を経由せず `invoke` を直叩き
+            （ADR-0049）。App.tsx の直叩きは 14 か所
+      - [ ] App.tsx が縮んでいない（3,494 → 3,539 行）。`mcpHiddenList` の
+            読み直しと付け外しは `useMcpHidden(vaultRoot)` として hooks/ に出せる
+      - [ ] メニュー id の TS（App.tsx の 7 id）と Rust（lib.rs の `toggle` 7 か所）
+            の対応を見張るテストが無い。`MenuChecks::apply` は知らない id を
+            黙って飛ばすので、typo すると ✓ が付かないだけで誰も気付かない。
+            15-5 と同じく見本で突き合わせる
+      - [ ] `NoteRows.test.tsx` の `getByText("a").closest("button")?.textContent`
+            に "a" が含まれる assert は自明。⊘ が題名と同じ button にあることを
+            見たいなら `marks[0].closest("button")` と比べる
+      - [ ] 画像インポートの題名に拡張子が残る（`name.replace(/\.(pptx|pdf)$/i,
+            "")` に画像を足していない）。`写真.png` → ノート名「写真.png」。
+            315cc18 以前からの既存
+- [ ] **15-15. 文書・ビルドの細かいもの**（2026-09-14 のレビュー。低優先）
+      - [ ] `Makefile` のコメント「環境設定 →『一般』→ MCP の『設定をコピー』」
+            が古い（56748d6 で「MCP」タブに移った）
+      - [ ] `docs/manual_test.md` に旧メニュー名が残る（「Word に書き出し…」
+            「読み込む…」、「『一般』『アシスタント』の 2 ページ」）。ab8906a で
+            「エクスポート」「インポート」に畳まれ、タブは PowerPoint・MCP も
+            ある
+      - [ ] コミット c6c0a94 の「U-2」が docs のどこにも定義されていない
+      - [ ] `scripts/make-samples.mjs` の出力先が cwd 相対。`make samples` 経由
+            なら実害はないが、他所から叩くとそこに書く
+      - [ ] 2026-09-13 の実装（見本 529c57e、メニュー再編 ab8906a〜6dfcb69、
+            コピーの印の修正 4 件、Cmd 指差し・覗き見 420c43d〜7fd0d0f）が
+            TASKS に起きていない。要望は TASKS に起こす運用なので、済みとして
+            短く残す
 
 ## 待ち — 外部要因でブロック中
 
