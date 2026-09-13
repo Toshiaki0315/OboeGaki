@@ -101,6 +101,15 @@ impl Server {
             .unwrap_or_default()
             .to_string()
     }
+
+    /// 道具を呼んで result を丸ごと返す（`isError` を見たいとき）
+    fn call_result(&mut self, name: &str, args: serde_json::Value) -> serde_json::Value {
+        let answer = self.request(
+            "tools/call",
+            serde_json::json!({ "name": name, "arguments": args }),
+        );
+        answer["result"].clone()
+    }
 }
 
 fn vault() -> tempfile::TempDir {
@@ -113,6 +122,8 @@ fn vault() -> tempfile::TempDir {
     std::fs::create_dir_all(dir.path().join("秘密")).unwrap();
     std::fs::write(dir.path().join("秘密/裏.md"), "# 裏\n\n決めたこと\n").unwrap();
     std::fs::write(dir.path().join(".mcp-ignore"), "秘密\n").unwrap();
+    // おぼえがきで一度開いた保管フォルダの印（無い場所はサーバが断る）
+    std::fs::create_dir_all(dir.path().join(".OboeGaki")).unwrap();
     dir
 }
 
@@ -202,19 +213,26 @@ fn 読んで書いて_見せない場所は断る() {
     .unwrap();
     assert!(note["text"].as_str().unwrap().contains("足した行"));
 
-    let stale = server.call(
+    // 失敗は **`isError` で**返す（レビュー 2026-09-14）。本文に "error:" と
+    // 書くだけだと成功応答なので、モデルがノートの中身と読み違える
+    let stale = server.call_result(
         "replace_note",
         serde_json::json!({
             "path": "覚え書き.md", "text": "# 覚え書き\n\nだめ\n",
             "expected_mtime_ms": note["mtime_ms"].as_i64().unwrap() - 1000,
         }),
     );
-    assert!(stale.starts_with("error:"), "古い時刻が通った: {stale}");
+    assert_eq!(stale["isError"], true, "古い時刻が通った: {stale}");
+    let why = stale["content"][0]["text"].as_str().unwrap_or_default();
+    assert!(!why.is_empty() && !why.starts_with("error:"), "{why}");
+    // 通ったときは isError が立たない
+    let fine = server.call_result("read_note", serde_json::json!({ "path": "覚え書き.md" }));
+    assert_ne!(fine["isError"], true, "{fine}");
 
     // 見せない場所へは書けない
-    let denied = server.call(
+    let denied = server.call_result(
         "create_note",
         serde_json::json!({ "title": "裏", "folder": "秘密" }),
     );
-    assert!(denied.starts_with("error:"), "{denied}");
+    assert_eq!(denied["isError"], true, "{denied}");
 }

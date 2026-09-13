@@ -12,9 +12,9 @@ use std::sync::Arc;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        ErrorData as McpError, Implementation, ListResourcesResult, PaginatedRequestParams,
-        ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
-        ResourceContents, ServerCapabilities, ServerInfo,
+        CallToolResult, ContentBlock, ErrorData as McpError, Implementation, ListResourcesResult,
+        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
+        ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -124,6 +124,16 @@ fn json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
 }
 
+/// 道具の答え。**失敗は `isError` で返す**（レビュー 2026-09-14） — 本文に
+/// "error:" と書くだけだと成功応答なので、クライアントが機械的に見分け
+/// られず、モデルがノートの中身と読み違える。断った理由は本文に入れる
+fn reply(answer: Result<String, String>) -> Result<CallToolResult, McpError> {
+    Ok(match answer {
+        Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
+        Err(error) => CallToolResult::error(vec![ContentBlock::text(error)]),
+    })
+}
+
 #[tool_router]
 impl OboegakiMcp {
     fn new(vault: McpVault) -> Self {
@@ -137,76 +147,78 @@ impl OboegakiMcp {
         name = "search_notes",
         description = "ノートを全文検索する（題名・パス・本文。`#タグ` / `after:` / `before:` で絞れる）。結果は path・title・snippet / Full-text search over notes; returns path, title, snippet."
     )]
-    async fn search_notes(&self, Parameters(p): Parameters<SearchParams>) -> String {
-        match self.vault.search(&p.query) {
-            Ok(hits) => json(&hits),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn search_notes(
+        &self,
+        Parameters(p): Parameters<SearchParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(self.vault.search(&p.query).map(|hits| json(&hits)))
     }
 
     #[tool(
         name = "read_note",
         description = "ノートの本文（front matter 込み）と更新時刻を返す。長い本文は先頭だけ / Read a note's full Markdown text and mtime. Long notes are truncated."
     )]
-    async fn read_note(&self, Parameters(p): Parameters<ReadParams>) -> String {
-        match self.vault.read_note(&p.path) {
-            Ok(note) => json(&note),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn read_note(
+        &self,
+        Parameters(p): Parameters<ReadParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(self.vault.read_note(&p.path).map(|note| json(&note)))
     }
 
     #[tool(
         name = "list_notes",
         description = "ノートの一覧（題名・冒頭・更新時刻）。folder や tag で絞れる / List notes with title, preview and mtime; filter by folder and/or tag."
     )]
-    async fn list_notes(&self, Parameters(p): Parameters<ListParams>) -> String {
-        match self.vault.list_notes(p.folder.as_deref(), p.tag.as_deref()) {
-            Ok(rows) => json(&rows),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn list_notes(
+        &self,
+        Parameters(p): Parameters<ListParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .list_notes(p.folder.as_deref(), p.tag.as_deref())
+                .map(|rows| json(&rows)),
+        )
     }
 
     #[tool(
         name = "list_folders",
         description = "フォルダの一覧と直下のノート数 / List folders with the number of notes directly inside."
     )]
-    async fn list_folders(&self) -> String {
-        match self.vault.list_folders() {
-            Ok(rows) => json(&rows),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn list_folders(&self) -> Result<CallToolResult, McpError> {
+        reply(self.vault.list_folders().map(|rows| json(&rows)))
     }
 
     #[tool(
         name = "list_tags",
         description = "タグの一覧と使われている数 / List tags with usage counts."
     )]
-    async fn list_tags(&self) -> String {
-        match self.vault.list_tags() {
-            Ok(rows) => json(&rows),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn list_tags(&self) -> Result<CallToolResult, McpError> {
+        reply(self.vault.list_tags().map(|rows| json(&rows)))
     }
 
     #[tool(
         name = "related_notes",
         description = "そのノートに関係するノートを、根拠（指している・同じタグ・題名の出現）ごと強い順に返す / Notes related to the given one, ranked, with the reason each was picked."
     )]
-    async fn related_notes(&self, Parameters(p): Parameters<RelatedParams>) -> String {
-        match self
-            .vault
-            .related_notes(&p.path, p.limit.map(|n| n as usize))
-        {
-            Ok(rows) => json(&rows),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn related_notes(
+        &self,
+        Parameters(p): Parameters<RelatedParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .related_notes(&p.path, p.limit.map(|n| n as usize))
+                .map(|rows| json(&rows)),
+        )
     }
 
     #[tool(
         name = "note_history",
         description = "ノートの版の一覧（新しい順）。at にその時刻を渡すとその版の本文。読むだけで書き戻さない / List a note's saved versions; pass `at` to read one. Read-only."
     )]
-    async fn note_history(&self, Parameters(p): Parameters<HistoryParams>) -> String {
+    async fn note_history(
+        &self,
+        Parameters(p): Parameters<HistoryParams>,
+    ) -> Result<CallToolResult, McpError> {
         let answer = match p.at.as_deref() {
             Some(stamp) => self
                 .vault
@@ -214,87 +226,98 @@ impl OboegakiMcp {
                 .map(|note| json(&note)),
             None => self.vault.note_history(&p.path).map(|rows| json(&rows)),
         };
-        match answer {
-            Ok(text) => text,
-            Err(error) => format!("error: {error}"),
-        }
+        reply(answer)
     }
 
     #[tool(
         name = "create_note",
         description = "ノートを新しく作る。題名は本文の見出しになる。folder で入れる場所、template で雛形を選べる / Create a new note; the title becomes its `#` heading."
     )]
-    async fn create_note(&self, Parameters(p): Parameters<CreateParams>) -> String {
-        match self.vault.create_note(
-            &p.title,
-            p.text.as_deref(),
-            p.folder.as_deref(),
-            p.template.as_deref(),
-        ) {
-            Ok(written) => json(&written),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn create_note(
+        &self,
+        Parameters(p): Parameters<CreateParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .create_note(
+                    &p.title,
+                    p.text.as_deref(),
+                    p.folder.as_deref(),
+                    p.template.as_deref(),
+                )
+                .map(|written| json(&written)),
+        )
     }
 
     #[tool(
         name = "append_to_note",
         description = "ノートの末尾に足す。heading を渡すとその節の末尾へ。既にある本文は書き換えない / Append text to a note, optionally at the end of a given heading's section. Existing text is never rewritten."
     )]
-    async fn append_to_note(&self, Parameters(p): Parameters<AppendParams>) -> String {
-        match self
-            .vault
-            .append_to_note(&p.path, &p.text, p.heading.as_deref())
-        {
-            Ok(written) => json(&written),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn append_to_note(
+        &self,
+        Parameters(p): Parameters<AppendParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .append_to_note(&p.path, &p.text, p.heading.as_deref())
+                .map(|written| json(&written)),
+        )
     }
 
     #[tool(
         name = "replace_note",
         description = "ノートの本文を丸ごと差し替える。read_note で得た mtime_ms が要る（その間に変わっていれば断る）/ Replace a note's whole text. Requires the mtime_ms from read_note; refused if the note changed since."
     )]
-    async fn replace_note(&self, Parameters(p): Parameters<ReplaceParams>) -> String {
-        match self
-            .vault
-            .replace_note(&p.path, &p.text, p.expected_mtime_ms)
-        {
-            Ok(written) => json(&written),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn replace_note(
+        &self,
+        Parameters(p): Parameters<ReplaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .replace_note(&p.path, &p.text, p.expected_mtime_ms)
+                .map(|written| json(&written)),
+        )
     }
 
     #[tool(
         name = "move_note",
         description = "ノートを別のフォルダへ移す（履歴も連れて行く）/ Move a note to another folder; its history follows."
     )]
-    async fn move_note(&self, Parameters(p): Parameters<MoveParams>) -> String {
-        match self.vault.move_note(&p.path, &p.folder) {
-            Ok(written) => json(&written),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn move_note(
+        &self,
+        Parameters(p): Parameters<MoveParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .move_note(&p.path, &p.folder)
+                .map(|written| json(&written)),
+        )
     }
 
     #[tool(
         name = "trash_note",
         description = "ノートをゴミ箱へ移す。**消しはしない**（ゴミ箱を空にする道は無い）。ピン留め中は断る / Move a note to the trash. It is never deleted, and pinned notes are refused."
     )]
-    async fn trash_note(&self, Parameters(p): Parameters<ReadParams>) -> String {
-        match self.vault.trash_note(&p.path) {
-            Ok(written) => json(&written),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn trash_note(
+        &self,
+        Parameters(p): Parameters<ReadParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(self.vault.trash_note(&p.path).map(|written| json(&written)))
     }
 
     #[tool(
         name = "daily_note",
         description = "今日のノートを返す（無ければ作る）。text を渡すと末尾に足す / Today's note, creating it if needed; pass `text` to append to it."
     )]
-    async fn daily_note(&self, Parameters(p): Parameters<DailyParams>) -> String {
-        match self.vault.daily_note(p.text.as_deref()) {
-            Ok(written) => json(&written),
-            Err(error) => format!("error: {error}"),
-        }
+    async fn daily_note(
+        &self,
+        Parameters(p): Parameters<DailyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        reply(
+            self.vault
+                .daily_note(p.text.as_deref())
+                .map(|written| json(&written)),
+        )
     }
 }
 

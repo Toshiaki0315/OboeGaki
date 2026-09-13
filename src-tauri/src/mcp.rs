@@ -290,6 +290,19 @@ impl McpVault {
         if !root.is_dir() {
             return Err(format!("保管フォルダが無い: {}", root.display()));
         }
+        // **おぼえがきで一度開いた場所だけ**を保管フォルダとみなす。設定 JSON
+        // の args を書き間違えて ~/Documents などを渡されたとき、そこに管理
+        // フォルダを生やして配下の .md を全部索引に取り込んではいけない
+        // （レビュー 2026-09-14）。旧 .hitofude だけの場所は本物なので通す
+        let looks_like_vault = root.join(crate::vault::MANAGED_DIR).is_dir()
+            || root.join(crate::vault::LEGACY_MANAGED_DIR).is_dir();
+        if !looks_like_vault {
+            return Err(format!(
+                "おぼえがきで開いたことのない場所です（{} が無い）: {}。先にアプリで一度開いてください",
+                crate::vault::MANAGED_DIR,
+                root.display()
+            ));
+        }
         let vault = Vault::new(root);
         vault.ensure_layout().map_err(|e| e.to_string())?;
         Ok(Self { vault })
@@ -650,9 +663,11 @@ impl McpVault {
                 "ノートが変わっています（read_note で読み直してから書いてください）: {cleaned}"
             ));
         }
-        // **版を作れるのは書いた本人だけ**（ADR-0023 の精神）。アプリが動いて
-        // いればアプリの保存が残すので、ここで二重に残さない
-        if !self.app_running() {
+        // **差し替える前の姿は必ず残す**（ADR-0023 / T7）。アプリが動いていても
+        // 頼らない — watcher は外部変更で版を残さないので、開いていないノート
+        // を差し替えると旧本文がどこにも無くなる（レビュー 2026-09-14）。
+        // 直前の版と同じ中身なら `keep` が黙って飛ばすので二重にはならない
+        {
             let whole = read_note(&absolute).map_err(|e| e.to_string())?;
             let store = crate::history::store_root(&self.vault.managed_dir());
             if let Err(error) = crate::history::keep(
@@ -1106,6 +1121,44 @@ mod tests {
 
         assert!(mcp.replace_note("無い.md", "x", 0).is_err());
         assert!(mcp.replace_note("秘密/裏.md", "x", 0).is_err());
+    }
+
+    #[test]
+    fn test_replace_note_アプリが動いていても_差し替え前の版を残す() {
+        // 「アプリが動いていればアプリの保存が残す」は成り立たない —
+        // watcher は外部変更で版を残さないので、開いていないノートを差し替え
+        // ると旧本文が消える（レビュー 2026-09-14。ADR-0023 / T7）
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "設計.md", "# 設計\n\n古い本文\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+        let _app = crate::vault_lock::acquire(&vault.managed_dir());
+        assert!(mcp.app_running());
+
+        let before = mcp.read_note("設計.md").unwrap();
+        mcp.replace_note("設計.md", "# 設計\n\n新しい本文\n", before.mtime_ms)
+            .unwrap();
+        let versions = mcp.note_history("設計.md").unwrap();
+        assert_eq!(versions.len(), 1);
+        let kept = mcp.history_text("設計.md", &versions[0].stamp).unwrap();
+        assert!(kept.text.contains("古い本文"));
+    }
+
+    #[test]
+    fn test_open_おぼえがきで開いたことのない場所には_足場を作らない() {
+        // 設定 JSON の args を書き間違えて ~/Documents などを渡しても、そこに
+        // 管理フォルダを生やして索引に全部取り込んではいけない（レビュー 2026-09-14）
+        let root = TempDir::new().unwrap();
+        fs::write(root.path().join("書類.md"), "# 書類\n").unwrap();
+        assert!(McpVault::open(root.path()).is_err());
+        assert!(!root.path().join(crate::vault::MANAGED_DIR).exists());
+        assert!(!root.path().join(IGNORE_FILE).exists());
+
+        // 旧 .hitofude だけの保管フォルダは本物なので開ける（改名して引き継ぐ = T7）
+        fs::create_dir_all(root.path().join(crate::vault::LEGACY_MANAGED_DIR)).unwrap();
+        assert!(McpVault::open(root.path()).is_ok());
+        assert!(root.path().join(crate::vault::MANAGED_DIR).is_dir());
     }
 
     #[test]
