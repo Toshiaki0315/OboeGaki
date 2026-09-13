@@ -77,6 +77,13 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .separator()
         .item(&item("preferences", "環境設定…", Some("CmdOrCtrl+,"))?)
         .separator()
+        // 標準の「サービス」（選んだ文字を他のアプリへ渡す道）。macOS の作法で
+        // ここに置く（2026-09-13 の見落とし確認で気付いた）
+        .item(&PredefinedMenuItem::services(
+            handle,
+            Some(labels.services),
+        )?)
+        .separator()
         .item(&PredefinedMenuItem::hide(handle, Some(labels.hide))?)
         .item(&PredefinedMenuItem::hide_others(
             handle,
@@ -239,6 +246,22 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         // 文体を見る（U-4）。**指摘するだけで直さない**
         .item(&item("style-check", "文体を見る…", None)?)
         .build()?;
+    // ウインドウ（macOS の標準。2026-09-13 の見落とし確認で足した）。
+    // **「閉じる」が無いと ⌘W が効かない** — 書き取りの小窓（ADR-0057）を
+    // キーで閉じられなかった（Esc と Cmd+Enter では閉じられる）
+    let window = SubmenuBuilder::new(handle, "ウインドウ")
+        .item(&PredefinedMenuItem::minimize(
+            handle,
+            Some(labels.minimize),
+        )?)
+        .item(&PredefinedMenuItem::maximize(handle, Some(labels.zoom))?)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(
+            handle,
+            Some(labels.close_window),
+        )?)
+        .build()?;
+
     let help = SubmenuBuilder::new(handle, "ヘルプ")
         .item(&item("place-manual", "使い方のノートを置き直す", None)?)
         .item(&item(
@@ -248,7 +271,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         )?)
         .build()?;
     let menu = MenuBuilder::new(handle)
-        .items(&[&application, &file, &edit, &view, &help])
+        .items(&[&application, &file, &edit, &view, &window, &help])
         .build()?;
     app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
@@ -272,6 +295,10 @@ pub struct StandardLabels {
     pub copy: &'static str,
     pub paste: &'static str,
     pub select_all: &'static str,
+    pub services: &'static str,
+    pub minimize: &'static str,
+    pub zoom: &'static str,
+    pub close_window: &'static str,
 }
 
 pub const STANDARD_LABELS: StandardLabels = StandardLabels {
@@ -286,6 +313,10 @@ pub const STANDARD_LABELS: StandardLabels = StandardLabels {
     copy: "コピー",
     paste: "ペースト",
     select_all: "すべてを選択",
+    services: "サービス",
+    minimize: "しまう",
+    zoom: "拡大／縮小",
+    close_window: "閉じる",
 };
 
 /// 「について」に出す版。Cargo の版と、`make app` が渡すビルド日時
@@ -528,6 +559,10 @@ mod tests {
             l.copy,
             l.paste,
             l.select_all,
+            l.services,
+            l.minimize,
+            l.zoom,
+            l.close_window,
         ] {
             assert!(!label.is_ascii(), "英語のまま: {label}");
         }
