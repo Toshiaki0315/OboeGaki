@@ -14,13 +14,15 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 import { StateEffect, StateField, type EditorState } from "@codemirror/state";
+import { splitFenceInfo } from "./code-blocks";
 import { treeOf } from "./parse-tree";
 
 export type CodeBlock = {
   /// ブロック全体（開きの行頭から閉じの行末まで）。
   from: number;
   to: number;
-  /// 印を置く場所（先頭の行末）。
+  /// 印を置く場所（**帯の先頭の行末**）。帯の外に置くと、位置の基準になる
+  /// 行（`cm-codeblock-line-first`）が無くて印が本文の右上へ飛ぶ。
   markAt: number;
   /// 写す中身（前後の ``` と言語名を除いたもの）。
   code: string;
@@ -44,7 +46,12 @@ export function codeBlockAt(state: EditorState, pos: number): CodeBlock | null {
   if (bodyTo <= bodyFrom) return null; // 空のブロックは写すものが無い
   const code = state.sliceDoc(bodyFrom, bodyTo).replace(/\n+$/, "");
   if (!code.trim()) return null;
-  return { from: node.from, to: node.to, markAt: first.to, code };
+  // 帯の先頭は、ファイル名があれば開きの行、無ければ中身の 1 行目
+  // （live-preview の `cm-codeblock-line` の付け方と同じ規則）。
+  // **隠れている開きの行に置くと印が浮く**（実機報告 2026-09-13）
+  const named = splitFenceInfo(first.text.replace(/^\s*```/, "")).fileName;
+  const markAt = named ? first.to : state.doc.lineAt(bodyFrom).to;
+  return { from: node.from, to: node.to, markAt, code };
 }
 
 /// マウスが入っているブロックの位置（外へ出たら null）。

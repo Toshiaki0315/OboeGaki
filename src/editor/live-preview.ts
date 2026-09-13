@@ -1667,7 +1667,8 @@ const blockTheme = EditorView.baseTheme({
   ".cm-codeblock-line-first": {
     paddingTop: "0.5em",
     borderRadius: "6px 6px 0 0",
-    // コピーの印を右上に置くための基準（要望 2026-09-06）
+    // コピーの印を右上に置くための基準（要望 2026-09-06）。
+    // **基準が無いと印は本文の右上へ飛ぶ**（実機報告 2026-09-13）
     position: "relative",
   },
   // コードをコピーする印。**入っている間だけ**見せる（いつも出ていると

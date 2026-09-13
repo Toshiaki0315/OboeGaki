@@ -45,11 +45,22 @@ describe("codeBlockAt", () => {
     expect(open?.from).toBe(close?.from);
   });
 
-  test("test_印を出す場所はブロックの先頭の行末", () => {
+  test("test_ファイル名があるときは開きの行末に置く（帯の中）", () => {
     const state = stateOf(DOC);
     const found = codeBlockAt(state, DOC.indexOf("return"));
     expect(found?.markAt).toBe(
       DOC.indexOf("```c:main.c") + "```c:main.c".length,
+    );
+  });
+
+  test("test_ファイル名が無いときは中身の 1 行目の行末に置く", () => {
+    // **帯の中に置かないと印が浮く。** 開きの行は隠れていて位置の基準に
+    // ならず、印が本文の右上に飛んでいた（実機報告 2026-09-13）
+    const doc = "前\n\n```\nconst a = 1;\nconst b = 2;\n```\n\n後\n";
+    const state = stateOf(doc);
+    const found = codeBlockAt(state, doc.indexOf("const a"));
+    expect(found?.markAt).toBe(
+      doc.indexOf("const a = 1;") + "const a = 1;".length,
     );
   });
 
