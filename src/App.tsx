@@ -34,6 +34,11 @@ import { ListControls } from "./components/ListControls";
 
 import { ListPalette } from "./components/ListPalette";
 import { MenuIcon, PathIcon } from "./components/MenuIcon";
+import {
+  folderMenuItems,
+  noteMenuItems,
+  trashMenuItems,
+} from "./components/note-menu";
 import { MenuList, type MenuEntry } from "./components/MenuList";
 import { NoteActions } from "./components/NoteActions";
 import { NoteTitle } from "./components/NoteTitle";
@@ -2997,79 +3002,36 @@ function App() {
           {noteMenu !== null &&
             (() => {
               const target = noteMenu.path;
-              const pinned = notes.find(
-                (entry) => entry.path === target,
-              )?.pinned;
               return (
                 <ContextMenu at={noteMenu} onClose={() => setNoteMenu(null)}>
                   <MenuList
                     onPick={() => setNoteMenu(null)}
-                    items={[
+                    items={noteMenuItems(
                       {
-                        label: pinned ? "ピンを外す" : "ピン留め",
-                        icon: <MenuIcon name="pin" />,
-                        onSelect: () => void handlePin(target),
-                      },
-                      // 渡す / 渡さないはピンと同じ手触りで（要望 2026-09-12）。
-                      // 中身は `.mcp-ignore` の 1 行
-                      {
-                        label: isHiddenFromMcp(
+                        path: target,
+                        pinned:
+                          notes.find((entry) => entry.path === target)
+                            ?.pinned ?? false,
+                        hiddenFromMcp: isHiddenFromMcp(
                           mcpHiddenList,
                           relativeIn(vaultRoot ?? "", target),
-                        )
-                          ? "Claude に渡す"
-                          : "Claude に渡さない",
-                        icon: <MenuIcon name="mcp" />,
-                        onSelect: () => void toggleMcpHidden(target),
-                      },
-                      // **本文を入れ替える「開く」とは別の道**（U-1）。
-                      // 書いているノートを奪わずに、もう 1 枚を並べる
-                      {
-                        label: "横に開く",
-                        icon: <MenuIcon name="beside" />,
-                        onSelect: () => void openBeside(target),
+                        ),
                       },
                       {
-                        label: "複製",
-                        icon: <MenuIcon name="copy" />,
-                        onSelect: () => void handleDuplicate(target),
-                      },
-                      {
-                        label: "フォルダへ移動…",
-                        icon: <MenuIcon name="move" />,
-                        onSelect: () => {
-                          setMoveTarget(target);
+                        onPin: (path) => void handlePin(path),
+                        onToggleMcpHidden: (path) => void toggleMcpHidden(path),
+                        onOpenBeside: (path) => void openBeside(path),
+                        onDuplicate: (path) => void handleDuplicate(path),
+                        onMove: (path) => {
+                          setMoveTarget(path);
                           setMoveOpen(true);
                         },
+                        onSaveTemplate: (path) => setTemplateName(path),
+                        onCopyLink: (path) => void copyNoteLink(path),
+                        onReveal: (path) => void revealItemInDir(path),
+                        onTrash: (path) => void handleTrash(path),
                       },
-                      {
-                        label: "テンプレートに登録…",
-                        icon: <MenuIcon name="template" />,
-                        onSelect: () => setTemplateName(target),
-                      },
-                      { kind: "separator" },
-                      {
-                        label: "リンクをコピー",
-                        icon: <MenuIcon name="link" />,
-                        onSelect: () => void copyNoteLink(target),
-                      },
-                      {
-                        label: "Finder で表示",
-                        icon: <MenuIcon name="finder" />,
-                        onSelect: () => void revealItemInDir(target),
-                      },
-                      { kind: "separator" },
-                      {
-                        label: "ゴミ箱へ移動",
-                        icon: <MenuIcon name="trash" />,
-                        danger: true,
-                        disabled: pinned,
-                        title: pinned
-                          ? "ピン留め中は捨てられません"
-                          : "ゴミ箱へ移動",
-                        onSelect: () => void handleTrash(target),
-                      },
-                    ]}
+                    )}
                   />
                 </ContextMenu>
               );
@@ -3297,10 +3259,7 @@ function App() {
             })()}
           {folderMenu !== null &&
             (() => {
-              // 空文字は保管フォルダの直下（「直下」の行）。名前も変えられ
-              // ないし消せないので、作る項目だけ出す
               const target = folderMenu.folder;
-              const isRoot = target === "";
               return (
                 <ContextMenu
                   at={folderMenu}
@@ -3308,58 +3267,23 @@ function App() {
                 >
                   <MenuList
                     onPick={() => setFolderMenu(null)}
-                    items={[
+                    items={folderMenuItems(
                       {
-                        label: "新規ノート",
-                        icon: <MenuIcon name="noteNew" />,
-                        onSelect: () => void handleCreate(target),
+                        folder: target,
+                        hiddenFromMcp: isHiddenFromMcp(mcpHiddenList, target),
                       },
                       {
-                        label: "新規フォルダ…",
-                        icon: <MenuIcon name="folderNew" />,
-                        onSelect: () =>
-                          setFolderDialog({ kind: "create", folder: target }),
+                        onNewNote: (folder) => void handleCreate(folder),
+                        onNewFolder: (folder) =>
+                          setFolderDialog({ kind: "create", folder }),
+                        onReveal: (folder) => void openInFinder(folder),
+                        onToggleMcpHidden: (folder) =>
+                          void toggleMcpHidden(folder),
+                        onRename: (folder) =>
+                          setFolderDialog({ kind: "rename", folder }),
+                        onDelete: (folder) => void handleDeleteFolder(folder),
                       },
-                      {
-                        label: "Finder で開く",
-                        icon: <MenuIcon name="finder" />,
-                        onSelect: () => void openInFinder(target),
-                      },
-                      // 保管フォルダそのもの（直下の行）は出さない —
-                      // 全部を隠すのは `.mcp-ignore` の仕事ではなく、
-                      // 設定を外す仕事
-                      ...(isRoot
-                        ? []
-                        : ([
-                            {
-                              label: isHiddenFromMcp(mcpHiddenList, target)
-                                ? "Claude に渡す"
-                                : "Claude に渡さない",
-                              icon: <MenuIcon name="mcp" />,
-                              onSelect: () => void toggleMcpHidden(target),
-                            },
-                          ] as const)),
-                      ...(isRoot
-                        ? []
-                        : ([
-                            { kind: "separator" },
-                            {
-                              label: "名前を変更…",
-                              icon: <MenuIcon name="rename" />,
-                              onSelect: () =>
-                                setFolderDialog({
-                                  kind: "rename",
-                                  folder: target,
-                                }),
-                            },
-                            {
-                              label: "削除",
-                              icon: <MenuIcon name="trash" />,
-                              danger: true,
-                              onSelect: () => void handleDeleteFolder(target),
-                            },
-                          ] satisfies MenuEntry[])),
-                    ]}
+                    )}
                   />
                 </ContextMenu>
               );
@@ -3397,48 +3321,19 @@ function App() {
               />
             </ContextMenu>
           )}
-          {trashMenu !== null &&
-            (() => {
-              const target = trashMenu.path;
-              return (
-                <ContextMenu at={trashMenu} onClose={() => setTrashMenu(null)}>
-                  <MenuList
-                    onPick={() => setTrashMenu(null)}
-                    items={[
-                      {
-                        label: "Finder で開く",
-                        icon: <MenuIcon name="finder" />,
-                        onSelect: () => void openInFinder(TRASH_FOLDER),
-                      },
-                      { kind: "separator" },
-                      ...(target === null
-                        ? ([
-                            {
-                              label: "ゴミ箱を空にする…",
-                              icon: <MenuIcon name="trash" />,
-                              danger: true,
-                              onSelect: () => void handleEmptyTrash(),
-                            },
-                          ] satisfies MenuEntry[])
-                        : ([
-                            {
-                              label: "元に戻す",
-                              icon: <MenuIcon name="restore" />,
-                              onSelect: () => void handleRestore(target),
-                            },
-                            { kind: "separator" },
-                            {
-                              label: "完全に削除",
-                              icon: <MenuIcon name="trash" />,
-                              danger: true,
-                              onSelect: () => void handleDeleteForever(target),
-                            },
-                          ] satisfies MenuEntry[])),
-                    ]}
-                  />
-                </ContextMenu>
-              );
-            })()}
+          {trashMenu !== null && (
+            <ContextMenu at={trashMenu} onClose={() => setTrashMenu(null)}>
+              <MenuList
+                onPick={() => setTrashMenu(null)}
+                items={trashMenuItems(trashMenu.path, {
+                  onReveal: () => void openInFinder(TRASH_FOLDER),
+                  onEmpty: () => void handleEmptyTrash(),
+                  onRestore: (path) => void handleRestore(path),
+                  onDeleteForever: (path) => void handleDeleteForever(path),
+                })}
+              />
+            </ContextMenu>
+          )}
           {styleFindings !== null && (
             <StyleCheckDialog
               findings={styleFindings}
