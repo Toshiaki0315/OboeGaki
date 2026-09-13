@@ -1888,6 +1888,9 @@ const blockTheme = EditorView.baseTheme({
     // 中なので、更に縮めると本文の 0.7 倍になって読めない
     fontSize: "1em",
     padding: "0.1em 0.7em",
+    // ラベルと 1 行目がくっついて見えた（実機報告 2026-09-13）。帯の内側の
+    // 余白（0.5em）と同じだけ空ける — ファイル名があるブロックにだけ効く
+    marginBottom: "0.5em",
     borderRadius: "4px",
     // 参照実装 code_name_background / foreground（ADR-0008）。
     // 実色は App.css の変数（ライト #63636B / ダーク #5A5A63 に白系文字）
