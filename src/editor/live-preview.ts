@@ -1695,13 +1695,15 @@ const blockTheme = EditorView.baseTheme({
   // 本文の一部に見える）
   ".cm-copy-code": {
     position: "absolute",
-    right: "0.5em",
-    top: "0.35em",
+    right: "0.4em",
+    top: "0.3em",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: "1.9em",
-    height: "1.9em",
+    // 帯からはみ出さない範囲でいちばん大きく（実機報告 2026-09-13。
+    // 1 行だけのブロックで実測: 帯 40px に対し印 31px、上 4 / 下 6 / 右 5 px）
+    width: "2.3em",
+    height: "2.3em",
     padding: "0",
     border: "none",
     borderRadius: "5px",
@@ -1744,8 +1746,8 @@ const blockTheme = EditorView.baseTheme({
     background: "color-mix(in srgb, currentColor 22%, transparent)",
   },
   ".cm-copy-code svg": {
-    width: "1.05em",
-    height: "1.05em",
+    width: "1.35em",
+    height: "1.35em",
   },
   ".cm-copy-code.copied": {
     color: "var(--code-prop)",
