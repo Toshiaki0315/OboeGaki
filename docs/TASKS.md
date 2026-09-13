@@ -780,24 +780,20 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] `pdf.rs` の OCR 依存テストは**そのまま**（決めた）。既存の
             `test_絵だけのPDFから文字を読む` と同じ前提で、CI が揺れたら
             そのときに両方まとめて見直す
-- [ ] **15-13. エディタの細かいもの**（2026-09-14 のレビュー。低優先）
-      - [ ] `activation.ts` の `onBlur` が `at` を忘れない。リンクに重ねたまま
-            `Cmd+Tab` で離れ、戻ってマウスを動かさず Cmd を押すと、古い座標で
-            指差しと泡が出る。`mouseleave` と同じく null にする
-      - [ ] `peekExcerpt` の切り出し `slice(0, PEEK_CHARS)` が UTF-16 単位で
-            サロゲートペアを割る（CLAUDE.md §1 の単位差）。`Array.from` か
-            `Intl.Segmenter` で切り、非 BMP のテストを足す
-      - [ ] 泡（NotePeek）が出した瞬間の座標に固定され、ホイールの小さな
-            スクロールで置き去りになる可能性（`geometryChanged` が立つかは
-            未検証）。`scrollDOM` の `scroll` で `hide()` すれば確実
-      - [ ] 表のセル内の別名リンク `| [[a|b]] |` は縦棒で割れる（Obsidian は
-            `\|` を要求）。ADR-0064 に限界として一行書くか、テストで現状を固定
-      - [ ] `copy-code.ts` の `codeBlockAt` は ``` 専用。`~~~ts:a.ts` や 4 本
-            以上のフェンスで `fileName` の切り出しがずれ、live-preview（Lezer
-            の `CodeInfo` を読む）と帯の先頭が食い違って印が飛ぶ
-      - [ ] `activationCursor`（指差しクラスの付け外し・blur/mouseleave の後始末）
-            と `NotePeek`（400ms 待ち・世代トークン・hide の取り消し）に自動
-            テストが無い。`copy-code.test.ts` と同じ jsdom の手法で書ける
+- [x] **15-13. エディタの細かいもの**（2026-09-14 のレビュー。低優先。同日に直した）
+      - [x] `activation.ts` の `onBlur` は `leave` と同じく位置も忘れる
+      - [x] `peekExcerpt` はコードポイントで数えて切る（`Array.from`）。絵文字
+            だけの本文で孤立サロゲートが残らないテスト
+      - [x] `scrollDOM` の `scroll` で泡を隠す（ホイールで置き去りにしない）。
+            聞き手は destroy で外れる
+      - [x] 表のセルの中は `\|` と書く、を ADR-0064 に記した。`\|` の `\` は
+            名前に入れない — TS `wikilinkTarget` と Rust `spans_in_line` を
+            揃え、共有の見本に足した。素の `[[a|b]]` がセルで割れる現状は
+            `wikilink-cases.test.ts` で固定
+      - [x] `codeBlockAt` は ``` / ~~~ どちらでも 3 本以上なら受ける。
+            `~~~ts:a.ts` でファイル名の行が帯の先頭になるテスト
+      - [x] `NotePeek` の出す・待つ・隠す・遅れて届いた中身を捨てる（jsdom、
+            5 件）と、`activationCursor` の聞き手が destroy で全部外れる（jsdom）
 - [ ] **15-14. UI の細かいもの**（2026-09-14 のレビュー。低優先）
       - [ ] `relativeIn`（mcp-hidden.ts）が区切りを見ない前方一致で root を剥がす
             （`root=/v/notes`, `path=/v/notes2/a.md` → `2/a.md`）。Rust の

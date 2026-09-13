@@ -318,11 +318,9 @@ export const extendedInline: MarkdownConfig = {
 /// 畳み、前後を落とす。索引はこの形で持つので、ここがずれると題名の照合に
 /// 外れて別のノートを新しく作ってしまう（レビュー 2026-09-14）
 export function wikilinkTarget(raw: string): string {
-  return raw
-    .split("|")[0]
-    .normalize("NFC")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .join(" ");
+  // 表のセルでは縦棒を `\|` と逃がす（Obsidian と同じ）。その `\` は
+  // 名前に入れない。Rust の `spans_in_line` と同じ規則
+  const pipe = raw.indexOf("|");
+  const name = pipe < 0 ? raw : raw.slice(0, pipe).replace(/\\$/, "");
+  return name.normalize("NFC").trim().split(/\s+/).filter(Boolean).join(" ");
 }

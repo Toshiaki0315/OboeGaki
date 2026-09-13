@@ -47,9 +47,14 @@ export function codeBlockAt(state: EditorState, pos: number): CodeBlock | null {
   if (node.name !== "FencedCode") return null;
   const first = state.doc.lineAt(node.from);
   const last = state.doc.lineAt(node.to);
+  // フェンスは ``` でも ~~~ でも、3 本以上なら何本でもよい（CommonMark）。
+  // ``` 専用に見ると `~~~ts:a.ts` が「名前なし」になり、live-preview（Lezer
+  // の CodeInfo を読む）と帯の先頭がずれて印が飛ぶ（レビュー 2026-09-14）
+  const opening = /^\s*(`{3,}|~{3,})/.exec(first.text);
+  const fence = opening?.[1] ?? "```";
   // 中身は開きの次の行から、閉じの手前の行まで。閉じが無ければ末尾まで
   const closed =
-    last.from > first.to && last.text.trimStart().startsWith("```");
+    last.from > first.to && last.text.trimStart().startsWith(fence);
   const bodyFrom = first.to + 1;
   const bodyTo = closed ? last.from - 1 : node.to;
   if (bodyTo <= bodyFrom) return null; // 空のブロックは写すものが無い
@@ -58,7 +63,9 @@ export function codeBlockAt(state: EditorState, pos: number): CodeBlock | null {
   // 帯の先頭は、ファイル名があれば開きの行、無ければ中身の 1 行目
   // （live-preview の `cm-codeblock-line` の付け方と同じ規則）。
   // **隠れている開きの行に置くと印が浮く**（実機報告 2026-09-13）
-  const named = splitFenceInfo(first.text.replace(/^\s*```/, "")).fileName;
+  const named = splitFenceInfo(
+    first.text.slice(opening?.[0].length ?? 0),
+  ).fileName;
   const markAt = named ? first.to : state.doc.lineAt(bodyFrom).to;
   return { from: node.from, to: node.to, markAt, code };
 }

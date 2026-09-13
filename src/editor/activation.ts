@@ -158,12 +158,18 @@ const activationCursor = ViewPlugin.fromClass(
       window.addEventListener("keyup", this.onKey, true);
       // 窓から離れると keyup が来ない（Cmd+Tab）。押していない扱いに戻す
       window.addEventListener("blur", this.onBlur);
+      // ホイールで動くと mousemove は来ない。泡は出した瞬間の座標に固定なので、
+      // 置き去りにせず隠す（次に触れれば出直す）
+      view.scrollDOM.addEventListener("scroll", this.onScroll, {
+        passive: true,
+      });
     }
 
     destroy() {
       window.removeEventListener("keydown", this.onKey, true);
       window.removeEventListener("keyup", this.onKey, true);
       window.removeEventListener("blur", this.onBlur);
+      this.view.scrollDOM.removeEventListener("scroll", this.onScroll);
       this.apply(false);
       this.peek.destroy();
     }
@@ -188,10 +194,11 @@ const activationCursor = ViewPlugin.fromClass(
     }
 
     private onKey = (event: KeyboardEvent) => this.refresh(event.metaKey);
-    private onBlur = () => {
-      this.apply(false);
-      this.peek.hide();
-    };
+    /// 窓から離れたら位置も忘れる（`leave` と同じ）。忘れないと、他のアプリの
+    /// 上でマウスを動かして戻り、動かさず Cmd を押したときに古い座標で
+    /// 指差しと泡が出る（レビュー 2026-09-14）
+    private onBlur = () => this.leave();
+    private onScroll = () => this.peek.hide();
 
     /// 名前は refresh（`update` は PluginValue の予約席 = ViewUpdate 用）
     private refresh(held: boolean) {

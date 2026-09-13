@@ -69,6 +69,11 @@ describe("名前は Rust の索引と同じ形に整える（wikilink::normalize
 });
 
 describe("別名つきのノートリンク（ADR-0064）", () => {
+  test("test_逃がした縦棒_backslash_も別名の区切り（表のセルの書き方）", () => {
+    const doc = "[[会議メモ\\|前回]]";
+    expect(at(doc, 3)).toEqual({ kind: "note", payload: "会議メモ" });
+  });
+
   test("test_縦棒の前を名前として開く", () => {
     const doc = "詳細は [[会議メモ|前回のまとめ]] を見よ";
     expect(at(doc, doc.indexOf("会議") + 1)).toEqual({

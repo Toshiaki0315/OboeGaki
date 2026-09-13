@@ -32,6 +32,24 @@ int main() {
 `;
 
 describe("codeBlockAt", () => {
+  test("test_チルダのフェンスでも_ファイル名の行を帯の先頭にする", () => {
+    // ``` 専用の判定だと `~~~ts:a.ts` は「名前なし」になり、live-preview
+    // （Lezer の CodeInfo を読む）と帯の先頭がずれて印が本文の右上へ飛ぶ
+    // （レビュー 2026-09-14）
+    const doc = "前\n\n~~~ts:a.ts\nconst a = 1;\n~~~\n";
+    const state = stateOf(doc);
+    const found = codeBlockAt(state, doc.indexOf("const"));
+    expect(found?.code).toBe("const a = 1;");
+    expect(found?.markAt).toBe(state.doc.lineAt(doc.indexOf("~~~ts")).to);
+  });
+
+  test("test_四本のフェンスの中の三本は閉じではない", () => {
+    const doc = "````md\n```\n中\n```\n````\n";
+    const state = stateOf(doc);
+    const found = codeBlockAt(state, doc.indexOf("中"));
+    expect(found?.code).toBe("```\n中\n```");
+  });
+
   test("test_中に居ればコードだけを返す（記号と言語は入れない）", () => {
     const state = stateOf(DOC);
     const found = codeBlockAt(state, DOC.indexOf("return"));

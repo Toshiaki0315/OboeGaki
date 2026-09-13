@@ -122,7 +122,13 @@ fn spans_in_line(chars: &[char]) -> Vec<Span> {
             index += 2;
             continue;
         }
-        let name = index + 2..pipe.unwrap_or(end);
+        // 表のセルでは縦棒を `\|` と逃がす（Obsidian と同じ）。その `\` は
+        // 名前に入れない。TS の `wikilinkTarget` と同じ規則
+        let mut name_end = pipe.unwrap_or(end);
+        if pipe.is_some() && name_end > index + 2 && chars[name_end - 1] == '\\' {
+            name_end -= 1;
+        }
+        let name = index + 2..name_end;
         if chars[name.clone()]
             .iter()
             .collect::<String>()

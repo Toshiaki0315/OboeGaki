@@ -50,6 +50,16 @@ describe("peekExcerpt", () => {
     expect(found.length).toBe(PEEK_CHARS + 1);
   });
 
+  test("test_字数で切るときサロゲートペアを割らない", () => {
+    // `slice` は UTF-16 単位で切るので、境目が絵文字だと孤立サロゲートが
+    // `…` の直前に残って化ける（CLAUDE.md §1 の単位差。レビュー 2026-09-14）
+    const long = "😀".repeat(PEEK_CHARS * 2);
+    const found = peekExcerpt(`# 題\n\n${long}\n`);
+    expect(found.endsWith("…")).toBe(true);
+    expect(Array.from(found)).toHaveLength(PEEK_CHARS + 1);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(found)).toBe(false);
+  });
+
   test("test_空のノートは空を返す（呼ぶ側が泡を出さない）", () => {
     expect(peekExcerpt("# 題だけ\n")).toBe("");
     expect(peekExcerpt("")).toBe("");

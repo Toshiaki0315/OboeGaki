@@ -48,3 +48,18 @@ describe("Rust と同じ見本で同じ答えになる", () => {
     expect(namesOf(c.text)).toEqual(c.names);
   });
 });
+
+describe("表のセルの中（TS だけの限界。ADR-0064）", () => {
+  // 表はブロック段階で `|` を区切りに使うので、セル内の `[[a|b]]` はインラインの
+  // 解析に届く前に割れる（Obsidian も同じで `\|` を要求する）。ここで現状を
+  // 固定しておく（レビュー 2026-09-14）
+  const table = (cell: string) => `| a | b |\n| --- | --- |\n| ${cell} | x |\n`;
+
+  test("test_素の縦棒はセルの区切りになってリンクにならない", () => {
+    expect(namesOf(table("[[会議メモ|前回]]"))).toEqual([]);
+  });
+
+  test("test_縦棒を_backslash_で逃がせば別名つきリンクになる", () => {
+    expect(namesOf(table("[[会議メモ\\|前回]]"))).toEqual(["会議メモ"]);
+  });
+});

@@ -53,7 +53,12 @@ export function peekExcerpt(text: string): string {
     if (lines.length >= PEEK_LINES) break;
   }
   const found = lines.join("\n");
-  return found.length <= PEEK_CHARS ? found : `${found.slice(0, PEEK_CHARS)}…`;
+  // **コードポイントで数える。** `slice` は UTF-16 単位なので、境目が絵文字だと
+  // 孤立サロゲートが `…` の直前に残って化ける（CLAUDE.md §1 の単位差）
+  const points = Array.from(found);
+  return points.length <= PEEK_CHARS
+    ? found
+    : `${points.slice(0, PEEK_CHARS).join("")}…`;
 }
 
 /// 泡そのもの（出す・隠す・待つ）。**位置と Cmd の状態は持たない** —
