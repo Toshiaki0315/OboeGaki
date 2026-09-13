@@ -16,7 +16,18 @@ export type NoteMenuFacts = {
   pinned: boolean;
   /// Claude（MCP）に渡さない場所か
   hiddenFromMcp: boolean;
+  /// 親フォルダごと隠れているなら、その親（自分では外せない）
+  hiddenBy?: string | null;
 };
+
+/// 親ごと隠れているときの「渡す」。**項目を消さない** — 押せない理由を
+/// 見せる（ピン留め中の「ゴミ箱へ移動」と同じ構え）
+function ancestorNote(hiddenBy: string): { disabled: true; title: string } {
+  return {
+    disabled: true,
+    title: `「${hiddenBy}」ごと隠れています。そちらで切り替えてください`,
+  };
+}
 
 export type NoteMenuActions = {
   onPin: (path: string) => void;
@@ -34,7 +45,7 @@ export function noteMenuItems(
   facts: NoteMenuFacts,
   act: NoteMenuActions,
 ): MenuEntry[] {
-  const { path, pinned, hiddenFromMcp } = facts;
+  const { path, pinned, hiddenFromMcp, hiddenBy } = facts;
   return [
     {
       label: pinned ? "ピンを外す" : "ピン留め",
@@ -47,6 +58,7 @@ export function noteMenuItems(
       label: hiddenFromMcp ? "Claude に渡す" : "Claude に渡さない",
       icon: <MenuIcon name="mcp" />,
       onSelect: () => act.onToggleMcpHidden(path),
+      ...(hiddenBy ? ancestorNote(hiddenBy) : {}),
     },
     // **本文を入れ替える「開く」とは別の道**（U-1）。書いているノートを
     // 奪わずに、もう 1 枚を並べる
@@ -98,6 +110,8 @@ export type FolderMenuFacts = {
   /// 対象のフォルダ（保管フォルダからの相対）。**空文字は「直下」の行**
   folder: string;
   hiddenFromMcp: boolean;
+  /// 親フォルダごと隠れているなら、その親（自分では外せない）
+  hiddenBy?: string | null;
 };
 
 export type FolderMenuActions = {
@@ -113,7 +127,7 @@ export function folderMenuItems(
   facts: FolderMenuFacts,
   act: FolderMenuActions,
 ): MenuEntry[] {
-  const { folder, hiddenFromMcp } = facts;
+  const { folder, hiddenFromMcp, hiddenBy } = facts;
   // 空文字は保管フォルダの直下（「直下」の行）。名前も変えられないし
   // 消せないので、作る項目だけ出す
   const isRoot = folder === "";
@@ -142,6 +156,7 @@ export function folderMenuItems(
             label: hiddenFromMcp ? "Claude に渡す" : "Claude に渡さない",
             icon: <MenuIcon name="mcp" />,
             onSelect: () => act.onToggleMcpHidden(folder),
+            ...(hiddenBy ? ancestorNote(hiddenBy) : {}),
           } satisfies MenuEntry,
         ]),
     ...(isRoot

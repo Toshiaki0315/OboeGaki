@@ -1,7 +1,7 @@
 // 「Claude に渡さない」の判定（GUI の印）。`.mcp-ignore` の中身と突き合わせる。
 
 import { describe, expect, it } from "vitest";
-import { isHiddenFromMcp, relativeIn } from "./mcp-hidden";
+import { hiddenByAncestor, isHiddenFromMcp, relativeIn } from "./mcp-hidden";
 
 describe("relativeIn", () => {
   it("test_保管フォルダの下を相対にする", () => {
@@ -45,5 +45,32 @@ describe("isHiddenFromMcp", () => {
   it("test_ドットで始まる場所も隠れている（Rust の規則と揃える）", () => {
     expect(isHiddenFromMcp(hidden, ".git/config")).toBe(true);
     expect(isHiddenFromMcp(hidden, "ふつう/.隠し.md")).toBe(false);
+  });
+});
+
+describe("hiddenByAncestor", () => {
+  const hidden = {
+    listed: ["プライベート", "仕事/評価", "秘密のメモ.md"],
+    builtin: [".trash", ".OboeGaki", "attachments", "templates"],
+  };
+
+  it("test_親フォルダの名指しで隠れているなら_その親を返す", () => {
+    // その 1 行を消しても親の行が残るので、「渡す」は効かない。押す前に
+    // 理由を見せるための判断（レビュー 2026-09-14）
+    expect(hiddenByAncestor(hidden, "プライベート/日記.md")).toBe(
+      "プライベート",
+    );
+    expect(hiddenByAncestor(hidden, "仕事/評価/2026.md")).toBe("仕事/評価");
+    expect(hiddenByAncestor(hidden, "templates/議事録.md")).toBe("templates");
+  });
+
+  it("test_自分が名指しされているなら_null（自分で外せる）", () => {
+    expect(hiddenByAncestor(hidden, "プライベート")).toBeNull();
+    expect(hiddenByAncestor(hidden, "秘密のメモ.md")).toBeNull();
+  });
+
+  it("test_隠れていなければ_null", () => {
+    expect(hiddenByAncestor(hidden, "仕事/会議.md")).toBeNull();
+    expect(hiddenByAncestor(hidden, "")).toBeNull();
   });
 });

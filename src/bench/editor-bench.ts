@@ -115,7 +115,7 @@ async function run() {
         livePreview,
         tableAutoFormat,
         headingFolding,
-        editorModes,
+        editorModes({ focus: false, typewriter: false }),
         imageResolver.of(async () => null),
         activationClicks,
         activationHandler.of(() => {}),

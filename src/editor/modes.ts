@@ -176,12 +176,18 @@ const dimTheme = EditorView.baseTheme({
   ".cm-dim-line": { opacity: "0.3", transition: "opacity 0.15s" },
 });
 
-export const editorModes = [
-  focusModeField,
-  typewriterField,
+/// 見え方の拡張一式。**開いた時点の値を引き継ぐ** — ノートを切り替えると
+/// view は作り直されるので、false で始めるとメニューの ✓ と歯車の印だけが
+/// ON のまま残って実態とずれる（レビュー 2026-09-14）
+export const editorModes = (initial: {
+  focus: boolean;
+  typewriter: boolean;
+}) => [
+  focusModeField.init(() => initial.focus),
+  typewriterField.init(() => initial.typewriter),
   focusDim,
   typewriterScroll,
-  pastEnd.of([]),
+  pastEnd.of(initial.typewriter ? scrollPastEnd() : []),
   dimTheme,
   // **キーはメニューに載せてある**（lib.rs の focus-mode / typewriter）。
   // ここに同じキーを置かない — メニューのアクセラレータは WebView より先に

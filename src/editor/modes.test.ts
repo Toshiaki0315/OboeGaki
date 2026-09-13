@@ -8,6 +8,7 @@ import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
 import {
+  editorModes,
   focusModeField,
   focusRange,
   setFocusMode,
@@ -66,6 +67,23 @@ describe("focusRange", () => {
       start: list.indexOf("- 一"),
       end: list.indexOf("- 二") + 3,
     });
+  });
+});
+
+describe("開いた時点の見え方（editorModes）", () => {
+  test("test_フォーカスとタイプライタを引き継いで始まる", () => {
+    // ノートを切り替えると view は作り直される。false で始めると、メニューの
+    // ✓ と歯車の印だけが ON のまま残って実態とずれる（レビュー 2026-09-14）
+    const state = EditorState.create({
+      extensions: [editorModes({ focus: true, typewriter: true })],
+    });
+    expect(state.field(focusModeField)).toBe(true);
+    expect(state.field(typewriterField)).toBe(true);
+    const plain = EditorState.create({
+      extensions: [editorModes({ focus: false, typewriter: false })],
+    });
+    expect(plain.field(focusModeField)).toBe(false);
+    expect(plain.field(typewriterField)).toBe(false);
   });
 });
 

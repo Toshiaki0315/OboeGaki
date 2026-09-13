@@ -44,6 +44,25 @@ describe("noteMenuItems", () => {
     );
   });
 
+  test("test_親フォルダごと隠れているなら_渡す_は押せず理由を見せる", () => {
+    // 自分の行を消しても親の行が残るので何も変わらない。押せるように
+    // 見せて「渡します」と言うのは嘘（レビュー 2026-09-14）
+    const items = noteMenuItems(
+      {
+        path: "/v/秘密/a.md",
+        pinned: false,
+        hiddenFromMcp: true,
+        hiddenBy: "秘密",
+      },
+      actions(),
+    );
+    const toggle = find(items, "Claude に渡す");
+    expect(toggle && "disabled" in toggle && toggle.disabled).toBe(true);
+    expect(toggle && "title" in toggle && toggle.title).toBe(
+      "「秘密」ごと隠れています。そちらで切り替えてください",
+    );
+  });
+
   test("test_ピンが無ければ捨てられる", () => {
     const items = noteMenuItems(
       { path: "/v/a.md", pinned: false, hiddenFromMcp: false },
@@ -144,5 +163,25 @@ describe("trashMenuItems", () => {
       (entry) => "label" in entry && entry.label === "完全に削除",
     );
     expect(forever && "danger" in forever && forever.danger).toBe(true);
+  });
+});
+
+describe("folderMenuItems（親ごと隠れている）", () => {
+  test("test_親フォルダごと隠れているなら_渡す_は押せない", () => {
+    const items = folderMenuItems(
+      { folder: "秘密/奥", hiddenFromMcp: true, hiddenBy: "秘密" },
+      {
+        onNewNote: vi.fn(),
+        onNewFolder: vi.fn(),
+        onReveal: vi.fn(),
+        onToggleMcpHidden: vi.fn(),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+      },
+    );
+    const toggle = items.find(
+      (entry) => "label" in entry && entry.label === "Claude に渡す",
+    );
+    expect(toggle && "disabled" in toggle && toggle.disabled).toBe(true);
   });
 });

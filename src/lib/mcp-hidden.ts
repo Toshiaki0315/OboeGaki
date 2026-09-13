@@ -32,3 +32,20 @@ export function isHiddenFromMcp(hidden: McpHidden, relative: string): boolean {
     (entry) => relative === entry || relative.startsWith(`${entry}/`),
   );
 }
+
+/// その道を**親ごと**隠している場所（`.mcp-ignore` の行、または最初から
+/// 見せない場所）。自分が名指しされているなら null — 自分の行を消せば
+/// 外せる。親由来なら、自分の行を消しても親の行が残って何も変わらない
+/// ので、「渡す」を押せるように見せてはいけない（レビュー 2026-09-14）
+export function hiddenByAncestor(
+  hidden: McpHidden,
+  relative: string,
+): string | null {
+  if (!relative) return null;
+  const first = relative.split("/")[0];
+  if (first !== relative && first.startsWith(".")) return first;
+  for (const entry of [...hidden.listed, ...hidden.builtin]) {
+    if (entry !== relative && relative.startsWith(`${entry}/`)) return entry;
+  }
+  return null;
+}

@@ -177,6 +177,9 @@ type Props = {
   diagramTheme?: MermaidTheme;
   /** 開いた時点の表示モード（ソースモードはノートを跨いで続く） */
   sourceMode?: boolean;
+  /** 開いた時点のフォーカス・タイプライタ（同じくノートを跨いで続く） */
+  focusMode?: boolean;
+  typewriter?: boolean;
   /** 読むだけにする（横に開く参照ペイン = U-1）。**同じ描き方を使い回す**
       ためのもので、別のプレビューを用意しない */
   readOnly?: boolean;
@@ -206,6 +209,8 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     initialCursor,
     diagramTheme,
     sourceMode,
+    focusMode,
+    typewriter,
     onModesChanged,
     readOnly,
   },
@@ -506,7 +511,10 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           copyCode, // コードブロックのコピー（要望 2026-09-06）
           tableAutoFormat, // 表を離れたら整える（ADR-0003 決定 4 / ADR-0044）
           headingFolding, // 見出しの折りたたみ（ADR-0019）
-          editorModes,
+          editorModes({
+            focus: focusMode ?? false,
+            typewriter: typewriter ?? false,
+          }),
           imageResolver.of(resolveImage ?? (async () => null)),
           // 埋め込み（ADR-0058）。入れ子のビューには同じ解析と見た目を渡し、
           // その中の埋め込みは解決しない（深さ 1）

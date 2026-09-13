@@ -78,6 +78,7 @@ import {
   NO_MCP_HIDDEN,
   relativeIn,
   type McpHidden,
+  hiddenByAncestor,
 } from "./lib/mcp-hidden";
 import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
@@ -645,6 +646,13 @@ function App() {
     if (!vaultRoot) return;
     const relative = relativeIn(vaultRoot, path);
     if (!relative) return;
+    // 親フォルダごと隠れているなら、自分の 1 行を消しても何も変わらない。
+    // 「渡します」と言って渡らないのが最悪なので、ここでも断る
+    const ancestor = hiddenByAncestor(mcpHiddenList, relative);
+    if (ancestor) {
+      setStatus(`「${ancestor}」ごと隠れています。そちらで切り替えてください`);
+      return;
+    }
     const hidden = isHiddenFromMcp(mcpHiddenList, relative);
     try {
       setMcpHiddenList(await setMcpHidden(vaultRoot, relative, !hidden));
@@ -2127,10 +2135,15 @@ function App() {
       filterByTag(action.payload);
       return;
     }
+    // 名前は NFC で来る（wikilinkTarget）。題名側も寄せて比べる — macOS の
+    // ファイル名は分解形で来ることがある
     const wanted = action.payload.toLowerCase();
     const target = useAppStore
       .getState()
-      .notes.find((entry) => noteStem(entry.path).toLowerCase() === wanted);
+      .notes.find(
+        (entry) =>
+          noteStem(entry.path).normalize("NFC").toLowerCase() === wanted,
+      );
     if (target) {
       await openNote(target.path);
       return;
@@ -2873,6 +2886,8 @@ function App() {
                   initialCursor={initialCursor}
                   diagramTheme={diagramTheme}
                   sourceMode={sourceMode}
+                  focusMode={editorModes.focus}
+                  typewriter={editorModes.typewriter}
                   onModesChanged={(modes) => {
                     setSourceMode(modes.source);
                     setEditorModes({
@@ -3046,6 +3061,10 @@ function App() {
                           notes.find((entry) => entry.path === target)
                             ?.pinned ?? false,
                         hiddenFromMcp: isHiddenFromMcp(
+                          mcpHiddenList,
+                          relativeIn(vaultRoot ?? "", target),
+                        ),
+                        hiddenBy: hiddenByAncestor(
                           mcpHiddenList,
                           relativeIn(vaultRoot ?? "", target),
                         ),
@@ -3304,6 +3323,7 @@ function App() {
                       {
                         folder: target,
                         hiddenFromMcp: isHiddenFromMcp(mcpHiddenList, target),
+                        hiddenBy: hiddenByAncestor(mcpHiddenList, target),
                       },
                       {
                         onNewNote: (folder) => void handleCreate(folder),
