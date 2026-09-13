@@ -10,6 +10,7 @@
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   Document,
   HeadingLevel,
@@ -23,7 +24,10 @@ import {
 } from "docx";
 import PptxGenJS from "pptxgenjs";
 
-const OUT = "fixtures/samples/読み込みの見本";
+// **このファイルの場所から**引く（cwd 相対だと、他所から叩いたときにそこへ書く。15-15）
+const OUT = fileURLToPath(
+  new URL("../fixtures/samples/読み込みの見本", import.meta.url),
+);
 mkdirSync(OUT, { recursive: true });
 
 // --------------------------------------------------------------- PNG / JPG

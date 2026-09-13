@@ -87,6 +87,7 @@
 | ウィンドウの位置・サイズの保存                                                   | config.window_geometry             | 実装済み（tauri-plugin-window-state）                                                   |
 | シングルインスタンス・vault ロック（二重起動の安全化）                           | H-1, app.acquire_vault_lock        | 実装済み（tauri-plugin-single-instance、vault_lock.rs の flock）                        |
 | 文章チェック                                                                     | core/style_check.py                | 実装済み（lib/style-check.ts、components/StyleCheckDialog.tsx）                         |
+| リンク先を覗く泡（`Cmd` を押しながら `[[…]]` に重ねると冒頭が浮いて出る）        | U-2, editor/link_preview.py        | 実装済み（2026-09-13。editor/note-peek.ts。指差しと同じ合図で出す）                      |
 | 参照ペイン（もう 1 枚のノートを本文の横に読むだけで置く。「横に開く」）          | U-1, ui/reference_pane.py          | 実装済み（2026-09-04。右のペインの 1 枠に入る）                                         |
 
 ## 6. 取り込み・書き出し
