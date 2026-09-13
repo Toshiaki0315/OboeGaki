@@ -177,3 +177,25 @@ function join(lines: string[]): string {
   }
   return joined;
 }
+
+/// 読み込める形式（メニューの「インポート」の 2 階層目 = 要望 2026-09-13）
+export type ImportKind = "pdf" | "pptx" | "image";
+
+/// 選ぶ窓の絞り込み。**形式を決めてから探す**ので、関係ないファイルが
+/// 並ばない（絵は読み取りに回る = ADR-0041）
+export function importFilter(kind: ImportKind): {
+  name: string;
+  extensions: string[];
+} {
+  switch (kind) {
+    case "pdf":
+      return { name: "PDF", extensions: ["pdf"] };
+    case "pptx":
+      return { name: "PowerPoint", extensions: ["pptx"] };
+    case "image":
+      return {
+        name: "画像",
+        extensions: ["png", "jpg", "jpeg", "heic", "tiff", "tif"],
+      };
+  }
+}

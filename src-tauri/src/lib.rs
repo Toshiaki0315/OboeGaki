@@ -89,6 +89,29 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .separator()
         .item(&PredefinedMenuItem::quit(handle, Some(labels.quit))?)
         .build()?;
+    // 書き出しと読み込みは**形式を 2 階層目に畳む**（要望 2026-09-13）。
+    // 形式が増えるたびに「ファイル」が伸びて、日々使う項目（新規・保存）が
+    // 沈んでいた
+    let export = SubmenuBuilder::new(handle, "エクスポート")
+        .item(&item("export-html", "HTML…", None)?)
+        .item(&item("export-pptx", "PowerPoint…", None)?)
+        .item(&item("export-docx", "Word…", None)?)
+        // PDF は印刷と同じ道（ADR-0038）。**項目を分けて置く** — 印刷の窓の
+        // 中にあると気づかれない（差分の調べ 2026-09-06）
+        .item(&item("export-pdf", "PDF…", None)?)
+        .build()?;
+    // 読み込みも形式ごとに分ける。**選ぶ窓の絞り込みが形式ごとに効く**ので、
+    // 「PDF を読み込む」と決めてから探せる
+    let import = SubmenuBuilder::new(handle, "インポート")
+        .item(&item("import-pdf", "PDF…", None)?)
+        .item(&item("import-pptx", "PowerPoint…", None)?)
+        .item(&item(
+            "import-image",
+            "画像（PNG・JPEG・HEIC・TIFF）…",
+            None,
+        )?)
+        .build()?;
+
     let file = SubmenuBuilder::new(handle, "ファイル")
         .item(&item("new-note", "新規ノート", Some("CmdOrCtrl+N"))?)
         .item(&item(
@@ -113,17 +136,8 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         )?)
         .separator()
         .item(&item("save", "保存", Some("CmdOrCtrl+S"))?)
-        .item(&item("export-html", "HTML に書き出し…", None)?)
-        .item(&item("export-pptx", "PowerPoint に書き出し…", None)?)
-        .item(&item("export-docx", "Word に書き出し…", None)?)
-        // PDF は印刷と同じ道（ADR-0038）。**項目を分けて置く** — 印刷の窓の
-        // 中にあると気づかれない（差分の調べ 2026-09-06）
-        .item(&item("export-pdf", "PDF に書き出し…", None)?)
-        .item(&item(
-            "import-pptx",
-            "読み込む…（PDF / PowerPoint / 画像）",
-            None,
-        )?)
+        .item(&export)
+        .item(&import)
         // 印刷（ADR-0038）。macOS の印刷パネルから「PDF として保存」もできる
         .item(&item("print", "プリント…", Some("CmdOrCtrl+P"))?)
         .separator()

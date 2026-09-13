@@ -169,7 +169,7 @@ import {
   type PptxSettings,
 } from "./lib/pptx-settings";
 import { readPptx, slidesToMarkdown } from "./lib/pptx-import";
-import { toMarkdown } from "./lib/imported";
+import { importFilter, toMarkdown, type ImportKind } from "./lib/imported";
 import { fillBlankPages, pdfPages } from "./lib/pdf-import";
 import {
   clampFontSize,
@@ -1005,26 +1005,12 @@ function App() {
 
   /// PowerPoint を読み込んでノートにする（TASKS 4-5 / F-3）。
   /// **ざっくり読んで手で直す**前提。中身だけが残り、見た目は戻らない。
-  async function handleImportPptx() {
+  /// 読み込む（メニューの「インポート」→ 形式）。**形式を決めてから探す**
+  /// ので、窓には関係ないファイルが並ばない（要望 2026-09-13）。
+  /// 読み方の振り分けは今までどおり拡張子で行う
+  async function handleImport(kind: ImportKind) {
     if (!vaultRoot) return;
-    const picked = await open({
-      filters: [
-        {
-          name: "読み込める資料",
-          // 絵は読み取りに回す（ADR-0041）
-          extensions: [
-            "pdf",
-            "pptx",
-            "png",
-            "jpg",
-            "jpeg",
-            "heic",
-            "tiff",
-            "tif",
-          ],
-        },
-      ],
-    });
+    const picked = await open({ filters: [importFilter(kind)] });
     if (typeof picked !== "string") return;
     setStatus("読み込んでいます…");
     try {
@@ -2250,7 +2236,9 @@ function App() {
     "export-pptx": () => void handleExportPptx(),
     "export-docx": () => void handleExportDocx(),
     "export-pdf": () => void handlePrint(true),
-    "import-pptx": () => void handleImportPptx(),
+    "import-pdf": () => void handleImport("pdf"),
+    "import-pptx": () => void handleImport("pptx"),
+    "import-image": () => void handleImport("image"),
     print: () => void handlePrint(),
     history: () => void openHistory(),
     trash: () => void handleTrash(),

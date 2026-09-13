@@ -2,7 +2,7 @@
 // 判断の物差しは「間違えたときにどちらが困るか」。迷ったら残す。
 
 import { describe, expect, test } from "vitest";
-import { toMarkdown } from "./imported";
+import { importFilter, toMarkdown } from "./imported";
 
 describe("toMarkdown", () => {
   test("ページの頭が見出しらしければ `##` にする", () => {
@@ -63,5 +63,24 @@ describe("toMarkdown", () => {
 
   test("制御文字（改ページなど）は落とす", () => {
     expect(toMarkdown(["本文です。\f"])).not.toContain("\f");
+  });
+});
+
+describe("読み込みの窓の絞り込み（要望 2026-09-13）", () => {
+  test("test_形式ごとに拡張子を絞る", () => {
+    expect(importFilter("pdf")).toEqual({ name: "PDF", extensions: ["pdf"] });
+    expect(importFilter("pptx")).toEqual({
+      name: "PowerPoint",
+      extensions: ["pptx"],
+    });
+    // 絵は読み取りに回す（ADR-0041）。HEIC と TIFF も受ける
+    expect(importFilter("image").extensions).toEqual([
+      "png",
+      "jpg",
+      "jpeg",
+      "heic",
+      "tiff",
+      "tif",
+    ]);
   });
 });
