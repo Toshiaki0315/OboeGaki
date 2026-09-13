@@ -607,10 +607,7 @@ pub fn mcp_set_hidden(
     hidden: bool,
 ) -> Result<crate::mcp::Hidden, String> {
     let root_path = std::path::Path::new(&root);
-    let relative = match std::path::Path::new(&path).strip_prefix(root_path) {
-        Ok(rest) => rest.to_string_lossy().into_owned(),
-        Err(_) => path.clone(),
-    };
+    let relative = crate::mcp::hidden_relative(root_path, &path)?;
     crate::mcp::set_hidden(root_path, &relative, hidden).map_err(|e| e.to_string())?;
     Ok(crate::mcp::hidden_list(root_path))
 }

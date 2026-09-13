@@ -759,31 +759,27 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       親フォルダ由来で隠れたノートの「Claude に渡す」は、押せるように見せず
       「「秘密」ごと隠れています」と理由を出す（`hiddenByAncestor`）。押されて
       も App 側で断る
-- [ ] **15-12. MCP の細かいもの**（2026-09-14 のレビュー。低優先）
-      - [ ] `history_text` の `mtime_ms` が時差ぶんずれる — `saved_at` は
-            `Local::now().naive_local()` 由来のローカル時刻なのに `and_utc()`
-            で UTC と読んでいる（JST で +9h）。表示用なので害は小さい
-      - [ ] `append_to_note` の read-modify-write に排他がない。rmcp は要求ごと
-            にタスクを立てるので、同じノートへの 2 つの追記が後勝ちで片方消える
-      - [ ] `is_ignored` のドット始まりの判定が先頭の成分だけ。`仕事/.secret/x.md`
-            は `scan()` が飛ばすのに MCP は読める。`read_note` が `.md` 以外も
-            読むのも同じ穴。`Hidden.builtin` にも「ドット始まり」の規則が無い
-      - [ ] `.mcp-ignore` の照合が完全一致（NFC/NFD・大小の正規化なし）。手で
-            書いた行が Finder が作った NFD のフォルダに効かない。GUI 経由なら
-            索引のパスをそのまま書くので一致する
-      - [ ] `mcp_set_hidden`（commands.rs）は `strip_prefix` に失敗すると絶対
-            パスをそのまま `set_hidden` に渡し、`Users/…/x.md` が書かれて何も
-            隠れないのに画面は「渡さない」になる（`/private/var` ↔ `/var` や
-            シンボリックリンク）。テストが無い
-      - [ ] `create_note` は `text` が `---` の front matter で始まっても、その上
-            に `# 題名` を差し込むので front matter が壊れる
-      - [ ] `section_end` はフェンスの種類と長さを見ずにトグルする（` ```` `
-            の中の ` ``` `）。TS の `section.ts` と同じ規則だと言うが未検証
-      - [ ] `list_folders` の件数はファイル単位で隠したノートも数えている
-      - [ ] `test_note_history_…` の末尾 `is_err() || …is_empty()` はどちらでも
-            通り、隠しの門を検証していない
-      - [ ] `pdf.rs` の見本テストの 3 ページ目は Vision の OCR 結果に依存する。
-            macOS ランナー更新で揺れる可能性（既存の OCR テストと同じ前例）
+- [x] **15-12. MCP の細かいもの**（2026-09-14 のレビュー。低優先。同日に直した）
+      - [x] `history_text` の `mtime_ms` — `saved_at` はローカルの naive 時刻なので
+            `Local.from_local_datetime` で読む（`and_utc()` は JST で +9h ずれた）
+      - [x] `append_to_note` / `replace_note` / `daily_note` の read-modify-write
+            を `McpVault` の Mutex で直列にした。同じノートへ 2 スレッドで 40 回
+            ずつ追記して 1 行も消えないテスト
+      - [x] ドット始まりの成分は**どの階層でも**隠す（`scan()` と揃える）。
+            TS の `isHiddenFromMcp` / `hiddenByAncestor` も同じ規則に。`guarded`
+            は `.md` 以外を「ノートではありません」と断る（`.mcp-ignore` や
+            `foo.txt` を読ませない）
+      - [x] `.mcp-ignore` の行と道を NFC に寄せて照合する
+      - [x] `mcp_set_hidden` は `mcp::hidden_relative` を通す — 外の絶対パスは
+            断り、綴りが違っても実体が同じなら中（canonicalize）。テスト付き
+      - [x] `create_note` は front matter の**下**に見出しを置く
+      - [x] `section_end`（Rust）と `sectionOf`（TS）のフェンスは、同じ字で同じ
+            長さ以上の行でだけ閉じる（```` の中の ``` で閉じない）。両側にテスト
+      - [x] `list_folders` の件数は見えるノートだけ数える
+      - [x] `test_note_history_…` の末尾は `is_err()` だけを見る
+      - [x] `pdf.rs` の OCR 依存テストは**そのまま**（決めた）。既存の
+            `test_絵だけのPDFから文字を読む` と同じ前提で、CI が揺れたら
+            そのときに両方まとめて見直す
 - [ ] **15-13. エディタの細かいもの**（2026-09-14 のレビュー。低優先）
       - [ ] `activation.ts` の `onBlur` が `at` を忘れない。リンクに重ねたまま
             `Cmd+Tab` で離れ、戻ってマウスを動かさず Cmd を押すと、古い座標で

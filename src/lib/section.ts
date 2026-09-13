@@ -19,17 +19,32 @@ export function sectionOf(text: string, heading: string): string | null {
   const wanted = heading.trim().toLowerCase();
   if (!wanted) return null;
   const lines = text.split("\n");
-  let inFence = false;
+  let fence: { char: string; length: number } | null = null;
   let start = -1;
   let level = 0;
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     const trimmed = line.trimStart();
-    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      inFence = !inFence;
+    if (fence) {
+      // 閉じは**同じ字で同じ長さ以上**、後ろは空白だけ（CommonMark）。
+      // 種類と長さを見ずにトグルすると ```` の中の ``` で閉じてしまう。
+      // Rust の mcp::section_end と同じ規則
+      const closing = fenceOf(trimmed);
+      if (
+        closing &&
+        closing.char === fence.char &&
+        closing.length >= fence.length &&
+        trimmed.slice(closing.length).trim() === ""
+      ) {
+        fence = null;
+      }
       continue;
     }
-    if (inFence) continue;
+    const opened = fenceOf(trimmed);
+    if (opened) {
+      fence = opened;
+      continue;
+    }
     const found = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
     if (!found) continue;
     if (start < 0) {
@@ -43,4 +58,10 @@ export function sectionOf(text: string, heading: string): string | null {
   }
   if (start < 0) return null;
   return lines.slice(start).join("\n").replace(/\n*$/, "\n");
+}
+
+/// 行頭（字下げを除く）のコードフェンス。3 本未満は null
+function fenceOf(trimmed: string): { char: string; length: number } | null {
+  const found = /^(`{3,}|~{3,})/.exec(trimmed);
+  return found ? { char: found[1][0], length: found[1].length } : null;
 }

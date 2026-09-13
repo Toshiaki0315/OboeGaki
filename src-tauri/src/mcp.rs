@@ -8,6 +8,9 @@
 //   `.trash` / `templates` / 管理フォルダは既定で見せない
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use unicode_normalization::UnicodeNormalization;
 
 use crate::index_db::{IndexDb, NoteMeta, SearchHit};
 use crate::vault::{read_note, Vault, SKIP_DIRS};
@@ -89,6 +92,26 @@ pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<
     std::fs::write(path, text)
 }
 
+/// GUI から来た道を `.mcp-ignore` に書く形（保管フォルダからの相対）に直す。
+/// ノートは絶対パス、フォルダは相対で来る。**外の絶対パスは断る** —
+/// 剥がせないまま `Users/…/x.md` を書くと、何も隠れないのに画面は
+/// 「渡さない」になる（レビュー 2026-09-14）。綴りが違っても実体が同じなら
+/// 中と見る（`/private/var` ↔ `/var`、シンボリックリンク）
+pub fn hidden_relative(root: &Path, path: &str) -> Result<String, String> {
+    let candidate = Path::new(path);
+    if !candidate.is_absolute() {
+        return Ok(path.trim_matches('/').to_string());
+    }
+    let outside = || format!("保管フォルダの外です: {path}");
+    if let Ok(rest) = candidate.strip_prefix(root) {
+        return Ok(rest.to_string_lossy().trim_matches('/').to_string());
+    }
+    let real_root = root.canonicalize().map_err(|_| outside())?;
+    let real = candidate.canonicalize().map_err(|_| outside())?;
+    let rest = real.strip_prefix(&real_root).map_err(|_| outside())?;
+    Ok(rest.to_string_lossy().trim_matches('/').to_string())
+}
+
 /// 見せないフォルダの一覧。`.mcp-ignore` の各行（`#` から始まる行と空行は
 /// 飛ばす）と、一覧に出ないもの（`.trash` / `templates` / 管理フォルダ）
 #[derive(Debug, Clone, Default)]
@@ -98,25 +121,30 @@ pub struct IgnoreList {
 
 impl IgnoreList {
     pub fn load(root: &Path) -> Self {
+        // NFC に寄せて持つ。Finder が作ったフォルダ名は分解形（NFD）で来る
+        // ことがあり、手で書いた行と字面が合わなくなる（レビュー 2026-09-14）
         let folders = std::fs::read_to_string(root.join(IGNORE_FILE))
             .unwrap_or_default()
             .lines()
-            .map(|line| line.trim().trim_matches('/').to_string())
+            .map(|line| line.trim().trim_matches('/').nfc().collect::<String>())
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
         Self { folders }
     }
 
     /// vault からの相対パスがその中か。**区切りで見る**（`秘密` は `秘密2` を
-    /// 隠さない）。既定で見せないフォルダは先頭の成分で見る
+    /// 隠さない）。既定で見せないフォルダは先頭の成分で見る。ドットで始まる
+    /// 成分は**どの階層でも**見せない — `scan()` が各階層でドットフォルダを
+    /// 飛ばすのと揃える（アプリに一切出ないものを MCP だけが読まない）
     pub fn is_ignored(&self, relative: &str) -> bool {
+        let relative: String = relative.nfc().collect();
         let first = relative.split('/').next().unwrap_or("");
-        if SKIP_DIRS.contains(&first) || first.starts_with('.') {
+        if SKIP_DIRS.contains(&first) || relative.split('/').any(|part| part.starts_with('.')) {
             return true;
         }
         self.folders
             .iter()
-            .any(|folder| relative == folder || relative.starts_with(&format!("{folder}/")))
+            .any(|folder| relative == *folder || relative.starts_with(&format!("{folder}/")))
     }
 }
 
@@ -226,18 +254,25 @@ pub fn section_end(text: &str, heading: &str) -> Option<usize> {
     if wanted.is_empty() {
         return None;
     }
-    let mut in_fence = false;
+    let mut fence: Option<(char, usize)> = None;
     let mut level = 0usize;
     let mut found = false;
     let mut offset = 0usize;
     for line in text.split_inclusive('\n') {
         let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
+        if let Some((open_char, open_len)) = fence {
+            // 閉じは**同じ字で同じ長さ以上**、後ろは空白だけ（CommonMark）。
+            // 種類と長さを見ずにトグルすると ```` の中の ``` で閉じてしまう
+            if let Some((c, n)) = fence_of(trimmed) {
+                if c == open_char && n >= open_len && trimmed[n..].trim().is_empty() {
+                    fence = None;
+                }
+            }
             offset += line.len();
             continue;
         }
-        if in_fence {
+        if let Some(opened) = fence_of(trimmed) {
+            fence = Some(opened);
             offset += line.len();
             continue;
         }
@@ -254,6 +289,16 @@ pub fn section_end(text: &str, heading: &str) -> Option<usize> {
         offset += line.len();
     }
     found.then_some(text.len())
+}
+
+/// 行頭（字下げを除く）のコードフェンス。(字, 本数)。3 本未満は None
+fn fence_of(trimmed: &str) -> Option<(char, usize)> {
+    let first = trimmed.chars().next()?;
+    if first != '`' && first != '~' {
+        return None;
+    }
+    let count = trimmed.chars().take_while(|c| *c == first).count();
+    (count >= 3).then_some((first, count))
 }
 
 /// `## 見出し ##` → (深さ, 題)。見出しでなければ None
@@ -283,6 +328,10 @@ pub struct NoteText {
 /// 聞く前に差分同期を自分で走らせる）
 pub struct McpVault {
     vault: Vault,
+    /// 書き込みの順番待ち。rmcp は要求ごとにタスクを立てるので、同じノート
+    /// への read-modify-write が並ぶと後勝ちで片方が消える（レビュー 2026-09-14）。
+    /// 保管フォルダ全体で 1 つ — 書きは稀で短いので、ノート単位に分ける価値はない
+    writes: Mutex<()>,
 }
 
 impl McpVault {
@@ -305,7 +354,17 @@ impl McpVault {
         }
         let vault = Vault::new(root);
         vault.ensure_layout().map_err(|e| e.to_string())?;
-        Ok(Self { vault })
+        Ok(Self {
+            vault,
+            writes: Mutex::new(()),
+        })
+    }
+
+    /// 書きの入口で握る。毒されていても（別のタスクが panic した）書きは進める
+    fn write_turn(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.writes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// 見せない場所の一覧は**呼ばれるたびに読む**。Claude Desktop はこの
@@ -380,8 +439,21 @@ impl McpVault {
 
     pub fn list_folders(&self) -> Result<Vec<(String, i64)>, String> {
         let db = self.index()?;
-        let counts = db.folder_counts().map_err(|e| e.to_string())?;
         let ignore = self.ignore();
+        // 件数は**見えるノートだけ**数える（索引の集計はファイル単位で隠した
+        // ノートも含む）
+        let mut counts: std::collections::HashMap<String, i64> = Default::default();
+        for row in db.list_notes().map_err(|e| e.to_string())? {
+            if ignore.is_ignored(&row.path) {
+                continue;
+            }
+            let folder = row
+                .path
+                .rsplit_once('/')
+                .map(|(head, _)| head)
+                .unwrap_or("");
+            *counts.entry(folder.to_string()).or_insert(0) += 1;
+        }
         let mut folders: Vec<(String, i64)> = self
             .vault
             .folders()
@@ -424,6 +496,10 @@ impl McpVault {
             return Err(format!("見せない場所です: {cleaned}"));
         }
         let absolute: PathBuf = self.vault.root().join(cleaned);
+        // 読み書きするのは**ノート（.md）だけ**。設定や添付をこの道で覗かせない
+        if !crate::vault::is_markdown(&absolute) {
+            return Err(format!("ノートではありません: {cleaned}"));
+        }
         if !crate::vault::contains(self.vault.root(), &absolute) {
             return Err("保管フォルダの外は読まない".to_string());
         }
@@ -520,7 +596,12 @@ impl McpVault {
         Ok(NoteText {
             path: cleaned,
             text,
-            mtime_ms: version.saved_at.and_utc().timestamp_millis(),
+            // `saved_at` はローカルの naive 時刻（`Local::now().naive_local()`
+            // 由来）。UTC と読むと時差ぶんずれる
+            mtime_ms: chrono::TimeZone::from_local_datetime(&chrono::Local, &version.saved_at)
+                .earliest()
+                .map(|t| t.timestamp_millis())
+                .unwrap_or(0),
             truncated,
         })
     }
@@ -560,10 +641,13 @@ impl McpVault {
             // 題名は本文の見出し（ADR-0005）。本文に見出しが無ければこちらで置く
             None => {
                 let body = text.unwrap_or("");
-                if body.trim_start().starts_with("# ") {
+                // front matter があればその**下**に置く（上に差し込むと壊れる）
+                let front_len = crate::front_matter::block_len(body).unwrap_or(0);
+                let (front, rest) = body.split_at(front_len);
+                if rest.trim_start().starts_with("# ") {
                     body.to_string()
                 } else {
-                    format!("# {title}\n\n{}", body.trim_start_matches('\n'))
+                    format!("{front}# {title}\n\n{}", rest.trim_start_matches('\n'))
                 }
             }
         };
@@ -595,6 +679,7 @@ impl McpVault {
         if !absolute.is_file() {
             return Err(format!("ノートがありません: {cleaned}"));
         }
+        let _turn = self.write_turn();
         let current = read_note(&absolute).map_err(|e| e.to_string())?;
         let added = text.trim_end_matches('\n');
         let updated = match heading {
@@ -633,6 +718,7 @@ impl McpVault {
         // 書く前に門を通す。今日のノートを名指しで隠していれば、作りも
         // 追記もしない（他の書き口と同じ規則。レビュー 2026-09-14）
         self.guarded(&self.relative_of(&self.vault.daily_path(&now)))?;
+        let _turn = self.write_turn();
         let path = match text {
             Some(text) if !text.trim().is_empty() => self
                 .vault
@@ -657,6 +743,7 @@ impl McpVault {
         if !absolute.is_file() {
             return Err(format!("ノートがありません: {cleaned}"));
         }
+        let _turn = self.write_turn();
         let current = self.read_note(&cleaned)?;
         if current.mtime_ms != expected_mtime_ms {
             return Err(format!(
@@ -895,10 +982,7 @@ mod tests {
         assert_eq!(text.text, "古い本文");
         assert!(mcp.history_text("設計.md", "2000-01-01 00:00:00").is_err());
         // 見せない場所は断る
-        assert!(
-            mcp.note_history("秘密/裏.md").is_err()
-                || mcp.note_history("秘密/裏.md").unwrap().is_empty()
-        );
+        assert!(mcp.note_history("秘密/裏.md").is_err());
     }
 
     #[test]
@@ -1159,6 +1243,167 @@ mod tests {
         fs::create_dir_all(root.path().join(crate::vault::LEGACY_MANAGED_DIR)).unwrap();
         assert!(McpVault::open(root.path()).is_ok());
         assert!(root.path().join(crate::vault::MANAGED_DIR).is_dir());
+    }
+
+    #[test]
+    fn test_history_text_mtime_msはローカル時刻として読む() {
+        use chrono::{NaiveDate, TimeZone};
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "設計.md", "# 設計\n");
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        crate::history::keep(&store, "path:設計.md", "古い", at, true, 0).unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        let versions = mcp.note_history("設計.md").unwrap();
+        let text = mcp.history_text("設計.md", &versions[0].stamp).unwrap();
+        // 版の時刻は `Local::now().naive_local()` 由来 = ローカル。UTC と読むと
+        // JST で 9 時間ずれる（レビュー 2026-09-14）
+        let want = chrono::Local
+            .from_local_datetime(&at)
+            .single()
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(text.mtime_ms, want);
+    }
+
+    #[test]
+    fn test_append_to_note_同時に足しても片方が消えない() {
+        // rmcp は要求ごとにタスクを立てるので、同じノートへの追記が並ぶ。
+        // read-modify-write に排他が無いと後勝ちで片方が消える（レビュー 2026-09-14）
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "日誌.md", "# 日誌\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+        let rounds = 40;
+        std::thread::scope(|scope| {
+            for who in ["A", "B"] {
+                let mcp = &mcp;
+                scope.spawn(move || {
+                    for i in 0..rounds {
+                        mcp.append_to_note("日誌.md", &format!("{who}{i}"), None)
+                            .unwrap();
+                    }
+                });
+            }
+        });
+        let text = mcp.read_note("日誌.md").unwrap().text;
+        for who in ["A", "B"] {
+            for i in 0..rounds {
+                assert!(text.contains(&format!("{who}{i}\n")), "消えた: {who}{i}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_is_ignored_途中のドットフォルダも隠し_NFCで照合する() {
+        use unicode_normalization::UnicodeNormalization;
+        let root = TempDir::new().unwrap();
+        fs::write(root.path().join(".mcp-ignore"), "プライベート\n").unwrap();
+        let ignore = IgnoreList::load(root.path());
+        // `scan()` はどの階層でもドットフォルダを飛ばす。MCP も同じ
+        assert!(ignore.is_ignored("仕事/.secret/x.md"));
+        // Finder が作ったフォルダ名は分解形（NFD）で来ることがある
+        let nfd: String = "プライベート/日記.md".nfd().collect();
+        assert_ne!(nfd, "プライベート/日記.md");
+        assert!(ignore.is_ignored(&nfd));
+    }
+
+    #[test]
+    fn test_read_note_mdでないものは読まない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        fs::write(root.path().join("メモ.txt"), "秘密の設定\n").unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        assert!(mcp.read_note("メモ.txt").is_err());
+        assert!(mcp.read_note(IGNORE_FILE).is_err());
+    }
+
+    #[test]
+    fn test_hidden_relative_絶対パスは保管フォルダの中だけ_相対はそのまま() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("仕事")).unwrap();
+        fs::write(root.path().join("仕事/a.md"), "# a\n").unwrap();
+        let inside = root.path().join("仕事/a.md");
+        assert_eq!(
+            hidden_relative(root.path(), inside.to_str().unwrap()).unwrap(),
+            "仕事/a.md"
+        );
+        assert_eq!(hidden_relative(root.path(), "仕事").unwrap(), "仕事");
+        // 綴りが違っても実体が同じなら中（/private/var ↔ /var、シンボリックリンク）
+        let alias = TempDir::new().unwrap();
+        let link = alias.path().join("link");
+        std::os::unix::fs::symlink(root.path(), &link).unwrap();
+        let via_link = link.join("仕事/a.md");
+        assert_eq!(
+            hidden_relative(root.path(), via_link.to_str().unwrap()).unwrap(),
+            "仕事/a.md"
+        );
+        // 外の絶対パスは断る（`Users/…/x.md` を書いて何も隠れないのが最悪）
+        assert!(hidden_relative(root.path(), "/tmp/x.md").is_err());
+    }
+
+    #[test]
+    fn test_create_note_front_matter_の下に見出しを置く() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        let made = mcp
+            .create_note("設計", Some("---\ntags: [a]\n---\n本文\n"), None, None)
+            .unwrap();
+        let text = fs::read_to_string(root.path().join(&made.path)).unwrap();
+        assert!(
+            text.starts_with("---\ntags: [a]\n---\n# 設計\n\n本文\n"),
+            "{text:?}"
+        );
+        // front matter の下に既に見出しがあれば置かない
+        let made = mcp
+            .create_note(
+                "設計2",
+                Some("---\ntags: [a]\n---\n# 設計2\n\n本文\n"),
+                None,
+                None,
+            )
+            .unwrap();
+        let text = fs::read_to_string(root.path().join(&made.path)).unwrap();
+        assert_eq!(text.matches("# 設計2").count(), 1, "{text:?}");
+    }
+
+    #[test]
+    fn test_section_end_フェンスは同じ字で同じ長さ以上の行でだけ閉じる() {
+        // ```` の中の ``` は閉じない（CommonMark）。TS の section.ts と同じ規則
+        let text = "## A\n\n````md\n```\n## 中\n```\n````\n\n## B\n";
+        let end = section_end(text, "A").unwrap();
+        assert!(text[..end].contains("## 中"), "四本の中の三本で閉じた");
+        assert!(!text[..end].contains("## B"));
+        // ~~~ は ``` で閉じない
+        let mixed = "## A\n\n~~~\n```\n## 中\n~~~\n\n## B\n";
+        let end = section_end(mixed, "A").unwrap();
+        assert!(mixed[..end].contains("## 中"));
+        assert!(!mixed[..end].contains("## B"));
+    }
+
+    #[test]
+    fn test_list_folders_見せないノートは数えない() {
+        let root = TempDir::new().unwrap();
+        let vault = crate::vault::Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "仕事/a.md", "# a\n");
+        note(root.path(), "仕事/b.md", "# b\n");
+        fs::write(root.path().join(".mcp-ignore"), "仕事/b.md\n").unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        let folders = mcp.list_folders().unwrap();
+        assert_eq!(
+            folders.iter().find(|(f, _)| f == "仕事").map(|(_, n)| *n),
+            Some(1)
+        );
     }
 
     #[test]

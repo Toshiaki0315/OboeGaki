@@ -29,3 +29,17 @@ describe("sectionOf", () => {
     expect(sectionOf("# Title\n\nx\n", " title ")).toBe("# Title\n\nx\n");
   });
 });
+
+describe("sectionOf のコードフェンス", () => {
+  test("test_同じ字で同じ長さ以上の行でだけ閉じる（```` の中の ``` は閉じない）", () => {
+    // Rust の mcp::section_end と同じ規則（レビュー 2026-09-14）
+    const text = "## A\n\n````md\n```\n## 中\n```\n````\n\n## B\n";
+    const section = sectionOf(text, "A");
+    expect(section).toContain("## 中");
+    expect(section).not.toContain("## B");
+    const mixed = "## A\n\n~~~\n```\n## 中\n~~~\n\n## B\n";
+    const found = sectionOf(mixed, "A");
+    expect(found).toContain("## 中");
+    expect(found).not.toContain("## B");
+  });
+});

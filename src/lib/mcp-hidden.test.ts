@@ -42,9 +42,13 @@ describe("isHiddenFromMcp", () => {
     expect(isHiddenFromMcp(hidden, ".trash/捨てた.md")).toBe(true);
   });
 
-  it("test_ドットで始まる場所も隠れている（Rust の規則と揃える）", () => {
+  it("test_ドットで始まる成分がどこかにあれば隠れている（Rust の規則と揃える）", () => {
+    // `scan()` はどの階層でもドットフォルダを飛ばす。MCP も途中の
+    // `.secret/` を隠すことにした（15-12）ので、印もそれに揃える
     expect(isHiddenFromMcp(hidden, ".git/config")).toBe(true);
-    expect(isHiddenFromMcp(hidden, "ふつう/.隠し.md")).toBe(false);
+    expect(isHiddenFromMcp(hidden, "仕事/.secret/x.md")).toBe(true);
+    expect(isHiddenFromMcp(hidden, "ふつう/.隠し.md")).toBe(true);
+    expect(isHiddenFromMcp(hidden, "ふつう/隠し.md")).toBe(false);
   });
 });
 

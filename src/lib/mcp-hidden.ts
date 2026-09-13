@@ -24,10 +24,11 @@ export const NO_MCP_HIDDEN: McpHidden = { listed: [], builtin: [] };
 /// その道が Claude から見えないか（名指し、またはその中）。
 /// 規則は Rust の `mcp::IgnoreList::is_ignored` と同じ:
 /// **区切りで見る**（「プライベート」は「プライベート2」を隠さない）／
-/// 先頭の成分がドットで始まるものも見せない
+/// ドットで始まる成分が**どの階層にあっても**見せない（`scan()` が各階層で
+/// ドットフォルダを飛ばすのと揃える。15-12）
 export function isHiddenFromMcp(hidden: McpHidden, relative: string): boolean {
   if (!relative) return false;
-  if (relative.split("/")[0].startsWith(".")) return true;
+  if (relative.split("/").some((part) => part.startsWith("."))) return true;
   return [...hidden.listed, ...hidden.builtin].some(
     (entry) => relative === entry || relative.startsWith(`${entry}/`),
   );
@@ -42,8 +43,12 @@ export function hiddenByAncestor(
   relative: string,
 ): string | null {
   if (!relative) return null;
-  const first = relative.split("/")[0];
-  if (first !== relative && first.startsWith(".")) return first;
+  // 途中のドット始まりの成分（そこまでの道が「親」）
+  const parts = relative.split("/");
+  for (let depth = 0; depth < parts.length - 1; depth++) {
+    if (parts[depth].startsWith("."))
+      return parts.slice(0, depth + 1).join("/");
+  }
   for (const entry of [...hidden.listed, ...hidden.builtin]) {
     if (entry !== relative && relative.startsWith(`${entry}/`)) return entry;
   }
