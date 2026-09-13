@@ -80,8 +80,23 @@ fn body_lines(text: &str) -> Vec<String> {
     lines
 }
 
-fn links_in_line(line: &str) -> Vec<String> {
-    let chars: Vec<char> = line.chars().collect();
+/// 1 行の中の `[[…]]` 1 件（位置は char の添字）。
+#[derive(Debug, PartialEq)]
+struct Span {
+    /// 名前の範囲。`[[` の次から、`|` があればその手前まで
+    name: std::ops::Range<usize>,
+    /// `]]` の次（= 次に見るところ）
+    end: usize,
+}
+
+/// 1 行を走査して `[[…]]` を拾う。**名前の規則はここが唯一の持ち主** —
+/// 索引（`links_in_line`）と改名の書き換え（`rewrite_line`）が別々に数えて
+/// いて、別名の扱いが食い違っていた（ADR-0064。レビュー 2026-09-13 で統合）。
+///
+/// 規則: 名前の終わりは `]]` か最初の `|`（別名）。`[` は名前に入らない。
+/// 空の名前は拾わない（指す先が無い）。**渡すのはインラインコードを潰した
+/// 行**（潰す前の行を渡すと、コードの中の `[[…]]` を拾ってしまう）
+fn spans_in_line(chars: &[char]) -> Vec<Span> {
     let mut found = Vec::new();
     let mut index = 0;
     while index + 1 < chars.len() {
@@ -91,11 +106,10 @@ fn links_in_line(line: &str) -> Vec<String> {
         }
         let mut end = index + 2;
         let mut broken = false;
-        // 名前の終わりは `]]` か `|`（別名の記法 `[[名前|表示]]` = ADR-0064）。
-        // `[` は名前に入らない
         let mut pipe: Option<usize> = None;
         while end < chars.len() && chars[end] != ']' {
-            if chars[end] == '[' {
+            // `[` と改行は名前に入らない
+            if chars[end] == '[' || chars[end] == '\n' {
                 broken = true;
                 break;
             }
@@ -108,13 +122,28 @@ fn links_in_line(line: &str) -> Vec<String> {
             index += 2;
             continue;
         }
-        let name: String = chars[index + 2..pipe.unwrap_or(end)].iter().collect();
-        if !name.trim().is_empty() {
-            found.push(normalize(&name));
+        let name = index + 2..pipe.unwrap_or(end);
+        if chars[name.clone()]
+            .iter()
+            .collect::<String>()
+            .trim()
+            .is_empty()
+        {
+            index = end + 2;
+            continue; // 名前が無い
         }
+        found.push(Span { name, end: end + 2 });
         index = end + 2;
     }
     found
+}
+
+fn links_in_line(line: &str) -> Vec<String> {
+    let chars: Vec<char> = line.chars().collect();
+    spans_in_line(&chars)
+        .into_iter()
+        .map(|span| normalize(&chars[span.name].iter().collect::<String>()))
+        .collect()
 }
 
 /// 改名に合わせて `[[旧]]` / `[[旧|表示]]` を `[[新]]` / `[[新|表示]]` に
@@ -163,38 +192,24 @@ pub fn rewrite_wikilinks(text: &str, old: &str, new: &str) -> Option<String> {
 /// 元の文字列から取り出す（mask は文字数を変えない）
 fn rewrite_line(line: &str, target_lower: &str, new: &str) -> String {
     let chars: Vec<char> = line.chars().collect();
+    // **走査はインラインコードを潰した側で**（コードの中の `[[…]]` は
+    // 書き換えない）。切り出すのは元の側 — 潰した字を書き戻さないため
     let masked: Vec<char> = crate::tags::mask_inline_code(line).chars().collect();
     let mut out = String::with_capacity(line.len());
-    let mut index = 0;
-    while index < chars.len() {
-        if index + 1 < chars.len() && masked[index] == '[' && masked[index + 1] == '[' {
-            // 名前の終わり: `|` か `]]`。`[` と改行は名前に入らない
-            let mut end = index + 2;
-            let mut ok = false;
-            while end < chars.len() {
-                let c = masked[end];
-                if c == '[' || c == '\n' {
-                    break;
-                }
-                if c == '|' || (c == ']' && masked.get(end + 1) == Some(&']')) {
-                    ok = true;
-                    break;
-                }
-                end += 1;
-            }
-            if ok {
-                let name: String = chars[index + 2..end].iter().collect();
-                if !name.trim().is_empty() && normalize(&name).to_lowercase() == target_lower {
-                    out.push_str("[[");
-                    out.push_str(new);
-                    index = end;
-                    continue;
-                }
-            }
+    let mut copied = 0;
+    for span in spans_in_line(&masked) {
+        let name: String = chars[span.name.clone()].iter().collect();
+        if normalize(&name).to_lowercase() != target_lower {
+            continue;
         }
-        out.push(chars[index]);
-        index += 1;
+        // `[[` の手前までをそのまま写し、名前だけ差し替える。
+        // `|表示]]` や `]]` は次の回に写る
+        out.extend(&chars[copied..span.name.start - 2]);
+        out.push_str("[[");
+        out.push_str(new);
+        copied = span.name.end;
     }
+    out.extend(&chars[copied..]);
     out
 }
 
@@ -304,6 +319,26 @@ mod tests {
             links("[[]] と [[  ]] と [[閉じない\n"),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn test_links_共有の見本と同じ答えを出す() {
+        // fixtures/wikilink-cases.json は TS 側（エディタの解析）と**同じ
+        // 見本**。二重に持っている規則が食い違わないよう、両方がここを見る
+        let raw = include_str!("../../fixtures/wikilink-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let cases = found["cases"].as_array().unwrap();
+        assert!(cases.len() >= 10, "見本が減っている");
+        for case in cases {
+            let text = case["text"].as_str().unwrap();
+            let want: Vec<String> = case["names"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|name| name.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(links(&format!("{text}\n")), want, "見本: {text}");
+        }
     }
 
     #[test]
