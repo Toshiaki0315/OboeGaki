@@ -17,9 +17,12 @@ import {
   blockWidgetField,
   previewDecorations,
   setSourceMode,
+  setWysiwyg,
   sourceModeField,
   tableDecorations,
   tableField,
+  typingLineField,
+  wysiwygField,
   type TableData,
 } from "./live-preview";
 
@@ -985,5 +988,73 @@ describe(":::note はコードフェンスの中では効かない（レビュ�
       extensions: [LANG, sourceModeField],
     });
     expect(blockWidgetDecorations(state).length).toBeGreaterThan(0);
+  });
+});
+
+describe("見たままモード（ADR-0065。要望 2026-09-15）", () => {
+  // カーソルを置いただけでは記法を出さず、**書き込んでいる行だけ**出す。
+  // 直しは書式ツールバーの絵から行う前提
+  const doc = "**太字** の行\n次の行";
+  const inside = 3; // 「太」の中
+  const wysiwyg = (anchor: number) =>
+    EditorState.create({
+      doc,
+      selection: { anchor },
+      extensions: [LANG, wysiwygField.init(() => true), typingLineField],
+    });
+  const marks = (state: EditorState) =>
+    previewDecorations(state, 0, state.doc.length).map(simplify);
+  const typeAt = (state: EditorState, pos: number) =>
+    state.update({
+      changes: { from: pos, insert: "あ" },
+      selection: { anchor: pos + 1 },
+      userEvent: "input.type",
+    }).state;
+
+  test("test_カーソルを置いただけでは記法を出さない", () => {
+    expect(has(marks(wysiwyg(inside)), { from: 0, to: 2, kind: "hide" })).toBe(
+      true,
+    );
+    // ふつうのライブプレビューなら同じ位置で現れる（§6.4）
+    expect(
+      has(decorationsOf(doc, inside), { from: 0, to: 2, kind: "hide" }),
+    ).toBe(false);
+  });
+
+  test("test_書き込んでいる行だけ記法が出る", () => {
+    const typed = typeAt(wysiwyg(inside), inside);
+    expect(has(marks(typed), { from: 0, to: 2, kind: "hide" })).toBe(false);
+  });
+
+  test("test_別の行へ移ると再び隠れる", () => {
+    const typed = typeAt(wysiwyg(inside), inside);
+    const moved = typed.update({
+      selection: { anchor: typed.doc.length },
+    }).state;
+    expect(has(marks(moved), { from: 0, to: 2, kind: "hide" })).toBe(true);
+  });
+
+  test("test_選択しただけでも出さない（見たままが目的）", () => {
+    const selected = EditorState.create({
+      doc,
+      selection: EditorSelection.range(0, 6),
+      extensions: [LANG, wysiwygField.init(() => true), typingLineField],
+    });
+    expect(has(marks(selected), { from: 0, to: 2, kind: "hide" })).toBe(true);
+  });
+
+  test("test_ソースモードとは排他_片方を入れると他方が切れる", () => {
+    const base = EditorState.create({
+      doc,
+      extensions: [LANG, sourceModeField, wysiwygField, typingLineField],
+    });
+    const seeing = base.update({ effects: setWysiwyg.of(true) }).state;
+    expect(seeing.field(wysiwygField)).toBe(true);
+    const source = seeing.update({ effects: setSourceMode.of(true) }).state;
+    expect(source.field(sourceModeField)).toBe(true);
+    expect(source.field(wysiwygField)).toBe(false);
+    const back = source.update({ effects: setWysiwyg.of(true) }).state;
+    expect(back.field(wysiwygField)).toBe(true);
+    expect(back.field(sourceModeField)).toBe(false);
   });
 });

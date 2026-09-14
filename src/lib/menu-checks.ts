@@ -9,6 +9,7 @@ export const MENU_CHECK_IDS = [
   "outline",
   "assistant",
   "source-mode",
+  "wysiwyg-mode",
   "focus-mode",
   "typewriter",
 ] as const;

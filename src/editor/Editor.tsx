@@ -78,8 +78,11 @@ import {
   livePreview,
   setDiagramTheme,
   setSourceMode,
+  setWysiwyg,
   sourceModeField,
   toggleSourceMode,
+  toggleWysiwyg,
+  wysiwygField,
   type ImageResolver,
 } from "./live-preview";
 import type { MermaidTheme } from "./mermaid";
@@ -124,6 +127,8 @@ export type EditorHandle = {
   toggleSourceMode: () => void;
   /// 表示モードを指定して切り替える（切り替えボタン用）
   setSourceMode: (source: boolean) => void;
+  /// 見たままモードの切り替え（ADR-0065。メニューと歯車から呼ぶ）
+  toggleWysiwygMode: () => void;
   toggleFocusMode: () => void;
   toggleTypewriterMode: () => void;
   /** キャレット位置に空の表を差し込む（rows は見出しを除いた行数） */
@@ -177,6 +182,8 @@ type Props = {
   diagramTheme?: MermaidTheme;
   /** 開いた時点の表示モード（ソースモードはノートを跨いで続く） */
   sourceMode?: boolean;
+  /** 開いた時点の見たままモード（ADR-0065。同じくノートを跨いで続く） */
+  wysiwyg?: boolean;
   /** 開いた時点のフォーカス・タイプライタ（同じくノートを跨いで続く） */
   focusMode?: boolean;
   typewriter?: boolean;
@@ -209,6 +216,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     initialCursor,
     diagramTheme,
     sourceMode,
+    wysiwyg,
     focusMode,
     typewriter,
     onModesChanged,
@@ -311,6 +319,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         if (!current) return;
         if (current.state.field(sourceModeField, false) === source) return;
         toggleSourceMode(current);
+      },
+      toggleWysiwygMode() {
+        if (view.current) toggleWysiwyg(view.current);
       },
       toggleFocusMode() {
         if (view.current) toggleFocus(view.current);
@@ -457,6 +468,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           frontMatterHide,
           diagramThemeField.init(() => diagramTheme ?? "light"),
           sourceModeField.init(() => sourceMode ?? false),
+          wysiwygField.init(() => wysiwyg ?? false),
           history(),
           autoPair, // 選択を * や [ で囲む（spec §5.5-4）
           // タグ補完（C-4）。↑↓ / Enter は completionKeymap が持つ。
@@ -558,6 +570,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                 tr.effects.some(
                   (effect) =>
                     effect.is(setSourceMode) ||
+                    effect.is(setWysiwyg) ||
                     effect.is(setFocusMode) ||
                     effect.is(setTypewriter),
                 ),
@@ -565,6 +578,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             ) {
               modeChanged.current?.({
                 source,
+                wysiwyg: update.state.field(wysiwygField, false) ?? false,
                 focus: update.state.field(focusModeField, false) ?? false,
                 typewriter: update.state.field(typewriterField, false) ?? false,
               });

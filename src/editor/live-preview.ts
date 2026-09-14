@@ -23,6 +23,7 @@ import {
   RangeSet,
   StateEffect,
   StateField,
+  type Transaction,
 } from "@codemirror/state";
 import {
   HighlightStyle,
@@ -90,6 +91,10 @@ export const diagramThemeField = StateField.define<MermaidTheme>({
 });
 
 export const setSourceMode = StateEffect.define<boolean>();
+/// 見たままモード（ADR-0065。要望 2026-09-15）。ON の間はカーソルを置いた
+/// だけでは記法を出さず、**書き込んでいる行だけ**出す。直しは書式ツール
+/// バーの絵から行う前提
+export const setWysiwyg = StateEffect.define<boolean>();
 
 export const sourceModeField = StateField.define<boolean>({
   create: () => false,
@@ -97,10 +102,66 @@ export const sourceModeField = StateField.define<boolean>({
     let next = value;
     for (const effect of tr.effects) {
       if (effect.is(setSourceMode)) next = effect.value;
+      // 見たままモードとは排他（全部見せる／なるべく見せない、の両立はない）
+      if (effect.is(setWysiwyg) && effect.value) next = false;
     }
     return next;
   },
 });
+
+export const wysiwygField = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    let next = value;
+    for (const effect of tr.effects) {
+      if (effect.is(setWysiwyg)) next = effect.value;
+      if (effect.is(setSourceMode) && effect.value) next = false;
+    }
+    return next;
+  },
+});
+
+/// 書き込んでいる行（その行頭の位置）。見たままモードで記法を出す唯一の行。
+///
+/// **書いたときだけ**その行になる（打つ・消す・貼る = userEvent の input /
+/// delete）。カーソルを置いただけ・選んだだけでは変わらず、別の行へ移ると
+/// 忘れる。書式ツールバーからの書き換えは userEvent を持たないので、
+/// 記法を出さずに済む
+export const typingLineField = StateField.define<number | null>({
+  create: () => null,
+  update(value, tr) {
+    const head = tr.state.selection.main.head;
+    const headLine = tr.state.doc.lineAt(head).from;
+    if (
+      tr.docChanged &&
+      (tr.isUserEvent("input") || tr.isUserEvent("delete"))
+    ) {
+      return headLine;
+    }
+    if (value === null) return null;
+    const mapped = tr.changes.mapPos(
+      Math.min(value, tr.startState.doc.length),
+      1,
+    );
+    const line = tr.state.doc.lineAt(
+      Math.min(mapped, tr.state.doc.length),
+    ).from;
+    return line === headLine ? line : null;
+  },
+});
+
+/// リビールの前提が変わった transaction か（装飾を作り直す合図）。
+/// モードの切り替えと、見たままモード中の「書き込んでいる行」の移り変わり
+export function revealModeChanged(tr: Transaction): boolean {
+  if (tr.effects.some((e) => e.is(setSourceMode) || e.is(setWysiwyg))) {
+    return true;
+  }
+  return (
+    (tr.state.field(wysiwygField, false) ?? false) &&
+    tr.startState.field(typingLineField, false) !==
+      tr.state.field(typingLineField, false)
+  );
+}
 
 export function toggleSourceMode(view: EditorView): boolean {
   const turningOn = !view.state.field(sourceModeField);
@@ -109,6 +170,14 @@ export function toggleSourceMode(view: EditorView): boolean {
   });
   // ソースを全部見せるモードで隠れた行があっては嘘になる（ADR-0019）
   if (turningOn) unfoldAll(view);
+  return true;
+}
+
+/// 見たままモードの切り替え（ADR-0065）。ソースモードとの排他は field 側が持つ
+export function toggleWysiwyg(view: EditorView): boolean {
+  view.dispatch({
+    effects: setWysiwyg.of(!view.state.field(wysiwygField)),
+  });
   return true;
 }
 
@@ -123,6 +192,14 @@ function touchesSelection(
   from: number,
   to: number,
 ): boolean {
+  if (state.field(wysiwygField, false)) {
+    // 見たままモード（ADR-0065）: 書き込んでいる行だけ。カーソルを置いた
+    // だけ・選んだだけでは現さない
+    const typing = state.field(typingLineField, false) ?? null;
+    if (typing === null) return false;
+    const line = state.doc.lineAt(Math.min(typing, state.doc.length));
+    if (to < line.from || from > line.to) return false;
+  }
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
 }
 
@@ -1477,7 +1554,7 @@ function changedZones(before: string, after: string): number[] {
 export const blockWidgetField = StateField.define<DecorationSet>({
   create: computeBlockWidgetSet,
   update(value, tr) {
-    const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
+    const modeChanged = revealModeChanged(tr);
     const themeChanged = tr.effects.some((e) => e.is(setDiagramTheme));
     if (modeChanged || themeChanged) return computeBlockWidgetSet(tr.state);
     const meta = blockWidgetMeta.get(value);
@@ -1536,7 +1613,7 @@ export const blockWidgetField = StateField.define<DecorationSet>({
 export const tableField = StateField.define<DecorationSet>({
   create: computeTableSet,
   update(value, tr) {
-    const modeChanged = tr.effects.some((e) => e.is(setSourceMode));
+    const modeChanged = revealModeChanged(tr);
     if (modeChanged) return computeTableSet(tr.state);
     const meta = tableMeta.get(value);
     if (!meta) return computeTableSet(tr.state);
@@ -1584,9 +1661,7 @@ const hideMarkers = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      const modeChanged = update.transactions.some((tr) =>
-        tr.effects.some((e) => e.is(setSourceMode)),
-      );
+      const modeChanged = update.transactions.some(revealModeChanged);
       // 表と同じ理由で**解析の進みも見る**（画面を動かさないまま解析が
       // 追いついたとき、装飾が掛からないまま残る）。判定は「届いた位置が
       // 伸びたか」— オブジェクト同一性だと打鍵のたびに再構築になる
@@ -1984,6 +2059,8 @@ const blockTheme = EditorView.baseTheme({
 
 export const livePreview = [
   sourceModeField,
+  wysiwygField,
+  typingLineField,
   // `Mod-/` はメニュー（lib.rs の source-mode）が持つ。ここには置かない —
   // 同じキーを 2 か所に置くと、届き方次第で 2 回切り替わって何も起きない
   // （2026-09-13 の見落とし確認で外した）

@@ -198,6 +198,8 @@ export const editorModes = (initial: {
 /// 今の見え方（画面へ返す形。要望 2026-09-13）
 export type EditorModes = {
   source: boolean;
+  /// 見たままモード（ADR-0065）
+  wysiwyg: boolean;
   focus: boolean;
   typewriter: boolean;
 };

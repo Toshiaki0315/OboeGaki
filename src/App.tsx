@@ -1215,6 +1215,8 @@ function App() {
   // 表示モード（通常 / ソース）。**ノートを跨いで続く** — 切り替えボタンが
   // 見えているのに、ノートを開き直すと戻るのは筋が悪い
   const [sourceMode, setSourceMode] = useState(false);
+  // 見たままモード（ADR-0065）。持ち主はエディタで、ここはその写し
+  const [wysiwygMode, setWysiwygMode] = useState(false);
   // 見え方の今（メニューと歯車の印に使う。要望 2026-09-13）。**持ち主は
   // エディタ**で、ここはその写し
   const [editorModes, setEditorModes] = useState({
@@ -2224,6 +2226,7 @@ function App() {
       outline: outlineOpen,
       assistant: assistantOpen,
       "source-mode": sourceMode,
+      "wysiwyg-mode": wysiwygMode,
       "focus-mode": editorModes.focus,
       typewriter: editorModes.typewriter,
     }).catch(() => {
@@ -2235,6 +2238,7 @@ function App() {
     outlineOpen,
     assistantOpen,
     sourceMode,
+    wysiwygMode,
     editorModes.focus,
     editorModes.typewriter,
   ]);
@@ -2310,6 +2314,7 @@ function App() {
     "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
     "zoom-reset": () => changeFontSize(DEFAULT_FONT_PX),
     "source-mode": () => editorRef.current?.toggleSourceMode(),
+    "wysiwyg-mode": () => editorRef.current?.toggleWysiwygMode(),
     "focus-mode": () => editorRef.current?.toggleFocusMode(),
     typewriter: () => editorRef.current?.toggleTypewriterMode(),
   };
@@ -2867,10 +2872,12 @@ function App() {
                   initialCursor={initialCursor}
                   diagramTheme={diagramTheme}
                   sourceMode={sourceMode}
+                  wysiwyg={wysiwygMode}
                   focusMode={editorModes.focus}
                   typewriter={editorModes.typewriter}
                   onModesChanged={(modes) => {
                     setSourceMode(modes.source);
+                    setWysiwygMode(modes.wysiwyg);
                     setEditorModes({
                       focus: modes.focus,
                       typewriter: modes.typewriter,
@@ -3233,6 +3240,11 @@ function App() {
                           label: "ソース表示",
                           checked: sourceMode,
                           onSelect: () => menu["source-mode"]?.(),
+                        },
+                        {
+                          label: "見たままモード",
+                          checked: wysiwygMode,
+                          onSelect: () => menu["wysiwyg-mode"]?.(),
                         },
                         {
                           label: "フォーカスモード",

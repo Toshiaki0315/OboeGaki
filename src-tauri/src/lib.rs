@@ -208,6 +208,12 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
     // 別の話なので、同じ並びに置かない
     let modes = SubmenuBuilder::new(handle, "書くときの見え方")
         .item(&toggle("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
+        // 見たままモード（ADR-0065）。ソースモードとは排他（切り替えは画面側）
+        .item(&toggle(
+            "wysiwyg-mode",
+            "見たままモード",
+            Some("CmdOrCtrl+Shift+/"),
+        )?)
         .item(&toggle(
             "focus-mode",
             "フォーカスモード",
