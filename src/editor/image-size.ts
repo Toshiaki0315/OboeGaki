@@ -36,3 +36,25 @@ export function splitImageAlt(raw: string): {
   const alt = raw.slice(0, bar);
   return height === undefined ? { alt, width } : { alt, width, height };
 }
+
+/// 掴んで変えるときの下限（px）。これより小さいと掴めなくなる
+const MIN_SIZE = 32;
+
+/// 引いた幅を書ける範囲の整数に収める
+export function clampImageWidth(width: number): number {
+  return Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(width)));
+}
+
+/// `![説明](道)` の行。字下げ・説明・道と題名の 3 つに分ける（説明は `](` の手前まで）
+const IMAGE_LINE_RE = /^(\s*!\[)(.*?)(\]\(.*)$/s;
+
+/// 掴んで変えた幅を本文へ書き戻す（6-8b）。**幅だけ**書く — 縦は形なりに
+/// 縮むので持たない（縦横を書いてあっても幅だけに直す）。null なら大きさの
+/// 指定を外す。画像の行でなければそのまま返す
+export function withImageWidth(markup: string, width: number | null): string {
+  const found = IMAGE_LINE_RE.exec(markup);
+  if (!found) return markup;
+  const { alt } = splitImageAlt(found[2]);
+  const next = width === null ? alt : `${alt}|${width}`;
+  return `${found[1]}${next}${found[3]}`;
+}

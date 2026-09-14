@@ -47,7 +47,7 @@ import {
   UNKNOWN_NOTE_KIND,
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
-import { splitImageAlt } from "./image-size";
+import { clampImageWidth, splitImageAlt, withImageWidth } from "./image-size";
 import { EmbedWidget } from "./embed";
 import { svgFromDataUrl, svgNaturalSize } from "../lib/svg-png";
 import {
@@ -339,21 +339,74 @@ export class ImageWidget extends WidgetType {
           image.style.height = "auto";
         }
       }
+      // 絵とつまみを 1 つの枠に入れる（つまみは絵の右下に重ねる。説明が
+      // 下に付いても、説明の上ではなく絵の上に出る）
+      const frame = document.createElement("span");
+      frame.className = "cm-image-frame";
+      frame.append(image, this.resizeHandle(view, image));
       if (this.alt) {
         const caption = document.createElement("span");
         caption.className = "cm-image-caption";
         caption.textContent = this.alt;
-        holder.replaceChildren(image, caption);
+        holder.replaceChildren(frame, caption);
       } else {
-        holder.replaceChildren(image);
+        holder.replaceChildren(frame);
       }
       // 画像の高さが後から確定するので、行レイアウトを測り直させる
       view.requestMeasure();
     });
     return holder;
   }
-  ignoreEvent(): boolean {
-    return false; // クリックでカーソルが行へ入り、ソースが現れる
+
+  /// 絵の右下のつまみ（6-8b。要望 2026-09-15）。引いている間は絵だけが
+  /// 先に変わり、**離したときに本文の `|幅` を書き換える**（真実は本文 = T1。
+  /// 書き出しにもそのまま効く）。幅だけ書き、縦は形なりに縮ませる
+  private resizeHandle(view: EditorView, image: HTMLImageElement): HTMLElement {
+    const handle = document.createElement("span");
+    handle.className = "cm-image-resize";
+    handle.title = "引いて大きさを変える";
+    handle.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      // エディタに渡すと行にカーソルが入ってソースが現れ、引いている最中に
+      // 絵そのものが消える。ここで止める（ignoreEvent でも弾く）
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startWidth =
+        image.getBoundingClientRect().width || this.width || image.naturalWidth;
+      if (!startWidth) return;
+      let width = startWidth;
+      handle.classList.add("dragging");
+      const move = (moved: MouseEvent) => {
+        width = clampImageWidth(startWidth + (moved.clientX - startX));
+        image.style.width = `${width}px`;
+        image.style.height = "auto";
+      };
+      const up = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+        handle.classList.remove("dragging");
+        if (width === startWidth) return; // 動かしていない
+        const line = view.state.doc.lineAt(view.posAtDOM(handle));
+        const next = withImageWidth(line.text, width);
+        if (next === line.text) return;
+        view.dispatch({
+          changes: { from: line.from, to: line.to, insert: next },
+        });
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    });
+    return handle;
+  }
+
+  ignoreEvent(event: Event): boolean {
+    // つまみの上だけはエディタに渡さない。ほかはクリックでカーソルが行へ
+    // 入り、ソースが現れる（今までどおり）
+    return (
+      event.target instanceof Element &&
+      event.target.closest(".cm-image-resize") !== null
+    );
   }
 }
 
@@ -1881,6 +1934,29 @@ const blockTheme = EditorView.baseTheme({
     maxWidth: "100%",
     borderRadius: "4px",
     verticalAlign: "middle",
+  },
+  // 絵とつまみの枠（6-8b）。つまみは絵の右下に重ね、載せたときだけ見せる
+  ".cm-image-frame": {
+    position: "relative",
+    display: "inline-block",
+    maxWidth: "100%",
+  },
+  ".cm-image-resize": {
+    position: "absolute",
+    right: "4px",
+    bottom: "8px",
+    width: "12px",
+    height: "12px",
+    borderRadius: "3px",
+    border: "2px solid #fff",
+    backgroundColor: "#0a84ff",
+    boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.25)",
+    cursor: "nwse-resize",
+    opacity: "0",
+    transition: "opacity 0.12s",
+  },
+  ".cm-image-widget:hover .cm-image-resize, .cm-image-resize.dragging": {
+    opacity: "1",
   },
   ".cm-code-filename": {
     display: "inline-block",
