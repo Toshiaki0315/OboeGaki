@@ -66,6 +66,16 @@ function splitRow(line: string): Row {
   return { prefix, cells: splitCells(body).map((cell) => cell.trim()) };
 }
 
+/// 区切り行（`| --- | :-: |`）か。表の中の鍵（table-keys）も使う
+export function isDelimiterRow(line: string): boolean {
+  return isDelimiter(line);
+}
+
+/// 行の頭の引用記号ぶん（`> ` など）。新しい行を足すとき同じ頭を付ける
+export function rowPrefix(line: string): string {
+  return PREFIX_RE.exec(line)?.[0] ?? "";
+}
+
 function isDelimiter(line: string): boolean {
   const row = splitRow(line);
   return (

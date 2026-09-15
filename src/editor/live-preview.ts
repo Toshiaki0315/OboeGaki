@@ -216,6 +216,18 @@ function touchesSelection(
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
 }
 
+/// 選択がそのブロックの**ウィジェット**（表・図・数式・囲み）に触れているか。
+/// これらは書く面を持たない（ウィジェットのまま直せない）ので、プレビュー
+/// モードでも「書き込んでいる行」の規則を通さず、カーソルが入れば生に戻す
+/// （インラインと同じ作法。実機 2026-09-15: 表のセルを直せなかった）
+function touchesBlockZone(
+  state: EditorState,
+  from: number,
+  to: number,
+): boolean {
+  return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
+}
+
 /// 選択がそのブロック（行）に触れているか。ブロック系マーカーのリビール条件。
 function touchesLine(state: EditorState, pos: number): boolean {
   const line = state.doc.lineAt(pos);
@@ -1077,7 +1089,7 @@ export function tableDecorations(state: EditorState): Range<Decoration>[] {
           ? undefined
           : false;
       }
-      if (!touchesSelection(state, node.from, node.to)) {
+      if (!touchesBlockZone(state, node.from, node.to)) {
         out.push(
           Decoration.replace({
             widget: new TableWidget(tableData(state, node.node)),
@@ -1124,7 +1136,7 @@ function revealKeyOf(
 ): string {
   return zones
     .map((zone, index) =>
-      touchesSelection(state, zone.from, zone.to) ? index : -1,
+      touchesBlockZone(state, zone.from, zone.to) ? index : -1,
     )
     .filter((index) => index >= 0)
     .join(",");
@@ -1279,7 +1291,7 @@ function noteZoneDecorations(
   // キャレットが触れている間も生のまま（他のブロックと同じ作法）
   if (
     note.kind === UNKNOWN_NOTE_KIND ||
-    touchesSelection(state, note.from, note.to)
+    touchesBlockZone(state, note.from, note.to)
   ) {
     return;
   }
@@ -1304,7 +1316,7 @@ function detailsZoneDecorations(
     pushLineClass(out, state, body.from, body.to, "cm-details-line");
   }
   // 触れている間は生のまま（他のブロックと同じ作法）
-  if (touchesSelection(state, entry.from, entry.to)) return;
+  if (touchesBlockZone(state, entry.from, entry.to)) return;
   out.push(
     Decoration.replace({ widget: new SummaryWidget(entry.summary) }).range(
       entry.open.from,
@@ -1323,7 +1335,7 @@ function mathZoneDecorations(
 ): void {
   // リビールは**式全体**（途中の行だけ生に戻すと、式の断片と絵が
   // 同時に見えて読めない）
-  if (touchesSelection(state, from, to)) return;
+  if (touchesBlockZone(state, from, to)) return;
   const source = state.sliceDoc(from, to);
   const rows = source.split("\n");
   // 閉じの無いブロック（書きかけ）は絵にしない — 生のまま見せる。
@@ -1350,7 +1362,7 @@ function mermaidZoneDecorations(
 ): void {
   const code = mermaidCode(state, node);
   if (code === null) return;
-  if (touchesSelection(state, node.from, node.to)) return;
+  if (touchesBlockZone(state, node.from, node.to)) return;
   out.push(
     Decoration.replace({
       widget: new MermaidWidget(code, theme),

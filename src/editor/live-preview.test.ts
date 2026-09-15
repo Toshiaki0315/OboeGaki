@@ -1086,3 +1086,46 @@ describe("sourceModeFlipped（ソースの入り切りは値で見る。実機 2
     expect(sourceModeFlipped(inSource, inSource)).toBe(false);
   });
 });
+
+describe("プレビューモードでもブロックのウィジェットはカーソルで現れる（実機 2026-09-15）", () => {
+  // 表・図・数式は**書く面を持たない**（ウィジェットのまま直せない）ので、
+  // プレビューモードでもカーソルが入れば生の記法に戻す。インラインと同じ作法
+  const table = "前\n\n| 見出し1 | 見出し2 |\n| --- | --- |\n|  |  |\n\n後";
+  const previewState = (doc: string, anchor: number) =>
+    EditorState.create({
+      doc,
+      selection: { anchor },
+      extensions: [LANG, wysiwygField.init(() => true), typingLineField],
+    });
+  const tableWidgetIn = (state: EditorState) =>
+    tableDecorations(state).some(
+      (r) => (r.value.spec as { widget?: unknown }).widget !== undefined,
+    );
+
+  test("test_表の外にカーソルがあれば表はウィジェット", () => {
+    expect(tableWidgetIn(previewState(table, 0))).toBe(true);
+  });
+
+  test("test_表の中にカーソルを置くと生の記法に戻る（セルを直せる）", () => {
+    const inCell = table.indexOf("| --- |") + 2;
+    expect(tableWidgetIn(previewState(table, inCell))).toBe(false);
+    // 書き込んでいなくても現れる（インライン記法の規則とは別）
+  });
+
+  test("test_数式ブロックも同じ", () => {
+    const math = "前\n\n$$\nx^2\n$$\n\n後";
+    const outside = blockWidgetDecorations(previewState(math, 0)).map(simplify);
+    expect(
+      outside.some(
+        (d) =>
+          d.kind.startsWith("hide") ||
+          d.kind.includes("math") ||
+          d.kind.includes("widget"),
+      ),
+    ).toBe(true);
+    const inside = blockWidgetDecorations(
+      previewState(math, math.indexOf("x^2")),
+    ).map(simplify);
+    expect(inside.length).toBeLessThan(outside.length);
+  });
+});

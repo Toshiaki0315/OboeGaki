@@ -65,6 +65,7 @@ import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide, frontMatterRange } from "./frontmatter";
 import { headingFolding } from "./folding";
 import { insertTableAt, tableAutoFormat } from "./table-format";
+import { tableKeys } from "./table-keys";
 import { plainCopyKeymap } from "./plain-copy";
 import { autoPair, urlPasteLink } from "./auto-pair";
 import { tagCompletion } from "./tag-complete";
@@ -493,6 +494,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             icons: false,
           }),
           keymap.of([{ key: "Tab", run: acceptCompletion }]),
+          tableKeys, // 表の中の Enter / Tab（行と列を足す。要望 2026-09-15）
           inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
           formatKeymap,
           plainCopyKeymap, // Cmd+Shift+C（spec §5.4）
