@@ -19,6 +19,7 @@ import {
   setSourceMode,
   setWysiwyg,
   sourceModeField,
+  sourceModeFlipped,
   tableDecorations,
   tableField,
   typingLineField,
@@ -1056,5 +1057,32 @@ describe("プレビューモード（ADR-0065。要望 2026-09-15）", () => {
     const back = source.update({ effects: setWysiwyg.of(true) }).state;
     expect(back.field(wysiwygField)).toBe(true);
     expect(back.field(sourceModeField)).toBe(false);
+  });
+});
+
+describe("sourceModeFlipped（ソースの入り切りは値で見る。実機 2026-09-15）", () => {
+  // ソース → プレビューでは `setSourceMode` の効果が流れず、field の排他で
+  // ソースが黙って切れる。効果だけを見ていた Editor が装飾（太字・見出しの
+  // 大きさ）を戻さず、プレビューに入っても素の字のままだった
+  const base = EditorState.create({
+    doc: "**太字**",
+    extensions: [LANG, sourceModeField, wysiwygField, typingLineField],
+  });
+  const inSource = base.update({ effects: setSourceMode.of(true) }).state;
+
+  test("test_ソースからプレビューに入るとソースが切れたと分かる", () => {
+    const toPreview = inSource.update({ effects: setWysiwyg.of(true) }).state;
+    expect(toPreview.field(sourceModeField)).toBe(false);
+    expect(sourceModeFlipped(inSource, toPreview)).toBe(true);
+  });
+
+  test("test_ソースが切のままプレビューに入っても_ソースは変わっていない", () => {
+    const toPreview = base.update({ effects: setWysiwyg.of(true) }).state;
+    expect(sourceModeFlipped(base, toPreview)).toBe(false);
+  });
+
+  test("test_ソースの入り切りそのものも拾う", () => {
+    expect(sourceModeFlipped(base, inSource)).toBe(true);
+    expect(sourceModeFlipped(inSource, inSource)).toBe(false);
   });
 });

@@ -80,6 +80,7 @@ import {
   setSourceMode,
   setWysiwyg,
   sourceModeField,
+  sourceModeFlipped,
   toggleSourceMode,
   toggleWysiwyg,
   wysiwygField,
@@ -591,11 +592,10 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                 typewriter: update.state.field(typewriterField, false) ?? false,
               });
             }
-            if (
-              update.transactions.some((tr) =>
-                tr.effects.some((effect) => effect.is(setSourceMode)),
-              )
-            ) {
+            // **効果ではなく値で見る。** ソース → プレビューでは setSourceMode
+            // の効果が流れず、field の排他でソースが黙って切れる（実機 2026-09-15:
+            // プレビューに入っても太字や見出しが素の字のままだった）
+            if (sourceModeFlipped(update.startState, update.state)) {
               // **装飾を丸ごと外す / 戻す。** update の最中には流せないので、
               // 1 拍おいてから差し替える（CM6 の決まり）
               const current = update.view;

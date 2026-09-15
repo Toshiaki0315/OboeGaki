@@ -173,6 +173,19 @@ export function toggleSourceMode(view: EditorView): boolean {
   return true;
 }
 
+/// ソースモードが入ったか切れたか（**値で見る**）。ソース → プレビューでは
+/// `setSourceMode` の効果が流れず、field の排他でソースが黙って切れる。効果
+/// だけを見ていると装飾（太字・見出しの大きさ）を戻し忘れる（実機 2026-09-15）
+export function sourceModeFlipped(
+  start: EditorState,
+  end: EditorState,
+): boolean {
+  return (
+    (start.field(sourceModeField, false) ?? false) !==
+    (end.field(sourceModeField, false) ?? false)
+  );
+}
+
 /// プレビューモードの切り替え（ADR-0065）。ソースモードとの排他は field 側が持つ
 export function toggleWysiwyg(view: EditorView): boolean {
   view.dispatch({
