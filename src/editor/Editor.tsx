@@ -127,8 +127,10 @@ export type EditorHandle = {
   toggleSourceMode: () => void;
   /// 表示モードを指定して切り替える（切り替えボタン用）
   setSourceMode: (source: boolean) => void;
-  /// 見たままモードの切り替え（ADR-0065。メニューと歯車から呼ぶ）
+  /// プレビューモードの切り替え（ADR-0065。メニューと歯車から呼ぶ）
   toggleWysiwygMode: () => void;
+  /// プレビューモードを指定して切り替える（「インラインモード」= 両方切、で使う）
+  setWysiwygMode: (on: boolean) => void;
   toggleFocusMode: () => void;
   toggleTypewriterMode: () => void;
   /** キャレット位置に空の表を差し込む（rows は見出しを除いた行数） */
@@ -182,7 +184,7 @@ type Props = {
   diagramTheme?: MermaidTheme;
   /** 開いた時点の表示モード（ソースモードはノートを跨いで続く） */
   sourceMode?: boolean;
-  /** 開いた時点の見たままモード（ADR-0065。同じくノートを跨いで続く） */
+  /** 開いた時点のプレビューモード（ADR-0065。同じくノートを跨いで続く） */
   wysiwyg?: boolean;
   /** 開いた時点のフォーカス・タイプライタ（同じくノートを跨いで続く） */
   focusMode?: boolean;
@@ -322,6 +324,12 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       },
       toggleWysiwygMode() {
         if (view.current) toggleWysiwyg(view.current);
+      },
+      setWysiwygMode(on) {
+        const current = view.current;
+        if (!current) return;
+        if ((current.state.field(wysiwygField, false) ?? false) === on) return;
+        toggleWysiwyg(current);
       },
       toggleFocusMode() {
         if (view.current) toggleFocus(view.current);

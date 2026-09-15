@@ -22,6 +22,7 @@ import { useNoteSync } from "./hooks/useNoteSync";
 import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
+import { editModeChecks } from "./lib/menu-checks";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -1215,7 +1216,7 @@ function App() {
   // 表示モード（通常 / ソース）。**ノートを跨いで続く** — 切り替えボタンが
   // 見えているのに、ノートを開き直すと戻るのは筋が悪い
   const [sourceMode, setSourceMode] = useState(false);
-  // 見たままモード（ADR-0065）。持ち主はエディタで、ここはその写し
+  // プレビューモード（ADR-0065）。持ち主はエディタで、ここはその写し
   const [wysiwygMode, setWysiwygMode] = useState(false);
   // 見え方の今（メニューと歯車の印に使う。要望 2026-09-13）。**持ち主は
   // エディタ**で、ここはその写し
@@ -2225,8 +2226,7 @@ function App() {
       "toggle-notes": settings.notesVisible,
       outline: outlineOpen,
       assistant: assistantOpen,
-      "source-mode": sourceMode,
-      "wysiwyg-mode": wysiwygMode,
+      ...editModeChecks({ source: sourceMode, preview: wysiwygMode }),
       "focus-mode": editorModes.focus,
       typewriter: editorModes.typewriter,
     }).catch(() => {
@@ -2313,8 +2313,16 @@ function App() {
     "zoom-in": () => changeFontSize(fontSizeRef.current + FONT_STEP_PX),
     "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
     "zoom-reset": () => changeFontSize(DEFAULT_FONT_PX),
+    // 編集モード（要望 2026-09-15）。上 3 つは排他: インラインは「両方切」、
+    // ソースとプレビューは押すと入り、もう一度押すとインラインへ戻る
+    // （`Cmd+/` を今までどおり行き帰りに使えるように、選ぶだけの radio に
+    // はしない）
+    "inline-mode": () => {
+      editorRef.current?.setSourceMode(false);
+      editorRef.current?.setWysiwygMode(false);
+    },
     "source-mode": () => editorRef.current?.toggleSourceMode(),
-    "wysiwyg-mode": () => editorRef.current?.toggleWysiwygMode(),
+    "preview-mode": () => editorRef.current?.toggleWysiwygMode(),
     "focus-mode": () => editorRef.current?.toggleFocusMode(),
     typewriter: () => editorRef.current?.toggleTypewriterMode(),
   };
@@ -3236,23 +3244,31 @@ function App() {
                             ]
                           : []),
                         { kind: "separator" },
+                        // 編集モード（メニューバーの「編集モード」と同じ並び）。
+                        // 上 3 つは排他、下 2 つは併用できる
                         {
-                          label: "ソース表示",
+                          label: "インラインモード",
+                          checked: !sourceMode && !wysiwygMode,
+                          onSelect: () => menu["inline-mode"]?.(),
+                        },
+                        {
+                          label: "ソースモード",
                           checked: sourceMode,
                           onSelect: () => menu["source-mode"]?.(),
                         },
                         {
-                          label: "見たままモード",
+                          label: "プレビューモード",
                           checked: wysiwygMode,
-                          onSelect: () => menu["wysiwyg-mode"]?.(),
+                          onSelect: () => menu["preview-mode"]?.(),
                         },
+                        { kind: "separator" },
                         {
                           label: "フォーカスモード",
                           checked: editorModes.focus,
                           onSelect: () => menu["focus-mode"]?.(),
                         },
                         {
-                          label: "タイプライタモード",
+                          label: "タイプライターモード",
                           checked: editorModes.typewriter,
                           onSelect: () => menu.typewriter?.(),
                         },

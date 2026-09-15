@@ -991,7 +991,7 @@ describe(":::note はコードフェンスの中では効かない（レビュ�
   });
 });
 
-describe("見たままモード（ADR-0065。要望 2026-09-15）", () => {
+describe("プレビューモード（ADR-0065。要望 2026-09-15）", () => {
   // カーソルを置いただけでは記法を出さず、**書き込んでいる行だけ**出す。
   // 直しは書式ツールバーの絵から行う前提
   const doc = "**太字** の行\n次の行";
@@ -1034,7 +1034,7 @@ describe("見たままモード（ADR-0065。要望 2026-09-15）", () => {
     expect(has(marks(moved), { from: 0, to: 2, kind: "hide" })).toBe(true);
   });
 
-  test("test_選択しただけでも出さない（見たままが目的）", () => {
+  test("test_選択しただけでも出さない（見たままにするのが目的）", () => {
     const selected = EditorState.create({
       doc,
       selection: EditorSelection.range(0, 6),

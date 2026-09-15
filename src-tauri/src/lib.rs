@@ -204,16 +204,21 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("zoom-out", "小さく（Cmd+-）", None)?)
         .item(&item("zoom-reset", "標準（Cmd+0）", None)?)
         .build()?;
-    // 本文の見せ方の切り替え（要望 2026-09-13 で畳んだ）。ペインの開閉とは
-    // 別の話なので、同じ並びに置かない
-    let modes = SubmenuBuilder::new(handle, "書くときの見え方")
+    // 編集モード（要望 2026-09-15）。上 3 つ（インライン／ソース／プレビュー）
+    // は排他で必ず 1 つに ✓、下 2 つは併用できる。**排他を決めるのは画面側**
+    // （`menu_checks` で 9 つまとめて届く。T2）。ペインの開閉とは別の話なので、
+    // 同じ並びに置かない
+    let modes = SubmenuBuilder::new(handle, "編集モード")
+        .item(&toggle("inline-mode", "インラインモード", None)?)
         .item(&toggle("source-mode", "ソースモード", Some("CmdOrCtrl+/"))?)
-        // 見たままモード（ADR-0065）。ソースモードとは排他（切り替えは画面側）
+        // プレビューモード（ADR-0065）。`Cmd+Shift+/` は macOS のメニューに
+        // 字が出なかった（実機 2026-09-15）ので P にした
         .item(&toggle(
-            "wysiwyg-mode",
-            "見たままモード",
-            Some("CmdOrCtrl+Shift+/"),
+            "preview-mode",
+            "プレビューモード",
+            Some("CmdOrCtrl+Shift+P"),
         )?)
+        .separator()
         .item(&toggle(
             "focus-mode",
             "フォーカスモード",
@@ -221,7 +226,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         )?)
         .item(&toggle(
             "typewriter",
-            "タイプライタモード",
+            "タイプライターモード",
             Some("CmdOrCtrl+Shift+Y"),
         )?)
         .build()?;

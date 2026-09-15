@@ -1,13 +1,14 @@
 {
-  "_comment": "印つき（✓）メニュー項目の id。Rust（lib.rs の toggle(...)）と TS（lib/menu-checks.ts）が同じ 7 つを持つことを、両方のテストがここで突き合わせる（15-14）。",
+  "_comment": "印つき（✓）メニュー項目の id。Rust（lib.rs の toggle(...)）と TS（lib/menu-checks.ts）が同じ 9 つを持つことを、両方のテストがここで突き合わせる（15-14）。編集モードの上 3 つ（inline / source / preview）は排他で、必ず 1 つだけ ✓（要望 2026-09-15）。",
   "ids": [
     "toggle-trees",
     "toggle-notes",
     "outline",
     "assistant",
+    "inline-mode",
     "source-mode",
+    "preview-mode",
     "focus-mode",
-    "typewriter",
-    "wysiwyg-mode"
+    "typewriter"
   ]
 }

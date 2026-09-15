@@ -91,7 +91,7 @@ export const diagramThemeField = StateField.define<MermaidTheme>({
 });
 
 export const setSourceMode = StateEffect.define<boolean>();
-/// 見たままモード（ADR-0065。要望 2026-09-15）。ON の間はカーソルを置いた
+/// プレビューモード（ADR-0065。要望 2026-09-15。識別子は wysiwyg のまま）。ON の間はカーソルを置いた
 /// だけでは記法を出さず、**書き込んでいる行だけ**出す。直しは書式ツール
 /// バーの絵から行う前提
 export const setWysiwyg = StateEffect.define<boolean>();
@@ -102,7 +102,7 @@ export const sourceModeField = StateField.define<boolean>({
     let next = value;
     for (const effect of tr.effects) {
       if (effect.is(setSourceMode)) next = effect.value;
-      // 見たままモードとは排他（全部見せる／なるべく見せない、の両立はない）
+      // プレビューモードとは排他（全部見せる／なるべく見せない、の両立はない）
       if (effect.is(setWysiwyg) && effect.value) next = false;
     }
     return next;
@@ -121,7 +121,7 @@ export const wysiwygField = StateField.define<boolean>({
   },
 });
 
-/// 書き込んでいる行（その行頭の位置）。見たままモードで記法を出す唯一の行。
+/// 書き込んでいる行（その行頭の位置）。プレビューモードで記法を出す唯一の行。
 ///
 /// **書いたときだけ**その行になる（打つ・消す・貼る = userEvent の input /
 /// delete）。カーソルを置いただけ・選んだだけでは変わらず、別の行へ移ると
@@ -151,7 +151,7 @@ export const typingLineField = StateField.define<number | null>({
 });
 
 /// リビールの前提が変わった transaction か（装飾を作り直す合図）。
-/// モードの切り替えと、見たままモード中の「書き込んでいる行」の移り変わり
+/// モードの切り替えと、プレビューモード中の「書き込んでいる行」の移り変わり
 export function revealModeChanged(tr: Transaction): boolean {
   if (tr.effects.some((e) => e.is(setSourceMode) || e.is(setWysiwyg))) {
     return true;
@@ -173,7 +173,7 @@ export function toggleSourceMode(view: EditorView): boolean {
   return true;
 }
 
-/// 見たままモードの切り替え（ADR-0065）。ソースモードとの排他は field 側が持つ
+/// プレビューモードの切り替え（ADR-0065）。ソースモードとの排他は field 側が持つ
 export function toggleWysiwyg(view: EditorView): boolean {
   view.dispatch({
     effects: setWysiwyg.of(!view.state.field(wysiwygField)),
@@ -193,7 +193,7 @@ function touchesSelection(
   to: number,
 ): boolean {
   if (state.field(wysiwygField, false)) {
-    // 見たままモード（ADR-0065）: 書き込んでいる行だけ。カーソルを置いた
+    // プレビューモード（ADR-0065）: 書き込んでいる行だけ。カーソルを置いた
     // だけ・選んだだけでは現さない
     const typing = state.field(typingLineField, false) ?? null;
     if (typing === null) return false;
