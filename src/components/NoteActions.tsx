@@ -1,26 +1,90 @@
 // ノートの操作ボタン列。アイコンでペインの右端に寄せる（題名の幅とは独立。
 // ユーザー要望 2026-09-04）。並びはピン → 書き出し → 履歴 → ゴミ箱 →
-// ソース表示切替。
+// 編集モード（インライン／ソース／プレビューを 1 つのボタンで巡る。
+// 要望 2026-09-15。**今どこかを絵で見せる** — 3 つを巡るボタンは、今の
+// 位置が見えないと押せない）。
+
+import type { ReactElement } from "react";
+import {
+  EDIT_MODE_LABELS,
+  nextEditMode,
+  type EditMode,
+} from "../lib/edit-mode";
 
 export type NoteActionsProps = {
   pinned: boolean;
-  sourceMode: boolean;
+  editMode: EditMode;
   onPin: () => void;
   onExport: () => void;
   onHistory: () => void;
   onTrash: () => void;
-  onToggleSource: () => void;
+  /// 次の編集モードへ（インライン → ソース → プレビュー → インライン）
+  onCycleMode: () => void;
+};
+
+/// 編集モードの絵（16×16 の線。他のボタンと同じ太さ）。
+/// インライン = 本文に鉛筆（書きながら見る）、ソース = `<>`、
+/// プレビュー = 目（見るだけに近い）
+const MODE_ICONS: Record<EditMode, ReactElement> = {
+  inline: (
+    <>
+      <path
+        d="M3 4h10M3 8h5M3 12h3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="m9.5 13.5 4.2-4.2 1.3 1.3-4.2 4.2H9.5v-1.3Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </>
+  ),
+  source: (
+    <path
+      d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ),
+  preview: (
+    <>
+      <path
+        d="M1.5 8c1.6-2.9 3.8-4.4 6.5-4.4S12.9 5.1 14.5 8c-1.6 2.9-3.8 4.4-6.5 4.4S3.1 10.9 1.5 8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="8"
+        cy="8"
+        r="2.1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </>
+  ),
 };
 
 export function NoteActions({
   pinned,
-  sourceMode,
+  editMode,
   onPin,
   onExport,
   onHistory,
   onTrash,
-  onToggleSource,
+  onCycleMode,
 }: NoteActionsProps) {
+  const next = nextEditMode(editMode);
   return (
     <div className="note-actions" role="group" aria-label="ノートの操作">
       <button
@@ -90,20 +154,14 @@ export function NoteActions({
         </svg>
       </button>
       <button
-        className={sourceMode ? "selected" : ""}
-        title={sourceMode ? "通常表示に戻す（Cmd+/）" : "ソース表示（Cmd+/）"}
-        aria-pressed={sourceMode}
-        onClick={onToggleSource}
+        // インライン以外は「いつもと違う」ので押された見た目にする
+        className={editMode === "inline" ? "" : "selected"}
+        title={`編集モード: ${EDIT_MODE_LABELS[editMode]}（押すと${EDIT_MODE_LABELS[next]}へ）`}
+        data-mode={editMode}
+        onClick={onCycleMode}
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          {MODE_ICONS[editMode]}
         </svg>
       </button>
     </div>

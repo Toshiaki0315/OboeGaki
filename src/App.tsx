@@ -23,6 +23,7 @@ import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { editModeChecks } from "./lib/menu-checks";
+import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -2317,15 +2318,26 @@ function App() {
     // ソースとプレビューは押すと入り、もう一度押すとインラインへ戻る
     // （`Cmd+/` を今までどおり行き帰りに使えるように、選ぶだけの radio に
     // はしない）
-    "inline-mode": () => {
-      editorRef.current?.setSourceMode(false);
-      editorRef.current?.setWysiwygMode(false);
-    },
+    "inline-mode": () => applyEditMode("inline"),
     "source-mode": () => editorRef.current?.toggleSourceMode(),
     "preview-mode": () => editorRef.current?.toggleWysiwygMode(),
     "focus-mode": () => editorRef.current?.toggleFocusMode(),
     typewriter: () => editorRef.current?.toggleTypewriterMode(),
   };
+  /// 編集モードを指定して入る（メニューの「インラインモード」と右上のボタン）。
+  /// ソースとプレビューの排他は field 側が持つので、入れたいほうを立てるだけ
+  function applyEditMode(mode: EditMode) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (mode === "inline") {
+      editor.setSourceMode(false);
+      editor.setWysiwygMode(false);
+    } else if (mode === "source") {
+      editor.setSourceMode(true);
+    } else {
+      editor.setWysiwygMode(true);
+    }
+  }
   useEffect(() => {
     const unlisten = safeSubscribe(() =>
       listen<string>("menu", (event) => {
@@ -2808,19 +2820,29 @@ function App() {
                   />
                   {/* 操作はアイコンでペインの右端に寄せる（題名の 46rem 幅とは
                     独立。ユーザー要望 2026-09-04）。並びは
-                    ピン → 書き出し → 履歴 → ゴミ箱 → ソース表示切替 */}
+                    ピン → 書き出し → 履歴 → ゴミ箱 → 編集モード（3 つを巡る） */}
                   <NoteActions
                     pinned={
                       notes.find((entry) => entry.path === currentPath)
                         ?.pinned ?? false
                     }
-                    sourceMode={sourceMode}
+                    editMode={editModeOf({
+                      source: sourceMode,
+                      preview: wysiwygMode,
+                    })}
                     onPin={() => void handlePin()}
                     onExport={() => void handleExport()}
                     onHistory={() => void openHistory()}
                     onTrash={() => void handleTrash()}
-                    onToggleSource={() =>
-                      editorRef.current?.setSourceMode(!sourceMode)
+                    onCycleMode={() =>
+                      applyEditMode(
+                        nextEditMode(
+                          editModeOf({
+                            source: sourceMode,
+                            preview: wysiwygMode,
+                          }),
+                        ),
+                      )
                     }
                   />
                 </div>
