@@ -24,6 +24,12 @@ import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { editModeChecks } from "./lib/menu-checks";
 import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
+import {
+  rememberSidePane,
+  restoreSidePane,
+  toggleSidePane,
+  type SideKind,
+} from "./lib/side-pane";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -260,7 +266,6 @@ import "./App.css";
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
 
 /// サイドバー下段の節（開くのは 1 つ。フォルダ・タグ・やること）
-type SideKind = "folders" | "tags" | "tasks";
 
 function App() {
   const {
@@ -752,24 +757,13 @@ function App() {
 
   // 左下のフォルダ / タグは排他で開く（ユーザー要望 2026-09-04）。
   // 両方開くと一覧が痩せすぎる。開いた側が縦の約 1/3 を使う
-  const [sideOpen, setSideOpen] = useState<SideKind | null>(() => {
-    try {
-      const kept = localStorage.getItem("oboegaki.side");
-      return kept === "folders" || kept === "tags" || kept === "tasks"
-        ? kept
-        : "folders";
-    } catch {
-      return "folders";
-    }
-  });
+  const [sideOpen, setSideOpen] = useState<SideKind | null>(() =>
+    restoreSidePane(localStorage),
+  );
   function toggleSide(kind: SideKind) {
     setSideOpen((current) => {
-      const next = current === kind ? null : kind;
-      try {
-        localStorage.setItem("oboegaki.side", next ?? "");
-      } catch {
-        // 覚えられなくても開閉自体は生かす
-      }
+      const next = toggleSidePane(current, kind);
+      rememberSidePane(localStorage, next);
       return next;
     });
   }

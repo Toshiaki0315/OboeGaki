@@ -379,7 +379,11 @@ mod tests {
 
     /// Ollama の代役。渡した応答をそのまま返し、受け取った本文を知らせる。
     fn stub(response: &'static str) -> (u16, mpsc::Receiver<String>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        // 実ソケットで Ollama の代役を立てる。ループバックに待ち受けできない
+        // 環境（sandbox の CI など）では**理由が読める形で**落ちるようにする —
+        // 黙って飛ばすと、いつの間にか何も試していない状態になる（レビュー 2026-09-16）
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .expect("127.0.0.1 に待ち受けできない。このテストは実ソケットが要る（sandbox ではループバックを許可する）");
         let port = listener.local_addr().unwrap().port();
         let (sender, receiver) = mpsc::channel();
         thread::spawn(move || {

@@ -854,6 +854,15 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       Tab で次のセル、見出しの端なら列を足し、最後の行の端なら行を足す／
       Shift+Tab で前のセル。見出しの行末に `|` を打つだけでは GFM の規則で
       表が壊れるので、列は鍵で足す
+- [x] **16-7. 外部レビュー（2026-09-16）の照合**
+      9 件のうち 7 件は古い状態を見ていた（App.tsx は 6,000 行ではなく 3,590 行で
+      useState は 13、`stores/app.ts` は 56 行で invoke は `lib/ipc.ts` に既に
+      分離、`escapeHtml` は `"` `'` も逃がしている、CSP は設定済み、Rust の
+      テスト名の警告は `#[allow(non_snake_case)]` で 0、`eslint-plugin-react-hooks`
+      は導入済みで `exhaustive-deps` は error、UI 部品のテストは 33 ファイル）。
+      直したのは 2 件: `"oboegaki.side"` の直書きを `lib/side-pane.ts` に集めた／
+      `llm.rs` の実ソケットの stub は、待ち受けできない環境で理由が読める形で
+      落ちるようにした（黙って飛ばさない）
       判定は `touchesSelection` 1 か所に挟んだので、インライン・ブロック・表・絵に
       まとめて効く
 
