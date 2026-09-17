@@ -117,12 +117,14 @@ export function useNoteSync({
       const path = target.path;
       const text = getText();
       await writeNote(root, path, text, historyMinutesRef.current);
-      known.current = { path, text };
       // 完了する頃には別のノートが開いているかもしれない。共有の
-      // dirty と表示を触るのは**今もそのノートを開いているときだけ**
+      // dirty と表示と **known** を触るのは**今もそのノートを開いているときだけ**
       //（レビュー 2026-09-04: 取り違えると次の外部変更が「未編集」と
-      // 判定され、打ったばかりの内容が静かにリロードで消える）
+      // 判定され、打ったばかりの内容が静かにリロードで消える。
+      // 棚卸し 2026-09-17: known を上書きすると今のノートの「開いた時の
+      // 本文」が消え、同期ソフトの触り直しで偽の競合が出る）
       if (currentPathRef.current === path) {
+        known.current = { path, text };
         dirty.current = false;
         onStatusRef.current("保存済み");
         setSavedAt(Date.now());
@@ -242,18 +244,33 @@ export function useNoteSync({
     void keepStash(root, change.path, readTextRef.current());
   }
 
-  // 登録は一度だけ。ハンドラが読む値はすべて ref 経由
+  // 登録は一度だけ。ハンドラが読む値はすべて ref 経由。読み直しの失敗
+  // （modified の直後に消された、など）は知らせるだけで落とさない
   useEffect(
-    () => subscribeVaultChanged((change) => void handleExternalChange(change)),
+    () =>
+      subscribeVaultChanged((change) =>
+        handleExternalChange(change).catch((error) =>
+          onStatusRef.current(`読み直せませんでした: ${String(error)}`),
+        ),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+
+  // ノートを切り替えたら、前のノートについての問い（競合・外部削除）は捨てる。
+  // 残したまま答えると**別のノートの本文を差し替える**（棚卸し 2026-09-17）
+  useEffect(() => {
+    setConflict(null);
+    setDeleted(null);
+  }, [currentPath]);
 
   async function resolveConflict(choice: "external" | "mine" | "both") {
     const root = vaultRootRef.current;
     if (!conflict || !root) return;
     const found = conflict;
     setConflict(null);
+    // 問いが出たノートを開いていないなら何もしない（別のノートを壊さない）
+    if (currentPathRef.current !== found.path) return;
     // どの道を選んでも「保存できない状態」は終わる。保険は捨てる
     dropStash(root, found.path);
     if (choice === "external") {
@@ -339,12 +356,19 @@ export function useNoteSync({
       await clearRecovery(root);
       return;
     }
-    const written = await restoreRecovery(root);
-    await refreshListsRef.current();
-    await onRecovered(written);
-    onStatusRef.current(
-      `未保存の内容を ${written.length} 件、別ファイルに復元しました`,
-    );
+    const count = recovery;
+    try {
+      const written = await restoreRecovery(root);
+      await refreshListsRef.current();
+      await onRecovered(written);
+      onStatusRef.current(
+        `未保存の内容を ${written.length} 件、別ファイルに復元しました`,
+      );
+    } catch (error) {
+      // 退避は残っている。件数を戻してもう一度選べるようにする
+      setRecovery(count);
+      onStatusRef.current(`復元できませんでした: ${String(error)}`);
+    }
   }
 
   return {

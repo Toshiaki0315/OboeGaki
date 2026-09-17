@@ -201,6 +201,7 @@ import {
   vaultErrorText,
 } from "./lib/last-vault";
 import {
+  cleanSettingsPatch,
   clampPaneWidth,
   contentWidthCss,
   DEFAULT_SETTINGS,
@@ -435,18 +436,9 @@ function App() {
   }
 
   function changeSettings(next: Partial<Settings>) {
-    // 数値欄は空にすると 0 / NaN が入る（レビュー 2026-09-04）。読めない
-    // 値はその項目だけ捨てて、直前の値を保つ
-    const cleaned: Partial<Settings> = { ...next };
-    for (const key of Object.keys(cleaned) as (keyof Settings)[]) {
-      const value = cleaned[key];
-      if (
-        typeof value === "number" &&
-        (!Number.isFinite(value) || value <= 0)
-      ) {
-        delete cleaned[key];
-      }
-    }
+    // 読めない数値だけ捨てる（規則は lib/settings の cleanSettingsPatch。
+    // 履歴の「なし」= 0 を捨てないため項目ごとに見る）
+    const cleaned = cleanSettingsPatch(next);
     setSettings((current) => {
       const merged = { ...current, ...cleaned };
       saveSettings(localStorage, merged);

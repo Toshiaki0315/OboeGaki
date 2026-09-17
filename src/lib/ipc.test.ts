@@ -102,6 +102,18 @@ describe("imageSource", () => {
     });
   });
 
+  test("test_読めなかった結果は覚えない（あとで画像を置けば描かれる）", async () => {
+    // 失敗まで永久に覚えると、参照切れの画像を後から置いても再起動まで
+    // 描かれなかった（棚卸し 2026-09-17）
+    invoked.mockRejectedValueOnce(new Error("no file"));
+    expect(await imageSource("/v", "attachments/later.png")).toBeNull();
+    invoked.mockResolvedValue("data:image/png;base64,QUJD");
+    expect(await imageSource("/v", "attachments/later.png")).toBe(
+      "data:image/png;base64,QUJD",
+    );
+    expect(invoked).toHaveBeenCalledTimes(2);
+  });
+
   test("test_読めなければ null（壊れた参照で描画ごと止めない）", async () => {
     invoked.mockRejectedValue(new Error("no file"));
     expect(await imageSource("/v", "attachments/missing.png")).toBeNull();

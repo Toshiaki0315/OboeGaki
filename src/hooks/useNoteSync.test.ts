@@ -390,3 +390,84 @@ describe("useNoteSync: 前回の未保存（H-1）", () => {
     );
   });
 });
+
+describe("useNoteSync: 棚卸しレビュー 2026-09-17", () => {
+  test("test_外部変更の読み直しに失敗しても知らせるだけで落ちない", async () => {
+    // modified の直後に消されたファイルなどで readNote が reject すると、
+    // 未処理の reject になって何も表示されなかった
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    mocked.readNote.mockRejectedValue(new Error("gone"));
+    await act(async () => external!({ path: "/v/a.md", kind: "modified" }));
+    await tick(1);
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("読み直せませんでした"),
+    );
+    expect(result.current.conflict).toBeNull();
+  });
+
+  test("test_競合の問いはノートを切り替えたら捨てる（別のノートに外の本文を入れない）", async () => {
+    const given = input();
+    const { result, rerender } = renderHook(
+      (props: NoteSyncInput) => useNoteSync(props),
+      {
+        initialProps: given,
+      },
+    );
+    act(() => result.current.noteChanged(() => "編集中"));
+    await act(async () => external!({ path: "/v/a.md", kind: "modified" }));
+    expect(result.current.conflict).not.toBeNull();
+    rerender(input({ currentPath: "/v/b.md", replaceText: given.replaceText }));
+    expect(result.current.conflict).toBeNull();
+    // 万一残っていても、別のノートの本文は差し替えない
+    await act(async () => result.current.resolveConflict("external"));
+    expect(given.replaceText).not.toHaveBeenCalled();
+  });
+
+  test("test_復元に失敗しても知らせて_もう一度選べる", async () => {
+    // setRecovery(0) を先にしてから restoreRecovery が reject → ダイアログは
+    // 消え、退避は残り、何も表示されなかった
+    mocked.pendingRecovery.mockResolvedValue([
+      { source: "a.md", text: "x", stashed_at_ms: 1 },
+    ]);
+    mocked.restoreRecovery.mockRejectedValue(new Error("disk"));
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    await tick(1);
+    await act(() => result.current.handleRecovery(true));
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("復元できませんでした"),
+    );
+    expect(result.current.recovery).toBe(1);
+  });
+
+  test("test_前のノートの遅い保存が_今のノートの既知の本文を上書きしない", async () => {
+    // A を打って保存中に B を開く → A の保存が終わる → B に「開いた時と同じ
+    // 中身」の外部イベント（同期ソフトの触り直し）が来ても聞かない、が
+    // known が 1 つしか無く A で上書きされて偽の競合が出ていた
+    let finishA: (() => void) | null = null;
+    mocked.writeNote.mockImplementation(
+      () => new Promise<void>((done) => (finishA = done)),
+    );
+    const given = input();
+    const { result, rerender } = renderHook(
+      (props: NoteSyncInput) => useNoteSync(props),
+      {
+        initialProps: given,
+      },
+    );
+    act(() => result.current.noteChanged(() => "A の本文"));
+    await tick(800); // A の保存が始まる（まだ終わらない）
+    rerender(input({ currentPath: "/v/b.md" }));
+    act(() =>
+      result.current.markOpened({ path: "/v/b.md", text: "B を開いた" }),
+    );
+    act(() => result.current.noteChanged(() => "B を編集"));
+    await act(async () => {
+      finishA?.();
+    });
+    mocked.readNote.mockResolvedValue("B を開いた");
+    await act(async () => external!({ path: "/v/b.md", kind: "modified" }));
+    expect(result.current.conflict).toBeNull();
+  });
+});

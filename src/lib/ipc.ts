@@ -488,9 +488,12 @@ export function imageSource(root: string, url: string): Promise<string | null> {
   const key = `${root}\n${cleaned}`;
   let entry = imageCache.get(key);
   if (!entry) {
-    entry = invoke<string>("image_read", { root, path: cleaned }).catch(
-      () => null,
-    );
+    entry = invoke<string>("image_read", { root, path: cleaned }).catch(() => {
+      // 失敗は覚えない。参照切れの画像を後から置いても再起動まで描かれない
+      // （棚卸し 2026-09-17）
+      imageCache.delete(key);
+      return null;
+    });
     imageCache.set(key, entry);
   }
   return entry;

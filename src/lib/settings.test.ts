@@ -6,6 +6,7 @@ import {
   CONTENT_WIDTHS,
   contentWidthCss,
   DEFAULT_SETTINGS,
+  cleanSettingsPatch,
   HISTORY_CHOICES,
   loadSettings,
   MAX_PANE_WIDTH,
@@ -285,5 +286,37 @@ describe("文字の読み取りの読み手（ADR-0027 決定 1）", () => {
     expect(loadSettings(storage('{"ocrEngine":"cloud"}')).ocrEngine).toBe(
       "mac",
     );
+  });
+});
+
+describe("cleanSettingsPatch（数値欄の読めない値だけ捨てる）", () => {
+  it("test_履歴の「なし」（0）は捨てない", () => {
+    // 「0 以下は空欄の NaN/0 対策として捨てる」が HISTORY_CHOICES の 0 を
+    // 巻き込み、「なし」を選んでも設定が変わらなかった（棚卸し 2026-09-17）
+    expect(cleanSettingsPatch({ historyMinutes: 0 })).toEqual({
+      historyMinutes: 0,
+    });
+    expect(cleanSettingsPatch({ historyMinutes: 60 })).toEqual({
+      historyMinutes: 60,
+    });
+  });
+
+  it("test_空欄や範囲外の数は_その項目だけ捨てる", () => {
+    expect(cleanSettingsPatch({ trashDays: Number.NaN })).toEqual({});
+    expect(cleanSettingsPatch({ trashDays: 0 })).toEqual({});
+    expect(cleanSettingsPatch({ trashDays: 366 })).toEqual({});
+    expect(cleanSettingsPatch({ llmPort: 0 })).toEqual({});
+    expect(cleanSettingsPatch({ llmPort: 65536 })).toEqual({});
+    expect(cleanSettingsPatch({ historyMinutes: 7 })).toEqual({}); // 選択肢に無い
+    expect(cleanSettingsPatch({ tabWidth: Number.NaN, theme: "dark" })).toEqual(
+      { theme: "dark" },
+    );
+  });
+
+  it("test_数以外はそのまま", () => {
+    expect(cleanSettingsPatch({ theme: "dark", lineNumbers: true })).toEqual({
+      theme: "dark",
+      lineNumbers: true,
+    });
   });
 });

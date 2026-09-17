@@ -317,3 +317,32 @@ function readDays(value: unknown): number {
   }
   return days;
 }
+
+/// 設定の差分を清書する。数値欄は空にすると 0 / NaN が入る（レビュー 2026-09-04）
+/// ので、**読めない値はその項目だけ捨てて**直前の値を保つ。ただし「0 以下は
+/// 捨てる」と一括りにすると履歴の「なし」（0）まで巻き込む（棚卸し 2026-09-17）
+/// — 項目ごとに「その値として読めるか」で見る
+export function cleanSettingsPatch(
+  patch: Partial<Settings>,
+): Partial<Settings> {
+  const cleaned: Partial<Settings> = { ...patch };
+  for (const key of Object.keys(cleaned) as (keyof Settings)[]) {
+    const value = cleaned[key];
+    if (typeof value !== "number") continue;
+    if (!Number.isFinite(value) || !numberFits(key, value)) delete cleaned[key];
+  }
+  return cleaned;
+}
+
+function numberFits(key: keyof Settings, value: number): boolean {
+  switch (key) {
+    case "historyMinutes":
+      return HISTORY_CHOICES.includes(value);
+    case "trashDays":
+      return value >= MIN_TRASH_DAYS && value <= MAX_TRASH_DAYS;
+    case "llmPort":
+      return value >= 1 && value <= 65535;
+    default:
+      return value > 0;
+  }
+}
