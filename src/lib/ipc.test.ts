@@ -12,22 +12,72 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
+  appendDaily,
+  clearRecovery,
+  conflictCopy,
+  createFolder,
+  createFromTemplate,
+  createNote,
+  dailyNote,
+  deleteFolder,
+  deleteForever,
+  discardStash,
+  duplicateNote,
+  emptyTrash,
+  fetchLists,
+  historyList,
+  historyRead,
+  historyRestore,
   historyUsage,
-  mcpConfig,
-  mcpHidden,
-  setMcpHidden,
   imageSource,
+  linkMap,
   llmAvailable,
   llmGenerate,
   llmLoaded,
   llmModels,
   llmStop,
   llmUnload,
+  mcpConfig,
+  mcpHidden,
+  moveFolder,
+  moveNote,
+  noteBacklinks,
+  noteExists,
+  noteRelated,
+  notesInFolder,
+  notesWithTag,
   ocrImage,
   ocrPdfPage,
+  openVaultRoot,
+  pendingRecovery,
+  pinNote,
+  placeManual,
+  placeMcpManual,
+  readNote,
+  registerTemplate,
+  renameFolder,
+  renameNote,
+  renameTag,
+  replaceApply,
+  replacePreview,
+  restoreNote,
+  restoreRecovery,
   saveAttachment,
+  searchNotes,
+  setMcpHidden,
+  setMenuChecks,
+  stashNote,
+  subscribeLlm,
   subscribeVaultChanged,
+  syncIndex,
+  taskComplete,
+  templateList,
   toEntry,
+  trashAttachments,
+  trashNote,
+  unusedAttachments,
+  vaultIsEmpty,
+  writeNote,
 } from "./ipc";
 
 const invoked = vi.mocked(invoke);
@@ -247,5 +297,375 @@ describe("MCP に渡さないもの（.mcp-ignore）", () => {
       path: "仕事/評価",
       hidden: true,
     });
+  });
+});
+
+// ---- 包み 47 個の「コマンド名と引数の形」をまとめて固定する（棚卸し 2026-09-17）。
+// 綴りを変えると Rust 側の `generate_handler!` と噛み合わなくなる。ここが赤に
+// なることで気付く（TS↔Rust の名前の一致は lib.rs 側の登録と一対一）
+describe("包みのコマンド名と引数（表）", () => {
+  const ROW: [
+    string,
+    () => Promise<unknown>,
+    string,
+    Record<string, unknown>,
+  ][] = [
+    [
+      "taskComplete",
+      () => taskComplete("/v", "a.md", 3),
+      "task_complete",
+      { root: "/v", path: "a.md", line: 3 },
+    ],
+    [
+      "openVaultRoot",
+      () => openVaultRoot("/v", 30),
+      "vault_open",
+      { root: "/v", trashDays: 30 },
+    ],
+    [
+      "openVaultRoot（日数なし）",
+      () => openVaultRoot("/v"),
+      "vault_open",
+      { root: "/v", trashDays: undefined },
+    ],
+    [
+      "vaultIsEmpty",
+      () => vaultIsEmpty("/v"),
+      "vault_is_empty",
+      { root: "/v" },
+    ],
+    [
+      "noteExists",
+      () => noteExists("/v", "/v/a.md"),
+      "note_exists",
+      { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "readNote",
+      () => readNote("/v", "/v/a.md"),
+      "note_read",
+      { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "writeNote",
+      () => writeNote("/v", "/v/a.md", "本文", 60),
+      "note_write",
+      { root: "/v", path: "/v/a.md", text: "本文", historyMinutes: 60 },
+    ],
+    [
+      "createNote",
+      () => createNote("/v", "題", "仕事"),
+      "note_create",
+      { root: "/v", title: "題", folder: "仕事" },
+    ],
+    [
+      "renameNote",
+      () => renameNote("/v", "/v/a.md", "新"),
+      "note_rename",
+      { root: "/v", path: "/v/a.md", title: "新" },
+    ],
+    [
+      "trashNote",
+      () => trashNote("/v", "/v/a.md"),
+      "note_trash",
+      { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "restoreNote",
+      () => restoreNote("/v", "/v/.trash/a.md"),
+      "note_restore",
+      { root: "/v", path: "/v/.trash/a.md" },
+    ],
+    [
+      "pinNote",
+      () => pinNote("/v", "/v/a.md", true),
+      "note_pin",
+      { root: "/v", path: "/v/a.md", pinned: true },
+    ],
+    [
+      "deleteForever",
+      () => deleteForever("/v", "/v/.trash/a.md"),
+      "trash_delete",
+      { root: "/v", path: "/v/.trash/a.md" },
+    ],
+    ["emptyTrash", () => emptyTrash("/v"), "trash_empty", { root: "/v" }],
+    ["templateList", () => templateList("/v"), "template_list", { root: "/v" }],
+    [
+      "createFromTemplate（題は雛形の名前 = 空を送る）",
+      () => createFromTemplate("/v", "議事録"),
+      "note_create_from_template",
+      { root: "/v", template: "議事録", title: "" },
+    ],
+    [
+      "dailyNote",
+      () => dailyNote("/v", "2026-09-17"),
+      "note_daily",
+      { root: "/v", day: "2026-09-17" },
+    ],
+    ["placeManual", () => placeManual("/v"), "manual_place", { root: "/v" }],
+    [
+      "setMenuChecks",
+      () =>
+        setMenuChecks({
+          "toggle-trees": true,
+          "toggle-notes": false,
+          outline: false,
+          assistant: false,
+          "inline-mode": true,
+          "source-mode": false,
+          "preview-mode": false,
+          "focus-mode": false,
+          typewriter: false,
+        }),
+      "menu_checks",
+      { state: expect.objectContaining({ "inline-mode": true }) },
+    ],
+    [
+      "placeMcpManual",
+      () => placeMcpManual("/v"),
+      "mcp_manual_place",
+      { root: "/v" },
+    ],
+    [
+      "createFolder",
+      () => createFolder("/v", "仕事/新"),
+      "folder_create",
+      { root: "/v", folder: "仕事/新" },
+    ],
+    [
+      "moveFolder",
+      () => moveFolder("/v", "仕事", "古い"),
+      "folder_move",
+      { root: "/v", folder: "仕事", into: "古い" },
+    ],
+    [
+      "renameFolder",
+      () => renameFolder("/v", "仕事", "仕事2"),
+      "folder_rename",
+      { root: "/v", folder: "仕事", name: "仕事2" },
+    ],
+    [
+      "deleteFolder",
+      () => deleteFolder("/v", "仕事"),
+      "folder_delete",
+      { root: "/v", folder: "仕事" },
+    ],
+    [
+      "moveNote",
+      () => moveNote("/v", "/v/a.md", "仕事"),
+      "note_move",
+      { root: "/v", path: "/v/a.md", folder: "仕事" },
+    ],
+    [
+      "noteBacklinks",
+      () => noteBacklinks("/v", "題"),
+      "note_backlinks",
+      { root: "/v", title: "題" },
+    ],
+    [
+      "stashNote",
+      () => stashNote("/v", "/v/a.md", "途中"),
+      "recovery_stash",
+      { root: "/v", path: "/v/a.md", text: "途中" },
+    ],
+    [
+      "discardStash",
+      () => discardStash("/v", "/v/a.md"),
+      "recovery_discard",
+      { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "pendingRecovery",
+      () => pendingRecovery("/v"),
+      "recovery_pending",
+      { root: "/v" },
+    ],
+    [
+      "restoreRecovery",
+      () => restoreRecovery("/v"),
+      "recovery_restore",
+      { root: "/v" },
+    ],
+    [
+      "clearRecovery",
+      () => clearRecovery("/v"),
+      "recovery_clear",
+      { root: "/v" },
+    ],
+    [
+      "syncIndex",
+      () => syncIndex("/v", true),
+      "index_sync",
+      { root: "/v", full: true },
+    ],
+    [
+      "duplicateNote",
+      () => duplicateNote("/v", "/v/a.md"),
+      "note_duplicate",
+      { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "registerTemplate",
+      () => registerTemplate("/v", "/v/a.md", "雛形"),
+      "template_register",
+      { root: "/v", path: "/v/a.md", name: "雛形" },
+    ],
+    [
+      "unusedAttachments",
+      () => unusedAttachments("/v"),
+      "attachments_unused",
+      { root: "/v" },
+    ],
+    [
+      "trashAttachments",
+      () => trashAttachments("/v", ["/v/attachments/a.png"]),
+      "attachments_trash",
+      { root: "/v", paths: ["/v/attachments/a.png"] },
+    ],
+    [
+      "noteRelated",
+      () => noteRelated("/v", "/v/a.md", "題"),
+      "note_related",
+      { root: "/v", path: "/v/a.md", title: "題" },
+    ],
+    ["linkMap", () => linkMap("/v"), "link_map", { root: "/v" }],
+    [
+      "searchNotes",
+      () => searchNotes("/v", "会議 #仕事"),
+      "note_search",
+      { root: "/v", query: "会議 #仕事" },
+    ],
+    [
+      "conflictCopy",
+      () => conflictCopy("/v", "/v/a.md", "自分の版"),
+      "conflict_copy",
+      { root: "/v", path: "/v/a.md", text: "自分の版" },
+    ],
+    [
+      "historyList",
+      () => historyList("/v", "/v/a.md"),
+      "history_list",
+      { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "historyRead",
+      () => historyRead("/v", "/v/a.md", "/v/.OboeGaki/history/x/y.md"),
+      "history_read",
+      { root: "/v", path: "/v/a.md", version: "/v/.OboeGaki/history/x/y.md" },
+    ],
+    [
+      "historyRestore",
+      () => historyRestore("/v", "/v/a.md", "/v/.OboeGaki/history/x/y.md"),
+      "history_restore",
+      { root: "/v", path: "/v/a.md", version: "/v/.OboeGaki/history/x/y.md" },
+    ],
+    [
+      "replacePreview（options を平らに）",
+      () =>
+        replacePreview("/v", "a", { caseSensitive: true, includeCode: false }),
+      "replace_preview",
+      { root: "/v", from: "a", caseSensitive: true, includeCode: false },
+    ],
+    [
+      "replaceApply（options を平らに）",
+      () =>
+        replaceApply("/v", "a", "b", {
+          caseSensitive: false,
+          includeCode: true,
+        }),
+      "replace_apply",
+      {
+        root: "/v",
+        from: "a",
+        to: "b",
+        caseSensitive: false,
+        includeCode: true,
+      },
+    ],
+    [
+      "renameTag",
+      () => renameTag("/v", "旧", "新"),
+      "tag_rename",
+      { root: "/v", from: "旧", to: "新" },
+    ],
+    [
+      "appendDaily",
+      () => appendDaily("/v", "思いつき"),
+      "note_append_daily",
+      { root: "/v", text: "思いつき" },
+    ],
+  ];
+
+  test.each(ROW)("%s", async (_name, call, command, args) => {
+    invoked.mockResolvedValue(undefined);
+    await call();
+    expect(invoked).toHaveBeenCalledWith(command, args);
+  });
+
+  test("test_fetchLists は 5 つを引いて camelCase に組み替える", async () => {
+    invoked.mockImplementation(async (command: string) => {
+      switch (command) {
+        case "note_list":
+          return [];
+        case "tag_list":
+          return [["仕事", 2]];
+        case "folder_list":
+          return [["箱", 1]];
+        case "trash_list":
+          return [{ path: "/v/.trash/a.md", trashed_ms: 5 }];
+        case "task_list":
+          return [
+            { path: "a.md", line: 0, text: "やる", due: null, mtime_ms: 1 },
+          ];
+        default:
+          throw new Error(`知らない: ${command}`);
+      }
+    });
+    const lists = await fetchLists("/v");
+    expect(lists.tags).toEqual([{ tag: "仕事", count: 2 }]);
+    expect(lists.folders).toEqual([{ folder: "箱", count: 1 }]);
+    expect(lists.trashNotes).toEqual([
+      { path: "/v/.trash/a.md", trashedMs: 5 },
+    ]);
+    expect(lists.tasks).toHaveLength(1);
+    for (const command of [
+      "note_list",
+      "tag_list",
+      "folder_list",
+      "trash_list",
+      "task_list",
+    ]) {
+      expect(invoked).toHaveBeenCalledWith(command, { root: "/v" });
+    }
+  });
+
+  test("test_notesWithTag と notesInFolder は toEntry で一覧の形にする", async () => {
+    invoked.mockResolvedValue([
+      { path: "a.md", title: "a", preview: "", mtime_ns: 0, pinned: false },
+    ]);
+    const byTag = await notesWithTag("/v", "仕事");
+    expect(invoked).toHaveBeenCalledWith("notes_with_tag", {
+      root: "/v",
+      tag: "仕事",
+    });
+    expect(byTag[0].path).toBe("/v/a.md");
+    const inFolder = await notesInFolder("/v", "箱");
+    expect(invoked).toHaveBeenCalledWith("notes_in_folder", {
+      root: "/v",
+      folder: "箱",
+    });
+    expect(inFolder[0].path).toBe("/v/a.md");
+  });
+
+  test("test_subscribeLlm は 3 本を張って_返り値で 3 本とも外す", () => {
+    const stop = subscribeLlm({
+      onChunk: () => {},
+      onDone: () => {},
+      onFailed: () => {},
+    });
+    expect(vi.mocked(listen).mock.calls.map(([name]) => name)).toEqual(
+      expect.arrayContaining(["llm-chunk", "llm-done", "llm-failed"]),
+    );
+    stop();
   });
 });

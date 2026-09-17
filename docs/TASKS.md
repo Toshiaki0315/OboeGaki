@@ -725,10 +725,11 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       （繋がって道具が 13 個並ぶ／資源として並び見せない場所は断る／読んで
       書いて楽観ロックが効く）。**手でしか確かめられないものは、いつか確かめ
       なくなる** — 10-2〜10-5 の煙試験をここに下ろした。0.55 秒で通る
-      - [ ] **15-8b. `commands.rs` の判断を下ろす**（続き）1,841 行でテスト
-            10 件。15-1 で「捨てる」は vault へ下ろした。残りは改名まわり
-            （履歴の鍵の付け替えが 5 か所）と索引の更新。**次に触るときに
-            少しずつ**で良い — まとめてやる価値は薄い
+      - [x] **15-8b. `commands.rs` の判断を下ろす**（続き。2026-09-17 におおむね済）
+            履歴の鍵の付け替えは `Vault::carry_history` の 1 本に倒した（17-2）。
+            退避の復元は `restore_pending`、フォルダの後追いは `rekey_moved_folder`、
+            版の書き戻しは `restore_version`、Finder は `finder_target` に抜いて
+            headless で試せる。残るのは索引の更新の配線だけで、そのままでよい
 - [x] **15-9. MCP 側の「渡さない」の穴を 3 つ塞ぐ**（2026-09-14 のレビュー）
       15-2 は画面側だけだった。サーバは `.mcp-ignore` を**起動時に 1 回**しか
       読まず（Claude Desktop は常駐させるので、GUI で隠しても開き直すまで
@@ -893,10 +894,10 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             引用の中の表を widget にするのは別（`tableDecorations` はトップレベルだけ）
       - [ ] プレビューモードで水平線・行まるごと画像・埋め込みはカーソルを置いても
             生に戻らない（表・図と揃えるか、設計として固定するか）
-      - [ ] ベンチ（editor-bench.ts）の拡張スタックが Editor.tsx と乖離
-            （`editorHighlights` / `selectionDrawing` / `copyCode` / `tableKeys` などが
-            無く、プレビューモードの計測も無い）。`buildExtensions(opts)` に切り出して
-            両方が同じものを呼ぶ
+      - [x] ベンチ（editor-bench.ts）の拡張スタックが Editor.tsx と乖離していた。
+            `editor/extensions.ts` の `coreExtensions(opts)` に切り出し、本番とベンチが
+            同じものを呼ぶ（Markdown の設定も 2 か所の複写を 1 つに。2026-09-17）。
+            プレビューモードの計測は未（`docs/bench.md` の手順に加えるかは別途）
       - [x] 字下げした見出し（`  # 題`）の上げ下げ・循環（3 文字までの字下げを保つ）／
             `1. [ ] やる` がチェックボックスになる（番号は残す。2026-09-17）
       - [ ] Setext 見出しの下線行が空行になる／表の中で選択があるときの Enter が選択を
@@ -915,8 +916,9 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] テストの無い部品 6 つに足した（2026-09-17）: `GeneralPreferences`（7 件）・
             `AssistantPreferences`（6 件）・`CaptureRoot`（4 件）・`useCaptureShortcut`
             （6 件）・`lib/capture.ts`（2 件）・`stores/app.ts`（5 件）
-      - [ ] `ipc.ts` の包み 47 個（引数の組み替えがある `fetchLists` / `replaceApply` /
-            `subscribeLlm` / `imageSource` の file:// を優先）
+      - [x] `ipc.ts` の包み 47 個をコマンド名と引数の表で固定（`fetchLists` の
+            camelCase 組み替え、`replaceApply` の options の平坦化、`subscribeLlm` の
+            3 本を含む。2026-09-17）
       - [x] App.tsx の `void` 呼びで catch の無い非同期ハンドラ 13 か所（書き出し・
             雛形・ゴミ箱・添付の掃除・同期）を `lib/run-command.runWithStatus` で
             包み、失敗を「○○できませんでした: …」とステータスに出す（2026-09-17）

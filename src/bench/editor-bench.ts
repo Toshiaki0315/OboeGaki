@@ -5,31 +5,9 @@
 // dispatch（同期の DOM 更新）+ 次の描画フレームまでを 1 打鍵として測る。
 // Tauri API は使わないので素のブラウザでも動く。
 
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "../editor/relaxed-emphasis";
-import { extendedInline } from "../editor/extended-inline";
-import { inputAssist } from "../editor/input-assist";
-import { livePreview } from "../editor/live-preview";
-import { syntaxHighlighting } from "@codemirror/language";
-import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
-import { search, searchKeymap } from "@codemirror/search";
-import { autoPair, urlPasteLink } from "../editor/auto-pair";
-import { codeHighlight, resolveCodeLanguage } from "../editor/code-blocks";
-import { frontMatterHide } from "../editor/frontmatter";
-import { headingFolding } from "../editor/folding";
-import { tableAutoFormat } from "../editor/table-format";
-import { editorModes } from "../editor/modes";
-import { formatKeymap } from "../editor/format-commands";
-import { plainCopyKeymap } from "../editor/plain-copy";
-import { attachmentEvents } from "../editor/attachments";
-import { activationClicks, activationHandler } from "../editor/activation";
-import { imageResolver } from "../editor/live-preview";
-import { tagCompletion } from "../editor/tag-complete";
-import { noteLinkCompletion } from "../editor/note-link-complete";
+import { coreExtensions, highlightsFor, NOOP_CORE } from "../editor/extensions";
 
 const KEYSTROKES = 300;
 const BUDGET_MS = 16;
@@ -93,35 +71,18 @@ async function run() {
       // （codeLanguages）や front matter の監視が抜けた計測は嘘になる。
       // 抜いてよいのは Tauri 依存のコールバックの中身（保存・画像解決）
       // だけで、拡張そのものは空実装で載せる（レビュー 2026-09-04）
+      // 本番（Editor.tsx）と**同じ出どころ**（editor/extensions.ts）で測る。
+      // 別に組んでいた頃は見た目の HighlightStyle や選択の描画が抜けていて、
+      // 計測が嘘になっていた（棚卸し 2026-09-17）。抜いてよいのは Tauri 依存の
+      // コールバックの中身だけで、拡張そのものは空実装で載せる
       extensions: [
-        frontMatterHide,
-        history(),
-        autoPair,
-        autocompletion({
-          override: [tagCompletion(() => []), noteLinkCompletion(() => [])],
-          icons: false,
+        EditorState.tabSize.of(4),
+        ...coreExtensions({
+          ...NOOP_CORE,
+          highlights: highlightsFor(false),
+          focus: false,
+          typewriter: false,
         }),
-        keymap.of([{ key: "Tab", run: acceptCompletion }]),
-        inputAssist,
-        formatKeymap,
-        plainCopyKeymap,
-        search({ top: true }),
-        keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
-        markdown({
-          extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-          codeLanguages: resolveCodeLanguage,
-        }),
-        syntaxHighlighting(codeHighlight),
-        livePreview,
-        tableAutoFormat,
-        headingFolding,
-        editorModes({ focus: false, typewriter: false }),
-        imageResolver.of(async () => null),
-        activationClicks,
-        activationHandler.of(() => {}),
-        attachmentEvents(async () => null),
-        urlPasteLink,
-        EditorView.lineWrapping,
       ],
     }),
   });

@@ -12,28 +12,11 @@ import {
   useRef,
   type MouseEvent,
 } from "react";
-import {
-  EditorView,
-  keymap,
-  lineNumbers as lineNumbersGutter,
-} from "@codemirror/view";
-import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
+import { EditorView, lineNumbers as lineNumbersGutter } from "@codemirror/view";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { search, searchKeymap } from "@codemirror/search";
-import { syntaxHighlighting } from "@codemirror/language";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
-import { inputAssist } from "./input-assist";
+import { FORMAT_COMMANDS, type FormatKind } from "./format-commands";
+import { coreExtensions, highlightsFor } from "./extensions";
 import {
-  FORMAT_COMMANDS,
-  type FormatKind,
-  formatKeymap,
-} from "./format-commands";
-import {
-  editorModes,
   focusModeField,
   setFocusMode,
   setTypewriter,
@@ -42,41 +25,14 @@ import {
   typewriterField,
   type EditorModes,
 } from "./modes";
-import {
-  activationClicks,
-  activationHandler,
-  type Activation,
-} from "./activation";
-import {
-  attachmentEvents,
-  dropFiles,
-  type SaveAttachment,
-} from "./attachments";
-import { csvDropEvents } from "./csv-drop";
+import { type Activation } from "./activation";
+import { dropFiles, type SaveAttachment } from "./attachments";
 import { clearColorEdit, colorEdits } from "./text-color-commands";
-import { selectionDrawing } from "./selection";
-import {
-  embedExtensions,
-  embedResolver,
-  NO_EMBED,
-  type EmbedResolver,
-} from "./embed";
-import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
-import { frontMatterHide, frontMatterRange } from "./frontmatter";
-import { headingFolding } from "./folding";
-import { insertTableAt, tableAutoFormat } from "./table-format";
-import { tableKeys } from "./table-keys";
-import { plainCopyKeymap } from "./plain-copy";
-import { autoPair, urlPasteLink } from "./auto-pair";
-import { tagCompletion } from "./tag-complete";
-import { noteLinkCompletion } from "./note-link-complete";
-import { slashCompletion } from "./slash-menu";
-import { fenceLanguageCompletion } from "./fence-language";
+import { NO_EMBED, type EmbedResolver } from "./embed";
+import { frontMatterRange } from "./frontmatter";
+import { insertTableAt } from "./table-format";
 import {
   diagramThemeField,
-  editorHighlights,
-  imageResolver,
-  livePreview,
   setDiagramTheme,
   setSourceMode,
   setWysiwyg,
@@ -92,12 +48,6 @@ import { outlineOf, type OutlineItem } from "./outline";
 import { moveSection } from "./move-section";
 
 /// ソースモードのときは装飾も色分けも入れない（「書いたとおり」を見る）。
-function highlightsFor(sourceMode: boolean) {
-  return sourceMode
-    ? []
-    : [...editorHighlights(false), syntaxHighlighting(codeHighlight)];
-}
-import { codeCopied, copyCode } from "./copy-code";
 import { statsOf, type TextStats } from "./stats";
 
 // 外部変更のリロードによる書き換えの印。ユーザーの編集と区別して、
@@ -475,103 +425,28 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             : []),
           tabSize.current.of(EditorState.tabSize.of(tabWidth ?? 4)),
           gutters.current.of(lineNumbers ? lineNumbersGutter() : []),
-          frontMatterHide,
           diagramThemeField.init(() => diagramTheme ?? "light"),
           sourceModeField.init(() => sourceMode ?? false),
           wysiwygField.init(() => wysiwyg ?? false),
-          history(),
-          autoPair, // 選択を * や [ で囲む（spec §5.5-4）
-          // タグ補完（C-4）。↑↓ / Enter は completionKeymap が持つ。
-          // Tab は inputAssist（リストの字下げ）より**先**に置く —
-          // 候補が出ていないときは false を返して字下げへ落ちる
-          autocompletion({
-            override: [
-              tagCompletion(() => tagSource.current?.() ?? []),
-              noteLinkCompletion(() => noteSource.current?.() ?? []),
-              slashCompletion(), // 行頭の `/`（TASKS 6-1）
-              fenceLanguageCompletion(), // ``` の直後の言語（TASKS 6-3）
-            ],
-            icons: false,
-          }),
-          keymap.of([{ key: "Tab", run: acceptCompletion }]),
-          tableKeys, // 表の中の Enter / Tab（行と列を足す。要望 2026-09-15）
-          inputAssist, // defaultKeymap より先（Enter/Tab の先勝ち）
-          formatKeymap,
-          plainCopyKeymap, // Cmd+Shift+C（spec §5.4）
-          search({ top: true }),
-          keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
-          // ノート内検索（Cmd+F）のパネルを日本語にする
-          EditorState.phrases.of({
-            Find: "検索",
-            Replace: "置換",
-            next: "次へ",
-            previous: "前へ",
-            all: "すべて",
-            "match case": "大文字小文字を区別",
-            "by word": "単語単位",
-            regexp: "正規表現",
-            replace: "置換",
-            "replace all": "すべて置換",
-            close: "閉じる",
-          }),
-          markdown({
-            extensions: [
-              relaxedAsterisk,
-              extendedInline,
-              TaskList,
-              Table,
-              // 4 字下げのコードを切れるようにする（ADR-0033。既定は入り）
-              ...(indentedCode === false ? [{ remove: ["IndentedCode"] }] : []),
-            ],
-            // フェンス内は言語別に入れ子でパースする（TASKS 2-1）。
-            // パーサ本体は最初にその言語が現れたときに遅延ロードされる
-            codeLanguages: resolveCodeLanguage,
-          }),
-
-          csvDropEvents(), // CSV を落としたら表にする（要望 2026-09-06）
-          livePreview,
-          highlights.current.of(highlightsFor(sourceMode ?? false)),
-          copyCode, // コードブロックのコピー（要望 2026-09-06）
-          tableAutoFormat, // 表を離れたら整える（ADR-0003 決定 4 / ADR-0044）
-          headingFolding, // 見出しの折りたたみ（ADR-0019）
-          editorModes({
+          // 本番とベンチで**同じ**一式（extensions.ts）。差し替えたいものだけ渡す
+          ...coreExtensions({
+            indentedCode,
+            tagSource: () => tagSource.current?.() ?? [],
+            noteSource: () => noteSource.current?.() ?? [],
+            highlights: highlights.current.of(
+              highlightsFor(sourceMode ?? false),
+            ),
             focus: focusMode ?? false,
             typewriter: typewriter ?? false,
+            resolveImage: resolveImage ?? (async () => null),
+            resolveEmbed: resolveEmbed ?? NO_EMBED,
+            onActivate: (action) => activate.current?.(action),
+            onCodeCopied: (ok) => copied.current?.(ok),
+            saveAttachment: (data, name) =>
+              attachmentSaver.current
+                ? attachmentSaver.current(data, name)
+                : Promise.resolve(null),
           }),
-          imageResolver.of(resolveImage ?? (async () => null)),
-          // 埋め込み（ADR-0058）。入れ子のビューには同じ解析と見た目を渡し、
-          // その中の埋め込みは解決しない（深さ 1）
-          embedResolver.of(resolveEmbed ?? NO_EMBED),
-          embedExtensions.of(() => [
-            markdown({
-              extensions: [
-                relaxedAsterisk,
-                extendedInline,
-                TaskList,
-                Table,
-                ...(indentedCode === false
-                  ? [{ remove: ["IndentedCode"] }]
-                  : []),
-              ],
-              codeLanguages: resolveCodeLanguage,
-            }),
-            livePreview,
-            highlightsFor(false),
-            imageResolver.of(resolveImage ?? (async () => null)),
-            embedResolver.of(NO_EMBED),
-            EditorView.lineWrapping,
-          ]),
-          activationClicks,
-          activationHandler.of((action) => activate.current?.(action)),
-          codeCopied.of((ok) => copied.current?.(ok)),
-          attachmentEvents((data, name) =>
-            attachmentSaver.current
-              ? attachmentSaver.current(data, name)
-              : Promise.resolve(null),
-          ),
-          urlPasteLink, // 画像の取り込みが先、URL のリンク化が後
-          EditorView.lineWrapping,
-          selectionDrawing, // 選択は状態から描く（WebKit の塗り残しを断つ）
           EditorView.updateListener.of((update) => {
             // `Cmd+/` でも切り替わるので、変わったことを外へ知らせる。
             // フォーカス・タイプライタも同じ合図で返す（印を揃えるため）
