@@ -228,6 +228,24 @@ function touchesSelection(
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
 }
 
+/// 葉ブロック（表・フェンス）の子に置かれた引用の継続行の `> ` を隠す。
+/// 行にカーソルがあるときは他の `> ` と同じく見せる
+function hideQuoteMarks(
+  state: EditorState,
+  node: SyntaxNode,
+  out: Range<Decoration>[],
+): void {
+  for (const mark of node.getChildren("QuoteMark")) {
+    if (touchesLine(state, mark.from)) continue;
+    out.push(
+      Decoration.replace({}).range(
+        mark.from,
+        withTrailingSpace(state, mark.to),
+      ),
+    );
+  }
+}
+
 /// 選択がそのブロックの**ウィジェット**（表・図・数式・囲み）に触れているか。
 /// これらは書く面を持たない（ウィジェットのまま直せない）ので、プレビュー
 /// モードでも「書き込んでいる行」の規則を通さず、カーソルが入れば生に戻す
@@ -845,8 +863,13 @@ export function previewDecorations(
     to,
     enter: (node) => {
       // --- 表: 生のソースのまま触らない（描画は tableDecorations = StateField
-      //     の担当。表示中もリビール中も、中のマーカー隠しは掛けない）
-      if (node.name === "Table") return false;
+      //     の担当。表示中もリビール中も、中のマーカー隠しは掛けない）。
+      //     ただし引用の中の表の継続行 `> ` は隠す（Lezer は継続行の QuoteMark
+      //     を葉ブロックの子に置く。棚卸し 2026-09-17）
+      if (node.name === "Table") {
+        hideQuoteMarks(state, node.node, out);
+        return false;
+      }
       // --- 脚注の定義 `[^1]: 本文` と参照の定義 `[foo]: url` は生のまま。
       //     Lezer では LinkReference で、中の URL 扱いの部分（= 定義の本文）を
       //     隠すと画面に `[^1]` だけが残る（参照実装は定義の本文を残す。
@@ -967,6 +990,8 @@ export function previewDecorations(
         }
         // --- コードブロック: 全行に背景、フェンス行はブロック外にいる間隠す
         case "FencedCode": {
+          // 引用の中のフェンスの継続行 `> `（Table と同じ理由）
+          hideQuoteMarks(state, node.node, out);
           // Mermaid の図は blockWidgetField が作る（行をまたぐ装飾は
           // plugin 由来では効かない）。ここでは背景とフェンス隠しだけ
           if (mermaidCode(state, node.node) !== null) return false;
@@ -1066,6 +1091,19 @@ export function previewDecorations(
                 },
               }).range(node.from, withTrailingSpace(state, node.to)),
             );
+            // 番号付きのやること `1. [ ]` も箱にする（GFM もやること。番号は
+            // 残して `[ ]` だけ置き換える。棚卸し 2026-09-17）
+            if (marker && !touchesLine(state, node.from)) {
+              const checked = state
+                .sliceDoc(marker.from, marker.to)
+                .toLowerCase()
+                .includes("x");
+              out.push(
+                Decoration.replace({
+                  widget: new CheckboxWidget(checked, marker.from, marker.to),
+                }).range(marker.from, withTrailingSpace(state, marker.to)),
+              );
+            }
             return;
           }
           if (touchesLine(state, node.from)) return;

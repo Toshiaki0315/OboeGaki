@@ -93,7 +93,10 @@ export function insertLink(
   return { start, end, text: body, selectStart: caret, selectEnd: caret };
 }
 
-const HEADING_RE = /^(#{1,6})[ \t]+/;
+// 3 文字までの字下げは見出しの一部（CommonMark）。字下げを見ずに先頭へ `#`
+// を足すと `#   # 題` になっていた（棚卸し 2026-09-17）
+const HEADING_RE = /^( {0,3})(#{1,6})[ \t]+/;
+const HEADING_INDENT_RE = /^ {0,3}/;
 const TASK_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)\[( |[xX])\][ \t]+/;
 const BULLET_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)/;
 const MAX_HEADING_LEVEL = 6;
@@ -102,14 +105,29 @@ const MAX_HEADING_LEVEL = 6;
 /// delta が正なら `#` が増えて見出しが深くなる。段落は delta > 0 で
 /// 見出しになり、H1 でさらに上げると段落へ戻る。変化しないときは null。
 export function shiftHeading(line: string, delta: number): string | null {
-  const heading = HEADING_RE.exec(line);
-  const current = heading ? heading[1].length : 0;
-  const body = heading ? line.slice(heading[0].length) : line;
-
+  const { indent, current, body } = headingParts(line);
   const level = current + delta;
   if (level === current || level < 0 || level > MAX_HEADING_LEVEL) return null;
-  if (level === 0) return body;
-  return `${"#".repeat(level)} ${body}`;
+  if (level === 0) return `${indent}${body}`;
+  return `${indent}${"#".repeat(level)} ${body}`;
+}
+
+/// 行を字下げ・見出しの深さ・本文に分ける（見出しでなければ深さ 0）
+function headingParts(line: string): {
+  indent: string;
+  current: number;
+  body: string;
+} {
+  const heading = HEADING_RE.exec(line);
+  if (heading) {
+    return {
+      indent: heading[1],
+      current: heading[2].length,
+      body: line.slice(heading[0].length),
+    };
+  }
+  const indent = HEADING_INDENT_RE.exec(line)?.[0] ?? "";
+  return { indent, current: 0, body: line.slice(indent.length) };
 }
 
 /// 行の種類。呼び出し側が構文木から判定して渡す
@@ -242,11 +260,9 @@ const QUOTE_RE = /^> ?/;
 /// 段落 → H1 → H2 → H3 → 段落 と一周させる。行き止まりを作らない —
 /// 手で打った H4 以下は段落へ戻す。
 export function cycleHeading(line: string): string {
-  const heading = HEADING_RE.exec(line);
-  const current = heading ? heading[1].length : 0;
-  const body = heading ? line.slice(heading[0].length) : line;
+  const { indent, current, body } = headingParts(line);
   const level = current < TOOLBAR_MAX_HEADING_LEVEL ? current + 1 : 0;
-  return level ? `${"#".repeat(level)} ${body}` : body;
+  return level ? `${indent}${"#".repeat(level)} ${body}` : `${indent}${body}`;
 }
 
 /// リスト記号を外した行と、その行の字下げ。チェックボックスは記号の

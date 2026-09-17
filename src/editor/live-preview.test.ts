@@ -1215,3 +1215,39 @@ describe("棚卸しレビュー 2026-09-17（エディタ層）", () => {
     ).toBe(true);
   });
 });
+
+describe("棚卸しレビュー 2026-09-17（エディタ層の残り）", () => {
+  test("test_引用の中の表とフェンスでも_2_行目以降の_>_を隠す", () => {
+    // Lezer は継続行の QuoteMark を葉ブロック（Table / FencedCode）の子に置く。
+    // そこへ潜らなかったので 1 行目の `> ` だけ隠れ、2 行目以降は生のまま出ていた
+    const table = "> | a | b |\n> | --- | --- |\n> | 1 | 2 |\n\n後";
+    const decos = decorationsOf(table, table.length);
+    for (const line of table.split("\n").slice(0, 3)) {
+      const from = table.indexOf(line);
+      expect(has(decos, { from, to: from + 2, kind: "hide" })).toBe(true);
+    }
+    const fence = "> ```\n> code\n> ```\n\n後";
+    const fenced = decorationsOf(fence, fence.length);
+    for (const line of fence.split("\n").slice(0, 3)) {
+      const from = fence.indexOf(line);
+      expect(has(fenced, { from, to: from + 2, kind: "hide" })).toBe(true);
+    }
+  });
+
+  test("test_番号付きのやること_1._[_]_もチェックボックスになる", () => {
+    // TaskList 拡張は番号付きでも Task ノードを作る（GFM もやること）。番号は
+    // 残したまま `[ ]` だけを箱にする
+    const doc = "1. [ ] やる\n2. [x] 済み\n\n他";
+    const decos = decorationsOf(doc, doc.length);
+    const first = doc.indexOf("[ ]");
+    const second = doc.indexOf("[x]");
+    expect(
+      decos.some((d) => d.kind === "checkbox:false" && d.from === first),
+    ).toBe(true);
+    expect(
+      decos.some((d) => d.kind === "checkbox:true" && d.from === second),
+    ).toBe(true);
+    // 番号は隠さない（ADR-0026）
+    expect(has(decos, { from: 0, to: 2, kind: "hide" })).toBe(false);
+  });
+});

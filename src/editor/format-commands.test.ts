@@ -125,6 +125,17 @@ describe("insertLink", () => {
   });
 });
 
+describe("shiftHeading / cycleHeading の字下げ（棚卸し 2026-09-17）", () => {
+  test("test_3_文字までの字下げは見出しの一部として保つ", () => {
+    // CommonMark は 3 文字までの字下げを許す。字下げを見ずに先頭へ `#` を
+    // 足すと `#   # 題` になっていた
+    expect(shiftHeading("  # 題", 1)).toBe("  ## 題");
+    expect(shiftHeading("  # 題", -1)).toBe("  題");
+    expect(cycleHeading(" # 題")).toBe(" ## 題");
+    expect(cycleHeading("  段落")).toBe("  # 段落");
+  });
+});
+
 describe("shiftHeading", () => {
   test("下げると # が増え、段落は見出しになる", () => {
     expect(shiftHeading("# 題", 1)).toBe("## 題");
