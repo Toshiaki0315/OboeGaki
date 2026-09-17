@@ -74,3 +74,46 @@ describe("buildDocx", () => {
     expect(xml).not.toContain("<math");
   });
 });
+
+describe("棚卸しレビュー 2026-09-17（Word 書き出し）", () => {
+  test("test_やることの印は残す", async () => {
+    // markdown-it-task-lists の <input> は html_inline で来て、捨てられていた
+    const xml = await documentXml("- [ ] todo\n- [x] done\n");
+    expect(xml).toContain("☐");
+    expect(xml).toContain("☑");
+    expect(xml).toContain("todo");
+  });
+
+  test("test_画像の大きさ指定（|100）を写す", async () => {
+    // 6-8 の `![a|100](a.png)` は HTML では width になるのに Word は自然サイズだけだった
+    const xml = await documentXml("![a|100](a.png)\n", async () => PNG);
+    expect(xml).toMatch(/<wp:extent cx="952500"/); // 100px = 952500 EMU
+  });
+
+  test("test_コードのファイル名を出す（ADR-0008: 画面にも書き出しにも）", async () => {
+    const xml = await documentXml("```js:index.js\nconst x = 1;\n```\n");
+    expect(xml).toContain("index.js");
+    expect(xml).toContain("const x = 1;");
+  });
+
+  test("test_脚注の本文にも番号が付く", async () => {
+    const xml = await documentXml("本文[^1]\n\n[^1]: 注の中身\n");
+    // 本文側の [1] と、注の側の [1] 注の中身
+    expect((xml.match(/\[1\]/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(xml).toMatch(/\[1\][^<]*<\/w:t>(?:(?!<\/w:p>).)*注の中身/s);
+  });
+
+  test("test_番号付きの開始値を写す", async () => {
+    const xml = await documentXml("3. x\n4. y\n");
+    expect(xml).toContain("x");
+    // 開始値は numbering.xml 側に出るので document ではなく zip 全体で見る
+    const base64 = await buildDocx("3. x\n4. y\n", {
+      title: "t",
+      resolveImage: async () => null,
+    });
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const numbering =
+      (await zip.file("word/numbering.xml")?.async("string")) ?? "";
+    expect(numbering).toContain('<w:start w:val="3"/>');
+  });
+});

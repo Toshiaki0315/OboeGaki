@@ -504,3 +504,30 @@ describe("Mermaid は図として書き出す（要望 2026-09-08）", () => {
     expect(xml).not.toContain("graph TD");
   });
 });
+
+describe("表のセル（棚卸し 2026-09-17）", () => {
+  async function allSlides(markdown: string) {
+    const { slide, count } = await open(markdown);
+    let xml = "";
+    for (let index = 1; index <= count; index++) xml += await slide(index);
+    return xml;
+  }
+
+  test("test_逃がした縦棒は区切りにせず_装飾は記号を出さずに run へ", async () => {
+    const xml = await allSlides(
+      "# 題\n\n## A\n\n| a \\| b | **c** |\n| --- | --- |\n| 1 | 2 |\n",
+    );
+    expect((xml.match(/<a:tc>/g) ?? []).length).toBe(4);
+    expect(xml).toContain("a | b");
+    expect(xml).not.toContain("**");
+    // c は太字の run（見出しの行は元から太字なので、本体の行で確かめる）
+    const body = await allSlides(
+      "# 題\n\n## A\n\n| h1 | h2 |\n| --- | --- |\n| **c** | `d` |\n",
+    );
+    expect(body).not.toContain("**");
+    expect(body).not.toContain("`");
+    expect(body).toMatch(
+      /<a:rPr[^>]*\bb="1"[^>]*>(?:(?!<\/a:r>).)*<a:t>c<\/a:t>/s,
+    );
+  });
+});

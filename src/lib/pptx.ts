@@ -458,18 +458,23 @@ function placeBlocks(
         margin: 8,
       });
     } else if (frame.kind === "table" && frame.block.kind === "table") {
-      const cells = frame.block.rows.map((row) =>
-        row
-          .replace(/^\||\|$/g, "")
-          .split("|")
-          .map((cell) => cell.trim()),
-      );
+      const cells = frame.block.rows;
       if (cells.length === 0) continue;
       // **見出しの行を塗る**（TASKS 5-2）。1 行目が見出しなのは
-      // Markdown の表の決まりで、区切り行は slides.ts が落としている
+      // Markdown の表の決まりで、区切り行は slides.ts が落としている。
+      // セルの中身は run ごと（太字・斜体・等幅・色。記号は出さない）
       const rows = cells.map((row, index) =>
         row.map((cell) => ({
-          text: cell,
+          text: cell.map((run) => ({
+            text: run.text,
+            options: {
+              ...(run.bold || index === 0 ? { bold: true } : {}),
+              ...(run.italic ? { italic: true } : {}),
+              ...(run.strike ? { strike: "sngStrike" as const } : {}),
+              ...(run.code ? { fontFace: theme.mono } : {}),
+              ...(run.color ? { color: run.color } : {}),
+            },
+          })),
           options:
             index === 0
               ? { bold: true, color: "bg1", fill: { color: theme.accent } }

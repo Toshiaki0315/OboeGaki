@@ -47,7 +47,10 @@ export type SlideBlock =
   | { kind: "heading"; runs: Run[] }
   | { kind: "bullet"; runs: Run[]; level: number }
   | { kind: "code"; text: string; language: string }
-  | { kind: "table"; rows: string[] };
+  /// 表。区切り行は落とし、セルごとに run で持つ（`\|` は字、`**` は装飾に。
+  /// 棚卸し 2026-09-17: 行のまま持って `split("|")` していたので列がずれ、
+  /// 記号がそのまま載っていた）
+  | { kind: "table"; rows: Run[][][] };
 
 /// 装飾を落とした文字（題名・発表者ノート・テストが使う）。
 export function plainText(runs: readonly Run[]): string {
@@ -177,15 +180,7 @@ export function splitDeck(text: string, splitLevel: SplitLevel = 2): Deck {
         add(fencedCode(text, node));
         break;
       case "Table":
-        add({
-          kind: "table",
-          // 区切り行（`| --- |`）は形式の飾り。中身を持たない
-          rows: text
-            .slice(node.from, node.to)
-            .split("\n")
-            .map((row) => row.trim())
-            .filter((row) => row && !/^\|?[\s:|-]+\|?$/.test(row)),
-        });
+        add({ kind: "table", rows: tableRows(text, node) });
         break;
       default:
         break;
@@ -352,6 +347,62 @@ function runsOf(text: string, node: SyntaxNode): Run[] {
   );
   emit(node.to);
   return tidy(runs);
+}
+
+/// 表の行をセルごとの run にする。区切り行（TableDelimiter）は形式の飾りで
+/// 中身を持たない。セルの境目は**字面の縦棒**で見る（Lezer は中身の無い
+/// セルに TableCell ノードを作らないので、ノードだけ数えると列がずれる。
+/// `\|` は区切りにしない = GFM のリテラルなパイプ）
+function tableRows(text: string, table: SyntaxNode): Run[][][] {
+  const rows: Run[][][] = [];
+  for (
+    let row: SyntaxNode | null = table.firstChild;
+    row;
+    row = row.nextSibling
+  ) {
+    if (row.name !== "TableHeader" && row.name !== "TableRow") continue;
+    const cells = row.getChildren("TableCell");
+    rows.push(
+      cellRanges(text, row.from, row.to).map((range) => {
+        const cell = cells.find(
+          (found) => found.from >= range.from && found.to <= range.to,
+        );
+        if (!cell) return [];
+        return runsOf(text, cell).map((run) => ({
+          ...run,
+          text: run.text.replace(/\\\|/g, "|"),
+        }));
+      }),
+    );
+  }
+  return rows;
+}
+
+/// 行の中のセルの範囲（先頭・末尾の縦棒の外は数えない。`\|` は区切りでない）
+function cellRanges(
+  text: string,
+  from: number,
+  to: number,
+): { from: number; to: number }[] {
+  const line = text.slice(from, to);
+  const pipes: number[] = [];
+  for (let index = 0; index < line.length; index++) {
+    if (line[index] === "|" && line[index - 1] !== "\\") pipes.push(index);
+  }
+  if (pipes.length === 0) return [];
+  const start = line.search(/\S/);
+  const end = line.replace(/\s+$/, "").length;
+  const bounds = [...pipes];
+  if (pipes[0] !== start) bounds.unshift(start - 1);
+  if (pipes[pipes.length - 1] !== end - 1) bounds.push(end);
+  const ranges: { from: number; to: number }[] = [];
+  for (let index = 0; index + 1 < bounds.length; index++) {
+    ranges.push({
+      from: from + bounds[index] + 1,
+      to: from + bounds[index + 1],
+    });
+  }
+  return ranges;
 }
 
 /// 装飾の名前 → 付ける印。Lezer のノード名で引く。

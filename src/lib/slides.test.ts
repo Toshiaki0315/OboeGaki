@@ -146,11 +146,29 @@ describe("splitDeck", () => {
     });
   });
 
-  test("表は行のまま持つ（セルには割らない）", () => {
+  test("表はセルごとの run で持つ（区切り行は落とす）", () => {
     const deck = splitDeck("## A\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n");
     expect(deck.slides[0].blocks[0]).toEqual({
       kind: "table",
-      rows: ["| a | b |", "| 1 | 2 |"],
+      rows: [
+        [[{ text: "a" }], [{ text: "b" }]],
+        [[{ text: "1" }], [{ text: "2" }]],
+      ],
+    });
+  });
+
+  test("表のセル: `\\|` は区切りでなく字_装飾は run に_空のセルは列を保つ", () => {
+    // 行のまま `split("|")` していたので、`\|` で列がずれ、`**` がそのまま
+    // 載っていた（棚卸し 2026-09-17）
+    const deck = splitDeck(
+      "## A\n\n| a \\| b | **c** |\n| --- | --- |\n| x |  |\n",
+    );
+    expect(deck.slides[0].blocks[0]).toEqual({
+      kind: "table",
+      rows: [
+        [[{ text: "a | b" }], [{ text: "c", bold: true }]],
+        [[{ text: "x" }], []],
+      ],
     });
   });
 

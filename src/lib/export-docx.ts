@@ -8,6 +8,7 @@
 
 import { frontMatterRange } from "../editor/frontmatter";
 import { splitFenceInfo } from "../editor/code-blocks";
+import { splitImageAlt } from "../editor/image-size";
 import { markdownTokens } from "./export-html";
 
 /// markdown-it のトークン（export-html と同じ型を使う。@types の方と attrs の形が違う）
@@ -34,6 +35,11 @@ const MAX_IMAGE_WIDTH = 560; // px（A4 の本文幅ぐらい）
 const BULLETS = "oboegaki-bullets";
 const NUMBERS = "oboegaki-numbers";
 const LEVELS = [0, 1, 2, 3, 4, 5];
+
+/// 番号付けの定義の名前。開始値が 1 でないものは別の定義にする
+function numbersReference(start: number): string {
+  return start === 1 ? NUMBERS : `${NUMBERS}-${start}`;
+}
 
 type Style = {
   bold?: boolean;
@@ -120,15 +126,22 @@ export async function buildDocx(
   const imageRun = async (
     url: string,
     resolve: DocxOptions["resolveImage"],
+    size?: { width?: number; height?: number },
   ) => {
     const found = await imageBytes(url, resolve);
-    return found
-      ? new ImageRun({
-          type: "png",
-          data: found.data,
-          transformation: { width: found.width, height: found.height },
-        })
-      : null;
+    if (!found) return null;
+    // `![a|100](…)` の大きさ（6-8）。幅だけなら形なりに縮める（HTML と同じ）
+    const width = size?.width ?? found.width;
+    const height =
+      size?.height ??
+      (size?.width
+        ? Math.max(1, Math.round((found.height * size.width) / found.width))
+        : found.height);
+    return new ImageRun({
+      type: "png",
+      data: found.data,
+      transformation: { width, height },
+    });
   };
   const children: (
     InstanceType<typeof Paragraph> | InstanceType<typeof Table>
@@ -235,13 +248,19 @@ export async function buildDocx(
           text(child.content, { code: true });
           break;
         case "html_inline":
-          // 数式（元の LaTeX を等幅で）。他の生 HTML はここに来ない（html: false）
+          // 数式（元の LaTeX を等幅で）。やることの印（markdown-it-task-lists の
+          // <input>）は ☐ / ☑ に。他の生 HTML はここに来ない（html: false）
           if (child.meta?.latex) text(String(child.meta.latex), { code: true });
+          else if (/^<input\b/i.test(child.content)) {
+            text(/\bchecked\b/i.test(child.content) ? "☑ " : "☐ ");
+          }
           break;
         case "image": {
+          const { width, height } = splitImageAlt(child.content ?? "");
           const run = await imageRun(
             String(child.attrGet("src") ?? ""),
             options.resolveImage,
+            { width, height },
           );
           if (run) out.push(run);
           break;
@@ -260,12 +279,15 @@ export async function buildDocx(
 
   const paragraphFor = async (
     inline: Token | null,
-    extra: { heading?: HeadingValue } = {},
+    extra: { heading?: HeadingValue; prefix?: string } = {},
   ): Promise<InstanceType<typeof Paragraph>> => {
     const list = listStack[listStack.length - 1];
     return new Paragraph({
       heading: extra.heading,
-      children: inline ? await runsOf(inline) : [],
+      children: [
+        ...(extra.prefix ? [new TextRun({ text: extra.prefix })] : []),
+        ...(inline ? await runsOf(inline) : []),
+      ],
       numbering: list
         ? {
             reference: list.reference,
@@ -309,6 +331,10 @@ export async function buildDocx(
   };
   let pendingInline: Token | null = null;
   let listItemFresh = false;
+  // 脚注の本文（`[^1]: …`）の最初の段落に付ける番号。本文側の `[1]` と対にする
+  let footnoteLabel: string | null = null;
+  // 番号付きの開始値ごとに numbering の定義を分ける（`3.` から始める）
+  const orderedStarts = new Set<number>();
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
@@ -338,10 +364,24 @@ export async function buildDocx(
           );
           void list;
         } else {
-          children.push(await paragraphFor(pendingInline));
+          children.push(
+            await paragraphFor(
+              pendingInline,
+              footnoteLabel ? { prefix: `[${footnoteLabel}] ` } : {},
+            ),
+          );
+          footnoteLabel = null;
         }
         listItemFresh = false;
         pendingInline = null;
+        break;
+      case "footnote_open":
+        footnoteLabel = String(
+          token.meta?.label ?? Number(token.meta?.id ?? 0) + 1,
+        );
+        break;
+      case "footnote_close":
+        footnoteLabel = null;
         break;
       case "inline":
         if (inTable) {
@@ -357,10 +397,16 @@ export async function buildDocx(
       case "bullet_list_open":
         listStack.push({ reference: BULLETS, instance: 0 });
         break;
-      case "ordered_list_open":
+      case "ordered_list_open": {
         numberInstance += 1;
-        listStack.push({ reference: NUMBERS, instance: numberInstance });
+        const start = Number(token.attrGet("start") ?? 1) || 1;
+        orderedStarts.add(start);
+        listStack.push({
+          reference: numbersReference(start),
+          instance: numberInstance,
+        });
         break;
+      }
       case "bullet_list_close":
       case "ordered_list_close":
         listStack.pop();
@@ -389,6 +435,27 @@ export async function buildDocx(
             );
             break;
           }
+        }
+        // ファイル名（` ```js:index.js `）は画面にも書き出しにも出す（ADR-0008）
+        const { fileName } = splitFenceInfo(token.info?.trim() ?? "");
+        if (fileName) {
+          children.push(
+            new Paragraph({
+              shading: {
+                type: ShadingType.CLEAR,
+                fill: CODE_FILL,
+                color: "auto",
+              },
+              children: [
+                new TextRun({
+                  text: fileName,
+                  font: { name: mono },
+                  bold: true,
+                }),
+              ],
+              spacing: { before: 0, after: 0 },
+            }),
+          );
         }
         const lines = token.content.replace(/\n$/, "").split("\n");
         for (const line of lines) {
@@ -504,18 +571,20 @@ export async function buildDocx(
             },
           })),
         },
-        {
-          reference: NUMBERS,
+        // 開始値ごとに定義を分ける（`3.` から始めた並びは 3 から。1 は既定）
+        ...[...new Set([1, ...orderedStarts])].map((start) => ({
+          reference: numbersReference(start),
           levels: LEVELS.map((level) => ({
             level,
             format: LevelFormat.DECIMAL,
             text: `%${level + 1}.`,
             alignment: AlignmentType.LEFT,
+            ...(level === 0 && start !== 1 ? { start } : {}),
             style: {
               paragraph: { indent: { left: 720 * (level + 1), hanging: 360 } },
             },
           })),
-        },
+        })),
       ],
     },
     sections: [{ children }],
