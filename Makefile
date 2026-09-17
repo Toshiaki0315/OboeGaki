@@ -1,6 +1,6 @@
 # 覚書（OboeGaki）Tauri 版の開発コマンド入口。hitofude と同じ流儀。
 
-.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg samples
+.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg samples bump icon mcp
 
 setup:            ## 初回セットアップ
 	npm install
@@ -34,7 +34,7 @@ bench-startup:    ## 起動時間の実測（spec §6.6: < 1.5 秒。release を
 	OBOEGAKI_BENCH_STARTUP=1 src-tauri/target/release/oboegaki
 
 bench: bench-search  ## 3 基準の計測（打鍵は bench.html — docs/bench.md 参照）
-	@echo "打鍵の実測: npx vite を起動して http://localhost:5173/bench.html を開く"
+	@echo "打鍵の実測: npx vite を起動して http://localhost:1430/bench.html を開く（OBOEGAKI_DEV_PORT で変わる）"
 	@echo "起動の実測: make bench-startup"
 
 # 配る形（DMG）まで要らないとき用。tauri build は既定で targets "all" を
@@ -103,6 +103,7 @@ ci:               ## CI と同じ手順をローカルで（コミット済み�
 	  export CARGO_TARGET_DIR="$$root/src-tauri/target"; \
 	  npm ci; \
 	  npx prettier --check src; \
+	  npx eslint . --max-warnings 0; \
 	  npx vitest run; \
 	  npx tsc --noEmit; \
 	  cd src-tauri; \

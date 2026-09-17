@@ -924,6 +924,30 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [ ] `stores/app.ts` の `refresh` は応答の追い越しで古い一覧が勝つ
       - [ ] 重複: `escapeHtml` が 2 つ／「一覧を更新できませんでした」が 3 つ／
             front matter を切る処理が 3 つ／「最新値 ref」が 10 個
+- [x] **17-7. 文書とビルドの陳腐化**（2026-09-17）
+      `make ci` に eslint が無く CI と手順が違っていた／打鍵ベンチの手順のポートが
+      2 か所とも違った（5173 / 5183 → 1430）／`.PHONY` に bump・icon・mcp が無い／
+      CLAUDE.md のテストの手本が存在しないファイルを指し、dnd-kit の記述が残って
+      いた／AGENTS.md が CLAUDE.md の古い分岐（47 行差）だったので「CLAUDE.md を
+      読め」だけに／README が 0.1.0 時点の年表のままだったので今の姿に書き直した／
+      manual_test.md の参照実装の残滓（auto_covered.md・QTest・Hitofude・
+      `.hitofude/`・app-lite）と古いラベル 4 件／hitofude-gap.md のタブ数・索引の列・
+      OboeGaki 側にしか無いもの／frontmatter.ts の ULID の説明（ADR-0042 と矛盾）
+- [ ] **17-8. TS と Rust の二重実装で共有見本が無いもの**（監査 2026-09-17）
+      `fixtures/wikilink-cases.json` / `menu-checks.json` と同じ型で見本を置き、
+      両側のテストがそれを読む。判明している食い違いは先に RED にする
+      - [ ] front matter の判定（空の `---\n---\n` を Rust は受け、TS は受けない）
+      - [ ] タスク印 `- [ ]` の判定が 4 か所（Rust `task_marker`・`lib/tasks.ts`・
+            `format-commands.ts`・`input-assist.ts`）で違う（空白なし・番号付き）
+      - [ ] ファイル名の正規化（`sanitizeStem` と `sanitize_filename`。書式文字の
+            範囲・200 バイト・「無題」）
+      - [ ] `#タグ` の境界（行頭記号の直後、フェンスの閉じ方が 2 種類）
+      - [ ] 見出し節の切り出し（`section.ts` と `mcp::section_end`）
+      - [ ] `.mcp-ignore` の照合（TS は NFC に寄せていない）
+      - [ ] `fixtures/*.md` と `golden/*.json` はどのテストからも読まれていない。
+            読むテストを足すか「spikes のオラクル生成の入力」と注記する
+      - [ ] 低: `SearchQuery::filter_only` が未使用／CI の toolchain・Node が未固定
+            （`rust-toolchain.toml` と `.nvmrc`）／`package.json` の scripts が未使用
 - [ ] **17-2. Rust の残り**（監査 2026-09-17）
       - [ ] 履歴の鍵の字面が経路ごとに違う。`guarded` は canonicalize した実体
             （NFD・シンボリックリンク解決）、`history_key` は生 root の剥がし、

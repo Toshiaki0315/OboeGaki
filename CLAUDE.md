@@ -54,7 +54,7 @@ docs / refactor / chore だけのコミットでは上げない）。版は 3 �
 - **バグを直すときは、先にそのバグを再現する回帰テストを書く**
 - パーサ・エディタ拡張の正しさは**参照実装をオラクル**にする:
   hitofude の `core/inline_scanner.py` `scan()` の出力と突き合わせる
-  （`src/editor/relaxed-emphasis.test.ts` が手本。オラクルの生成手順は
+  （`src/editor/inline-oracle.test.ts` が手本。オラクルの生成手順は
   `spikes/01-flanking/`）
 - **打鍵レベルの日本語 IME は自動テストで再現できない**（Qt でも Web でも
   同じ）。IME 周りは手動チェックリスト（docs/manual_test.md）で担保する
@@ -193,7 +193,7 @@ OboeGaki/
 │   ├── editor/            # CM6 エディタ層（拡張は DOM 非依存に保つ）
 │   ├── components/        # App.tsx から切り出した UI 部品（ダイアログなど。ADR-0048）
 │   ├── hooks/             # App.tsx から切り出した状態と処理（ADR-0049。Tauri は lib/ipc 経由）
-│   └── ...                # アプリ UI 層（Zustand / dnd-kit はここ）
+│   └── ...                # アプリ UI 層（Zustand はここ）
 └── src-tauri/             # Rust 側（vault・保存・索引・監視 = 旧 core/ + storage/）
     └── src/
 ```

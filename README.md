@@ -1,97 +1,48 @@
-# おぼえがき（OboeGaki）— Tauri 版
+# おぼえがき（OboeGaki）
 
-ライブプレビュー型 Markdown エディタ **おぼえがき** の Tauri v2 + React + TypeScript
-による再実装。参照実装（PySide6 版）は `~/01_projects/hitofude` にあり、
-機能同等になるまで凍結維持する。
+ライブプレビュー型の Markdown エディタ。macOS 13+ / Tauri v2 / React 19 /
+TypeScript / CodeMirror 6。表示名は「おぼえがき」（ADR-0047）、ファイル名や
+ID 系は「OboeGaki」（ADR-0032）。参照実装（PySide6 版）は
+`~/01_projects/hitofude` にあり、凍結維持している。
 
-予定スタック: Tauri v2（Rust）/ React 19 / TypeScript / Vite /
-CodeMirror 6（編集コア）/ Lezer（パーサ）/ Zustand / dnd-kit
+## できること（要点）
 
-## 持ち込んだ資産（PySide6 版からコピー）
+- **書きながら見える。** 記法はカーソルの行だけ現れる（インライン）。全部出す
+  ソースモード、書き込んでいる行だけ出すプレビューモード（ADR-0065）を
+  「表示 → 編集モード」で切り替える。フォーカス／タイプライターは併用できる
+- **保管フォルダの `.md` がそのまま真実**（往復変換なし）。800ms の自動保存、
+  版の履歴（ADR-0023）、外部変更の取り込みと競合の 3 択、クラッシュ時の退避
+- 全文検索（SQLite FTS5）、タグ、ノートリンク `[[名前]]`（別名 `[[名前|表示]]`、
+  埋め込み `![[名前]]`）、やること一覧、バックリンクと関連ノート、リンクの図
+- 画像の貼り付けと大きさの調整、表（`Tab` でセル移動・行と列を足す）、
+  Mermaid、数式、文字色、脚注
+- 書き出し: HTML / PDF（印刷）/ PowerPoint（設定タブつき）/ Word。読み込み:
+  PDF（文字の層が無ければ読み取り）/ PowerPoint / 画像
+- ローカル LLM（Ollama）のアシスタント、文体チェック、どこからでも書き取り
+- **MCP サーバ**（ADR-0051）。Claude Desktop などから検索・参照・作成・追記・
+  差し替え・移動・ゴミ箱。`.mcp-ignore`（右クリック「Claude に渡さない」）で
+  見せない場所を決める
 
-| パス | 中身 | 注意 |
-|---|---|---|
-| `docs/spec.md` | 仕様書。設計判断の根拠はすべてここ | §3.3, §6.4 など Qt 前提の節は CM6 では前提が変わる。書き直すまで「意図」だけ読む |
-| `docs/adr/` | 設計決定の記録 | 0002（QTextBlockFormat）・0007（setMarkdown）など Qt 固有の ADR は本実装では前提ごと消滅。参照時に要注意 |
-| `docs/IDEAS.md` | やると決めていないもの | そのまま有効 |
-| `docs/manual_test.md` | 人にしかできない手動チェック（IME まわり等） | IME 打鍵の自動テスト不能は Web でも同じ。そのまま有効 |
-| `docs/ollama.md` | ローカル LLM（Ollama）の準備手順 | スタック非依存 |
-| `fixtures/*.md` | 振る舞い検証用の入力（basic / japanese / edge_cases / large） | スタック非依存の仕様資産 |
-| `fixtures/golden/*.json` | 各 fixture の期待ハイライト結果（行ごとの block 種別と range） | range のオフセットと分類は新スキャナの検証にそのまま使える。書式ラベル（`hidden:0.5` 等）は Qt 実装の表現なので読み替える |
+## 開発
 
-## 最初のマイルストーン: スパイク 3 本 — **全部 GO**（2026-09-02）
+入口は `Makefile`。詳しい規約（TDD 必須・不可侵ルール T1〜T7・版の運用）は
+[CLAUDE.md](CLAUDE.md)。
 
-移行判断のゲートだった技術検証は完了。詳細は各 `spikes/*/README.md`。
+| 目的 | コマンド |
+| --- | --- |
+| 初回セットアップ | `make setup` |
+| アプリ起動 | `make run`（dev サーバは 1430。`OBOEGAKI_DEV_PORT` で変更） |
+| コミット前チェック | `make check`（prettier / eslint / vitest / tsc / cargo fmt・clippy・test） |
+| CI と同じ手順 | `make ci` |
+| .app / DMG | `make app` / `make dmg` |
+| MCP サーバ | `make mcp` |
 
-1. ✅ **日本語 flanking**（`spikes/01-flanking/`）— Lezer 拡張 30 行で解決。
-   参照実装オラクルと fixtures 段落 113/113 一致
-2. ✅ **マーカー隠蔽**（`spikes/02-marker-hiding/`）— `Decoration.replace` で
-   R1/R4/R5 相当が構造的に成立。Undo 1 段も確認
-3. ✅ **IME**（`spikes/03-ime/`）— 手動確認 3 項目パス。
-   WKWebView（Tauri 実機ウィンドウ）でも再確認済み
+## 文書
 
-## 第 2 マイルストーン: Tauri の足場 — **完了**（2026-09-02）
-
-- ✅ `create-tauri-app`（React + TS + Vite）の骨格。命名は ADR-0032 準拠
-- ✅ スパイク成果を `src/editor/` に TS 移植（flanking 緩和・マーカー隠蔽・
-  React ラッパ。文書を React state / Zustand にミラーしない）
-- ✅ テスト基盤: vitest（参照実装オラクル等価性 16 件）+ cargo test +
-  `make check`
-- ✅ WKWebView 上で IME 3 項目パス
-
-## 次のマイルストーン
-
-- ✅ 開発規約の整備（2026-09-02）: CLAUDE.md（TDD サイクル・不可侵ルール
-  T1〜T7）と CI（GitHub Actions / macos-14 で make check と同内容）
-- ✅ spec の新スタック対応（2026-09-02）: ADR-0034 + §3.3・§6.1・§6.4 差し替え、
-  §3.4・§4・§6.3 に読み替え注記
-- ✅ Phase 1 の骨格（2026-09-02）: vault のオープン・走査・改名引き継ぎ・
-  アトミック書き込み（Rust、TDD）+ フォルダを開く→一覧→編集→800ms
-  自動保存の最小 UI。実機で 3 項目確認済み
-- ✅ ノートの新規作成・改名・ゴミ箱・戻す（2026-09-03、実機確認済み）
-- ✅ 外部変更の検知（2026-09-03、実機確認済み）: 未編集なら静かにリロード、
-  編集中は確認ダイアログ。「両方残す」（競合コピー）は未実装
-- ✅ SQLite FTS5 索引と全文検索（2026-09-03、実機確認済み）: trigram +
-  3 文字未満は LIKE フォールバック。フォルダ名も検索対象。索引はスキーマ
-  世代つきの捨てられるキャッシュ（T7）
-
-**Phase 1（vault 層）は完了。** Phase 2（エディタ装飾）の進捗:
-
-- ✅ インライン系（2026-09-03、実機確認済み）: 取り消し線 `~~`・ハイライト
-  `::`・インラインコード・リンク。オラクルを 6 種に拡張して等価性を維持
-- ✅ ブロック系（2026-09-03、実機確認済み）: リストの点（● ○ ■）・
-  チェックボックス（クリックで切替）・引用の縦バー・コードブロック背景・
-  水平線。装飾計算は純関数 previewDecorations でヘッドレステスト
-- ✅ リビール表の残り 2 規則（2026-09-03、実機確認済み）: ソースモード
-  Cmd+/ と選択中の交差行全表示
-- ✅ Enter/Tab の入力補助（2026-09-03、実機確認済み。IME 3 項目もパス）:
-  リスト・タスク・番号・引用の継続、空項目の 2 段階解除、コードの字下げ
-  継承、Tab インデント。T5 ガード（composing 中は無効）
-- ✅ タグのピル表示・ノートリンク [[名前]]（2026-09-03、実機確認済み）
-- ✅ 画像のインライン表示（2026-09-04、実機確認済み）: 行まるごと画像の
-  行だけ。data URL 方式（ADR-0004 の CM6 版）
-- ✅ 表（2026-09-04、実機確認済み）: HTML の table widget で描く
-  （ADR-0035）。block 装飾は StateField 経由という CM6 の制約も
-  回帰テストで釘付け
-
-**§6.4 のリビール表は全行実装完了。**
-
-- ✅ 性能計測（2026-09-04）: §6.6 の 3 基準すべて合格（打鍵 p95 13.9ms /
-  検索 2ms / 起動 903ms）。手順と記録は docs/bench.md。計測が tableField の
-  再計算過多を検出 → 修正済み
-- ✅ Cmd+クリックの activation（2026-09-04、実機確認済み）: ノートリンク
-  （無ければ作る）・タグ絞り込み・外部リンク（http/https/mailto のみ）
-
-- ✅ 書式コマンド一式（Cmd+B/I/E/K/Shift+X/Shift+H、見出し ±、
-  チェックボックス切替）と Cmd+F ノート内検索（日本語 UI）
-- ✅ クイックオープン（Cmd+O、ファジー一致）と Cmd+N/S/Shift+F
-- ✅ 表セル内のインライン装飾（ADR-0031）とアウトライン（Cmd+5、ADR-0022）
-- ✅ ノート履歴（ADR-0023）: 60 分間引き・50 版/30 日・改名追従・
-  戻す前に現状を保全
-- ✅ HTML 書き出し（ADR-0007 の CM6 版、画像は data URL 埋め込み）
-- ✅ フォーカス/タイプライタモード（Cmd+Shift+D/Y）
-- ✅ 配布: make dmg で OboeGaki_0.1.0_aarch64.dmg（5.4MB）。
-  署名・公証は Apple Developer アカウント取得後
-
-残り（大きめ）: 競合の「両方残す」、索引同期の背景化（bench.md 記載）、
-ADR-0005（改名 ↔ H1 同期）、設定画面、Cmd+R 見出しパレット
+- 仕様: [docs/spec.md](docs/spec.md)（Qt 前提の節は CLAUDE.md §4 の読み替え表を見る）
+- 設計の記録: [docs/adr/](docs/adr/)（番号は hitofude から通し）
+- やることと進捗: [docs/TASKS.md](docs/TASKS.md)
+- 参照実装との差分: [docs/hitofude-gap.md](docs/hitofude-gap.md)
+- 手動チェック（IME など機械で試せないもの）: [docs/manual_test.md](docs/manual_test.md)
+- 性能の計測: [docs/bench.md](docs/bench.md)
+- 移行時の技術検証: [spikes/](spikes/)（触らない・消さない）
