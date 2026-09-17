@@ -870,27 +870,26 @@ impl Vault {
                 "ピン留め中のノートはゴミ箱へ移せない（先にピンを外す）",
             ));
         }
-        let moved = self.trash(path)?;
-        self.carry_history(path, &moved);
-        Ok(moved)
+        // 版は trash が連れて行く
+        self.trash(path)
+    }
+
+    /// このノートの履歴の鍵（`history_key` を root 込みで）
+    pub fn history_key(&self, path: &Path) -> String {
+        history_key(&self.root, path)
     }
 
     /// 履歴の置き場を新しいパスへ付け替える。**失敗しても進める** —
-    /// 版を連れて行けないことより、動かせないことの方が困る
-    fn carry_history(&self, before: &Path, after: &Path) {
+    /// 版を連れて行けないことより、動かせないことの方が困る。
+    /// **履歴を動かす道はここ 1 本**（改名・移動・ゴミ箱・戻す・フォルダ）
+    pub fn carry_history(&self, before: &Path, after: &Path) {
         if before == after {
             return;
         }
         let store = crate::history::store_root(&self.managed_dir());
-        let key = |path: &Path| {
-            format!(
-                "path:{}",
-                path.strip_prefix(&self.root)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-            )
-        };
-        if let Err(error) = crate::history::rekey(&store, &key(before), &key(after)) {
+        if let Err(error) =
+            crate::history::rekey(&store, &self.history_key(before), &self.history_key(after))
+        {
             eprintln!("履歴の置き場を移せなかった: {error}");
         }
     }
@@ -1005,11 +1004,19 @@ impl Vault {
             None => self.root.clone(),
         };
         let stem = sanitize_filename(title);
-        if folder.join(format!("{stem}.md")) == *path {
+        // 拡張子は元のまま（`.markdown` を `.md` に変えない。監査 2026-09-17）
+        let suffix = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| format!(".{s}"))
+            .unwrap_or_else(|| ".md".to_string());
+        if folder.join(format!("{stem}{suffix}")) == *path {
             return Ok(path.to_path_buf()); // 同じ名前。動かす意味が無い
         }
-        let target = unique_path(&folder, &stem, ".md", Some(path));
+        let target = unique_path(&folder, &stem, &suffix, Some(path));
         fs::rename(path, &target)?;
+        // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042）
+        self.carry_history(path, &target);
         // 「名前を変更」は本文の見出しも書き換える（ADR-0005）。
         // 見出しには打った通りのタイトルが入る（ファイル名側だけ sanitize）
         if let Ok(text) = read_note(&target) {
@@ -1105,6 +1112,8 @@ impl Vault {
             target
         };
         fs::rename(path, &target)?;
+        // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042。restore と対称）
+        self.carry_history(path, &target);
         // purge_trash の期限は「捨ててから」数える。rename は mtime を
         // 変えないので、ここで刻み直さないと古いノートが即座に消える。
         // 失敗は黙らせない（読み取り専用・同期フォルダ等で普通に起きる）—
@@ -1301,6 +1310,8 @@ impl Vault {
             .unwrap_or_default();
         let target = unique_path(&destination, stem, &suffix, None);
         fs::rename(&resolved, &target)?;
+        // 版も連れて戻る（trash と対称。戻した先の名前が変わっても鍵は付いて回る）
+        self.carry_history(&resolved, &target);
         if let Some(parent) = resolved.parent() {
             prune_empty_dirs(parent, &trash);
         }
@@ -1491,6 +1502,41 @@ pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<
 /// キー（文字列）が二重になった（実機 2026-09-09: 一覧に同じノートが 2 行）。
 /// パスが文字列になる境目（走査・索引・監視イベント）で全部ここを通す。
 /// root の外のパスは触らない（相対にできないものは判断しない）。
+/// ノートの履歴の鍵（ADR-0023 / ADR-0042: id を持たないので vault からの相対パス）。
+///
+/// **経路によらず同じ字面にする**（監査 2026-09-17）。以前は `guarded` の実体
+/// （canonicalize 済み: `/var` ↔ `/private/var`、シンボリックリンクの下、NFD の
+/// まま）、`after_folder_moved` の NFC、`carry_history` の生 root の剥がし、と
+/// 3 通りあり、同じノートの版が経路によって見つからなかった。ここでは root も
+/// パスも実体に解決してから相対にし、NFC に寄せる。まだ無いファイル（これから
+/// 書く・戻す先）は親で解決する
+pub fn history_key(root: &Path, path: &Path) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let real_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let real = resolve_existing(path);
+    let relative = real
+        .strip_prefix(&real_root)
+        .or_else(|_| path.strip_prefix(root))
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|_| path.to_path_buf());
+    let composed: String = relative.to_string_lossy().nfc().collect();
+    format!("path:{composed}")
+}
+
+/// 実体のパス。無いファイルは親を解決して名前を継ぐ
+fn resolve_existing(path: &Path) -> PathBuf {
+    if let Ok(real) = path.canonicalize() {
+        return real;
+    }
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => parent
+            .canonicalize()
+            .map(|real| real.join(name))
+            .unwrap_or_else(|_| path.to_path_buf()),
+        _ => path.to_path_buf(),
+    }
+}
+
 pub fn nfc_under(root: &Path, path: &Path) -> PathBuf {
     use unicode_normalization::UnicodeNormalization;
     let Ok(relative) = path.strip_prefix(root) else {
@@ -3018,6 +3064,81 @@ mod tests {
     }
 
     // ------------------------------------------------------------ フォルダ（ADR-0024）
+
+    #[test]
+    fn test_history_key_実体の綴りやNFDが違っても同じ鍵になる() {
+        // 鍵の字面が経路ごとに違っていた（監査 2026-09-17）: `guarded` は
+        // canonicalize した実体（/var → /private/var、NFD のまま）、after_folder_moved
+        // は scan() の NFC、carry_history は生 root の剥がし。同じノートの版が
+        // 経路によって見つからない
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let nfd = root.path().join("フ\u{309A}.md"); // Finder が作る形
+        fs::write(&nfd, "# a\n").unwrap();
+        let want = "path:プ.md".to_string();
+        assert_eq!(history_key(root.path(), &nfd), want);
+        // 実体（/private/var/…）で来ても同じ
+        let real_root = root.path().canonicalize().unwrap();
+        assert_eq!(history_key(root.path(), &nfd.canonicalize().unwrap()), want);
+        assert_eq!(history_key(&real_root, &nfd), want);
+        // シンボリックリンクの下から来ても同じ
+        let alias = TempDir::new().unwrap();
+        let link = alias.path().join("link");
+        std::os::unix::fs::symlink(root.path(), &link).unwrap();
+        assert_eq!(history_key(&link, &link.join("プ.md")), want);
+        // まだ無いファイル（これから書く・戻す先）は親で解決する
+        assert_eq!(
+            history_key(root.path(), &root.path().join("仕事").join("新しい.md")),
+            "path:仕事/新しい.md"
+        );
+        assert_eq!(vault.history_key(&nfd), want);
+    }
+
+    #[test]
+    fn test_rename_拡張子を保ち_版も連れて行く() {
+        // `.md` 決め打ちで `.markdown` のノートを改名すると拡張子が変わり、同名の
+        // 判定も外れていた。版の付け替えは commands 側にあった（監査 2026-09-17）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let path = root.path().join("a.markdown");
+        fs::write(&path, "# a\n").unwrap();
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        crate::history::keep(&store, "path:a.markdown", "古い", at, true, 0).unwrap();
+        // 同じ名前なら動かさない（拡張子が違っても）
+        assert_eq!(vault.rename(&path, "a").unwrap(), path);
+        let renamed = vault.rename(&path, "b").unwrap();
+        assert_eq!(renamed, root.path().join("b.markdown"));
+        assert_eq!(crate::history::versions(&store, "path:b.markdown").len(), 1);
+        assert!(crate::history::versions(&store, "path:a.markdown").is_empty());
+    }
+
+    #[test]
+    fn test_restore_ゴミ箱から戻すと版も連れて戻る() {
+        // trash は版を連れて行く（carry_history）のに、restore は連れて戻らず
+        // commands 側が別の鍵で付け替えていた（非対称。監査 2026-09-17）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let path = note(root.path(), "a.md");
+        let store = crate::history::store_root(&vault.managed_dir());
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        crate::history::keep(&store, "path:a.md", "古い", at, true, 0).unwrap();
+        let trashed = vault.trash(&path).unwrap();
+        assert!(crate::history::versions(&store, "path:a.md").is_empty());
+        let back = vault.restore(&trashed).unwrap();
+        assert_eq!(back, root.path().join("a.md"));
+        assert_eq!(crate::history::versions(&store, "path:a.md").len(), 1);
+        assert!(crate::history::versions(&store, "path:.trash/a.md").is_empty());
+    }
 
     #[test]
     fn test_folders_Finder製のNFDの名前もNFCで返す_索引の鍵と噛み合う() {

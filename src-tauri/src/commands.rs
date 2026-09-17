@@ -13,14 +13,40 @@ use crate::index_db::{IndexDb, SearchHit};
 use crate::vault::{contains, NewNote, Vault};
 use crate::watcher::{self, Suppressor};
 
-/// ノートの履歴の鍵。id を持たないので vault からの相対パスで作る。
+/// ノートの履歴の鍵。字面は vault 側の 1 本（`vault::history_key`）に任せる —
+/// `guarded` の実体パス（canonicalize 済み）からでも相対の NFC になる
 fn history_key(root: &str, path: &Path) -> String {
-    let relative = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .into_owned();
-    format!("path:{relative}")
+    crate::vault::history_key(Path::new(root), path)
+}
+
+/// そのフォルダ（相対）の下にあるノート
+pub fn notes_under(vault: &Vault, folder: &str) -> Vec<PathBuf> {
+    vault
+        .scan()
+        .into_iter()
+        .filter(|path| {
+            path.strip_prefix(vault.root())
+                .map(|relative| relative.starts_with(folder))
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// フォルダの名前が変わった・動いたあと、中のノートの履歴の置き場を付け替える。
+/// 旧鍵は、新しい鍵の頭（`path:after`）を元の名前（`path:before`）へ戻したもの。
+/// Tauri を知らないので headless で試せる（T3）
+pub fn rekey_moved_folder(vault: &Vault, before: &str, after: &str, moved: &[PathBuf]) {
+    use unicode_normalization::UnicodeNormalization;
+    let store = history::store_root(&vault.managed_dir());
+    let head_after = format!("path:{}", after.nfc().collect::<String>());
+    let head_before = format!("path:{}", before.nfc().collect::<String>());
+    for path in moved {
+        let after_key = vault.history_key(path);
+        let old_key = after_key.replacen(&head_after, &head_before, 1);
+        if let Err(error) = history::rekey(&store, &old_key, &after_key) {
+            eprintln!("履歴の置き場を移せなかった: {error}");
+        }
+    }
 }
 
 fn history_root(root: &str) -> std::path::PathBuf {
@@ -1279,7 +1305,7 @@ pub fn folder_rename(
     let renamed = vault
         .rename_folder(&folder, &name)
         .map_err(|e| e.to_string())?;
-    after_folder_moved(&state, &root, &vault, &before, &renamed);
+    after_folder_moved(&state, &vault, &before, &renamed);
     Ok(renamed)
 }
 
@@ -1297,7 +1323,7 @@ pub fn folder_move(
         .move_folder(&folder, &into)
         .map_err(|e| e.to_string())?;
     if moved != before {
-        after_folder_moved(&state, &root, &vault, &before, &moved);
+        after_folder_moved(&state, &vault, &before, &moved);
     }
     Ok(moved)
 }
@@ -1306,29 +1332,15 @@ pub fn folder_move(
 /// 中のノートの監視イベントを抑え、履歴の置き場を付け替え、索引を同期する
 fn after_folder_moved(
     state: &tauri::State<'_, WatchState>,
-    root: &str,
     vault: &Vault,
     before: &str,
     after_path: &str,
 ) {
-    let moved: Vec<std::path::PathBuf> = vault
-        .scan()
-        .into_iter()
-        .filter(|path| {
-            path.strip_prefix(vault.root())
-                .map(|relative| relative.starts_with(after_path))
-                .unwrap_or(false)
-        })
-        .collect();
+    let moved = notes_under(vault, after_path);
     for path in &moved {
         state.suppressor.mark(path);
-        let after = history_key(root, path);
-        // 旧鍵は、新しい相対パスの頭を元の名前へ戻したもの
-        let old_key = after.replacen(&format!("path:{after_path}"), &format!("path:{before}"), 1);
-        if let Err(error) = history::rekey(&history_root(root), &old_key, &after) {
-            eprintln!("履歴の置き場を移せなかった: {error}");
-        }
     }
+    rekey_moved_folder(vault, before, after_path, &moved);
     let sync_outcome = {
         let _serialized = state
             .sync_gate
@@ -1428,14 +1440,7 @@ pub fn note_rename(
         }
         Err(error) => eprintln!("索引を開けなかった: {error}"),
     }
-    // 鍵がパスなので、置き場を付け替えないと履歴が見えなくなる
-    if let Err(error) = history::rekey(
-        &history_root(&root),
-        &history_key(&root, &path),
-        &history_key(&root, &renamed),
-    ) {
-        eprintln!("履歴の置き場を移せなかった: {error}");
-    }
+    // 版は vault.rename が連れて行く（鍵はファイルに付いて回る = ADR-0042）
     Ok(RenameOutcome {
         path: renamed.to_string_lossy().into_owned(),
         rewritten,
@@ -1690,17 +1695,10 @@ pub fn note_restore(
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
     let vault = Vault::new(&root);
+    // 版は vault.restore が連れて戻る（trash と対称。鍵はファイルに付いて回る =
+    // ADR-0042。戻した先の名前が変わっても同じ）
     let restored = vault.restore(&path).map_err(|e| e.to_string())?;
     state.suppressor.mark(&restored);
-    // 戻した先の名前が変わることがある（同名の後継が居ると連番が付く）。
-    // **鍵はファイルに付いて回る**（ADR-0042）
-    if let Err(error) = history::rekey(
-        &history_root(&root),
-        &history_key(&root, &path),
-        &history_key(&root, &restored),
-    ) {
-        eprintln!("履歴の置き場を移せなかった: {error}");
-    }
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &restored))
     {
@@ -1714,6 +1712,48 @@ pub fn note_restore(
 // 小文字に崩さないため、snake_case の警告はこの mod だけ黙らせる
 #[allow(non_snake_case)]
 mod tests {
+    #[test]
+    fn test_history_key_は_guarded_の実体パスからでも相対のNFC鍵になる() {
+        // guarded は canonicalize した実体を返す（TempDir は /var → /private/var）。
+        // 生 root の strip_prefix では外れて `path:/private/var/…` になっていた
+        let root = tempfile::TempDir::new().unwrap();
+        let root_str = root.path().to_str().unwrap();
+        Vault::new(root.path()).ensure_layout().unwrap();
+        let note = root.path().join("フ\u{309A}.md");
+        std::fs::write(&note, "# a\n").unwrap();
+        let real = super::guarded(root_str, note.to_str().unwrap()).unwrap();
+        assert_eq!(super::history_key(root_str, &real), "path:プ.md");
+    }
+
+    #[test]
+    fn test_rekey_moved_folder_フォルダの改名と移動で版が付いて回る() {
+        let root = tempfile::TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        std::fs::create_dir_all(root.path().join("仕事")).unwrap();
+        std::fs::write(root.path().join("仕事/a.md"), "# a\n").unwrap();
+        let store = super::history_root(root.path().to_str().unwrap());
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        history::keep(&store, "path:仕事/a.md", "古い", at, true, 0).unwrap();
+
+        let renamed = vault.rename_folder("仕事", "仕事2").unwrap();
+        let moved = super::notes_under(&vault, &renamed);
+        assert_eq!(moved.len(), 1);
+        super::rekey_moved_folder(&vault, "仕事", &renamed, &moved);
+        assert_eq!(history::versions(&store, "path:仕事2/a.md").len(), 1);
+        assert!(history::versions(&store, "path:仕事/a.md").is_empty());
+
+        std::fs::create_dir_all(root.path().join("古い")).unwrap();
+        let into = vault.move_folder("仕事2", "古い").unwrap();
+        let moved = super::notes_under(&vault, &into);
+        super::rekey_moved_folder(&vault, "仕事2", &into, &moved);
+        assert_eq!(history::versions(&store, "path:古い/仕事2/a.md").len(), 1);
+        assert!(history::versions(&store, "path:仕事2/a.md").is_empty());
+    }
+
     /// 復元に失敗した退避は**捨てない**。退避は未保存本文の唯一の写しで、権限や
     /// 容量の不調で復元が失敗するのはまさに退避が要る場面（監査 2026-09-17）
     #[test]

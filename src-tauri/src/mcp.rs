@@ -759,7 +759,7 @@ impl McpVault {
             let store = crate::history::store_root(&self.vault.managed_dir());
             if let Err(error) = crate::history::keep(
                 &store,
-                &format!("path:{cleaned}"),
+                &self.vault.history_key(&absolute),
                 &whole,
                 chrono::Local::now().naive_local(),
                 true,
@@ -831,7 +831,9 @@ impl McpVault {
 
     fn versions(&self, cleaned: &str) -> Vec<crate::history::Version> {
         let store = crate::history::store_root(&self.vault.managed_dir());
-        crate::history::versions(&store, &format!("path:{cleaned}"))
+        // 鍵の字面は vault の 1 本に任せる（アプリ側と同じ版を引く）
+        let key = self.vault.history_key(&self.vault.root().join(cleaned));
+        crate::history::versions(&store, &key)
     }
 }
 

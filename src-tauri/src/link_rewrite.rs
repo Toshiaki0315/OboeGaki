@@ -45,7 +45,7 @@ pub fn rewrite_all(
             continue;
         };
         if let Some(db) = db.as_deref_mut() {
-            keep_version(vault, &relative, &text);
+            keep_version(vault, &absolute, &text);
             if let Err(error) = crate::autosave::save_atomic(&absolute, &rewritten) {
                 outcome.failed.push(format!("{relative}: {error}"));
                 continue;
@@ -64,11 +64,11 @@ pub fn rewrite_all(
 /// 書き換える前の本文を版に残す（ADR-0055: 置換は元に戻せない操作なので、
 /// 版で受け止める。T7: 履歴は作り直せない）。開いていないノートを書き換える
 /// と、ここで残さない限り旧本文はどこにも残らない。残せなくても書きは進める
-fn keep_version(vault: &Vault, relative: &str, text: &str) {
+fn keep_version(vault: &Vault, absolute: &std::path::Path, text: &str) {
     let store = crate::history::store_root(&vault.managed_dir());
     if let Err(error) = crate::history::keep(
         &store,
-        &format!("path:{relative}"),
+        &vault.history_key(absolute),
         text,
         chrono::Local::now().naive_local(),
         true,
@@ -104,7 +104,7 @@ pub fn rewrite_links_to(vault: &Vault, db: &mut IndexDb, old: &str, new: &str) -
         let Some(rewritten) = crate::wikilink::rewrite_wikilinks(&text, old, new) else {
             continue;
         };
-        keep_version(vault, &referrer.path, &text);
+        keep_version(vault, &absolute, &text);
         if let Err(error) = crate::autosave::save_atomic(&absolute, &rewritten) {
             outcome.failed.push(format!("{}: {error}", referrer.path));
             continue;

@@ -959,13 +959,13 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [ ] 低: `SearchQuery::filter_only` が未使用／CI の toolchain・Node が未固定
             （`rust-toolchain.toml` と `.nvmrc`）／`package.json` の scripts が未使用
 - [ ] **17-2. Rust の残り**（監査 2026-09-17）
-      - [ ] 履歴の鍵の字面が経路ごとに違う。`guarded` は canonicalize した実体
-            （NFD・シンボリックリンク解決）、`history_key` は生 root の剥がし、
-            `after_folder_moved` は NFC。同じノートの版が経路によって見つからない。
-            「root を canonicalize → 相対 → NFC」の 1 本に寄せ、`Vault::carry_history`
-            を唯一の出所にして commands の `rekey` 3 か所を倒す。`Vault::restore` も
-            版を連れて行く（`trash_note` と非対称）
-      - [ ] `Vault::rename` が `.md` 決め打ちで `.markdown` の拡張子を変える
+      - [x] 履歴の鍵の字面を 1 本に寄せた（2026-09-17）。`vault::history_key` が
+            root もパスも実体に解決してから相対にし NFC に寄せる（無いファイルは親で
+            解決）。`Vault::carry_history` が履歴を動かす唯一の道になり、trash /
+            restore / rename / move_note / フォルダの改名・移動（`rekey_moved_folder`）
+            が全部そこを通る。commands の `rekey` 3 か所と MCP・link_rewrite の
+            `format!("path:…")` を倒した。restore も版を連れて戻る（trash と対称）
+      - [x] `Vault::rename` は拡張子を保つ（`.markdown` を `.md` にしない。2026-09-17）
       - [ ] 雛形の読みが `fs::read_to_string`（Shift_JIS / CRLF で失敗）。`read_note` に
       - [ ] `#/` `#//` で空のタグが索引に入る（参照実装と同じ癖。離れるなら ADR 1 行）
       - [ ] MCP の stdio 往復が 13 道具中 5 つ。`move_note` / `note_history`（一覧と at）/
