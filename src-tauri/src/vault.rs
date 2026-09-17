@@ -615,7 +615,10 @@ impl Vault {
             if ancestors.contains(&real) {
                 continue; // 祖先へ戻るリンク（scan と同じ理由）
             }
-            if let Ok(relative) = entry.strip_prefix(&self.root) {
+            // NFC に揃える（scan() と同じ）。Finder が作ったフォルダは read_dir
+            // が NFD で返し、そのままだと索引（NFC の鍵）と噛み合わず件数が 0 に
+            // 見える（監査 2026-09-17）
+            if let Ok(relative) = nfc_under(&self.root, &entry).strip_prefix(&self.root) {
                 found.push(relative.to_string_lossy().into_owned());
             }
             let mut next = ancestors.clone();
@@ -1137,6 +1140,9 @@ impl Vault {
         if !trash.is_dir() {
             return Ok(vec![]);
         }
+        // 最短でも 1 日は置く。画面は 1〜365 に丸めるが、ここに守りが無いと
+        // `trash_days: 0` で開いた瞬間にゴミ箱が空になる（監査 2026-09-17）
+        let days = days.max(1);
         // days が極端でも引き算でパニックしない（checked_sub。レビュー指摘 #17）
         let Some(deadline) = now.checked_sub(std::time::Duration::from_secs(
             days.saturating_mul(24 * 3600),
@@ -1835,6 +1841,21 @@ mod tests {
         let removed = vault.purge_trash(30).unwrap();
         assert_eq!(removed, Vec::<PathBuf>::new());
         assert!(target.exists(), "捨てた直後のものは期限内");
+    }
+
+    #[test]
+    fn test_purge_trash_保持日数が0でも捨てた直後のものは消さない() {
+        // 画面は 1〜365 に丸めるが Rust 側に守りが無く、`trash_days: 0` で開くと
+        // ゴミ箱が即刻空になった（監査 2026-09-17）。最短でも 1 日は置く
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        let path = note(root.path(), "直前.md");
+        let target = vault.trash(&path).unwrap();
+        let removed = vault
+            .purge_trash_at(0, std::time::SystemTime::now())
+            .unwrap();
+        assert_eq!(removed, Vec::<PathBuf>::new());
+        assert!(target.exists());
     }
 
     #[test]
@@ -2997,6 +3018,20 @@ mod tests {
     }
 
     // ------------------------------------------------------------ フォルダ（ADR-0024）
+
+    #[test]
+    fn test_folders_Finder製のNFDの名前もNFCで返す_索引の鍵と噛み合う() {
+        // macOS の read_dir は NFD で作った名前を NFD のまま返す。scan() は NFC に
+        // 揃えるのに folders() が揃えないと、索引（NFC）の件数が 0 になり中身も
+        // 空に見える（監査 2026-09-17）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let nfd = root.path().join("フ\u{309A}ロシ\u{3099}ェクト");
+        fs::create_dir_all(&nfd).unwrap();
+        fs::write(nfd.join("a.md"), "# a\n").unwrap();
+        assert_eq!(vault.folders(), vec!["プロジェクト".to_string()]);
+    }
 
     #[test]
     fn test_folders_ディスクから引いて予約フォルダと隠しは外す() {

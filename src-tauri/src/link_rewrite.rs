@@ -45,6 +45,7 @@ pub fn rewrite_all(
             continue;
         };
         if let Some(db) = db.as_deref_mut() {
+            keep_version(vault, &relative, &text);
             if let Err(error) = crate::autosave::save_atomic(&absolute, &rewritten) {
                 outcome.failed.push(format!("{relative}: {error}"));
                 continue;
@@ -58,6 +59,23 @@ pub fn rewrite_all(
         outcome.paths.push(absolute);
     }
     outcome
+}
+
+/// 書き換える前の本文を版に残す（ADR-0055: 置換は元に戻せない操作なので、
+/// 版で受け止める。T7: 履歴は作り直せない）。開いていないノートを書き換える
+/// と、ここで残さない限り旧本文はどこにも残らない。残せなくても書きは進める
+fn keep_version(vault: &Vault, relative: &str, text: &str) {
+    let store = crate::history::store_root(&vault.managed_dir());
+    if let Err(error) = crate::history::keep(
+        &store,
+        &format!("path:{relative}"),
+        text,
+        chrono::Local::now().naive_local(),
+        true,
+        0,
+    ) {
+        eprintln!("版を残せなかった: {error}");
+    }
 }
 
 /// `old` を指しているノートの `[[old]]` を `new` に書き換える。
@@ -86,6 +104,7 @@ pub fn rewrite_links_to(vault: &Vault, db: &mut IndexDb, old: &str, new: &str) -
         let Some(rewritten) = crate::wikilink::rewrite_wikilinks(&text, old, new) else {
             continue;
         };
+        keep_version(vault, &referrer.path, &text);
         if let Err(error) = crate::autosave::save_atomic(&absolute, &rewritten) {
             outcome.failed.push(format!("{}: {error}", referrer.path));
             continue;
@@ -114,6 +133,50 @@ mod tests {
         let path = root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn test_rewrite_all_書き換える前の版を残す() {
+        // ADR-0055: 置換は元に戻せない操作なので、書き換えたノートの版を履歴に
+        // 残すことで受け止める。開いていないノートを書き換えると旧本文がどこにも
+        // 残らなかった（監査 2026-09-17。T7: 履歴は作り直せない）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "a.md", "# a\n\n旧い話\n");
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        db.sync(&vault).unwrap();
+        let outcome = rewrite_all(&vault, Some(&mut db), |text| {
+            text.contains("旧い")
+                .then(|| (text.replace("旧い", "新しい"), 1))
+        });
+        assert_eq!(outcome.rewritten, 1);
+        let store = crate::history::store_root(&vault.managed_dir());
+        let versions = crate::history::versions(&store, "path:a.md");
+        assert_eq!(versions.len(), 1, "版が残っていない");
+        assert_eq!(
+            fs::read_to_string(&versions[0].path).unwrap(),
+            "# a\n\n旧い話\n"
+        );
+    }
+
+    #[test]
+    fn test_rewrite_links_to_書き換える前の版を残す() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "旧.md", "# 旧\n");
+        note(root.path(), "b.md", "# b\n\n[[旧]] を見る\n");
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        db.sync(&vault).unwrap();
+        let outcome = rewrite_links_to(&vault, &mut db, "旧", "新");
+        assert_eq!(outcome.rewritten, 1);
+        let store = crate::history::store_root(&vault.managed_dir());
+        let versions = crate::history::versions(&store, "path:b.md");
+        assert_eq!(versions.len(), 1, "版が残っていない");
+        assert!(fs::read_to_string(&versions[0].path)
+            .unwrap()
+            .contains("[[旧]]"));
     }
 
     /// 実機 2026-09-11: 改名しても「1 件のノートのリンクを直しました」が出な

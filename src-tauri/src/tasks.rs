@@ -118,6 +118,12 @@ pub fn set_task_done(text: &str, line: usize, done: bool) -> Option<String> {
     let mut changed = false;
     for (number, piece) in text.split_inclusive('\n').enumerate() {
         if number == line {
+            // 行末の改行を外して見る。付けたままだと本文の無い `- [ ]` が
+            // `[ ]\n` になって印に見えず、一覧に出るのに完了にできない
+            let (piece, newline) = match piece.strip_suffix('\n') {
+                Some(body) => (body, "\n"),
+                None => (piece, ""),
+            };
             let trimmed = piece.trim_start();
             let indent = &piece[..piece.len() - trimmed.len()];
             task_marker(trimmed)?;
@@ -139,6 +145,7 @@ pub fn set_task_done(text: &str, line: usize, done: bool) -> Option<String> {
                 out.push(' ');
             }
             out.push_str(tail);
+            out.push_str(newline);
             changed = true;
         } else {
             out.push_str(piece);
@@ -157,6 +164,18 @@ pub fn set_task_done(text: &str, line: usize, done: bool) -> Option<String> {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_set_task_done_空のやることでも改行付きの行を書き換える() {
+        // extract_tasks は lines()（改行なし）で `[ ]` に当たるのに、set_task_done は
+        // split_inclusive で `[ ]\n` を見て印を見つけられず、一覧に出るのに完了に
+        // できなかった（監査 2026-09-17）
+        assert_eq!(
+            set_task_done("- [ ]\n- [ ] b\n", 0, true).unwrap(),
+            "- [x]\n- [ ] b\n"
+        );
+        assert_eq!(set_task_done("- [x]\n", 0, false).unwrap(), "- [ ]\n");
+    }
 
     #[test]
     fn test_extract_tasks_未完了と完了_入れ子_期限() {

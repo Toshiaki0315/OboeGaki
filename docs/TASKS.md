@@ -866,6 +866,34 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       判定は `touchesSelection` 1 か所に挟んだので、インライン・ブロック・表・絵に
       まとめて効く
 
+## 第 17 群 — 棚卸しレビュー（2026-09-17。全体を見てテストの穴と改善点を洗った）
+
+- [x] **17-1. Rust の正しさ 5 件**（2026-09-17）
+      `Vault::folders()` が Finder 製の NFD の名前をそのまま返し、索引（NFC）と
+      噛み合わず件数 0・中身空に見えた／一括置換・タグ改名・リンク書き換えが
+      版を残していなかった（ADR-0055 の約束と食い違い。`link_rewrite::keep_version`）／
+      本文の無い `- [ ]` が一覧に出るのに完了にできなかった（`set_task_done` が
+      改行付きの行で印を見つけられない）／退避の復元に 1 件でも失敗すると
+      `clear_all` で全部捨てていた（`restore_pending` に抜いて成功分だけ捨てる）／
+      `purge_trash(0)` がゴミ箱を即刻空にした（最短 1 日）
+- [ ] **17-2. Rust の残り**（監査 2026-09-17）
+      - [ ] 履歴の鍵の字面が経路ごとに違う。`guarded` は canonicalize した実体
+            （NFD・シンボリックリンク解決）、`history_key` は生 root の剥がし、
+            `after_folder_moved` は NFC。同じノートの版が経路によって見つからない。
+            「root を canonicalize → 相対 → NFC」の 1 本に寄せ、`Vault::carry_history`
+            を唯一の出所にして commands の `rekey` 3 か所を倒す。`Vault::restore` も
+            版を連れて行く（`trash_note` と非対称）
+      - [ ] `Vault::rename` が `.md` 決め打ちで `.markdown` の拡張子を変える
+      - [ ] 雛形の読みが `fs::read_to_string`（Shift_JIS / CRLF で失敗）。`read_note` に
+      - [ ] `#/` `#//` で空のタグが索引に入る（参照実装と同じ癖。離れるなら ADR 1 行）
+      - [ ] MCP の stdio 往復が 13 道具中 5 つ。`move_note` / `note_history`（一覧と at）/
+            `list_folders` / `list_tags` / `trash_note` / `daily_note` / 符号化していない
+            日本語 URI の `resources/read` を足す
+      - [ ] `history_restore` の流れと `import_read` の 256MB 上限、`link_rewrite` の
+            `failed` 枝、`history::rekey` の時刻でない名前の枝が headless で試せていない
+      - [ ] 意味の薄いテスト: `test_Finder_で開けるのは…`（実在しないパスで canonicalize
+            が失敗しているだけ）、`ocr` の「10 秒未満」、`{{date:}}` の空書式
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち

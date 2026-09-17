@@ -4,7 +4,7 @@
 // 「外部変更」としてフロントへ跳ね返らないようにする（spec §7.5）。
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::autosave;
@@ -1126,8 +1126,26 @@ pub fn recovery_restore(
 ) -> Result<Vec<String>, String> {
     let vault = Vault::new(&root);
     let dir = recovery_dir(&app, &root)?;
+    let restored = restore_pending(&vault, &dir);
+    for path in &restored {
+        state.suppressor.mark(path);
+        index_one(&vault, path);
+    }
+    Ok(restored
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect())
+}
+
+/// 退避を 1 つずつ復元し、**復元できたものだけ**捨てる。
+///
+/// 失敗した退避は残す — 退避は未保存本文の唯一の写しで、権限や容量の不調で
+/// 復元が失敗するのはまさに退避が要る場面。以前は最後に全部捨てていた
+/// （監査 2026-09-17）。1 つ書けなくても残りは救う。Tauri を知らないので
+/// ヘッドレスで試せる（T3）
+pub fn restore_pending(vault: &Vault, dir: &Path) -> Vec<PathBuf> {
     let mut restored = Vec::new();
-    for stashed in crate::recovery::pending(&dir) {
+    for stashed in crate::recovery::pending(dir) {
         let source = Path::new(&stashed.source);
         let stamp = chrono::DateTime::from_timestamp_millis(stashed.stashed_at_ms)
             .map(|at| {
@@ -1138,16 +1156,13 @@ pub fn recovery_restore(
             .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
         match vault.restore_stash(source, &stashed.text, &stamp) {
             Ok(path) => {
-                state.suppressor.mark(&path);
-                index_one(&vault, &path);
-                restored.push(path.to_string_lossy().into_owned());
+                crate::recovery::discard(dir, source);
+                restored.push(path);
             }
-            // 1 つ書けなくても残りは救う
             Err(error) => eprintln!("退避を復元できなかった（{}）: {error}", stashed.source),
         }
     }
-    crate::recovery::clear_all(&dir);
-    Ok(restored)
+    restored
 }
 
 /// 退避を全部捨てる（「復元しない」を選んだとき）。
@@ -1699,6 +1714,29 @@ pub fn note_restore(
 // 小文字に崩さないため、snake_case の警告はこの mod だけ黙らせる
 #[allow(non_snake_case)]
 mod tests {
+    /// 復元に失敗した退避は**捨てない**。退避は未保存本文の唯一の写しで、権限や
+    /// 容量の不調で復元が失敗するのはまさに退避が要る場面（監査 2026-09-17）
+    #[test]
+    fn test_restore_pending_復元できたものだけ捨て_失敗した退避は残す() {
+        let root = tempfile::TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
+        let inside = root.path().join("a.md");
+        let outside = std::path::Path::new("/etc/よそ.md"); // 保管フォルダの外 → 復元は断られる
+        crate::recovery::stash(dir.path(), &inside, "# a\n\n未保存\n").unwrap();
+        crate::recovery::stash(dir.path(), outside, "外の本文\n").unwrap();
+
+        let restored = super::restore_pending(&vault, dir.path());
+        assert_eq!(restored.len(), 1);
+        assert!(std::fs::read_to_string(&restored[0])
+            .unwrap()
+            .contains("未保存"));
+        let left = crate::recovery::pending(dir.path());
+        assert_eq!(left.len(), 1, "失敗した退避が消えている");
+        assert_eq!(left[0].source, outside.to_string_lossy());
+    }
+
     /// 版の読み出し（ADR-0054）は書き戻しと同じ境界で受ける: **そのノートの
     /// 履歴フォルダの中**だけ。vault 内なら何でも読めると、任意のノートを
     /// 「版」として覗ける
