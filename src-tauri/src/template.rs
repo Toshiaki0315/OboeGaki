@@ -112,6 +112,11 @@ fn value_of(
 /// 書式を当てる。読めない書式は None（＝印をそのまま残す。勝手に
 /// 別の形の日付を入れるより、書いた人が間違いに気づける）。
 fn strftime(now: &DateTime<Local>, format: &str) -> Option<String> {
+    // 空の書式は「読めない」に入れる（chrono は空を受けて空文字を入れるので、
+    // 印が黙って消えていた。棚卸し 2026-09-17）
+    if format.is_empty() {
+        return None;
+    }
     let items = chrono::format::StrftimeItems::new(format).parse().ok()?;
     Some(now.format_with_items(items.iter()).to_string())
 }
@@ -204,6 +209,9 @@ mod tests {
     fn test_expand_読めない書式は印を残す() {
         let now = at(2026, 9, 3, 14, 5);
         assert_eq!(expand("{{date:%}}", &now, "").text, "{{date:%}}");
+        // 空の書式も「読めない」に入れる。chrono は空を受けて空文字を入れるので、
+        // 印が黙って消えていた（棚卸し 2026-09-17）
+        assert_eq!(expand("{{date:}}", &now, "").text, "{{date:}}");
     }
 
     #[test]

@@ -289,7 +289,7 @@ impl Vault {
         if !self.inside_templates(&path) {
             return Err(outside_error("その雛形はありません", &path));
         }
-        let text = fs::read_to_string(&path)?;
+        let text = read_note(&path)?; // Shift_JIS / CRLF の雛形も読む（7-6 と同じ）
         Ok(crate::template::expand(&template_body(&text), now, title).text)
     }
 
@@ -343,7 +343,7 @@ impl Vault {
         if typed.is_empty() {
             return Err(invalid("雛形の名前が空"));
         }
-        let body = template_body(&fs::read_to_string(path)?);
+        let body = template_body(&read_note(path)?);
         fs::create_dir_all(self.templates_dir())?;
         let target = self
             .templates_dir()
@@ -516,7 +516,7 @@ impl Vault {
         } else {
             title
         };
-        let filled = expand(&template_body(&fs::read_to_string(template)?), now, name);
+        let filled = expand(&template_body(&read_note(template)?), now, name);
         let path = self.create_with(name, &filled.text)?;
         Ok(NewNote {
             path,
@@ -544,7 +544,7 @@ impl Vault {
             return Ok(NewNote { path, cursor: None });
         }
         let source = self.templates_dir().join(DAILY_TEMPLATE);
-        let body = fs::read_to_string(&source)
+        let body = read_note(&source)
             .map(|text| template_body(&text))
             .unwrap_or_else(|_| format!("# {title}\n\n"));
         let filled = expand(&body, now, &title);
@@ -3085,6 +3085,29 @@ mod tests {
     }
 
     // ------------------------------------------------------------ フォルダ（ADR-0024）
+
+    #[test]
+    fn test_register_template_Shift_JIS_のノートも雛形にできる() {
+        // 雛形の読みだけ `fs::read_to_string` のままで、Shift_JIS / CRLF のノート
+        // では失敗し `\r` が混じっていた（他は 7-6 で read_note に統一済み。
+        // 棚卸し 2026-09-17）
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let source = root.path().join("挨拶.md");
+        // 「こんにちは」の Shift_JIS + CRLF
+        let mut sjis = vec![0x82, 0xB1, 0x82, 0xF1, 0x82, 0xC9, 0x82, 0xBF, 0x82, 0xCD];
+        sjis.extend_from_slice(b"\r\n");
+        fs::write(&source, &sjis).unwrap();
+        let registered = vault.register_template(&source, "挨拶").unwrap();
+        let text = read_note(&registered).unwrap();
+        assert!(text.contains("こんにちは"), "{text:?}");
+        assert!(!text.contains('\r'));
+        let made = vault
+            .create_from_template(&registered, "新しい", &Local::now())
+            .unwrap();
+        assert!(read_note(&made.path).unwrap().contains("こんにちは"));
+    }
 
     #[test]
     fn test_history_key_実体の綴りやNFDが違っても同じ鍵になる() {

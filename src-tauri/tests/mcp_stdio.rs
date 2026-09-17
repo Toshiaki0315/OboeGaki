@@ -236,3 +236,81 @@ fn 読んで書いて_見せない場所は断る() {
     );
     assert_eq!(denied["isError"], true, "{denied}");
 }
+
+#[test]
+fn 残りの道具も引数名ごと往復する() {
+    // 13 道具中 5 つしか往復していなかった（棚卸し 2026-09-17）。引数名の綴り
+    // （`at` / `limit` / `folder` / `tag`）は lib のテストでは見えないので、ここで固定する
+    let dir = vault();
+    std::fs::create_dir_all(dir.path().join("箱")).unwrap();
+    std::fs::write(
+        dir.path().join("箱/予定.md"),
+        "# 予定\n\n[[会議メモ]] を見る #仕事\n",
+    )
+    .unwrap();
+    let mut server = Server::start(dir.path());
+
+    let folders = server.call("list_folders", serde_json::json!({}));
+    assert!(folders.contains("箱"), "{folders}");
+    let tags = server.call("list_tags", serde_json::json!({}));
+    assert!(tags.contains("仕事"), "{tags}");
+    let in_folder = server.call(
+        "list_notes",
+        serde_json::json!({ "folder": "箱", "tag": "仕事" }),
+    );
+    assert!(in_folder.contains("箱/予定.md"), "{in_folder}");
+    let related = server.call(
+        "related_notes",
+        serde_json::json!({ "path": "会議メモ.md", "limit": 3 }),
+    );
+    assert!(related.contains("箱/予定.md"), "{related}");
+
+    // 差し替えて版を作り、一覧と `at` の両方で引く
+    let before: serde_json::Value = serde_json::from_str(
+        &server.call("read_note", serde_json::json!({ "path": "会議メモ.md" })),
+    )
+    .unwrap();
+    server.call(
+        "replace_note",
+        serde_json::json!({
+            "path": "会議メモ.md", "text": "# 会議メモ\n\n新しい\n",
+            "expected_mtime_ms": before["mtime_ms"].as_i64().unwrap(),
+        }),
+    );
+    let versions: serde_json::Value = serde_json::from_str(
+        &server.call("note_history", serde_json::json!({ "path": "会議メモ.md" })),
+    )
+    .unwrap();
+    let stamp = versions[0]["stamp"].as_str().expect("版の時刻").to_string();
+    let old = server.call(
+        "note_history",
+        serde_json::json!({ "path": "会議メモ.md", "at": stamp }),
+    );
+    assert!(old.contains("決めたこと"), "{old}");
+
+    let today = server.call("daily_note", serde_json::json!({ "text": "思いつき" }));
+    assert!(today.contains(".md"), "{today}");
+    let moved = server.call(
+        "move_note",
+        serde_json::json!({ "path": "会議メモ.md", "folder": "箱" }),
+    );
+    assert!(moved.contains("箱/会議メモ.md"), "{moved}");
+    let trashed = server.call(
+        "trash_note",
+        serde_json::json!({ "path": "箱/会議メモ.md" }),
+    );
+    assert!(trashed.contains(".trash/"), "{trashed}");
+
+    // 符号化していない日本語の URI でも資源を読める（そうするクライアントがある）
+    let raw = server.request(
+        "resources/read",
+        serde_json::json!({ "uri": "oboegaki://note/箱/予定.md" }),
+    );
+    assert!(
+        raw["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("予定"),
+        "{raw}"
+    );
+}

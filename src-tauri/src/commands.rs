@@ -113,6 +113,34 @@ impl Drop for FlagGuard {
     }
 }
 
+/// Finder で開いてよい場所か（保管フォルダの中の**フォルダ**だけ）。判断を
+/// `open` から分けて headless で試せるようにした（棚卸し 2026-09-17: 以前の
+/// テストは実在しないパスで canonicalize が失敗しているだけで通っていた）
+pub fn finder_target(root: &str, path: &str) -> Result<PathBuf, String> {
+    let target = guarded(root, path)?;
+    if !target.is_dir() {
+        return Err("フォルダではありません".into());
+    }
+    Ok(target)
+}
+
+/// 版を書き戻す。戻す前に今の内容を 1 版残す（取り消せない操作を増やさない）。
+/// 返り値は書き戻したあとの本文。Tauri を知らないので headless で試せる（T3）
+pub fn restore_version(root: &str, note: &Path, version: &Path) -> Result<String, String> {
+    let version = version_in_history(root, note, version)?;
+    let store = history_root(root);
+    let key = history_key(root, note);
+    let now = chrono::Local::now().naive_local();
+    if let Ok(current) = crate::vault::read_note(note) {
+        if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
+            eprintln!("戻す前の版を残せなかった: {error}");
+        }
+    }
+    let text = fs::read_to_string(version).map_err(|e| e.to_string())?;
+    autosave::save_atomic(note, &text).map_err(|e| e.to_string())?;
+    Ok(text)
+}
+
 fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
     let candidate = Path::new(path).to_path_buf();
     if contains(Path::new(root), &candidate) {
@@ -345,18 +373,9 @@ pub fn history_restore(
     version: String,
 ) -> Result<String, String> {
     let note = guarded(&root, &path)?;
-    let version = version_in_history(&root, &note, &guarded(&root, &version)?)?;
-    let store = history_root(&root);
-    let key = history_key(&root, &note);
-    let now = chrono::Local::now().naive_local();
-    if let Ok(current) = crate::vault::read_note(&note) {
-        if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
-            eprintln!("戻す前の版を残せなかった: {error}");
-        }
-    }
-    let text = fs::read_to_string(&version).map_err(|e| e.to_string())?;
+    let version = guarded(&root, &version)?;
     state.suppressor.mark(&note);
-    autosave::save_atomic(&note, &text).map_err(|e| e.to_string())?;
+    let text = restore_version(&root, &note, &version)?;
     let vault = Vault::new(&root);
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
@@ -1021,10 +1040,7 @@ pub const HANDOFF_APPS: [&str; 4] = ["Claude", "Gemini", "ChatGPT", "Copilot"];
 /// 開けてしまう（`guarded` が vault の外を断る）。
 #[tauri::command]
 pub fn open_in_finder(root: String, path: String) -> Result<(), String> {
-    let target = guarded(&root, &path)?;
-    if !target.is_dir() {
-        return Err("フォルダではありません".into());
-    }
+    let target = finder_target(&root, &path)?;
     let status = std::process::Command::new("/usr/bin/open")
         .arg(&target)
         .status()
@@ -1885,10 +1901,78 @@ mod tests {
     }
 
     #[test]
-    fn test_Finder_で開けるのは保管フォルダの中だけ() {
-        // 画面から来たパスをそのまま開かない
-        assert!(open_in_finder("/v/notes".into(), "/etc".into()).is_err());
-        assert!(open_in_finder("/v/notes".into(), "/v/other/x".into()).is_err());
+    fn test_Finder_で開けるのは保管フォルダの中のフォルダだけ() {
+        // 以前は実在しないパスで canonicalize が失敗しているだけで通っていた
+        // （封じ込めの規則を壊しても緑。棚卸し 2026-09-17）。実物で見る
+        let root = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(root.path().join("仕事")).unwrap();
+        std::fs::write(root.path().join("仕事/a.md"), "# a\n").unwrap();
+        let root_str = root.path().to_str().unwrap();
+        let folder = root.path().join("仕事");
+        assert_eq!(
+            super::finder_target(root_str, folder.to_str().unwrap()).unwrap(),
+            folder.canonicalize().unwrap()
+        );
+        let file = root.path().join("仕事/a.md");
+        assert_eq!(
+            super::finder_target(root_str, file.to_str().unwrap()).unwrap_err(),
+            "フォルダではありません"
+        );
+        assert!(super::finder_target(root_str, "/etc").is_err());
+        assert!(super::finder_target(root_str, "/v/other/x").is_err());
+    }
+
+    #[test]
+    fn test_restore_version_今の内容を残してから版を書き戻す() {
+        let root = tempfile::TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        let root_str = root.path().to_str().unwrap();
+        let note = root.path().join("a.md");
+        std::fs::write(&note, "新\n").unwrap();
+        let store = super::history_root(root_str);
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        let kept = history::keep(&store, "path:a.md", "旧\n", at, true, 0)
+            .unwrap()
+            .unwrap();
+        let restored = super::restore_version(root_str, &note, &kept).unwrap();
+        assert_eq!(restored, "旧\n");
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "旧\n");
+        // 戻す前の「新」が版として残る（取り消せない操作を増やさない）
+        let versions = history::versions(&store, "path:a.md");
+        assert_eq!(versions.len(), 2);
+        assert_eq!(std::fs::read_to_string(&versions[0].path).unwrap(), "新\n");
+        // 別のノートの版は書き戻せない
+        let other = root.path().join("b.md");
+        std::fs::write(&other, "b\n").unwrap();
+        assert!(super::restore_version(root_str, &other, &kept).is_err());
+    }
+
+    #[test]
+    fn test_import_read_大きすぎるファイルは断り_小さいものは_base64() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let small = dir.path().join("s.bin");
+        std::fs::write(&small, b"ab").unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        assert_eq!(
+            runtime
+                .block_on(super::import_read(small.to_str().unwrap().into()))
+                .unwrap(),
+            "YWI="
+        );
+        // スパースファイルなのでディスクは食わない
+        let huge = dir.path().join("h.bin");
+        std::fs::File::create(&huge)
+            .unwrap()
+            .set_len(257 * 1024 * 1024)
+            .unwrap();
+        let denied = runtime
+            .block_on(super::import_read(huge.to_str().unwrap().into()))
+            .unwrap_err();
+        assert!(denied.contains("大きすぎます"), "{denied}");
     }
 
     #[test]

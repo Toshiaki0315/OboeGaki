@@ -975,15 +975,20 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             が全部そこを通る。commands の `rekey` 3 か所と MCP・link_rewrite の
             `format!("path:…")` を倒した。restore も版を連れて戻る（trash と対称）
       - [x] `Vault::rename` は拡張子を保つ（`.markdown` を `.md` にしない。2026-09-17）
-      - [ ] 雛形の読みが `fs::read_to_string`（Shift_JIS / CRLF で失敗）。`read_note` に
-      - [ ] `#/` `#//` で空のタグが索引に入る（参照実装と同じ癖。離れるなら ADR 1 行）
-      - [ ] MCP の stdio 往復が 13 道具中 5 つ。`move_note` / `note_history`（一覧と at）/
-            `list_folders` / `list_tags` / `trash_note` / `daily_note` / 符号化していない
-            日本語 URI の `resources/read` を足す
-      - [ ] `history_restore` の流れと `import_read` の 256MB 上限、`link_rewrite` の
-            `failed` 枝、`history::rekey` の時刻でない名前の枝が headless で試せていない
-      - [ ] 意味の薄いテスト: `test_Finder_で開けるのは…`（実在しないパスで canonicalize
-            が失敗しているだけ）、`ocr` の「10 秒未満」、`{{date:}}` の空書式
+      - [x] 雛形の読みを `read_note` に（Shift_JIS / CRLF の雛形。4 か所。2026-09-17）
+      - [x] `#/` `#//` の空のタグを索引に入れない（17-8 の見本で固定。2026-09-17）
+      - [x] MCP の stdio 往復を 13 道具すべてに（`list_notes` の folder + tag・
+            `list_folders`・`list_tags`・`related_notes` の limit・`note_history` の一覧と
+            at・`daily_note`・`move_note`・`trash_note`・符号化していない日本語 URI の
+            `resources/read`。2026-09-17）
+      - [x] `history_restore` を `restore_version` に抜いて headless で（今の内容を残して
+            から書き戻す・別のノートの版は断る）、`import_read` の 256MB 上限をスパース
+            ファイルで（2026-09-17）
+      - [ ] `link_rewrite` の `failed` 枝、`history::rekey` の時刻でない名前の枝
+      - [x] 意味の薄いテスト: Finder は `finder_target` に判断を抜いて実物のフォルダ・
+            ファイル・外で見る／`{{date:}}` の空書式は印を残す（2026-09-17）。`ocr` の
+            「10 秒未満」は**そのまま**（実行環境で揺れる計測なので閾値を締めない。
+            ADR-0027 の実測は 0.85 秒）
 
 ## 待ち — 外部要因でブロック中
 
