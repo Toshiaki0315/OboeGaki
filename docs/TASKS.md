@@ -936,9 +936,14 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
 - [ ] **17-8. TS と Rust の二重実装で共有見本が無いもの**（監査 2026-09-17）
       `fixtures/wikilink-cases.json` / `menu-checks.json` と同じ型で見本を置き、
       両側のテストがそれを読む。判明している食い違いは先に RED にする
-      - [ ] front matter の判定（空の `---\n---\n` を Rust は受け、TS は受けない）
-      - [ ] タスク印 `- [ ]` の判定が 4 か所（Rust `task_marker`・`lib/tasks.ts`・
-            `format-commands.ts`・`input-assist.ts`）で違う（空白なし・番号付き）
+      - [x] front matter の判定（`fixtures/front-matter-cases.json`。空の
+            `---\n---\n` を TS も受けるようにした。2026-09-17）
+      - [x] タスク印 `- [ ]` の判定（`fixtures/task-marker-cases.json`。Rust
+            `task_marker` と `lib/tasks.taskMarkerOf` が読む。TS だけが `- [ ]a` を印
+            と見なしていた。2026-09-17）
+      - [ ] タスク印の残り: `format-commands.ts` は番号付き（`1. [ ]`）も受け、
+            `input-assist.ts` は受けない。索引（Rust）は受けない。GFM は番号付きも
+            やることなので、Rust 側で受けるように広げるか決めてから見本に足す
       - [ ] ファイル名の正規化（`sanitizeStem` と `sanitize_filename`。書式文字の
             範囲・200 バイト・「無題」）
       - [ ] `#タグ` の境界（行頭記号の直後、フェンスの閉じ方が 2 種類）

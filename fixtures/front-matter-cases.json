@@ -1,0 +1,49 @@
+{
+  "_comment": "front matter の判定（ADR-0013 / spec §7.2）。Rust `front_matter::block_len`（本文の始まり = ブロックの長さ）と TS `frontMatterRange().bodyStart` が同じ答えを出すことを、両方のテストがここで突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。null は front matter ではない。",
+  "cases": [
+    {
+      "text": "---\nk: v\n---\nbody",
+      "bodyStart": 13
+    },
+    {
+      "text": "---\n---\nbody",
+      "bodyStart": 8
+    },
+    {
+      "text": "---abc\n---\n",
+      "bodyStart": null
+    },
+    {
+      "text": "--- \nk: v\n--- \nbody",
+      "bodyStart": 15
+    },
+    {
+      "text": "---\nk: v\n",
+      "bodyStart": null
+    },
+    {
+      "text": "---\nk\n----\n",
+      "bodyStart": null
+    },
+    {
+      "text": "---\r\nk\r\n---\r\n",
+      "bodyStart": null
+    },
+    {
+      "text": "\n---\nk\n---\n",
+      "bodyStart": null
+    },
+    {
+      "text": "---\nk: v\n---",
+      "bodyStart": 12
+    },
+    {
+      "text": "---\nk: v\n---\n",
+      "bodyStart": 13
+    },
+    {
+      "text": "本文だけ",
+      "bodyStart": null
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 // front matter の完全隠蔽と編集ガード（TASKS 2-2、ADR-0013）。
 // id は ULID による同一性の鍵なので、誤って消せない作りであること。
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it, test } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import {
@@ -147,4 +148,18 @@ describe("front matter に当たりを含む一括置換（レビュー 2026-09-
     }).state;
     expect(next.doc.toString()).toBe(DOC.replace("本文", "書換"));
   });
+});
+
+describe("Rust と同じ見本で同じ答えになる（fixtures/front-matter-cases.json）", () => {
+  // 空の front matter `---\n---\n` を Rust は受け、TS は受けていなかった
+  // （棚卸し 2026-09-17）。隠す範囲とやることの行番号がずれる元
+  const cases: { text: string; bodyStart: number | null }[] = JSON.parse(
+    readFileSync("fixtures/front-matter-cases.json", "utf8"),
+  ).cases;
+  test.each(cases.map((c) => [JSON.stringify(c.text), c] as const))(
+    "%s",
+    (_label, c) => {
+      expect(frontMatterRange(c.text)?.bodyStart ?? null).toBe(c.bodyStart);
+    },
+  );
 });

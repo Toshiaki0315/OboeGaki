@@ -72,6 +72,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_block_len_共有の見本と同じ答えを出す() {
+        // fixtures/front-matter-cases.json は TS 側（editor/frontmatter.ts）と
+        // 同じ見本。二重に持っている規則が食い違わないよう、両方がここを見る
+        let raw = include_str!("../../fixtures/front-matter-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for case in found["cases"].as_array().unwrap() {
+            let text = case["text"].as_str().unwrap();
+            let want = case["bodyStart"].as_u64().map(|n| n as usize);
+            assert_eq!(block_len(text), want, "見本: {text:?}");
+        }
+    }
+
+    #[test]
     fn test_block_len_閉じた区切りだけを認める() {
         assert_eq!(block_len("---\na: 1\n---\n本文"), Some(13));
         assert_eq!(block_len("---\na: 1\n---"), Some(12)); // 末尾改行なし

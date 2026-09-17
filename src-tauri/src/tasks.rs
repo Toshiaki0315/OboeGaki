@@ -166,6 +166,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_task_marker_共有の見本と同じ答えを出す() {
+        // fixtures/task-marker-cases.json は TS 側（lib/tasks.ts）と同じ見本
+        let raw = include_str!("../../fixtures/task-marker-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for case in found["cases"].as_array().unwrap() {
+            let line = case["line"].as_str().unwrap();
+            let want = case["task"].as_object().map(|task| {
+                (
+                    task["done"].as_bool().unwrap(),
+                    task["body"].as_str().unwrap().to_string(),
+                )
+            });
+            let got = task_marker(line.trim_start()).map(|(done, body)| (done, body.to_string()));
+            assert_eq!(got, want, "見本: {line:?}");
+        }
+    }
+
+    #[test]
     fn test_set_task_done_空のやることでも改行付きの行を書き換える() {
         // extract_tasks は lines()（改行なし）で `[ ]` に当たるのに、set_task_done は
         // split_inclusive で `[ ]\n` を見て印を見つけられず、一覧に出るのに完了に

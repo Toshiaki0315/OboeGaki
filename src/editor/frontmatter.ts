@@ -27,9 +27,11 @@ export type FrontMatterRange = {
 };
 
 // 1 行目がちょうど `---` で始まり、行頭の `---` で閉じられている場合だけ
-// front matter（参照実装 _FRONT_MATTER_RE と同じ規則）。
+// front matter（Rust `front_matter::block_len` と同じ規則。共有の見本
+// fixtures/front-matter-cases.json が両側を見張る）。中身が空の `---\n---`
+// も front matter（棚卸し 2026-09-17: Rust は受け、こちらは受けていなかった）。
 // 閉じが無いものは「ただの水平線で始まる本文」。
-const FRONT_MATTER_RE = /^---[ \t]*\n[\s\S]*?\n---[ \t]*(?=\n|$)/;
+const FRONT_MATTER_RE = /^---[ \t]*\n(?:[\s\S]*?\n)?---[ \t]*(?=\n|$)/;
 
 export function frontMatterRange(text: string): FrontMatterRange | null {
   if (!text.startsWith("---")) return null;

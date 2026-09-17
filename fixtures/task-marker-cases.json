@@ -1,0 +1,74 @@
+{
+  "_comment": "やることの印 `- [ ]` の判定（ADR-0056）。Rust `tasks::task_marker`（索引・閉じたノートの書き換え）と TS `lib/tasks.taskMarkerOf`（開いているノートの書き換え）が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。印の後ろは空白か行末。番号付き（`1. [ ]`）は索引の規則では印にしない。",
+  "cases": [
+    {
+      "line": "- [ ] a",
+      "task": {
+        "done": false,
+        "body": "a"
+      }
+    },
+    {
+      "line": "* [x] a",
+      "task": {
+        "done": true,
+        "body": "a"
+      }
+    },
+    {
+      "line": "+ [X] a",
+      "task": {
+        "done": true,
+        "body": "a"
+      }
+    },
+    {
+      "line": "- [ ]",
+      "task": {
+        "done": false,
+        "body": ""
+      }
+    },
+    {
+      "line": "- [x]",
+      "task": {
+        "done": true,
+        "body": ""
+      }
+    },
+    {
+      "line": "- [ ]a",
+      "task": null
+    },
+    {
+      "line": "  - [ ] 入れ子",
+      "task": {
+        "done": false,
+        "body": "入れ子"
+      }
+    },
+    {
+      "line": "-[ ] a",
+      "task": null
+    },
+    {
+      "line": "- [ ]  二重空白",
+      "task": {
+        "done": false,
+        "body": " 二重空白"
+      }
+    },
+    {
+      "line": "- [y] a",
+      "task": null
+    },
+    {
+      "line": "1. [ ] a",
+      "task": null
+    },
+    {
+      "line": "- a",
+      "task": null
+    }
+  ]
+}
