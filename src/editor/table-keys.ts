@@ -108,6 +108,8 @@ function insertRowAfter(
 /// Enter: 下に行を足す。見出しの行なら区切り行の下。**空の行で押したら表を
 /// 抜ける**（箇条書きの Enter と同じ作法）
 export const tableEnter: StateCommand = ({ state, dispatch }) => {
+  // 選択があれば対象外（既定の置き換えに譲る。input-assist と同じ作法）
+  if (!state.selection.main.empty) return false;
   const head = state.selection.main.head;
   const table = tableAt(state, head);
   if (!table) return false;

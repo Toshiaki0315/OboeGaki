@@ -1,7 +1,7 @@
 // 表の中の Enter / Tab（要望 2026-09-15）。プレビューモードでも表を直せる
 // ように、行と列を増やす手を鍵に付ける。StateCommand なので DOM 無しで試せる。
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { EditorState, type StateCommand } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
@@ -120,5 +120,24 @@ describe("列を足す", () => {
         "| a | b |\n| --- | --- |\n| 1 | 2 | 3｜\n| 4 | 5 |\n",
       ),
     ).toBe("| a | b |\n| --- | --- |\n| 1 | 2 | 3\n| 4｜ | 5 |\n");
+  });
+});
+
+describe("選択があるとき", () => {
+  test("test_Enter_は選択を捨てて行を足さない（既定の置き換えに譲る）", () => {
+    // input-assist の continueMarkup と同じ作法（選択があれば対象外）
+    const doc = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.indexOf("1"), head: doc.indexOf("1") + 1 },
+      extensions: [
+        markdown({
+          extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
+        }),
+      ],
+    });
+    const dispatch = vi.fn();
+    expect(tableEnter({ state, dispatch })).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

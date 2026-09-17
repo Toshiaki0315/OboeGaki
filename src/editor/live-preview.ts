@@ -773,6 +773,20 @@ class HrWidget extends WidgetType {
   }
 }
 
+/// Setext 見出し（`題\n===`）の下線。`===` を隠すだけだと下線の行が空の 1 行
+/// として残るので、細い線として描く（2026-09-17 に決めた）。テストは `rule` で見分ける
+class SetextRuleWidget extends WidgetType {
+  readonly rule = true;
+  eq(): boolean {
+    return true;
+  }
+  toDOM(): HTMLElement {
+    const rule = document.createElement("span");
+    rule.className = "cm-setext-rule";
+    return rule;
+  }
+}
+
 /// 先頭の空白の幅（ch）。タブは 4 字ぶんとして数える
 function leadWidthCh(lead: string): number {
   let width = 0;
@@ -904,7 +918,9 @@ export function previewDecorations(
         const line = state.doc.lineAt(node.from);
         const wholeLine =
           state.sliceDoc(node.from, node.to) === line.text.trim();
-        if (!wholeLine || touchesLine(state, node.from)) return;
+        // 埋め込みは書く面を持たない。プレビューモードでもカーソルで生に戻す
+        // （表・図と同じ作法。2026-09-17 に決めた）
+        if (!wholeLine || touchesBlockZone(state, line.from, line.to)) return;
         const target = state.sliceDoc(node.from + 3, node.to - 2).trim();
         out.push(
           Decoration.replace({ widget: new EmbedWidget(target) }).range(
@@ -968,6 +984,19 @@ export function previewDecorations(
         // オートリンク `<url>` は URL **が本文**。隠すのは山括弧だけ
         //（両方隠すと行から丸ごと消える — レビュー 2026-09-04）
         if (node.name === "URL" && parent?.name === "Autolink") return;
+        // Setext の下線（`===` / `---`）は線として描く（空行を残さない）
+        if (
+          node.name === "HeaderMark" &&
+          parent?.name.startsWith("SetextHeading")
+        ) {
+          out.push(
+            Decoration.replace({ widget: new SetextRuleWidget() }).range(
+              node.from,
+              node.to,
+            ),
+          );
+          return;
+        }
         let end = node.to;
         if (node.name === "HeaderMark") end = withTrailingSpace(state, end);
         out.push(Decoration.replace({}).range(node.from, end));
@@ -976,7 +1005,14 @@ export function previewDecorations(
       switch (node.name) {
         // --- 引用: `> ` を隠し、行に縦バーのクラスを付ける
         case "Blockquote":
-          pushLineClass(out, state, node.from, node.to, "cm-blockquote-line");
+          // 可視範囲の外まで行の装飾を積まない（T6。巨大な引用で全行に載っていた）
+          pushLineClass(
+            out,
+            state,
+            Math.max(node.from, from),
+            Math.min(node.to, to),
+            "cm-blockquote-line",
+          );
           return;
         case "QuoteMark": {
           if (touchesLine(state, node.from)) return;
@@ -1013,13 +1049,18 @@ export function previewDecorations(
           const fenceClosed = node.node.getChildren("CodeMark").length >= 2;
           const bandTo = fenceClosed ? fenceLast.from - 1 : fenceLast.to;
           if (fenceLast.from > fenceFirst.to || fileName) {
-            pushLineClass(
-              out,
-              state,
-              bandFrom,
-              Math.max(bandFrom, bandTo),
-              "cm-codeblock-line",
-            );
+            // 帯も可視範囲の中だけ（T6）
+            const clippedFrom = Math.max(bandFrom, from);
+            const clippedTo = Math.min(Math.max(bandFrom, bandTo), to);
+            if (clippedFrom <= clippedTo) {
+              pushLineClass(
+                out,
+                state,
+                clippedFrom,
+                clippedTo,
+                "cm-codeblock-line",
+              );
+            }
           }
           // 中へは潜らない（false を返す）。フェンスの中はコード例で、
           // 入れ子の木（codeLanguages のマウント）まで装飾すると
@@ -1042,7 +1083,8 @@ export function previewDecorations(
         }
         // --- 水平線: 線の描画に置き換える
         case "HorizontalRule": {
-          if (touchesLine(state, node.from)) return;
+          // 書く面を持たないので、プレビューモードでもカーソルで生に戻す
+          if (touchesBlockZone(state, node.from, node.to)) return;
           out.push(
             Decoration.replace({ widget: new HrWidget() }).range(
               node.from,
@@ -2135,6 +2177,11 @@ const blockTheme = EditorView.baseTheme({
     // 実色は App.css の変数（ライト #63636B / ダーク #5A5A63 に白系文字）
     backgroundColor: "var(--code-name-bg, #63636b)",
     color: "var(--code-name-fg, #ffffff)",
+  },
+  ".cm-setext-rule": {
+    display: "block",
+    height: "0.4em",
+    borderBottom: "1px solid color-mix(in srgb, currentColor 30%, transparent)",
   },
   ".cm-hr-widget": {
     display: "inline-block",

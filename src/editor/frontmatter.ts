@@ -41,6 +41,13 @@ export function frontMatterRange(text: string): FrontMatterRange | null {
   return { from: 0, to, bodyStart: Math.min(to + 1, text.length) };
 }
 
+/// front matter を落とした本文（書き出しと印刷が読む。3 か所で同じ切り方を
+/// 持っていたのを 1 つに。17-6）
+export function bodyText(text: string): string {
+  const range = frontMatterRange(text);
+  return range ? text.slice(range.bodyStart) : text;
+}
+
 /// front matter の `key: スカラー` を読む。true/false・数値・引用符付き
 /// 文字列・素の文字列だけ。入れ子や配列など読めないものは黙って飛ばす。
 export function parseFrontMatterMeta(text: string): Record<string, unknown> {

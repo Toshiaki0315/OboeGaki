@@ -1830,6 +1830,10 @@ button.danger {
   align-items: center;
   gap: 0.4rem;
 }
+/* 設定の欄の下に出す失敗の理由（書き取りのショートカットが登録できない等） */
+.pref-error {
+  color: #c62828;
+}
 .pref-unit {
   font-size: 0.8rem;
   opacity: 0.7;

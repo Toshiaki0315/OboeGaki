@@ -1,12 +1,11 @@
 {
   "name": "oboegaki",
   "private": true,
-  "version": "0.5.57",
+  "version": "0.5.58",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
     "lint": "eslint . --max-warnings 0"

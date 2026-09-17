@@ -75,6 +75,7 @@ function simplify(range: Range<Decoration>): Deco {
       mathml?: string;
       code?: string;
       summary?: string;
+      rule?: boolean;
     };
   };
   let kind = "hide";
@@ -91,6 +92,7 @@ function simplify(range: Range<Decoration>): Deco {
   else if (spec.widget?.code !== undefined) kind = "mermaid";
   else if (spec.widget?.summary !== undefined)
     kind = `summary:${spec.widget.summary}`;
+  else if (spec.widget?.rule) kind = "setext";
   else if (spec.widget) kind = "hr";
   const style = spec.attributes?.style;
   return style
@@ -1249,5 +1251,81 @@ describe("棚卸しレビュー 2026-09-17（エディタ層の残り）", () =>
     ).toBe(true);
     // 番号は隠さない（ADR-0026）
     expect(has(decos, { from: 0, to: 2, kind: "hide" })).toBe(false);
+  });
+});
+
+describe("17-4 の残り（2026-09-17 に決めた）", () => {
+  test("test_Setext_見出しの下線は細い線として描く（空行が残らない）", () => {
+    // `===` を隠すだけだと下線の行が空の 1 行として残っていた
+    const doc = "題\n===\n\n本文";
+    const decos = decorationsOf(doc, doc.length);
+    expect(has(decos, { from: 2, to: 5, kind: "setext" })).toBe(true);
+    expect(has(decos, { from: 2, to: 5, kind: "hide" })).toBe(false);
+    const dashed = "題\n---\n\n本文";
+    expect(
+      has(decorationsOf(dashed, dashed.length), {
+        from: 2,
+        to: 5,
+        kind: "setext",
+      }),
+    ).toBe(true);
+    // 行にカーソルがあれば生の字
+    expect(decorationsOf(doc, 3).some((d) => d.kind === "setext")).toBe(false);
+  });
+
+  test("test_プレビューモードでも水平線と埋め込みはカーソルで生に戻る_画像は絵のまま", () => {
+    const preview = (doc: string, anchor: number) =>
+      previewDecorations(
+        EditorState.create({
+          doc,
+          selection: { anchor },
+          extensions: [LANG, wysiwygField.init(() => true), typingLineField],
+        }),
+        0,
+        doc.length,
+      ).map(simplify);
+    const hr = "a\n\n---\n\nb";
+    expect(preview(hr, 0).some((d) => d.kind === "hr")).toBe(true);
+    expect(
+      preview(hr, hr.indexOf("---") + 1).some((d) => d.kind === "hr"),
+    ).toBe(false);
+    const embed = "前\n\n![[会議メモ]]\n\n後";
+    expect(preview(embed, 0).some((d) => d.kind.startsWith("embed:"))).toBe(
+      true,
+    );
+    expect(
+      preview(embed, embed.indexOf("![[") + 2).some((d) =>
+        d.kind.startsWith("embed:"),
+      ),
+    ).toBe(false);
+    // 画像はつまみで大きさを変えられるので、カーソルを置いても絵のまま
+    const image = "前\n\n![a](x.png)\n\n後";
+    expect(
+      preview(image, image.indexOf("![a") + 2).some((d) =>
+        d.kind.startsWith("image:"),
+      ),
+    ).toBe(true);
+  });
+
+  test("test_引用とフェンスの行クラスは可視範囲の中だけ（T6）", () => {
+    const doc = "> a\n> b\n> c\n\n```\nx\ny\nz\n```\n";
+    const state = stateOf(doc, doc.length);
+    // 1 行目だけが見えているとき、2 行目以降には行の装飾を積まない
+    const partial = previewDecorations(state, 0, 3).map(simplify);
+    expect(hasLineClass(partial, 0, "cm-blockquote-line")).toBe(true);
+    expect(
+      hasLineClass(partial, doc.indexOf("> b"), "cm-blockquote-line"),
+    ).toBe(false);
+    const fenceOnly = previewDecorations(
+      state,
+      doc.indexOf("x\n"),
+      doc.indexOf("x\n") + 1,
+    ).map(simplify);
+    expect(
+      hasLineClass(fenceOnly, doc.indexOf("x\n"), "cm-codeblock-line"),
+    ).toBe(true);
+    expect(
+      hasLineClass(fenceOnly, doc.indexOf("z\n"), "cm-codeblock-line"),
+    ).toBe(false);
   });
 });

@@ -136,6 +136,33 @@ mod tests {
     }
 
     #[test]
+    fn test_rewrite_all_読めないノートは失敗に数えて_残りは書き換える() {
+        // 1 件の不調で止めないことが設計（ADR-0055）。止めないことを確かめる
+        use std::os::unix::fs::PermissionsExt;
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        vault.ensure_layout().unwrap();
+        note(root.path(), "a.md", "旧い\n");
+        note(root.path(), "b.md", "旧い\n");
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        db.sync(&vault).unwrap();
+        let locked = root.path().join("b.md");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let outcome = rewrite_all(&vault, Some(&mut db), |text| {
+            text.contains("旧い")
+                .then(|| (text.replace("旧い", "新しい"), 1))
+        });
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(outcome.rewritten, 1);
+        assert_eq!(outcome.failed.len(), 1, "{:?}", outcome.failed);
+        assert!(outcome.failed[0].starts_with("b.md"));
+        assert_eq!(
+            fs::read_to_string(root.path().join("a.md")).unwrap(),
+            "新しい\n"
+        );
+    }
+
+    #[test]
     fn test_rewrite_all_書き換える前の版を残す() {
         // ADR-0055: 置換は元に戻せない操作なので、書き換えたノートの版を履歴に
         // 残すことで受け止める。開いていないノートを書き換えると旧本文がどこにも

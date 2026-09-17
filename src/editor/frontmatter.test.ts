@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, test } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import {
+  bodyText,
   frontMatterHide,
   frontMatterField,
   frontMatterRange,
@@ -162,4 +163,12 @@ describe("Rust と同じ見本で同じ答えになる（fixtures/front-matter-c
       expect(frontMatterRange(c.text)?.bodyStart ?? null).toBe(c.bodyStart);
     },
   );
+});
+
+describe("bodyText（front matter を落とした本文。書き出し 3 か所が同じ切り方を持っていた）", () => {
+  test("test_front_matter_の下から_無ければそのまま", () => {
+    expect(bodyText("---\nk: v\n---\nbody\n")).toBe("body\n");
+    expect(bodyText("本文だけ")).toBe("本文だけ");
+    expect(bodyText("---\nk: v\n---")).toBe("");
+  });
 });

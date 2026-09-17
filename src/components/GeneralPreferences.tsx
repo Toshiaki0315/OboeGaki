@@ -54,6 +54,8 @@ export type GeneralPreferencesProps = {
   historyUsage: number | null;
   bodyFontChoices: readonly FontChoice[];
   codeFontChoices: readonly FontChoice[];
+  /// 書き取りのショートカットが登録できなかった理由（無ければ null）
+  captureShortcutError?: string | null;
 };
 
 export function GeneralPreferences({
@@ -66,6 +68,7 @@ export function GeneralPreferences({
   historyUsage,
   bodyFontChoices,
   codeFontChoices,
+  captureShortcutError = null,
 }: GeneralPreferencesProps) {
   return (
     <div className="pref-page">
@@ -139,14 +142,21 @@ export function GeneralPreferences({
         </label>
         <label>
           <span>どこからでも書き取り</span>
-          <input
-            aria-label="書き取りのショートカット"
-            value={settings.captureShortcut}
-            placeholder="空で無効（例: CommandOrControl+Shift+Space）"
-            onChange={(event) =>
-              onChangeSettings({ captureShortcut: event.currentTarget.value })
-            }
-          />
+          <span className="pref-unit-row">
+            <input
+              aria-label="書き取りのショートカット"
+              value={settings.captureShortcut}
+              placeholder="空で無効（例: CommandOrControl+Shift+Space）"
+              onChange={(event) =>
+                onChangeSettings({ captureShortcut: event.currentTarget.value })
+              }
+            />
+            {captureShortcutError ? (
+              <span className="pref-unit pref-error">
+                登録できませんでした: {captureShortcutError}
+              </span>
+            ) : null}
+          </span>
         </label>
         <label>
           <span>本文の幅</span>

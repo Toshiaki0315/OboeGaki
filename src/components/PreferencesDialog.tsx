@@ -37,6 +37,8 @@ export type PreferencesProps = {
   installedModels: () => Promise<string[]>;
   bodyFontChoices: readonly FontChoice[];
   codeFontChoices: readonly FontChoice[];
+  /// 書き取りのショートカットが登録できなかった理由（無ければ null）
+  captureShortcutError?: string | null;
 };
 
 export function PreferencesDialog(props: PreferencesProps) {
@@ -119,6 +121,7 @@ export function PreferencesDialog(props: PreferencesProps) {
             historyUsage={usage}
             bodyFontChoices={props.bodyFontChoices}
             codeFontChoices={props.codeFontChoices}
+            captureShortcutError={props.captureShortcutError ?? null}
           />
         ) : tab === "mcp" ? (
           <McpPreferences onCopyMcpConfig={props.onCopyMcpConfig} />

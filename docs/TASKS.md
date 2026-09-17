@@ -892,17 +892,18 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] 引用の中の表・フェンスで 2 行目以降の `> ` が隠れない（Lezer は継続行の
             QuoteMark を葉ブロックの子に置く。`hideQuoteMarks` で潜る。2026-09-17）。
             引用の中の表を widget にするのは別（`tableDecorations` はトップレベルだけ）
-      - [ ] プレビューモードで水平線・行まるごと画像・埋め込みはカーソルを置いても
-            生に戻らない（表・図と揃えるか、設計として固定するか）
+      - [x] プレビューモードで水平線・埋め込みはカーソルで生に戻す（表・図と同じ
+            `touchesBlockZone`）。行まるごとの画像は**絵のまま**と決めた（記法を
+            出さないのが狙い。ADR-0065 に追記。2026-09-17）
       - [x] ベンチ（editor-bench.ts）の拡張スタックが Editor.tsx と乖離していた。
             `editor/extensions.ts` の `coreExtensions(opts)` に切り出し、本番とベンチが
             同じものを呼ぶ（Markdown の設定も 2 か所の複写を 1 つに。2026-09-17）。
             プレビューモードの計測は未（`docs/bench.md` の手順に加えるかは別途）
       - [x] 字下げした見出し（`  # 題`）の上げ下げ・循環（3 文字までの字下げを保つ）／
             `1. [ ] やる` がチェックボックスになる（番号は残す。2026-09-17）
-      - [ ] Setext 見出しの下線行が空行になる／表の中で選択があるときの Enter が選択を
-            捨てて行を足す／T6 の軽微な逸脱（引用・フェンスの行クラスを可視範囲の外
-            まで出す）
+      - [x] Setext 見出しの下線行は細い線として描く（`SetextRuleWidget`。空行を残さ
+            ない）／表の中で選択があるときの Enter は既定に譲る／引用・フェンスの行
+            クラスを可視範囲で切る（T6。2026-09-17）
 - [x] **17-5. UI 層の正しさ 6 件**（2026-09-17）
       環境設定で履歴の「なし」（0）を選んでも設定が変わらなかった（数値欄の
       空対策 `value <= 0` が巻き込んでいた。`cleanSettingsPatch` で項目ごとに
@@ -926,14 +927,16 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             `lib/ipc` に `registerGlobalShortcut` / `unregisterGlobalShortcut` /
             `openCaptureWindow` / `closeCurrentWindow` を置いて通した（2026-09-17。
             ソースの中の動的 import は vitest で差し替えが 2 回目から効かず、試せなかった）
-      - [ ] `useCaptureShortcut` は登録失敗を飲み込む（GeneralPreferences に返す道が無い）
+      - [x] `useCaptureShortcut` が `{ error }` を返し、App → PreferencesDialog →
+            GeneralPreferences の欄の下に「登録できませんでした: …」と出す（2026-09-17）
       - [x] PowerPoint の表はセルごとの run で持つ（`\|` は字、`**` は装飾、空のセル
             は列を保つ）。Word: やることの印 ☐ / ☑、`![a|100]` の大きさ、コードの
             ファイル名、脚注の本文の番号、番号付きの開始値（2026-09-17）
       - [x] `stores/app.ts` の `refresh` の追い越し（世代番号で古い応答を捨てる。
             保管フォルダを変えたあとの前のフォルダの一覧も捨てる。2026-09-17）
-      - [ ] 重複: `escapeHtml` が 2 つ／「一覧を更新できませんでした」が 3 つ／
-            front matter を切る処理が 3 つ／「最新値 ref」が 10 個
+      - [x] 重複を 1 つに（2026-09-17）: `lib/html-escape.escapeHtml`／App の
+            `refreshOrStatus()`／`frontmatter.bodyText`／`hooks/useLatest`（App 7 +
+            useNoteSync 7。lint が ref と知らないので依存配列に並べた 3 か所あり）
 - [x] **17-7. 文書とビルドの陳腐化**（2026-09-17）
       `make ci` に eslint が無く CI と手順が違っていた／打鍵ベンチの手順のポートが
       2 か所とも違った（5173 / 5183 → 1430）／`.PHONY` に bump・icon・mcp が無い／
@@ -967,8 +970,11 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             （`editor/golden-blocks.test.ts`）。ranges は Qt の表現なので見ない。参照
             実装と**意図して違える** 5 行（GFM に合わない表・Setext 見出し）は
             DIVERGENT に書いた（2026-09-17）
-      - [ ] 低: `SearchQuery::filter_only` が未使用／CI の toolchain・Node が未固定
-            （`rust-toolchain.toml` と `.nvmrc`）／`package.json` の scripts が未使用
+      - [x] 低（2026-09-17）: `SearchQuery::filter_only` を消した／`.nvmrc`（24）を
+            置き CI も `node-version-file` で読む／`package.json` の `preview` を消した。
+            **`rust-toolchain.toml` は置かない** — 手元の rustc は Homebrew（rustup で
+            ない）で、その場合この file は読まれず、CI の `stable` と手元は揃わない。
+            Rust は edition/MSRV を Cargo.toml で見張るに留める
 - [ ] **17-2. Rust の残り**（監査 2026-09-17）
       - [x] 履歴の鍵の字面を 1 本に寄せた（2026-09-17）。`vault::history_key` が
             root もパスも実体に解決してから相対にし NFC に寄せる（無いファイルは親で
@@ -986,7 +992,8 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] `history_restore` を `restore_version` に抜いて headless で（今の内容を残して
             から書き戻す・別のノートの版は断る）、`import_read` の 256MB 上限をスパース
             ファイルで（2026-09-17）
-      - [ ] `link_rewrite` の `failed` 枝、`history::rekey` の時刻でない名前の枝
+      - [x] `link_rewrite` の `failed` 枝（読めないノートは数えて残りは書き換える）、
+            `history::rekey` の時刻でない名前が両側にあるときの枝番の退避（2026-09-17）
       - [x] 意味の薄いテスト: Finder は `finder_target` に判断を抜いて実物のフォルダ・
             ファイル・外で見る／`{{date:}}` の空書式は印を残す（2026-09-17）。`ocr` の
             「10 秒未満」は**そのまま**（実行環境で揺れる計測なので閾値を締めない。

@@ -22,6 +22,7 @@ import { useNoteSync } from "./hooks/useNoteSync";
 import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
+import { useLatest } from "./hooks/useLatest";
 import { editModeChecks } from "./lib/menu-checks";
 import { runWithStatus } from "./lib/run-command";
 import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
@@ -290,10 +291,8 @@ function App() {
     useMcpHidden(vaultRoot);
   const editorRef = useRef<EditorHandle>(null);
   // メニューのハンドラは一度だけ登録するので、最新値は ref で読む
-  const vaultRootRef = useRef(vaultRoot);
-  vaultRootRef.current = vaultRoot;
-  const currentPathRef = useRef(currentPath);
-  currentPathRef.current = currentPath;
+  const vaultRootRef = useLatest(vaultRoot);
+  const currentPathRef = useLatest(currentPath);
   // 検索・絞り込み・並び順は hook に（ADR-0049）。欄のフォーカスと
   // 「検索を保存」の窓だけをここで持つ
   const search = useSearch({
@@ -317,8 +316,7 @@ function App() {
     changeSort,
   } = search;
   // メニューのハンドラは一度だけ登録するので、最新の式は ref で読む
-  const queryRef = useRef(query);
-  queryRef.current = query;
+  const queryRef = useLatest(query);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // 「検索を保存…」の名前入力。null は閉じている
   const [savingSearch, setSavingSearch] = useState<string | null>(null);
@@ -335,8 +333,7 @@ function App() {
   const [settings, setSettings] = useState<Settings>(() =>
     loadSettings(localStorage),
   );
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  const settingsRef = useLatest(settings);
   // 自動保存・退避・外部変更・競合は hook に（ADR-0049）。本文はエディタ
   // から手で読み書きし、hook は EditorView を持たない
   const sync = useNoteSync({
@@ -370,12 +367,12 @@ function App() {
   const loadHistoryUsage = useCallback((): Promise<number> => {
     const root = vaultRootRef.current;
     return root ? historyUsage(root) : Promise.resolve(0);
-  }, []);
+  }, [vaultRootRef]); // ref は不変。lint が useLatest を ref と知らないので並べる
 
   /// Ollama に入っているモデル名（設定のモデル欄の選択肢）
   const loadInstalledModels = useCallback(
     (): Promise<string[]> => llmModels(settingsRef.current.llmPort),
-    [],
+    [settingsRef],
   );
 
   function resetPreferences() {
@@ -454,8 +451,7 @@ function App() {
     setFontSize(next);
     saveFontSize(localStorage, next);
   }
-  const fontSizeRef = useRef(fontSize);
-  fontSizeRef.current = fontSize;
+  const fontSizeRef = useLatest(fontSize);
 
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
   // 掴んでいるノートのパス。**ref で持つ** — dragover は毎フレーム飛ぶので、
@@ -1128,8 +1124,7 @@ function App() {
   const outlineOpen = rightPane === "outline";
   // 出ていないときは数えない（ADR-0022）。**登録し直さない購読**（エディタの
   // コールバック）から見るので ref で持つ
-  const outlineOpenRef = useRef(outlineOpen);
-  outlineOpenRef.current = outlineOpen;
+  const outlineOpenRef = useLatest(outlineOpen);
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
   // 目次の右クリック（7-1）。節ごと動かす
   const [outlineMenu, setOutlineMenu] = useState<{
@@ -1764,7 +1759,7 @@ function App() {
   // エディタを作り直す単位（openNote ごとに進む。改名では進めない）
   const [editorSession, setEditorSession] = useState(0);
   // どこからでも書き取り（ADR-0057）。設定のショートカットを OS に登録する
-  useCaptureShortcut(settings.captureShortcut);
+  const captureShortcut = useCaptureShortcut(settings.captureShortcut);
 
   // タイトルバーに文書の題名（要望 2026-09-10）。改名にも追従する
   useEffect(() => {
@@ -1831,12 +1826,11 @@ function App() {
       renaming.current = false;
     }
   }
-  const followHeadingRef = useRef(followHeading);
-  followHeadingRef.current = followHeading;
+  const followHeadingRef = useLatest(followHeading);
   useEffect(() => {
     if (savedAt === null) return;
     void followHeadingRef.current();
-  }, [savedAt]);
+  }, [savedAt, followHeadingRef]);
 
   async function handleTrash(target?: string) {
     const path = target ?? currentPath;
@@ -2324,6 +2318,16 @@ function App() {
     "focus-mode": () => editorRef.current?.toggleFocusMode(),
     typewriter: () => editorRef.current?.toggleTypewriterMode(),
   };
+  /// 一覧を引き直し、できなければステータスに出す（3 か所にあった同じ catch を 1 つに）
+  function refreshOrStatus(): Promise<void> {
+    return useAppStore
+      .getState()
+      .refresh()
+      .catch((error) =>
+        setStatus(`一覧を更新できませんでした: ${String(error)}`),
+      );
+  }
+
   /// 編集モードを指定して入る（メニューの「インラインモード」と右上のボタン）。
   /// ソースとプレビューの排他は field 側が持つので、入れたいほうを立てるだけ
   function applyEditMode(mode: EditMode) {
@@ -2412,12 +2416,7 @@ function App() {
             ? `${head}（${parts.join("、")}）`
             : `${head}（変わりはありません）`,
         );
-        useAppStore
-          .getState()
-          .refresh()
-          .catch((error) =>
-            setStatus(`一覧を更新できませんでした: ${String(error)}`),
-          );
+        void refreshOrStatus();
       }),
     );
     return unlisten;
@@ -2436,12 +2435,7 @@ function App() {
   useEffect(() => {
     const unlisten = safeSubscribe(() =>
       listen("index-updated", () => {
-        useAppStore
-          .getState()
-          .refresh()
-          .catch((error) =>
-            setStatus(`一覧を更新できませんでした: ${String(error)}`),
-          );
+        void refreshOrStatus();
       }),
     );
     return unlisten;
@@ -3023,6 +3017,7 @@ function App() {
               installedModels={loadInstalledModels}
               bodyFontChoices={bodyFontChoices}
               codeFontChoices={codeFontChoices}
+              captureShortcutError={captureShortcut.error}
             />
           )}
           {tableDialog && (

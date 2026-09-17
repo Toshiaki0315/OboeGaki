@@ -11,10 +11,11 @@
 import MarkdownIt from "markdown-it";
 import container from "markdown-it-container";
 import { mathSpanAt, renderMath } from "../editor/math";
-import { frontMatterRange } from "../editor/frontmatter";
+import { bodyText } from "../editor/frontmatter";
 import { splitFenceInfo } from "../editor/code-blocks";
 import { DEFAULT_SUMMARY } from "../editor/details-container";
 import { splitImageAlt } from "../editor/image-size";
+import { escapeHtml } from "./html-escape";
 import { parseColorSpan, styleAttribute } from "./text-color";
 import {
   DEFAULT_NOTE_KIND,
@@ -339,16 +340,6 @@ function renderer() {
   return md;
 }
 
-// 属性値にも置くので `"` `'` まで落とす（`alt` や `class` を突き破らせない）
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 /// 印の CSS（画面と同じ表から作る）。色は囲みの枠色を継ぐ。
 const NOTE_ICON_CSS = Object.entries(NOTE_ICONS)
   .map(
@@ -458,10 +449,7 @@ export function markdownTokens(
   embeds?: Map<string, string>,
 ): ReturnType<Md["parse"]> {
   const md = renderer();
-  const range = frontMatterRange(markdownText);
-  return md.parse(range ? markdownText.slice(range.bodyStart) : markdownText, {
-    embeds,
-  });
+  return md.parse(bodyText(markdownText), { embeds });
 }
 
 /// 本文だけを HTML にする（印刷 = ADR-0038 が使う）。
@@ -506,10 +494,7 @@ export function renderBody(
       ? `<div class="code-block"><div class="code-name">${escapeHtml(fileName)}</div>${body}</div>\n`
       : body;
   };
-  const range = frontMatterRange(markdownText);
-  return md.render(range ? markdownText.slice(range.bodyStart) : markdownText, {
-    embeds,
-  });
+  return md.render(bodyText(markdownText), { embeds });
 }
 
 /// 完結した HTML 文書を返す。

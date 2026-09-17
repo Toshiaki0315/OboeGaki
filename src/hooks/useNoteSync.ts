@@ -4,6 +4,7 @@
 // 持たない（T2）。Rust への包みは lib/ipc。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLatest } from "./useLatest";
 import { createDebouncer } from "../lib/debounce";
 import {
   clearRecovery,
@@ -57,20 +58,13 @@ export function useNoteSync({
   onRecovered,
 }: NoteSyncInput) {
   // 一度だけ登録する購読と、非同期の後始末が読む値は ref 経由
-  const vaultRootRef = useRef(vaultRoot);
-  vaultRootRef.current = vaultRoot;
-  const currentPathRef = useRef(currentPath);
-  currentPathRef.current = currentPath;
-  const historyMinutesRef = useRef(historyMinutes);
-  historyMinutesRef.current = historyMinutes;
-  const readTextRef = useRef(readText);
-  readTextRef.current = readText;
-  const replaceTextRef = useRef(replaceText);
-  replaceTextRef.current = replaceText;
-  const onStatusRef = useRef(onStatus);
-  onStatusRef.current = onStatus;
-  const refreshListsRef = useRef(refreshLists);
-  refreshListsRef.current = refreshLists;
+  const vaultRootRef = useLatest(vaultRoot);
+  const currentPathRef = useLatest(currentPath);
+  const historyMinutesRef = useLatest(historyMinutes);
+  const readTextRef = useLatest(readText);
+  const replaceTextRef = useLatest(replaceText);
+  const onStatusRef = useLatest(onStatus);
+  const refreshListsRef = useLatest(refreshLists);
 
   const autosave = useMemo(() => createDebouncer(AUTOSAVE_DELAY_MS), []);
   const refreshSoon = useMemo(() => createDebouncer(REFRESH_DELAY_MS), []);

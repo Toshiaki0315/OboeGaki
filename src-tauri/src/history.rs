@@ -229,6 +229,28 @@ pub fn prune(root: &Path, now: NaiveDateTime) -> Vec<PathBuf> {
 // 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
 #[allow(non_snake_case)]
 mod tests {
+    #[test]
+    fn test_rekey_時刻でない名前が両側にあれば枝番で退避する() {
+        // 版の名前は時刻のはずだが、想定外の名前が来ても消さない（枝番で逃がす）
+        let root = tempfile::TempDir::new().unwrap();
+        let source = root.path().join(folder_name("path:a.md"));
+        let target = root.path().join(folder_name("path:b.md"));
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(source.join("ゴミ.md"), "a 側").unwrap();
+        std::fs::write(target.join("ゴミ.md"), "b 側").unwrap();
+        rekey(root.path(), "path:a.md", "path:b.md").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(target.join("ゴミ.md")).unwrap(),
+            "b 側"
+        );
+        assert_eq!(
+            std::fs::read_to_string(target.join("ゴミ-2.md")).unwrap(),
+            "a 側"
+        );
+        assert!(!source.exists(), "空になった元は消す");
+    }
+
     use super::*;
     use chrono::NaiveDate;
     use tempfile::TempDir;

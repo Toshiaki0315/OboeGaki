@@ -101,6 +101,16 @@ describe("GeneralPreferences", () => {
     });
   });
 
+  test("test_ショートカットが登録できなかったら理由を欄の下に出す", () => {
+    setup({ captureShortcutError: "他のアプリが使っています" });
+    expect(
+      screen.getByText(/登録できませんでした: 他のアプリが使っています/),
+    ).toBeTruthy();
+    cleanup();
+    setup({ captureShortcutError: null });
+    expect(screen.queryByText(/登録できませんでした/)).toBeNull();
+  });
+
   test("test_保管フォルダは読むだけ_変更は親に任せる", () => {
     const props = setup({ vaultRoot: null });
     const field = screen.getByLabelText(/保管フォルダ/) as HTMLInputElement;

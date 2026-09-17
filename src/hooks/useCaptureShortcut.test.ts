@@ -85,12 +85,21 @@ describe("useCaptureShortcut", () => {
     );
   });
 
-  test("test_登録できなくても落ちない（他のアプリが使っている・Tauri の外）", async () => {
+  test("test_登録できなければ理由を返す（設定画面に出す）_できたら_null", async () => {
+    // 以前は黙って飲み込んでいて、欄には何も返らなかった（棚卸し 2026-09-17）
     mocked.registerGlobalShortcut.mockRejectedValue(new Error("busy"));
-    expect(() => renderHook(() => useCaptureShortcut("A"))).not.toThrow();
+    const failed = renderHook(() => useCaptureShortcut("A"));
+    await waitFor(() => expect(failed.result.current.error).toContain("busy"));
+    failed.unmount();
+    mocked.registerGlobalShortcut.mockResolvedValue(undefined);
+    const fine = renderHook(() => useCaptureShortcut("B"));
     await waitFor(() =>
-      expect(mocked.registerGlobalShortcut).toHaveBeenCalled(),
+      expect(mocked.registerGlobalShortcut).toHaveBeenCalledWith(
+        "B",
+        expect.any(Function),
+      ),
     );
+    expect(fine.result.current.error).toBeNull();
   });
 
   test("test_押されたら書き取りの窓を出す", async () => {

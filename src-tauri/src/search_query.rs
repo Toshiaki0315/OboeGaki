@@ -28,11 +28,6 @@ pub struct SearchQuery {
 }
 
 impl SearchQuery {
-    /// 絞り込みだけで、本文の言葉が無いか。
-    pub fn filter_only(&self) -> bool {
-        self.text.is_empty() && self.has_filters()
-    }
-
     pub fn has_filters(&self) -> bool {
         !self.tags.is_empty() || self.after.is_some() || self.before.is_some()
     }
@@ -133,7 +128,7 @@ mod tests {
         let found = parse("#TODO #todo #Work/会議");
         assert_eq!(found.tags, vec!["todo", "work/会議"]);
         assert_eq!(found.text, "");
-        assert!(found.filter_only());
+        assert!(found.has_filters());
     }
 
     #[test]

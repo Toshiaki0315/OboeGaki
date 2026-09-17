@@ -11,6 +11,7 @@
 
 import { highlightCode, tagHighlighter, tags } from "@lezer/highlight";
 import { resolveCodeLanguage } from "../editor/code-blocks";
+import { escapeHtml } from "./html-escape";
 
 /// 画面の配色（editor/code-blocks.ts の codeHighlight）と**同じ組**。
 /// あちらは CSS 変数を直に指定し、こちらはクラス名にする（書き出した
@@ -32,16 +33,6 @@ const exportHighlighter = tagHighlighter([
   { tag: tags.propertyName, class: "tok-prop" },
   { tag: tags.meta, class: "tok-comment" },
 ]);
-
-// 属性値にも置くので `"` `'` まで落とす（`alt` や `class` を突き破らせない）
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /// コードを色分けした HTML にする。**知らない言語は null**
 /// （付けられないより、素で出るほうがよい）。
