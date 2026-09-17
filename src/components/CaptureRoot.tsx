@@ -3,15 +3,10 @@
 
 import { useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { appendDaily } from "../lib/ipc";
+import { appendDaily, closeCurrentWindow as closeSelf } from "../lib/ipc";
 import { VAULT_KEY } from "../lib/last-vault";
 import { APP_NAME } from "../lib/app-name";
 import { CaptureWindow } from "./CaptureWindow";
-
-async function closeSelf(): Promise<void> {
-  const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().close();
-}
 
 export function CaptureRoot() {
   const [status, setStatus] = useState<string | null>(null);

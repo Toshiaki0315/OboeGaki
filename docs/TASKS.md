@@ -910,13 +910,18 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       の触り直しで偽の競合が出た／退避の復元に失敗すると件数が消えて選び直せな
       かった／`imageSource` が失敗まで永久に覚え、後から画像を置いても描かれなかった
 - [ ] **17-6. UI 層の残り**（監査 2026-09-17）
-      - [ ] テストの無い部品: `GeneralPreferences`（314 行）・`AssistantPreferences`
-            （196 行）・`CaptureRoot`・`useCaptureShortcut`・`lib/capture.ts`・
-            `stores/app.ts`。`ipc.ts` の包み 47 個（引数の組み替えがある `fetchLists`
-            / `replaceApply` / `subscribeLlm` / `imageSource` の file:// を優先）
+      - [x] テストの無い部品 6 つに足した（2026-09-17）: `GeneralPreferences`（7 件）・
+            `AssistantPreferences`（6 件）・`CaptureRoot`（4 件）・`useCaptureShortcut`
+            （6 件）・`lib/capture.ts`（2 件）・`stores/app.ts`（5 件）
+      - [ ] `ipc.ts` の包み 47 個（引数の組み替えがある `fetchLists` / `replaceApply` /
+            `subscribeLlm` / `imageSource` の file:// を優先）
       - [ ] App.tsx の `void` 呼びで catch の無い非同期ハンドラ（書き出し・雛形・
             ゴミ箱・添付の掃除・同期）。`runWithStatus(label, fn)` で包む
-      - [ ] `useCaptureShortcut` が Tauri を直接呼ぶ（ADR-0049）。登録失敗を飲み込む
+      - [x] `useCaptureShortcut` と `CaptureRoot` が Tauri を直接呼んでいた（ADR-0049）。
+            `lib/ipc` に `registerGlobalShortcut` / `unregisterGlobalShortcut` /
+            `openCaptureWindow` / `closeCurrentWindow` を置いて通した（2026-09-17。
+            ソースの中の動的 import は vitest で差し替えが 2 回目から効かず、試せなかった）
+      - [ ] `useCaptureShortcut` は登録失敗を飲み込む（GeneralPreferences に返す道が無い）
       - [ ] PowerPoint の表: `\|` を区切りと見なし、`**` などの記号がそのまま載る
             （`slides.ts` が行のまま持つ）。Word: タスクの印が消える／`![a|100]` の
             大きさを無視／コードのファイル名が落ちる／脚注の本文に番号が無い／

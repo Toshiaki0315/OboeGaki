@@ -4,6 +4,7 @@
 // のもここ。
 
 import { invoke } from "@tauri-apps/api/core";
+import { CAPTURE_LABEL, captureUrl } from "./capture";
 import type { McpHidden } from "./mcp-hidden";
 import type { MenuChecks } from "./menu-checks";
 import { listen } from "@tauri-apps/api/event";
@@ -673,4 +674,52 @@ export async function renameTag(
 /// ノートのパスを返す
 export async function appendDaily(root: string, text: string): Promise<string> {
   return invoke<string>("note_append_daily", { root, text });
+}
+
+// ---- どこからでも書き取りの窓（ADR-0057）。プラグインは動的 import で
+// 読む（Tauri の外 = 素のブラウザでは読めない）。hook や部品はここを通す
+// （ADR-0049。直接 import すると差し替えて試せない）
+
+/// OS のグローバルショートカットを登録し、押されたら `onPressed`
+export async function registerGlobalShortcut(
+  key: string,
+  onPressed: () => void,
+): Promise<void> {
+  const { register } = await import("@tauri-apps/plugin-global-shortcut");
+  await register(key, (event) => {
+    if (event.state === "Pressed") onPressed();
+  });
+}
+
+export async function unregisterGlobalShortcut(key: string): Promise<void> {
+  const { unregister } = await import("@tauri-apps/plugin-global-shortcut");
+  await unregister(key);
+}
+
+/// 書き取りの窓を出す（既にあれば前へ）
+export async function openCaptureWindow(): Promise<void> {
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const existing = await WebviewWindow.getByLabel(CAPTURE_LABEL);
+  if (existing) {
+    await existing.show();
+    await existing.setFocus();
+    return;
+  }
+  new WebviewWindow(CAPTURE_LABEL, {
+    url: captureUrl(),
+    title: "書き取り",
+    width: 520,
+    height: 260,
+    minWidth: 320,
+    minHeight: 160,
+    center: true,
+    alwaysOnTop: true,
+    focus: true,
+  });
+}
+
+/// 今いる窓を閉じる（書き取りの窓が送ったあと）
+export async function closeCurrentWindow(): Promise<void> {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().close();
 }
