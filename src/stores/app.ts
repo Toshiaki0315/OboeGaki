@@ -28,6 +28,11 @@ type AppState = {
   selectNote: (path: string | null) => void;
 };
 
+// 一覧の取り寄せの世代。**追い越しを捨てる** — 2 本並んで先発が後に解決すると
+// 古い一覧が勝っていた（棚卸し 2026-09-17）。保管フォルダを変えたあとに届いた
+// 前のフォルダの一覧も捨てる
+let generation = 0;
+
 export const useAppStore = create<AppState>((set, get) => ({
   vaultRoot: null,
   notes: [],
@@ -40,14 +45,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   async openVault(root, trashDays) {
     // レイアウト作成・監視開始・背景の索引同期を起動してから一覧を引く
     await openVaultRoot(root, trashDays);
+    const mine = ++generation;
     const lists = await fetchLists(root);
+    if (mine !== generation) return; // もっと新しい取り寄せが走った
     set({ vaultRoot: root, ...lists, currentPath: null });
   },
 
   async refresh() {
     const root = get().vaultRoot;
     if (!root) return;
-    set(await fetchLists(root));
+    const mine = ++generation;
+    const lists = await fetchLists(root);
+    if (mine !== generation || get().vaultRoot !== root) return;
+    set(lists);
   },
 
   selectNote(path) {

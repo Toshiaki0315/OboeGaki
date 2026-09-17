@@ -23,6 +23,7 @@ import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { editModeChecks } from "./lib/menu-checks";
+import { runWithStatus } from "./lib/run-command";
 import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
 import {
   rememberSidePane,
@@ -2235,7 +2236,8 @@ function App() {
   const menuActions = useRef<Record<string, () => void>>({});
   menuActions.current = {
     "new-note": () => void handleCreate(),
-    "new-from-template": () => void chooseTemplate(),
+    "new-from-template": () =>
+      void runWithStatus(setStatus, "雛形の一覧", () => chooseTemplate()),
     "daily-note": () => void handleDailyNote(),
     "pick-day": openDayDialog,
     "move-note": () => {
@@ -2245,13 +2247,25 @@ function App() {
     "place-mcp-manual": () => void handlePlaceMcpManual(),
     preferences: openPreferences,
     "open-vault": () => void chooseVault(),
-    resync: () => void handleSync(false),
-    "rebuild-index": () => void handleSync(true),
-    "cleanup-attachments": () => void handleCleanupAttachments(),
+    resync: () =>
+      void runWithStatus(setStatus, "同期", () => handleSync(false)),
+    "rebuild-index": () =>
+      void runWithStatus(setStatus, "同期", () => handleSync(true)),
+    "cleanup-attachments": () =>
+      void runWithStatus(setStatus, "添付の片づけ", () =>
+        handleCleanupAttachments(),
+      ),
     save: () => sync.flush(),
-    "export-html": () => void handleExport(),
-    "export-pptx": () => void handleExportPptx(),
-    "export-docx": () => void handleExportDocx(),
+    "export-html": () =>
+      void runWithStatus(setStatus, "HTML の書き出し", () => handleExport()),
+    "export-pptx": () =>
+      void runWithStatus(setStatus, "PowerPoint の書き出し", () =>
+        handleExportPptx(),
+      ),
+    "export-docx": () =>
+      void runWithStatus(setStatus, "Word の書き出し", () =>
+        handleExportDocx(),
+      ),
     "export-pdf": () => void handlePrint(true),
     "import-pdf": () => void handleImport("pdf"),
     "import-pptx": () => void handleImport("pptx"),
@@ -2817,7 +2831,11 @@ function App() {
                       preview: wysiwygMode,
                     })}
                     onPin={() => void handlePin()}
-                    onExport={() => void handleExport()}
+                    onExport={() =>
+                      void runWithStatus(setStatus, "HTML の書き出し", () =>
+                        handleExport(),
+                      )
+                    }
                     onHistory={() => void openHistory()}
                     onTrash={() => void handleTrash()}
                     onCycleMode={() =>
@@ -2919,7 +2937,9 @@ function App() {
                 label: noteStem(path),
               }))}
               onChoose={(index) =>
-                void handleCreateFromTemplate(templates[index])
+                void runWithStatus(setStatus, "雛形からの作成", () =>
+                  handleCreateFromTemplate(templates[index]),
+                )
               }
               onClose={() => setTemplates(null)}
             />
@@ -3040,7 +3060,10 @@ function App() {
                   {
                     label: "テンプレートから新規…",
                     icon: <MenuIcon name="template" />,
-                    onSelect: () => void chooseTemplate(),
+                    onSelect: () =>
+                      void runWithStatus(setStatus, "雛形の一覧", () =>
+                        chooseTemplate(),
+                      ),
                   },
                   {
                     label: "今日のノート",
@@ -3397,9 +3420,18 @@ function App() {
                 onPick={() => setTrashMenu(null)}
                 items={trashMenuItems(trashMenu.path, {
                   onReveal: () => void openInFinder(TRASH_FOLDER),
-                  onEmpty: () => void handleEmptyTrash(),
-                  onRestore: (path) => void handleRestore(path),
-                  onDeleteForever: (path) => void handleDeleteForever(path),
+                  onEmpty: () =>
+                    void runWithStatus(setStatus, "ゴミ箱を空にする", () =>
+                      handleEmptyTrash(),
+                    ),
+                  onRestore: (path) =>
+                    void runWithStatus(setStatus, "戻す", () =>
+                      handleRestore(path),
+                    ),
+                  onDeleteForever: (path) =>
+                    void runWithStatus(setStatus, "完全な削除", () =>
+                      handleDeleteForever(path),
+                    ),
                 })}
               />
             </ContextMenu>

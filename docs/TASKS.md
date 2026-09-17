@@ -917,8 +917,9 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             （6 件）・`lib/capture.ts`（2 件）・`stores/app.ts`（5 件）
       - [ ] `ipc.ts` の包み 47 個（引数の組み替えがある `fetchLists` / `replaceApply` /
             `subscribeLlm` / `imageSource` の file:// を優先）
-      - [ ] App.tsx の `void` 呼びで catch の無い非同期ハンドラ（書き出し・雛形・
-            ゴミ箱・添付の掃除・同期）。`runWithStatus(label, fn)` で包む
+      - [x] App.tsx の `void` 呼びで catch の無い非同期ハンドラ 13 か所（書き出し・
+            雛形・ゴミ箱・添付の掃除・同期）を `lib/run-command.runWithStatus` で
+            包み、失敗を「○○できませんでした: …」とステータスに出す（2026-09-17）
       - [x] `useCaptureShortcut` と `CaptureRoot` が Tauri を直接呼んでいた（ADR-0049）。
             `lib/ipc` に `registerGlobalShortcut` / `unregisterGlobalShortcut` /
             `openCaptureWindow` / `closeCurrentWindow` を置いて通した（2026-09-17。
@@ -927,7 +928,8 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] PowerPoint の表はセルごとの run で持つ（`\|` は字、`**` は装飾、空のセル
             は列を保つ）。Word: やることの印 ☐ / ☑、`![a|100]` の大きさ、コードの
             ファイル名、脚注の本文の番号、番号付きの開始値（2026-09-17）
-      - [ ] `stores/app.ts` の `refresh` は応答の追い越しで古い一覧が勝つ
+      - [x] `stores/app.ts` の `refresh` の追い越し（世代番号で古い応答を捨てる。
+            保管フォルダを変えたあとの前のフォルダの一覧も捨てる。2026-09-17）
       - [ ] 重複: `escapeHtml` が 2 つ／「一覧を更新できませんでした」が 3 つ／
             front matter を切る処理が 3 つ／「最新値 ref」が 10 個
 - [x] **17-7. 文書とビルドの陳腐化**（2026-09-17）
