@@ -155,6 +155,67 @@ export const continueMarkup: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+/// 空白の幅（タブは 4 として数える。深さの比較にだけ使う）
+function indentWidth(lead: string): number {
+  let width = 0;
+  for (const ch of lead) width += ch === "\t" ? 4 : 1;
+  return width;
+}
+
+/// 番号付きの番号を振り直す（ADR-0066。要望 2026-09-17）。
+/// `lines` は空行で切れるまでの 1 つのリスト（字下げを変えたあとの字面）。
+/// 同じ深さの並びを 1 つの組として数え、入れ子は 1 から、親は続きから。
+/// 先頭の組だけ元の番号から始める（`3.` で始めたリストを `1.` に戻さない）。
+/// 点の箇条書きが同じ深さに挟まると、番号の組はそこで切れる（CommonMark でも
+/// 別のリスト）。返すのは行番号（lines の添字）ごとの新しい行。変わらない行は同じ字
+export function renumberList(lines: readonly string[]): string[] {
+  type Level = { width: number; next: number | null }; // null = 点の組
+  const stack: Level[] = [];
+  let first = true;
+  return lines.map((line) => {
+    const ordered = ORDERED_RE.exec(line);
+    if (!ordered && !BULLET_RE.test(line)) return line;
+    const lead = LEADING_SPACE_RE.exec(line)?.[0] ?? "";
+    const width = indentWidth(lead);
+    while (stack.length && stack[stack.length - 1].width > width) stack.pop();
+    const top = stack[stack.length - 1];
+    if (!ordered) {
+      if (top && top.width === width) top.next = null;
+      else stack.push({ width, next: null });
+      return line;
+    }
+    const [head, indent, digits, delimiter, gap] = ordered;
+    let number: number;
+    if (top && top.width === width && top.next !== null) {
+      number = top.next;
+      top.next = number + 1;
+    } else {
+      number = first ? Number(digits) : 1;
+      if (top && top.width === width) top.next = number + 1;
+      else stack.push({ width, next: number + 1 });
+    }
+    first = false;
+    if (String(number) === digits) return line;
+    return `${indent}${number}${delimiter}${gap}${line.slice(head.length)}`;
+  });
+}
+
+/// この行を含むリストの範囲（空行・リストでない行で切る）。行番号の [先頭, 末尾]
+function listBlockAround(
+  state: EditorState,
+  lineNumber: number,
+): [number, number] {
+  const isItem = (n: number) => {
+    const kind = markerOf(state.doc.line(n).text)?.kind;
+    return kind !== undefined && kind !== "quote";
+  };
+  let start = lineNumber;
+  while (start > 1 && isItem(start - 1)) start--;
+  let end = lineNumber;
+  while (end < state.doc.lines && isItem(end + 1)) end++;
+  return [start, end];
+}
+
 function indentList(forward: boolean): StateCommand {
   return ({ state, dispatch }) => {
     const range = state.selection.main;
@@ -163,20 +224,50 @@ function indentList(forward: boolean): StateCommand {
     const marker = markerOf(line.text);
     // 引用は対象外（リスト行だけ。それ以外は通常のタブ挿入に任せる）
     if (!marker || marker.kind === "quote") return false;
-    if (forward) {
-      dispatch(
-        state.update({
-          changes: { from: line.from, insert: INDENT },
-          userEvent: "input.indent",
-        }),
-      );
-      return true;
+    if (!forward && !line.text.startsWith(INDENT)) return false;
+
+    // 字下げを変えたあとの字面で、リスト全体の番号を振り直す（ADR-0066）。
+    // 1 つの取り消しで戻るよう、字下げと番号の書き換えは同じ transaction に載せる
+    const [start, end] = listBlockAround(state, line.number);
+    const before: string[] = [];
+    for (let n = start; n <= end; n++) before.push(state.doc.line(n).text);
+    const at = line.number - start;
+    before[at] = forward
+      ? INDENT + before[at]
+      : before[at].slice(INDENT.length);
+    const after = renumberList(before);
+
+    const changes: { from: number; to: number; insert: string }[] = [];
+    for (let n = start; n <= end; n++) {
+      const current = state.doc.line(n);
+      const next = after[n - start];
+      if (n === line.number || next !== current.text) {
+        // 行頭（字下げ + 番号）だけを書き換える。本文はカーソルごと動かさない
+        const oldHead = ORDERED_RE.exec(current.text)?.[0].length ?? 0;
+        const newHead = ORDERED_RE.exec(next)?.[0].length ?? 0;
+        if (oldHead && newHead) {
+          changes.push({
+            from: current.from,
+            to: current.from + oldHead,
+            insert: next.slice(0, newHead),
+          });
+        } else if (n === line.number) {
+          changes.push(
+            forward
+              ? { from: current.from, to: current.from, insert: INDENT }
+              : {
+                  from: current.from,
+                  to: current.from + INDENT.length,
+                  insert: "",
+                },
+          );
+        }
+      }
     }
-    if (!line.text.startsWith(INDENT)) return false;
     dispatch(
       state.update({
-        changes: { from: line.from, to: line.from + INDENT.length, insert: "" },
-        userEvent: "delete.dedent",
+        changes,
+        userEvent: forward ? "input.indent" : "delete.dedent",
       }),
     );
     return true;
