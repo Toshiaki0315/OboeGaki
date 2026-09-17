@@ -38,16 +38,30 @@ export function firstHeading(text: string): string | null {
   return null;
 }
 
+/// ファイル名の幹の長さの上限（バイト）。Rust の MAX_FILENAME_BYTES と同じ
+const MAX_STEM_BYTES = 200;
+
 /// ファイル名の幹に直したときの形（Rust の `sanitize_filename` と同じ規則の
-/// 写し）。「今のファイル名は見出しに従っているか」を見るための比較用で、
-/// 実際の名前は Rust が決める
+/// 写し。共有の見本 fixtures/filename-cases.json が両側を見張る）。「今の
+/// ファイル名は見出しに従っているか」を見るための比較用で、実際の名前は
+/// Rust が決める。空なら「無題」、200 バイトで切る（棚卸し 2026-09-17）
 export function sanitizeStem(title: string): string {
   let text = "";
   for (const character of title.normalize("NFC")) {
     if (/[\p{Cc}\p{Cf}]/u.test(character) && !/\s/.test(character)) continue;
     text += /[/:\\]/.test(character) ? "-" : character;
   }
-  return text.split(/\s+/).filter(Boolean).join(" ").replace(/^\.+/, "").trim();
+  let stem = text
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ")
+    .replace(/^\.+/, "")
+    .trim();
+  const encoder = new TextEncoder();
+  while (encoder.encode(stem).length > MAX_STEM_BYTES) {
+    stem = Array.from(stem).slice(0, -1).join("");
+  }
+  return stem || "無題";
 }
 
 /// 見出しの装飾を落として素の文字にする（実機 2026-09-11: 色と打ち消しを

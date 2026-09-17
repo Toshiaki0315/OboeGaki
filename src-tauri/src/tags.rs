@@ -102,7 +102,11 @@ fn tags_in_line(line: &str) -> Vec<String> {
             end += 1;
         }
         if end > index + 1 {
-            found.push(normalize(&chars[index + 1..end].iter().collect::<String>()));
+            let name = normalize(&chars[index + 1..end].iter().collect::<String>());
+            // `#/` `#//` は正規化すると空。空のタグを索引に入れない（棚卸し 2026-09-17）
+            if !name.is_empty() {
+                found.push(name);
+            }
         }
         index = end.max(index + 1);
     }
@@ -115,6 +119,23 @@ fn tags_in_line(line: &str) -> Vec<String> {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_共有の見本と同じ答えを出す() {
+        // fixtures/tag-cases.json は TS 側（Lezer の Hashtag + normalizeTag）と同じ見本
+        let raw = include_str!("../../fixtures/tag-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for case in found["cases"].as_array().unwrap() {
+            let text = case["text"].as_str().unwrap();
+            let want: Vec<String> = case["tags"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tag| tag.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(extract_tags(text), want, "見本: {text:?}");
+        }
+    }
 
     #[test]
     fn test_extract_基本と正規化と重複除去() {

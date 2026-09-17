@@ -1,5 +1,6 @@
 // 「Claude に渡さない」の判定（GUI の印）。`.mcp-ignore` の中身と突き合わせる。
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { hiddenByAncestor, isHiddenFromMcp, relativeIn } from "./mcp-hidden";
 
@@ -82,5 +83,32 @@ describe("hiddenByAncestor", () => {
   it("test_隠れていなければ_null", () => {
     expect(hiddenByAncestor(hidden, "仕事/会議.md")).toBeNull();
     expect(hiddenByAncestor(hidden, "")).toBeNull();
+  });
+});
+
+describe("Rust と同じ見本で同じ答えになる（fixtures/mcp-ignore-cases.json）", () => {
+  const shared: {
+    builtin: string[];
+    cases: {
+      ignore: string;
+      relative: string;
+      hidden: boolean;
+      hiddenBy: string | null;
+    }[];
+  } = JSON.parse(readFileSync("fixtures/mcp-ignore-cases.json", "utf8"));
+  /// Rust `IgnoreList::load` と同じ読み方（`#` と空行を飛ばし、両端の `/` を落とす）
+  const listedOf = (ignore: string) =>
+    ignore
+      .split("\n")
+      .map((line) => line.trim().replace(/^\/+|\/+$/g, ""))
+      .filter((line) => line && !line.startsWith("#"));
+  it.each(
+    shared.cases.map(
+      (c) => [`${JSON.stringify(c.ignore)} → ${c.relative}`, c] as const,
+    ),
+  )("%s", (_label, c) => {
+    const hidden = { listed: listedOf(c.ignore), builtin: shared.builtin };
+    expect(isHiddenFromMcp(hidden, c.relative)).toBe(c.hidden);
+    expect(hiddenByAncestor(hidden, c.relative)).toBe(c.hiddenBy);
   });
 });

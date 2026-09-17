@@ -1,5 +1,5 @@
 {
-  "_comment": "やることの印 `- [ ]` の判定（ADR-0056）。Rust `tasks::task_marker`（索引・閉じたノートの書き換え）と TS `lib/tasks.taskMarkerOf`（開いているノートの書き換え）が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。印の後ろは空白か行末。番号付き（`1. [ ]`）は索引の規則では印にしない。",
+  "_comment": "やることの印 `- [ ]` の判定（ADR-0056）。Rust `tasks::task_marker`（索引・閉じたノートの書き換え）と TS `lib/tasks.taskMarkerOf`（開いているノートの書き換え）が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。印の後ろは空白か行末。番号付き（`1. [ ]`）もやること（GFM と同じ。2026-09-17 に決めた）。",
   "cases": [
     {
       "line": "- [ ] a",
@@ -63,11 +63,25 @@
       "task": null
     },
     {
-      "line": "1. [ ] a",
+      "line": "- a",
       "task": null
     },
     {
-      "line": "- a",
+      "line": "1. [ ] a",
+      "task": {
+        "done": false,
+        "body": "a"
+      }
+    },
+    {
+      "line": "12) [x] b",
+      "task": {
+        "done": true,
+        "body": "b"
+      }
+    },
+    {
+      "line": "1.[ ] a",
       "task": null
     }
   ]

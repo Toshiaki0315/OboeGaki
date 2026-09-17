@@ -42,12 +42,26 @@ pub fn extract_tasks(text: &str) -> Vec<TaskItem> {
     found
 }
 
-/// `- [ ] 文` の形なら（完了か, 文）。`-` `*` `+` のどれでも
+/// リストの印（`- ` `* ` `+ ` と `1. ` `12) `）の長さ。印でなければ None。
+/// 番号付きもやること（GFM と同じ。棚卸し 2026-09-17 に決めた）
+fn list_prefix_len(trimmed: &str) -> Option<usize> {
+    if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("+ ") {
+        return Some(2);
+    }
+    let digits = trimmed.chars().take_while(char::is_ascii_digit).count();
+    if digits == 0 || digits > 9 {
+        return None;
+    }
+    let rest = &trimmed[digits..];
+    if rest.starts_with(". ") || rest.starts_with(") ") {
+        return Some(digits + 2);
+    }
+    None
+}
+
+/// `- [ ] 文` の形なら（完了か, 文）。`-` `*` `+` と番号付きのどれでも
 fn task_marker(trimmed: &str) -> Option<(bool, &str)> {
-    let rest = trimmed
-        .strip_prefix("- ")
-        .or_else(|| trimmed.strip_prefix("* "))
-        .or_else(|| trimmed.strip_prefix("+ "))?;
+    let rest = &trimmed[list_prefix_len(trimmed)?..];
     let (mark, body) = if let Some(body) = rest.strip_prefix("[ ] ") {
         (false, body)
     } else if let Some(body) = rest
@@ -127,17 +141,19 @@ pub fn set_task_done(text: &str, line: usize, done: bool) -> Option<String> {
             let trimmed = piece.trim_start();
             let indent = &piece[..piece.len() - trimmed.len()];
             task_marker(trimmed)?;
-            // 印の前（`- `）は元のまま。印だけを差し替える
-            let bullet = &trimmed[..2];
-            let mark_len = if trimmed[2..].starts_with("[ ] ")
-                || trimmed[2..].starts_with("[x] ")
-                || trimmed[2..].starts_with("[X] ")
+            // 印の前（`- ` や `12. `）は元のまま。印だけを差し替える
+            let prefix = list_prefix_len(trimmed)?;
+            let bullet = &trimmed[..prefix];
+            let after = &trimmed[prefix..];
+            let mark_len = if after.starts_with("[ ] ")
+                || after.starts_with("[x] ")
+                || after.starts_with("[X] ")
             {
                 4
             } else {
                 3
             };
-            let tail = &trimmed[2 + mark_len..];
+            let tail = &trimmed[prefix + mark_len..];
             out.push_str(indent);
             out.push_str(bullet);
             out.push_str(if done { "[x]" } else { "[ ]" });

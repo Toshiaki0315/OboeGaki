@@ -1379,6 +1379,69 @@ mod tests {
     }
 
     #[test]
+    fn test_section_end_共有の見本と同じ答えを出す() {
+        // fixtures/section-cases.json は TS 側（lib/section.sectionOf）と同じ見本。
+        // section_end は終わりだけ返すので、見出しの行の頭はここで探す
+        let raw = include_str!("../../fixtures/section-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for case in found["cases"].as_array().unwrap() {
+            let text = case["text"].as_str().unwrap();
+            let heading = case["heading"].as_str().unwrap();
+            let want = case["section"].as_str();
+            let got = section_end(text, heading).map(|end| {
+                let wanted = heading.trim().to_lowercase();
+                let mut offset = 0;
+                let mut start = None;
+                let mut fence: Option<(char, usize)> = None;
+                for line in text.split_inclusive('\n') {
+                    let trimmed = line.trim_start();
+                    if let Some((c, n)) = fence {
+                        if let Some((cc, nn)) = fence_of(trimmed) {
+                            if cc == c && nn >= n {
+                                fence = None;
+                            }
+                        }
+                    } else if let Some(open) = fence_of(trimmed) {
+                        fence = Some(open);
+                    } else if let Some((_, name)) = heading_of(line) {
+                        if name.to_lowercase() == wanted {
+                            start = Some(offset);
+                            break;
+                        }
+                    }
+                    offset += line.len();
+                }
+                let start = start.expect("見出しの行");
+                format!("{}\n", text[start..end].trim_end_matches('\n'))
+            });
+            assert_eq!(got.as_deref(), want, "見本: {text:?} / {heading}");
+        }
+    }
+
+    #[test]
+    fn test_ignore_list_共有の見本と同じ答えを出す() {
+        // fixtures/mcp-ignore-cases.json は TS 側（mcp-hidden.isHiddenFromMcp）と同じ見本
+        let raw = include_str!("../../fixtures/mcp-ignore-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for case in found["cases"].as_array().unwrap() {
+            let root = TempDir::new().unwrap();
+            fs::write(
+                root.path().join(IGNORE_FILE),
+                case["ignore"].as_str().unwrap(),
+            )
+            .unwrap();
+            let ignore = IgnoreList::load(root.path());
+            let relative = case["relative"].as_str().unwrap();
+            let want = case["hidden"].as_bool().unwrap();
+            // 空（保管フォルダそのもの）は TS 側の判定。Rust の guarded は先に断る
+            if relative.is_empty() {
+                continue;
+            }
+            assert_eq!(ignore.is_ignored(relative), want, "見本: {relative:?}");
+        }
+    }
+
+    #[test]
     fn test_section_end_フェンスは同じ字で同じ長さ以上の行でだけ閉じる() {
         // ```` の中の ``` は閉じない（CommonMark）。TS の section.ts と同じ規則
         let text = "## A\n\n````md\n```\n## 中\n```\n````\n\n## B\n";

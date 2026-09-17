@@ -1455,10 +1455,19 @@ pub fn sanitize_filename(title: &str) -> String {
     }
 }
 
+/// 不可視の書式文字（Unicode の Cf のうち題名に紛れ込みやすいもの）。TS の
+/// `\p{Cf}` と揃える（棚卸し 2026-09-17: ソフトハイフン U+00AD が片側だけ残った）
 fn is_format_char(character: char) -> bool {
     matches!(
         character,
-        '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{FEFF}'
+        '\u{00AD}'
+            | '\u{061C}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
     )
 }
 
@@ -2164,6 +2173,18 @@ mod tests {
 
         assert!(contains(root.path(), &root.path().join("sub/new.md")));
         assert!(!contains(root.path(), Path::new("/no/such/dir/new.md")));
+    }
+
+    #[test]
+    fn test_sanitize_共有の見本と同じ答えを出す() {
+        // fixtures/filename-cases.json は TS 側（note-title.sanitizeStem）と同じ見本
+        let raw = include_str!("../../fixtures/filename-cases.json");
+        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
+        for case in found["cases"].as_array().unwrap() {
+            let title = case["title"].as_str().unwrap();
+            let want = case["stem"].as_str().unwrap();
+            assert_eq!(sanitize_filename(title), want, "見本: {title:?}");
+        }
     }
 
     #[test]

@@ -1,0 +1,50 @@
+{
+  "_comment": "`![[名前#見出し]]` の節の切り出し（ADR-0058）。TS `lib/section.sectionOf` と Rust `mcp::section_end` が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。section は見出しの行から次の同じか浅い見出しの手前まで（末尾の改行は 1 つに揃える）。null は見つからない。",
+  "cases": [
+    {
+      "text": "# 題\n\n## A\n\n本文\n\n## B\n\n後\n",
+      "heading": "A",
+      "section": "## A\n\n本文\n"
+    },
+    {
+      "text": "## A\n\nあ\n\n### A-1\n\nい\n\n## B\n",
+      "heading": "A",
+      "section": "## A\n\nあ\n\n### A-1\n\nい\n"
+    },
+    {
+      "text": "## A\n\n```\n## 中\n```\n\n## B\n",
+      "heading": "A",
+      "section": "## A\n\n```\n## 中\n```\n"
+    },
+    {
+      "text": "## A\n\n````md\n```\n## 中\n```\n````\n\n## B\n",
+      "heading": "A",
+      "section": "## A\n\n````md\n```\n## 中\n```\n````\n"
+    },
+    {
+      "text": "## A ##\n\n本文\n\n## B\n",
+      "heading": "A",
+      "section": "## A ##\n\n本文\n"
+    },
+    {
+      "text": "## A\n\n本文\n",
+      "heading": "a",
+      "section": "## A\n\n本文\n"
+    },
+    {
+      "text": "## A\n\n本文\n",
+      "heading": "無い",
+      "section": null
+    },
+    {
+      "text": "#題\n\n本文\n",
+      "heading": "題",
+      "section": null
+    },
+    {
+      "text": "####### 深すぎ\n\n本文\n",
+      "heading": "深すぎ",
+      "section": null
+    }
+  ]
+}

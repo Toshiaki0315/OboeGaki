@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { firstHeading, sanitizeStem, stripInline } from "./note-title";
 
@@ -26,7 +27,7 @@ describe("sanitizeStem", () => {
   test("test_パス区切りと : はハイフン_空白は畳む_先頭のドットは剥がす（Rust の sanitize_filename と同じ）", () => {
     expect(sanitizeStem("定例 1/15: 進捗\\報告")).toBe("定例 1-15- 進捗-報告");
     expect(sanitizeStem("  ..隠し  名前  ")).toBe("隠し 名前");
-    expect(sanitizeStem("   ")).toBe("");
+    expect(sanitizeStem("   ")).toBe("無題"); // Rust と同じ（共有の見本）
   });
 });
 
@@ -55,5 +56,16 @@ describe("stripInline", () => {
     expect(
       firstHeading('# <span style="color: red">~~会議~~</span> **メモ**\n本文'),
     ).toBe("会議 メモ");
+  });
+});
+
+describe("sanitizeStem: Rust と同じ見本で同じ答えになる（fixtures/filename-cases.json）", () => {
+  const cases: { title: string; stem: string }[] = JSON.parse(
+    readFileSync("fixtures/filename-cases.json", "utf8"),
+  ).cases;
+  test.each(
+    cases.map((c) => [JSON.stringify(c.title).slice(0, 30), c] as const),
+  )("%s", (_label, c) => {
+    expect(sanitizeStem(c.title)).toBe(c.stem);
   });
 });

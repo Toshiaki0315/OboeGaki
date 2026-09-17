@@ -32,10 +32,14 @@ export const NO_MCP_HIDDEN: McpHidden = { listed: [], builtin: [] };
 /// ドットフォルダを飛ばすのと揃える。15-12）
 export function isHiddenFromMcp(hidden: McpHidden, relative: string): boolean {
   if (!relative) return false;
-  if (relative.split("/").some((part) => part.startsWith("."))) return true;
-  return [...hidden.listed, ...hidden.builtin].some(
-    (entry) => relative === entry || relative.startsWith(`${entry}/`),
-  );
+  // NFC に寄せて比べる（Rust と同じ。Finder が作った名前は NFD で来ることがある。
+  // 共有の見本 fixtures/mcp-ignore-cases.json が両側を見張る）
+  const target = relative.normalize("NFC");
+  if (target.split("/").some((part) => part.startsWith("."))) return true;
+  return [...hidden.listed, ...hidden.builtin].some((raw) => {
+    const entry = raw.normalize("NFC");
+    return target === entry || target.startsWith(`${entry}/`);
+  });
 }
 
 /// その道を**親ごと**隠している場所（`.mcp-ignore` の行、または最初から
@@ -47,14 +51,16 @@ export function hiddenByAncestor(
   relative: string,
 ): string | null {
   if (!relative) return null;
+  const target = relative.normalize("NFC");
   // 途中のドット始まりの成分（そこまでの道が「親」）
-  const parts = relative.split("/");
+  const parts = target.split("/");
   for (let depth = 0; depth < parts.length - 1; depth++) {
     if (parts[depth].startsWith("."))
       return parts.slice(0, depth + 1).join("/");
   }
-  for (const entry of [...hidden.listed, ...hidden.builtin]) {
-    if (entry !== relative && relative.startsWith(`${entry}/`)) return entry;
+  for (const raw of [...hidden.listed, ...hidden.builtin]) {
+    const entry = raw.normalize("NFC");
+    if (entry !== target && target.startsWith(`${entry}/`)) return entry;
   }
   return null;
 }

@@ -1,0 +1,72 @@
+{
+  "_comment": "本文から拾う `#タグ`（参照実装 core/tags.py の TAG_RE）。Rust `tags::extract_tags`（索引）と TS の Lezer 拡張 Hashtag + `normalizeTag` が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。出現順・重複なし・正規化済み（小文字、空の成分を落とす）。",
+  "cases": [
+    {
+      "text": "#a b\n",
+      "tags": [
+        "a"
+      ]
+    },
+    {
+      "text": "x#a\n",
+      "tags": []
+    },
+    {
+      "text": "https://e.com/#a\n",
+      "tags": []
+    },
+    {
+      "text": "`#a`\n",
+      "tags": []
+    },
+    {
+      "text": "```\n#a\n```\n",
+      "tags": []
+    },
+    {
+      "text": "#A/B\n",
+      "tags": [
+        "a/b"
+      ]
+    },
+    {
+      "text": "#a#b\n",
+      "tags": [
+        "a"
+      ]
+    },
+    {
+      "text": "#a　b\n",
+      "tags": [
+        "a"
+      ]
+    },
+    {
+      "text": "#\n",
+      "tags": []
+    },
+    {
+      "text": "#/ と #//\n",
+      "tags": []
+    },
+    {
+      "text": "#a #a\n",
+      "tags": [
+        "a"
+      ]
+    },
+    {
+      "text": "- #a\n",
+      "tags": [
+        "a"
+      ]
+    },
+    {
+      "text": "#日報 #会議\n",
+      "tags": [
+        "日報",
+        "会議"
+      ]
+    }
+  ]
+}

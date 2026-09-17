@@ -15,7 +15,7 @@ export function lineStartOffset(text: string, line: number): number | null {
 /// 印の後ろは空白か行末。Rust `tasks::task_marker` と同じ規則で、共有の
 /// 見本（fixtures/task-marker-cases.json）が両側を見張る（棚卸し 2026-09-17:
 /// TS だけが `- [ ]a` を印と見なしていた）
-const TASK_LINE_RE = /^([ \t]*[-*+] )\[( |x|X)\](?:( )(.*)|$)/;
+const TASK_LINE_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)]) )\[( |x|X)\](?:( )(.*)|$)/;
 
 /// その行がやることの印を持つか。持てば済んだかと本文
 export function taskMarkerOf(

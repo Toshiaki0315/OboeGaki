@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { sectionOf, splitEmbedTarget } from "./section";
 
@@ -41,5 +42,18 @@ describe("sectionOf のコードフェンス", () => {
     const found = sectionOf(mixed, "A");
     expect(found).toContain("## 中");
     expect(found).not.toContain("## B");
+  });
+});
+
+describe("sectionOf: Rust と同じ見本で同じ答えになる（fixtures/section-cases.json）", () => {
+  const cases: { text: string; heading: string; section: string | null }[] =
+    JSON.parse(readFileSync("fixtures/section-cases.json", "utf8")).cases;
+  test.each(
+    cases.map(
+      (c) =>
+        [`${JSON.stringify(c.text).slice(0, 30)} / ${c.heading}`, c] as const,
+    ),
+  )("%s", (_label, c) => {
+    expect(sectionOf(c.text, c.heading)).toBe(c.section);
   });
 });

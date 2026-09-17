@@ -949,16 +949,22 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] タスク印 `- [ ]` の判定（`fixtures/task-marker-cases.json`。Rust
             `task_marker` と `lib/tasks.taskMarkerOf` が読む。TS だけが `- [ ]a` を印
             と見なしていた。2026-09-17）
-      - [ ] タスク印の残り: `format-commands.ts` は番号付き（`1. [ ]`）も受け、
-            `input-assist.ts` は受けない。索引（Rust）は受けない。GFM は番号付きも
-            やることなので、Rust 側で受けるように広げるか決めてから見本に足す
-      - [ ] ファイル名の正規化（`sanitizeStem` と `sanitize_filename`。書式文字の
-            範囲・200 バイト・「無題」）
-      - [ ] `#タグ` の境界（行頭記号の直後、フェンスの閉じ方が 2 種類）
-      - [ ] 見出し節の切り出し（`section.ts` と `mcp::section_end`）
-      - [ ] `.mcp-ignore` の照合（TS は NFC に寄せていない）
-      - [ ] `fixtures/*.md` と `golden/*.json` はどのテストからも読まれていない。
-            読むテストを足すか「spikes のオラクル生成の入力」と注記する
+      - [x] 番号付きのやること（`1. [ ]` `12) [x]`）を索引でも受けることにした
+            （GFM と同じ。`tasks::list_prefix_len` / `lib/tasks.taskMarkerOf`。見本に
+            3 例足した。2026-09-17）。`input-assist` の Enter は番号を継続するだけで
+            `[ ]` は付けない（そのまま）
+      - [x] ファイル名の正規化（`fixtures/filename-cases.json`。Rust の書式文字の範囲を
+            TS の `\p{Cf}` に寄せ、TS は「無題」と 200 バイトの切り詰めを足した。2026-09-17）
+      - [x] `#タグ` の境界（`fixtures/tag-cases.json`。TS は `lib/tag-name.normalizeTag`
+            を置いた。Rust は `#/` の空タグを索引に入れない。`>#a` のような行頭記号の
+            直後は両側で違いうるが見本には入れていない。2026-09-17）
+      - [x] 見出し節の切り出し（`fixtures/section-cases.json`。2026-09-17）
+      - [x] `.mcp-ignore` の照合（`fixtures/mcp-ignore-cases.json`。TS も NFC に寄せた。
+            2026-09-17）
+      - [x] `fixtures/*.md` と `golden/*.json` はブロックの種類で突き合わせる
+            （`editor/golden-blocks.test.ts`）。ranges は Qt の表現なので見ない。参照
+            実装と**意図して違える** 5 行（GFM に合わない表・Setext 見出し）は
+            DIVERGENT に書いた（2026-09-17）
       - [ ] 低: `SearchQuery::filter_only` が未使用／CI の toolchain・Node が未固定
             （`rust-toolchain.toml` と `.nvmrc`）／`package.json` の scripts が未使用
 - [ ] **17-2. Rust の残り**（監査 2026-09-17）

@@ -1,0 +1,77 @@
+{
+  "_comment": "`.mcp-ignore` の照合（ADR-0051）。Rust `mcp::IgnoreList::is_ignored` と TS `mcp-hidden.isHiddenFromMcp` が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。hiddenBy は TS だけ（親ごと隠れているときの親）。",
+  "builtin": [
+    ".trash",
+    ".OboeGaki",
+    "attachments",
+    "templates"
+  ],
+  "cases": [
+    {
+      "ignore": "秘密\n",
+      "relative": "秘密/子.md",
+      "hidden": true,
+      "hiddenBy": "秘密"
+    },
+    {
+      "ignore": "秘密\n",
+      "relative": "秘密2/x.md",
+      "hidden": false,
+      "hiddenBy": null
+    },
+    {
+      "ignore": "秘密\n",
+      "relative": "秘密",
+      "hidden": true,
+      "hiddenBy": null
+    },
+    {
+      "ignore": "",
+      "relative": ".trash/x.md",
+      "hidden": true,
+      "hiddenBy": ".trash"
+    },
+    {
+      "ignore": "",
+      "relative": "a/.git/x.md",
+      "hidden": true,
+      "hiddenBy": "a/.git"
+    },
+    {
+      "ignore": "ゲ\n",
+      "relative": "ゲ/x.md",
+      "hidden": true,
+      "hiddenBy": "ゲ"
+    },
+    {
+      "ignore": "# コメント\n\n秘密/\n",
+      "relative": "秘密/a.md",
+      "hidden": true,
+      "hiddenBy": "秘密"
+    },
+    {
+      "ignore": "",
+      "relative": "templates/x.md",
+      "hidden": true,
+      "hiddenBy": "templates"
+    },
+    {
+      "ignore": "",
+      "relative": "",
+      "hidden": false,
+      "hiddenBy": null
+    },
+    {
+      "ignore": "仕事/評価\n",
+      "relative": "仕事/評価/2026.md",
+      "hidden": true,
+      "hiddenBy": "仕事/評価"
+    },
+    {
+      "ignore": "仕事/評価\n",
+      "relative": "仕事/a.md",
+      "hidden": false,
+      "hiddenBy": null
+    }
+  ]
+}
