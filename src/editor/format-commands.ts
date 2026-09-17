@@ -313,7 +313,10 @@ export function linesCommand(
   return ({ state, dispatch }) => {
     const { from, to } = state.selection.main;
     const first = state.doc.lineAt(from);
-    const last = state.doc.lineAt(to);
+    // 行を末尾の改行込みで選ぶと `to` は次の行頭に来る。そこで止めないと
+    // 選んでいない行まで巻き込む（棚卸し 2026-09-17）
+    const endsAtLineStart = to > from && state.doc.lineAt(to).from === to;
+    const last = state.doc.lineAt(endsAtLineStart ? to - 1 : to);
     const lines: string[] = [];
     for (let n = first.number; n <= last.number; n++) {
       lines.push(state.doc.line(n).text);

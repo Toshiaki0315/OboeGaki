@@ -123,19 +123,23 @@ export const wysiwygField = StateField.define<boolean>({
 
 /// 書き込んでいる行（その行頭の位置）。プレビューモードで記法を出す唯一の行。
 ///
-/// **書いたときだけ**その行になる（打つ・消す・貼る = userEvent の input /
-/// delete）。カーソルを置いただけ・選んだだけでは変わらず、別の行へ移ると
-/// 忘れる。書式ツールバーからの書き換えは userEvent を持たないので、
-/// 記法を出さずに済む
+/// **書いたときだけ**その行になる（打つ・貼る・落とす・消す = userEvent の
+/// `input.type` / `input.paste` / `input.drop` / `delete`）。カーソルを置いた
+/// だけ・選んだだけでは変わらず、別の行へ移ると忘れる。書式ツールバーの
+/// コマンドは userEvent が素の `"input"` で、`isUserEvent("input")` だと前方
+/// 一致で拾ってしまう（棚卸し 2026-09-17）。ツールバーで直しても記法を出さない
+/// のが ADR-0065 の狙いなので、字を打つ種類だけを数える
 export const typingLineField = StateField.define<number | null>({
   create: () => null,
   update(value, tr) {
     const head = tr.state.selection.main.head;
     const headLine = tr.state.doc.lineAt(head).from;
-    if (
-      tr.docChanged &&
-      (tr.isUserEvent("input") || tr.isUserEvent("delete"))
-    ) {
+    const typed =
+      tr.isUserEvent("input.type") ||
+      tr.isUserEvent("input.paste") ||
+      tr.isUserEvent("input.drop") ||
+      tr.isUserEvent("delete");
+    if (tr.docChanged && typed) {
       return headLine;
     }
     if (value === null) return null;
@@ -150,10 +154,18 @@ export const typingLineField = StateField.define<number | null>({
   },
 });
 
-/// リビールの前提が変わった transaction か（装飾を作り直す合図）。
+/// 見え方のモードが切り替わった transaction か（ソース／プレビュー）。
+/// ブロックのウィジェット（表・図・数式・囲み）はこれだけを見る — それらは
+/// 「書き込んでいる行」を見ないので、その移り変わりで数え直す理由が無い
+/// （全行走査 + JSON.stringify が行を移るごとに走っていた。棚卸し 2026-09-17）
+export function revealModeSwitched(tr: Transaction): boolean {
+  return tr.effects.some((e) => e.is(setSourceMode) || e.is(setWysiwyg));
+}
+
+/// リビールの前提が変わった transaction か（インラインの装飾を作り直す合図）。
 /// モードの切り替えと、プレビューモード中の「書き込んでいる行」の移り変わり
 export function revealModeChanged(tr: Transaction): boolean {
-  if (tr.effects.some((e) => e.is(setSourceMode) || e.is(setWysiwyg))) {
+  if (revealModeSwitched(tr)) {
     return true;
   }
   return (
@@ -835,6 +847,11 @@ export function previewDecorations(
       // --- 表: 生のソースのまま触らない（描画は tableDecorations = StateField
       //     の担当。表示中もリビール中も、中のマーカー隠しは掛けない）
       if (node.name === "Table") return false;
+      // --- 脚注の定義 `[^1]: 本文` と参照の定義 `[foo]: url` は生のまま。
+      //     Lezer では LinkReference で、中の URL 扱いの部分（= 定義の本文）を
+      //     隠すと画面に `[^1]` だけが残る（参照実装は定義の本文を残す。
+      //     棚卸し 2026-09-17）
+      if (node.name === "LinkReference") return false;
       // --- 画像: 行まるごとが画像 1 つのときだけ絵に置き換える（ADR-0004）。
       //     文中の画像はリンク扱い（マーカー隠しに任せる）
       if (node.name === "Image") {
@@ -897,14 +914,18 @@ export function previewDecorations(
       if (node.name === "HTMLTag") {
         const span = colorSpanAt(state, node.node);
         if (!span) return;
-        out.push(
-          Decoration.mark({
-            attributes: {
-              class: "cm-text-color",
-              style: colorVariables(span.color),
-            },
-          }).range(span.open.to, span.close.from),
-        );
+        // 中身が無い（開きと閉じが隣接）と mark が空になり、CM6 が投げて
+        // プラグインごと止まる → その文書の装飾が全部消える（棚卸し 2026-09-17）
+        if (span.close.from > span.open.to) {
+          out.push(
+            Decoration.mark({
+              attributes: {
+                class: "cm-text-color",
+                style: colorVariables(span.color),
+              },
+            }).range(span.open.to, span.close.from),
+          );
+        }
         if (
           !lineSelected(node.from) &&
           !touchesSelection(state, span.open.from, span.close.to)
@@ -962,12 +983,16 @@ export function previewDecorations(
           const fenceFirst = state.doc.lineAt(node.from);
           const fenceLast = state.doc.lineAt(node.to);
           const bandFrom = fileName ? fenceFirst.from : fenceFirst.to + 1;
+          // 閉じが無い書きかけでは last はコードの実データ行。帯から外すと、
+          // いま打っている当の行だけ素の背景になる（棚卸し 2026-09-17）
+          const fenceClosed = node.node.getChildren("CodeMark").length >= 2;
+          const bandTo = fenceClosed ? fenceLast.from - 1 : fenceLast.to;
           if (fenceLast.from > fenceFirst.to || fileName) {
             pushLineClass(
               out,
               state,
               bandFrom,
-              Math.max(bandFrom, fenceLast.from - 1),
+              Math.max(bandFrom, bandTo),
               "cm-codeblock-line",
             );
           }
@@ -985,7 +1010,6 @@ export function previewDecorations(
           // 閉じフェンスの行は**閉じているときだけ**隠す。閉じの無い
           // 書きかけでは last はコードの実データ行で、隠すと「書いた行が
           // 消えた」ように見える（input-assist と同じ CodeMark 数の判定）
-          const fenceClosed = node.node.getChildren("CodeMark").length >= 2;
           if (fenceClosed && last.from > first.from) {
             out.push(Decoration.replace({}).range(last.from, last.to));
           }
@@ -1579,7 +1603,7 @@ function changedZones(before: string, after: string): number[] {
 export const blockWidgetField = StateField.define<DecorationSet>({
   create: computeBlockWidgetSet,
   update(value, tr) {
-    const modeChanged = revealModeChanged(tr);
+    const modeChanged = revealModeSwitched(tr);
     const themeChanged = tr.effects.some((e) => e.is(setDiagramTheme));
     if (modeChanged || themeChanged) return computeBlockWidgetSet(tr.state);
     const meta = blockWidgetMeta.get(value);
@@ -1638,7 +1662,7 @@ export const blockWidgetField = StateField.define<DecorationSet>({
 export const tableField = StateField.define<DecorationSet>({
   create: computeTableSet,
   update(value, tr) {
-    const modeChanged = revealModeChanged(tr);
+    const modeChanged = revealModeSwitched(tr);
     if (modeChanged) return computeTableSet(tr.state);
     const meta = tableMeta.get(value);
     if (!meta) return computeTableSet(tr.state);

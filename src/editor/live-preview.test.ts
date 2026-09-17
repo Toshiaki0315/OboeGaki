@@ -3,13 +3,19 @@
 // テストできる（widget の描画は除く — それは実機で見る）。
 
 import { describe, expect, test } from "vitest";
-import { EditorSelection, EditorState, type Range } from "@codemirror/state";
+import {
+  EditorSelection,
+  EditorState,
+  RangeSet,
+  type Range,
+} from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { Table, TaskList } from "@lezer/markdown";
 import { relaxedAsterisk } from "./relaxed-emphasis";
 import { extendedInline } from "./extended-inline";
+import { FORMAT_COMMANDS } from "./format-commands";
 import {
   bulletGlyph,
   blockWidgetDecorations,
@@ -1127,5 +1133,85 @@ describe("プレビューモードでもブロックのウィジェットはカ�
       previewState(math, math.indexOf("x^2")),
     ).map(simplify);
     expect(inside.length).toBeLessThan(outside.length);
+  });
+});
+
+describe("棚卸しレビュー 2026-09-17（エディタ層）", () => {
+  test("test_中身の無い色_span_で装飾が丸ごと死なない", () => {
+    // 開きと閉じが隣接すると mark が空になり、CM6 が「Mark decorations may not
+    // be empty」を投げて hideMarkers プラグインごと止まる → その文書では点も
+    // 見出し隠しも全部消えていた
+    const doc = '前 <span style="color: red"></span> 後\n\n- 項目';
+    const ranges = previewDecorations(stateOf(doc, 0), 0, doc.length);
+    expect(() => RangeSet.of(ranges, true)).not.toThrow();
+    const decos = ranges.map(simplify);
+    expect(decos.some((d) => d.kind.startsWith("bullet:"))).toBe(true);
+  });
+
+  test("test_プレビューモードで書式ツールバーを押しても記法は出ない", () => {
+    // ADR-0065: 直しはツールバーから。コマンドの userEvent は "input" なので
+    // 「打った」と見なして行を開いてしまっていた
+    const base = EditorState.create({
+      doc: "太字 の行\n次",
+      selection: { anchor: 0, head: 2 },
+      extensions: [LANG, wysiwygField.init(() => true), typingLineField],
+    });
+    let next = base;
+    FORMAT_COMMANDS.strong({
+      state: base,
+      dispatch: (tr) => void (next = tr.state),
+    });
+    expect(next.doc.toString()).toBe("**太字** の行\n次");
+    const decos = previewDecorations(next, 0, next.doc.length).map(simplify);
+    expect(has(decos, { from: 0, to: 2, kind: "hide" })).toBe(true);
+  });
+
+  test("test_プレビューモードで行を移っても表の装飾は作り直さない", () => {
+    // ブロックのウィジェットは「書き込んでいる行」を見ないので、その移り変わり
+    // で数え直す理由が無い。全行走査 + JSON.stringify が行を移るごとに走っていた
+    const doc =
+      "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n本文の段落。\nもう一つ。";
+    const base = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [
+        LANG,
+        sourceModeField,
+        wysiwygField.init(() => true),
+        typingLineField,
+        tableField,
+      ],
+    });
+    const typed = base.update({
+      changes: { from: doc.length, insert: "あ" },
+      selection: { anchor: doc.length + 1 },
+      userEvent: "input.type",
+    }).state;
+    const moved = typed.update({
+      selection: { anchor: doc.indexOf("本文") },
+    }).state;
+    expect(moved.field(tableField)).toBe(typed.field(tableField));
+  });
+
+  test("test_脚注の定義行の本文は隠さない（参照実装と同じ）", () => {
+    // `[^1]: 定義の本文` は Lezer では LinkReference。URL 扱いで本文まで隠れ、
+    // 画面には `[^1]` だけが残っていた
+    const doc = "本文[^1]。\n\n[^1]: 定義の本文\n";
+    const decos = decorationsOf(doc, 0);
+    const body = doc.indexOf("定義の本文");
+    expect(
+      decos.some(
+        (d) => d.kind === "hide" && d.from <= body && d.to >= body + 5,
+      ),
+    ).toBe(false);
+  });
+
+  test("test_閉じの無いフェンスでも最後の行に帯が付く", () => {
+    // 書きかけで打っている当の行が帯から外れて素の背景になっていた
+    const doc = "```js\nconst a = 1;\nconst b = 2;";
+    const decos = decorationsOf(doc, 0);
+    expect(
+      hasLineClass(decos, doc.indexOf("const b"), "cm-codeblock-line"),
+    ).toBe(true);
   });
 });

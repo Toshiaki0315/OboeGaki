@@ -256,6 +256,13 @@ describe("FORMAT_COMMANDS", () => {
     return { handled, doc: next.doc.toString() };
   }
 
+  test("行頭で終わる選択は次の行を巻き込まない（棚卸し 2026-09-17）", () => {
+    // 行を末尾の改行込みで選ぶと `to` が次の行頭に来る。そこで止めないと
+    // 選んでいない行まで箇条書きになる
+    expect(run("bullet", "a\nb", 0, 2).doc).toBe("- a\nb");
+    expect(run("bullet", "a\nb", 0, 3).doc).toBe("- a\n- b");
+  });
+
   test("文字の装飾は選択を囲む", () => {
     expect(run("strong", "あい", 0, 2).doc).toBe("**あい**");
     expect(run("emphasis", "あい", 0, 2).doc).toBe("*あい*");

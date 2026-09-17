@@ -85,3 +85,12 @@ describe("裸 URL", () => {
     });
   });
 });
+
+describe("参照実装と意図して違えるもの（棚卸し 2026-09-17）", () => {
+  test("test_日本語の字に続く_URL_も拾う（参照実装の \\w は Unicode）", () => {
+    // Python の `(?<![\\w/])` は Unicode の単語文字なので「例https://a.jp」を
+    // URL にしない。JS の `\\w` は ASCII だけなので拾う。日本語では空白を
+    // 挟まずに URL を書くことが多く、こちらのほうが便利なので**意図して**離れる
+    expect(nodesOf("例https://a.jp", "BareURL")).toEqual([[1, 13]]);
+  });
+});
