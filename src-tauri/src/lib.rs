@@ -2,6 +2,9 @@
 // vault・保存・監視などの永続化コマンドはここに載せていく
 // （hitofude の core/ + storage/ に相当する層。GUI 非依存でテストする）。
 
+// テストの中の unwrap は設計どおり（CLAUDE.md §6）。本番コードだけ lint で止める
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod assets;
 pub mod autosave;
 pub mod commands;

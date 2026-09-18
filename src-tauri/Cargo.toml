@@ -71,3 +71,9 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "io-std"]
 [dev-dependencies]
 tempfile = "3.27.0"
 
+# CLAUDE.md §6「unwrap() はテストと初期化以外で使わない」を lint で見張る
+# （2026-09-18 時点で本番コードの unwrap は 0。テストは lib.rs の
+# cfg_attr(test, allow) で通す。初期化での使用は場所ごとに allow を書く）。
+[lints.clippy]
+unwrap_used = "warn"
+

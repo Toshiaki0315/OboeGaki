@@ -9,6 +9,8 @@
 //! 見るのは「バイナリとして繋がるか」だけ — 道具 1 つ 1 つの中身は
 //! `mcp` モジュールの単体テストが見ている（同じことを 2 度見ない）。
 
+// 結合テストの unwrap は設計どおり（CLAUDE.md §6。lib の cfg_attr は別 crate には届かない）
+#![allow(clippy::unwrap_used)]
 #![allow(non_snake_case)]
 
 use std::io::{BufRead, BufReader, Write};
