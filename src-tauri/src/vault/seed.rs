@@ -76,6 +76,19 @@ mod tests {
     }
 
     #[test]
+    fn test_mcp_manual_貼り方の_3_つの場合を全部書いてある() {
+        // 空のとき／mcpServers が既にあるとき／他の設定はあるが mcpServers が無いとき。
+        // 3 つ目が抜けていて、外側の `{ }` ごと貼って壊した人がいた（2026-09-18）
+        for heading in [
+            "### ファイルが空っぽ、または `{}` だけのとき",
+            "### 既に `\"mcpServers\"` があるとき",
+            "### 他の設定はあるが `\"mcpServers\"` が無いとき",
+        ] {
+            assert!(MCP_MANUAL.contains(heading), "無い節: {heading}");
+        }
+    }
+
+    #[test]
     fn test_place_mcp_manual_置いた場所を返し_既にあるノートを消さない() {
         let (root, vault) = temp_vault();
         let first = vault.place_mcp_manual().unwrap();

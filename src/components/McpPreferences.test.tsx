@@ -37,4 +37,11 @@ describe("McpPreferences", () => {
       vi.useRealTimers();
     }
   });
+
+  test("test_つなぎ方に_他の設定があるときの貼り方を書いてある", () => {
+    render(<McpPreferences onCopyMcpConfig={() => Promise.resolve(true)} />);
+    // 設定ファイルに Claude Desktop 自身の設定が入っていると、コピーしたものを
+    // 塊ごと貼ると `{ }` が二重になって壊れる（2026-09-18）
+    expect(screen.getByText(/外側の `?\{ \}`? を外して/)).toBeTruthy();
+  });
 });

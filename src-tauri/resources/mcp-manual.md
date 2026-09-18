@@ -82,7 +82,29 @@
 中身をぜんぶ消して、**手順 1 でコピーしたものをそのまま貼り付けて**
 保存します。これで終わりです。
 
-### 既に何か書いてあるとき
+### 他の設定はあるが `"mcpServers"` が無いとき
+
+**いちばん多いのはこの場合です。** Claude Desktop は自分の設定（`preferences`
+など）をこのファイルに書くので、MCP をまだ何もつないでいなくても中身は空では
+ありません。コピーしたものを**塊ごと**貼ると `{` `}` が二重になって壊れ、
+Claude Desktop が「見つかりません」と言います。
+
+コピーしたものの**外側の `{` `}` を外して**、`"mcpServers": { … },` を
+いちばん外側の項目の 1 つとして足します。
+
+```json
+{
+  "mcpServers": {
+    "oboegaki": {
+      "command": "/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp",
+      "args": ["/Users/あなた/Documents/OboeGakiNotes"]
+    }
+  },
+  "preferences": { "…もとからあった設定…": true }
+}
+```
+
+### 既に `"mcpServers"` があるとき
 
 すでに他のアプリをつないでいる場合です。`"mcpServers": {` の次の行に、
 コピーしたものの**内側だけ**を足します。

@@ -60,8 +60,10 @@ export function McpPreferences({ onCopyMcpConfig }: McpPreferencesProps) {
       <p className="pref-note">
         上の「設定をコピー」を押し、Claude Desktop の設定ファイル
         （claude_desktop_config.json）に貼って、Claude Desktop を開き直します。
-        はじめての方は、ヘルプメニューの「Claude とつなぐ（MCP）の手引きを置く」
-        から、手順を書いたノートを出せます。
+        ファイルに他の設定が入っているときは、コピーしたものの外側の {"{ }"}{" "}
+        を外して、いちばん外側の項目の 1
+        つとして足します。はじめての方は、ヘルプメニューの「Claude
+        とつなぐ（MCP）の手引きを置く」 から、手順を書いたノートを出せます。
       </p>
       <h3 className="pref-section">見せない場所</h3>
       <p className="pref-note">
