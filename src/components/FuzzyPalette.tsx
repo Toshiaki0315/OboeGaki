@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import { rankCandidates } from "../lib/fuzzy";
 import { imeEnterGuard } from "../lib/ime";
+import { Dialog } from "./Dialog";
 
 export type FuzzyPaletteProps = {
   placeholder: string;
@@ -42,57 +43,50 @@ export function FuzzyPalette({
   }
 
   return (
-    <div className="palette-backdrop" onMouseDown={onClose}>
-      <div
-        className="palette"
-        role="dialog"
-        aria-label={placeholder}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <input
-          autoFocus
-          className="palette-input"
-          placeholder={placeholder}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.currentTarget.value);
-            setAt(0);
-          }}
-          onCompositionEnd={(event) => ime.onCompositionEnd(event.nativeEvent)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") onClose();
-            else if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setAt((i) => Math.min(i + 1, ranked.length - 1));
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setAt((i) => Math.max(i - 1, 0));
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              if (!ime.isImeEnter(event.nativeEvent)) choose(at);
-            }
-          }}
-        />
-        <ul>
-          {ranked.map((original, rankedIndex) => (
-            <li key={original}>
-              <button
-                className={rankedIndex === at ? "selected" : ""}
-                style={
-                  indentOf
-                    ? { paddingLeft: `${0.5 + indentOf(original)}rem` }
-                    : undefined
-                }
-                onMouseEnter={() => setAt(rankedIndex)}
-                onClick={() => choose(rankedIndex)}
-              >
-                {labels[original]}
-              </button>
-            </li>
-          ))}
-          {ranked.length === 0 && <li className="no-hits">見つかりません</li>}
-        </ul>
-      </div>
-    </div>
+    <Dialog label={placeholder} onClose={onClose}>
+      <input
+        autoFocus
+        className="palette-input"
+        placeholder={placeholder}
+        value={query}
+        onChange={(event) => {
+          setQuery(event.currentTarget.value);
+          setAt(0);
+        }}
+        onCompositionEnd={(event) => ime.onCompositionEnd(event.nativeEvent)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose();
+          else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setAt((i) => Math.min(i + 1, ranked.length - 1));
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setAt((i) => Math.max(i - 1, 0));
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            if (!ime.isImeEnter(event.nativeEvent)) choose(at);
+          }
+        }}
+      />
+      <ul>
+        {ranked.map((original, rankedIndex) => (
+          <li key={original}>
+            <button
+              className={rankedIndex === at ? "selected" : ""}
+              style={
+                indentOf
+                  ? { paddingLeft: `${0.5 + indentOf(original)}rem` }
+                  : undefined
+              }
+              onMouseEnter={() => setAt(rankedIndex)}
+              onClick={() => choose(rankedIndex)}
+            >
+              {labels[original]}
+            </button>
+          </li>
+        ))}
+        {ranked.length === 0 && <li className="no-hits">見つかりません</li>}
+      </ul>
+    </Dialog>
   );
 }

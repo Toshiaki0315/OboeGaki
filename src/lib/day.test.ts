@@ -1,7 +1,7 @@
 // 日付の文字（TASKS 7-5）。
 
 import { describe, expect, it } from "vitest";
-import { dayValue } from "./day";
+import { clockValue, dayValue, stampValue } from "./day";
 
 describe("dayValue", () => {
   it("test_年月日をゼロ詰めで返す", () => {
@@ -16,5 +16,15 @@ describe("dayValue", () => {
 
   it("test_23 時台でも翌日にしない", () => {
     expect(dayValue(new Date(2026, 8, 6, 23, 30))).toBe("2026-09-06");
+  });
+});
+
+// 4 か所に同じ pad + YYYY-MM-DD があった（note-order / pptx / StatusBar。19-3）
+describe("stampValue / clockValue", () => {
+  it("test_日付と時刻を分で", () => {
+    expect(stampValue(new Date(2026, 8, 6, 9, 5))).toBe("2026-09-06 09:05");
+  });
+  it("test_時刻だけ", () => {
+    expect(clockValue(new Date(2026, 8, 6, 9, 5))).toBe("09:05");
   });
 });

@@ -6,6 +6,7 @@ import { NOTE_DRAG_TYPE } from "../lib/note-drop";
 import { draggedNotes, encodeNoteDrag } from "../lib/note-selection";
 import { formatStamp, type NoteEntry } from "../lib/note-order";
 import { labelFolder, noteStem } from "../lib/note-path";
+import { menuAt } from "../lib/context-menu";
 
 export type NoteRowsProps = {
   notes: readonly NoteEntry[];
@@ -99,10 +100,7 @@ export function NoteRows({
               }
               onOpen(entry.path);
             }}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              onMenu({ path: entry.path, x: event.clientX, y: event.clientY });
-            }}
+            onContextMenu={menuAt(onMenu, { path: entry.path })}
           >
             {/* 題名・冒頭・フォルダ・日付の 4 段（要望 2026-09-07）。題名は
               ファイル名の幹だけにして、フォルダは自分の段に出す */}

@@ -29,7 +29,7 @@ export type Graph = {
 };
 
 /// 描く点の上限。
-export const MAX_NODES = 60;
+const MAX_NODES = 60;
 /// 既定の深さ。1 だと隣しか見えず、3 だと一気に増える。
 export const DEFAULT_DEPTH = 2;
 

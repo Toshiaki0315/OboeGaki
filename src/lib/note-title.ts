@@ -4,28 +4,12 @@
 // （`Vault::rename` → `with_title`）、ここは逆向き — 本文の H1 が変わったら
 // 保存のあとでファイル名を追わせる — の判断材料を出す純関数。
 
+import { proseLines } from "../markdown/prose-lines";
+
 /// 最初の H1 の文字。front matter とコードフェンスの中は見ない。
 /// `##` 以下は「一番上の見出し」ではないので数えない。無ければ null
 export function firstHeading(text: string): string | null {
-  const lines = text.split("\n");
-  let inFrontMatter = false;
-  let inFence = false;
-  for (let number = 0; number < lines.length; number++) {
-    const line = lines[number];
-    if (number === 0 && line.trimEnd() === "---") {
-      inFrontMatter = true;
-      continue;
-    }
-    if (inFrontMatter) {
-      if (line.trimEnd() === "---") inFrontMatter = false;
-      continue;
-    }
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
+  for (const { line } of proseLines(text)) {
     const found = /^# +(\S.*)$/.exec(line);
     if (found) {
       const cleaned = stripInline(found[1])

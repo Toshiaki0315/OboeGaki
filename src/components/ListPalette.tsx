@@ -3,6 +3,7 @@
 // 選択位置は**このパレットだけが持つ**。
 
 import { useState } from "react";
+import { Dialog } from "./Dialog";
 
 export type ListItem = {
   key: string;
@@ -27,47 +28,42 @@ export function ListPalette({
 }: ListPaletteProps) {
   const [at, setAt] = useState(0);
   return (
-    <div className="palette-backdrop" onMouseDown={onClose}>
-      <div
-        className="palette"
-        role="dialog"
-        aria-label={title}
-        onMouseDown={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-          else if (event.key === "ArrowDown") {
-            event.preventDefault();
-            setAt((i) => Math.min(i + 1, items.length - 1));
-          } else if (event.key === "ArrowUp") {
-            event.preventDefault();
-            setAt((i) => Math.max(i - 1, 0));
-          } else if (event.key === "Enter") {
-            event.preventDefault();
-            if (items[at]) onChoose(at);
-          }
-        }}
-      >
-        <header className="palette-title">{title}</header>
-        <ul>
-          {items.map((item, index) => (
-            <li key={item.key}>
-              <button
-                autoFocus={index === 0}
-                className={index === at ? "selected" : ""}
-                style={
-                  item.indent === undefined
-                    ? undefined
-                    : { paddingLeft: `${0.5 + item.indent * 0.8}rem` }
-                }
-                onMouseEnter={() => setAt(index)}
-                onClick={() => onChoose(index)}
-              >
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <Dialog
+      title={title}
+      onClose={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+        else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setAt((i) => Math.min(i + 1, items.length - 1));
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          setAt((i) => Math.max(i - 1, 0));
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          if (items[at]) onChoose(at);
+        }
+      }}
+    >
+      <ul>
+        {items.map((item, index) => (
+          <li key={item.key}>
+            <button
+              autoFocus={index === 0}
+              className={index === at ? "selected" : ""}
+              style={
+                item.indent === undefined
+                  ? undefined
+                  : { paddingLeft: `${0.5 + item.indent * 0.8}rem` }
+              }
+              onMouseEnter={() => setAt(index)}
+              onClick={() => onChoose(index)}
+            >
+              {item.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Dialog>
   );
 }

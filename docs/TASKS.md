@@ -1049,7 +1049,14 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             やること／見出しの正規表現 9 定義を 1 か所に。意図して違う 3 つは名前で区別）。
             eslint の `no-restricted-imports` で CM6・React・Tauri・他層を読まないことを
             守る。`lib → editor` は 15 本 → 6 本（残りは Lezer 拡張 2 本・`Text` 型を受ける
-            囲み 2 本・`renderMath`・言語解決。意図して残す。ADR に理由）: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
+            囲み 2 本・`renderMath`・言語解決。意図して残す。ADR に理由）
+      - [x] TS の小物（2026-09-18）: `lib/day.stampValue` `clockValue`（日付整形 4 か所）／
+            `markdown/prose-lines.proseLines`（フェンス走査 3 か所。front matter の判定も
+            front-matter.ts に揃えた）／`slide-split.buildDeck`（デッキ構築 3 か所）／
+            `components/Dialog`（殻 9 コピー。Esc と focus trap は足していない — 足すなら
+            ここ 1 か所）／`components/SideSection`（節ヘッダ 3 コピー。フォルダは別）／
+            `lib/context-menu.menuAt`（右クリック 4 か所）／`--accent`（`#0a84ff` 11 か所）
+            と死にセレクタ 2 つ／自ファイルでしか使わない `export` 17 個を外した: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
       ／NFC・封じ込め・front matter 剥がし・skip-dir・stem 分割の横断ヘルパ
       ／版の時刻整形と `read_note` の統一、関連ノートの計算を `related.rs` に
       （NoteService の前半）／`src/markdown/`（image-size・math の走査・fence info・

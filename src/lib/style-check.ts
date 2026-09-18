@@ -8,6 +8,8 @@
 // 当てられる。外れを出さないことを取る — **1 つの誤検出が、以後全部の
 // 指摘を無視させる**。
 
+import { proseLines } from "../markdown/prose-lines";
+
 export type StyleKind =
   | "redundant"
   | "double-negative"
@@ -193,32 +195,5 @@ function sentences(
 /// **コード例の日本語は文章ではない。** 数え方はタグやリンクの走査と
 /// 揃える（別に書くと「リンクは拾うのに文体は見ない」のような食い違いが出る）。
 function bodyLines(text: string): { offset: number; line: string }[] {
-  const found: { offset: number; line: string }[] = [];
-  let offset = 0;
-  let inFence = false;
-  let inFrontMatter = false;
-  const lines = text.split("\n");
-  lines.forEach((line, index) => {
-    const trimmed = line.trim();
-    if (index === 0 && trimmed === "---") {
-      inFrontMatter = true;
-      offset += line.length + 1;
-      return;
-    }
-    if (inFrontMatter) {
-      if (trimmed === "---") inFrontMatter = false;
-      offset += line.length + 1;
-      return;
-    }
-    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      inFence = !inFence;
-      offset += line.length + 1;
-      return;
-    }
-    if (!inFence && !NOT_PROSE.test(line)) {
-      found.push({ offset, line });
-    }
-    offset += line.length + 1;
-  });
-  return found;
+  return proseLines(text).filter(({ line }) => !NOT_PROSE.test(line));
 }

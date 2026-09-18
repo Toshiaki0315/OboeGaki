@@ -5,6 +5,7 @@
 import { formatStamp } from "../lib/note-order";
 import { trashLabel, trashParts } from "../lib/trash-label";
 import type { TrashEntry } from "../lib/ipc";
+import { menuAt } from "../lib/context-menu";
 
 export type TrashRowsProps = {
   vaultRoot: string;
@@ -39,14 +40,7 @@ export function TrashRows({
               className={`trash-row${entry.path === currentPath ? " selected" : ""}`}
               title={`${trashLabel(vaultRoot, entry.path)}（右クリックで戻す・削除）`}
               onClick={() => onOpen(entry.path)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onMenu({
-                  path: entry.path,
-                  x: event.clientX,
-                  y: event.clientY,
-                });
-              }}
+              onContextMenu={menuAt(onMenu, { path: entry.path })}
             >
               <span className="trash-name">{name}</span>
               <span className="trash-meta">

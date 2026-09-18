@@ -23,9 +23,9 @@ export type Grid = {
 };
 
 /// 余白の広さ（CFG-44）。
-export const MARGIN_SCALES = { compact: 0.8, normal: 1, wide: 1.25 } as const;
+const MARGIN_SCALES = { compact: 0.8, normal: 1, wide: 1.25 } as const;
 /// 字の大きさ（CFG-34 / CFG-38）。
-export const FONT_SCALES = { small: 0.9, normal: 1, large: 1.15 } as const;
+const FONT_SCALES = { small: 0.9, normal: 1, large: 1.15 } as const;
 
 /// 設定から用紙の実寸（インチ）を出す。
 export function pageOf(settings: PptxSettings): PageSize {

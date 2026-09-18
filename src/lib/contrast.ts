@@ -36,8 +36,8 @@ export function contrastRatio(a: string, b: string): number {
 }
 
 /// 本文は 4.5:1、大きな字は 3:1（CFG-19）。
-export const BODY_RATIO = 4.5;
-export const HEADING_RATIO = 3;
+const BODY_RATIO = 4.5;
+const HEADING_RATIO = 3;
 
 export type Verdict = {
   ratio: number;

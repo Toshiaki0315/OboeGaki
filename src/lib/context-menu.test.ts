@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anchorAbove, menuPosition } from "./context-menu";
+import { anchorAbove, menuAt, menuPosition } from "./context-menu";
 
 const viewport = { width: 1000, height: 800 };
 const size = { width: 200, height: 120 };
@@ -49,5 +49,23 @@ describe("menuPosition", () => {
       x: 8,
       y: 8,
     });
+  });
+});
+
+// 右クリックの定型（preventDefault + 押した場所）が 8 か所にあった（19-3）
+describe("menuAt", () => {
+  it("test_OS_のメニューを止めて_押した場所と添えた値で開く", () => {
+    const opened: unknown[] = [];
+    let prevented = false;
+    const handler = menuAt((menu) => opened.push(menu), { tag: "a" });
+    handler({
+      preventDefault: () => {
+        prevented = true;
+      },
+      clientX: 10,
+      clientY: 20,
+    } as unknown as React.MouseEvent);
+    expect(prevented).toBe(true);
+    expect(opened).toEqual([{ tag: "a", x: 10, y: 20 }]);
   });
 });

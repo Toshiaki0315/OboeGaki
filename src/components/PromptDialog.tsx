@@ -4,6 +4,7 @@
 
 import { useMemo, useRef } from "react";
 import { imeEnterGuard } from "../lib/ime";
+import { Dialog } from "./Dialog";
 
 export type PromptDialogProps = {
   title: string;
@@ -40,41 +41,33 @@ export function PromptDialog({
   }
 
   return (
-    <div className="palette-backdrop" onMouseDown={onClose}>
-      <div
-        className="palette"
-        role="dialog"
-        aria-label={title}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="palette-title">{title}</header>
-        <div className="table-dialog-fields">
-          <label>
-            {label}
-            <input
-              ref={input}
-              type={type}
-              autoFocus
-              defaultValue={defaultValue}
-              onCompositionEnd={(event) =>
-                ime.onCompositionEnd(event.nativeEvent)
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  if (!ime.isImeEnter(event.nativeEvent)) confirm();
-                } else if (event.key === "Escape") onClose();
-              }}
-            />
-          </label>
-        </div>
-        {note && <p className="dialog-text">{note}</p>}
-        <div className="dialog-actions">
-          <button onClick={onClose}>やめる</button>
-          <button className="primary" onClick={confirm}>
-            {confirmLabel}
-          </button>
-        </div>
+    <Dialog title={title} onClose={onClose}>
+      <div className="table-dialog-fields">
+        <label>
+          {label}
+          <input
+            ref={input}
+            type={type}
+            autoFocus
+            defaultValue={defaultValue}
+            onCompositionEnd={(event) =>
+              ime.onCompositionEnd(event.nativeEvent)
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                if (!ime.isImeEnter(event.nativeEvent)) confirm();
+              } else if (event.key === "Escape") onClose();
+            }}
+          />
+        </label>
       </div>
-    </div>
+      {note && <p className="dialog-text">{note}</p>}
+      <div className="dialog-actions">
+        <button onClick={onClose}>やめる</button>
+        <button className="primary" onClick={confirm}>
+          {confirmLabel}
+        </button>
+      </div>
+    </Dialog>
   );
 }

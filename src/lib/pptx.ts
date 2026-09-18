@@ -32,6 +32,7 @@ import {
   type BodyLayout,
 } from "./slide-frame";
 import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
+import { dayValue } from "./day";
 
 /// 用紙の名前（`defineLayout` に渡す。GR-06）
 const LAYOUT_NAME = "OBOEGAKI_PAGE";
@@ -72,14 +73,8 @@ export const DEFAULT_PPTX_OPTIONS: PptxOptions = {
 function footerText(deck: Deck, options: PptxOptions): string {
   const base = options.footer.text || deck.title;
   if (!options.footer.showDate) return base;
-  const day = stamp(options.today ?? new Date());
+  const day = dayValue(options.today ?? new Date());
   return base ? `${base}　${day}` : day;
-}
-
-/// `2026-09-06`。**画面と同じ並び**（年から書く。並べ替えで崩れない）。
-function stamp(when: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
 }
 
 export async function buildPptx(

@@ -325,7 +325,7 @@ export function toggleQuote(lines: readonly string[]): string[] {
 }
 
 /// 選択行の並びをまとめて書き換える StateCommand を作る。
-export function linesCommand(
+function linesCommand(
   transform: (lines: readonly string[]) => readonly string[],
 ): StateCommand {
   return ({ state, dispatch }) => {

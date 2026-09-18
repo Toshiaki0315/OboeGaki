@@ -71,7 +71,7 @@ export function copyRange(state: EditorState): [number, number] {
 }
 
 /// 選択（無ければ本文全体）をプレーンテキストとしてクリップボードへ。
-export const copyPlainText = (view: EditorView): boolean => {
+const copyPlainText = (view: EditorView): boolean => {
   const [start, end] = copyRange(view.state);
   const text = plainTextOf(view.state, start, end);
   void navigator.clipboard?.writeText(text).catch(() => {

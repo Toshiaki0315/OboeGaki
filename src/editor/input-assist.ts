@@ -170,7 +170,7 @@ function indentWidth(lead: string): number {
 /// 先頭の組だけ元の番号から始める（`3.` で始めたリストを `1.` に戻さない）。
 /// 点の箇条書きが同じ深さに挟まると、番号の組はそこで切れる（CommonMark でも
 /// 別のリスト）。返すのは行番号（lines の添字）ごとの新しい行。変わらない行は同じ字
-export function renumberList(lines: readonly string[]): string[] {
+function renumberList(lines: readonly string[]): string[] {
   type Level = { width: number; next: number | null }; // null = 点の組
   const stack: Level[] = [];
   let first = true;

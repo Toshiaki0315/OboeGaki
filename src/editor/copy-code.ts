@@ -81,7 +81,7 @@ export const codeCopied = Facet.define<
 });
 
 /// マウスが入っているブロックの位置（外へ出たら null）。
-export const setHoveredCode = StateEffect.define<number | null>();
+const setHoveredCode = StateEffect.define<number | null>();
 
 const hoveredCode = StateField.define<number | null>({
   create: () => null,

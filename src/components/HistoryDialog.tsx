@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { diffLines, foldSame } from "../lib/diff";
 import type { HistoryEntry } from "../lib/ipc";
+import { Dialog } from "./Dialog";
 
 type Compare = "current" | "previous";
 
@@ -65,78 +66,73 @@ export function HistoryDialog({
       : null;
 
   return (
-    <div className="palette-backdrop" onMouseDown={onClose}>
-      <div
-        className="palette history-palette"
-        role="dialog"
-        aria-label="版の履歴"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="palette-title">
-          版の履歴（新しい順・戻す前に今の内容も残ります）
-        </header>
-        <ul>
-          {entries.map((entry, index) => (
-            <li
-              key={entry.path}
-              className={`history-row${index === selected ? " selected" : ""}`}
+    <Dialog
+      label="版の履歴"
+      title="版の履歴（新しい順・戻す前に今の内容も残ります）"
+      className="history-palette"
+      onClose={onClose}
+    >
+      <ul>
+        {entries.map((entry, index) => (
+          <li
+            key={entry.path}
+            className={`history-row${index === selected ? " selected" : ""}`}
+          >
+            <button
+              className="history-stamp"
+              onClick={() => setSelected(index)}
+              aria-pressed={index === selected}
             >
-              <button
-                className="history-stamp"
-                onClick={() => setSelected(index)}
-                aria-pressed={index === selected}
-              >
-                {entry.stamp}
-              </button>
-              <button onClick={() => onRestore(entry)}>戻す</button>
-            </li>
-          ))}
-          {entries.length === 0 && (
-            <li className="no-hits">
-              まだ版がありません（保存から 60 分間隔で残ります）
-            </li>
-          )}
-        </ul>
-        {chosen && (
-          <section className="history-diff" aria-label="差分">
-            <div className="history-compare">
-              <button
-                aria-pressed={compare === "current"}
-                onClick={() => setCompare("current")}
-              >
-                今の本文と比べる
-              </button>
-              <button
-                aria-pressed={compare === "previous"}
-                disabled={previous === null}
-                onClick={() => setCompare("previous")}
-              >
-                1 つ前の版と比べる
-              </button>
-            </div>
-            {rows === null ? (
-              <p className="no-hits">読み込み中…</p>
-            ) : rows.length === 0 ? (
-              <p className="no-hits">違いはありません</p>
-            ) : (
-              <pre className="diff-view">
-                {rows.map((row, index) =>
-                  row.kind === "skip" ? (
-                    <span key={index} className="diff-skip">
-                      … {row.count} 行は同じ …{"\n"}
-                    </span>
-                  ) : (
-                    <span key={index} className={`diff-${row.kind}`}>
-                      {row.text}
-                      {"\n"}
-                    </span>
-                  ),
-                )}
-              </pre>
-            )}
-          </section>
+              {entry.stamp}
+            </button>
+            <button onClick={() => onRestore(entry)}>戻す</button>
+          </li>
+        ))}
+        {entries.length === 0 && (
+          <li className="no-hits">
+            まだ版がありません（保存から 60 分間隔で残ります）
+          </li>
         )}
-      </div>
-    </div>
+      </ul>
+      {chosen && (
+        <section className="history-diff" aria-label="差分">
+          <div className="history-compare">
+            <button
+              aria-pressed={compare === "current"}
+              onClick={() => setCompare("current")}
+            >
+              今の本文と比べる
+            </button>
+            <button
+              aria-pressed={compare === "previous"}
+              disabled={previous === null}
+              onClick={() => setCompare("previous")}
+            >
+              1 つ前の版と比べる
+            </button>
+          </div>
+          {rows === null ? (
+            <p className="no-hits">読み込み中…</p>
+          ) : rows.length === 0 ? (
+            <p className="no-hits">違いはありません</p>
+          ) : (
+            <pre className="diff-view">
+              {rows.map((row, index) =>
+                row.kind === "skip" ? (
+                  <span key={index} className="diff-skip">
+                    … {row.count} 行は同じ …{"\n"}
+                  </span>
+                ) : (
+                  <span key={index} className={`diff-${row.kind}`}>
+                    {row.text}
+                    {"\n"}
+                  </span>
+                ),
+              )}
+            </pre>
+          )}
+        </section>
+      )}
+    </Dialog>
   );
 }

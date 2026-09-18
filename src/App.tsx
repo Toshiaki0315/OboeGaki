@@ -151,12 +151,7 @@ import {
   highlightCodeHtml,
   highlightCodeRuns,
 } from "./lib/export-code";
-import {
-  diagramsAsImages,
-  MERMAID_IMAGE_PREFIX,
-  splitDeck,
-  codeBlocksOf,
-} from "./lib/slides";
+import { MERMAID_IMAGE_PREFIX, codeBlocksOf } from "./lib/slides";
 import {
   rasterizeIfSvg,
   svgFromDataUrl,
@@ -170,7 +165,6 @@ import { buildPptx, readTemplateTheme } from "./lib/pptx";
 import { readSlideTheme, slideThemeFrom } from "./lib/slide-theme";
 import { slideMetrics } from "./lib/slide-grid";
 import { overflowingSlides } from "./lib/slide-lint";
-import { splitForDensity } from "./lib/slide-split";
 import {
   DEFAULT_PPTX_SETTINGS,
   loadPptxSettings,
@@ -264,6 +258,7 @@ import {
 } from "./lib/ipc";
 import { useAppStore } from "./stores/app";
 import "./App.css";
+import { buildDeck } from "./lib/slide-split";
 
 // Phase 1 の骨格 UI: フォルダを開く → ノート一覧 → 編集 → 800ms 自動保存 →
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
@@ -888,13 +883,8 @@ function App() {
       // 見張り（下）は割ったあとの姿を見ることになる
       // Mermaid は図（画像）として置く。描けなかった図はコードのまま
       const diagrams = await drawDiagramPngs(text);
-      const deck = splitForDensity(
-        diagramsAsImages(
-          splitDeck(text, pptxSettings.layout.splitLevel),
-          (source) => diagrams.has(source),
-        ),
-        pptxSettings,
-        metrics,
+      const deck = buildDeck(text, pptxSettings, metrics, (source) =>
+        diagrams.has(source),
       );
       // 書き出し前チェック（CFG-70）。**測り方は近似**なので、止めるのは
       // 「厳格」を選んだときだけ。ふだんは知らせて先へ進む

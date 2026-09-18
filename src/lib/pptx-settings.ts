@@ -10,7 +10,7 @@
 // 触っていない色は PowerPoint 側のテーマに追従する（5-6 の性質を残す）。
 
 /// 版（CFG-90）。上げるときは `migrate` に 1 段足す。
-export const PPTX_SETTINGS_VERSION = 1;
+const PPTX_SETTINGS_VERSION = 1;
 
 /// テーマの色を指す（`accent1` など）。PowerPoint 側でテーマを替えると追従する。
 export type ThemeRef = { ref: string };
@@ -105,7 +105,7 @@ export const PAGE_SIZES: Record<
 export const MIN_PAGE_IN = 1;
 export const MAX_PAGE_IN = 56;
 /// 片辺が他辺の何倍までか（CFG-04）。
-export const MAX_PAGE_RATIO = 4;
+const MAX_PAGE_RATIO = 4;
 
 export const DEFAULT_PPTX_SETTINGS: PptxSettings = {
   version: PPTX_SETTINGS_VERSION,

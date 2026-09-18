@@ -117,7 +117,7 @@ export function formatTable(lines: readonly string[]): string[] | null {
   });
 }
 
-export const HEADER_PLACEHOLDER = "見出し";
+const HEADER_PLACEHOLDER = "見出し";
 
 /// 空の表を作る。`rows` は見出しを除いた本体の行数。整形済みで返すので、
 /// 作った直後に表を離れてもソースは動かない。

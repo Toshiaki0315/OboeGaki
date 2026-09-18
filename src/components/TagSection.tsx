@@ -2,7 +2,8 @@
 // （ユーザー要望 2026-09-04: 両方開くと一覧が痩せすぎる）。
 
 import type { TagCount } from "../lib/ipc";
-import { MenuIcon } from "./MenuIcon";
+import { SideSection } from "./SideSection";
+import { menuAt } from "../lib/context-menu";
 
 export type TagSectionProps = {
   tags: readonly TagCount[];
@@ -23,18 +24,14 @@ export function TagSection({
   onMenu,
 }: TagSectionProps) {
   return (
-    <details className="tag-section" open={open}>
-      <summary
-        onClick={(event) => {
-          event.preventDefault(); // 開閉はこちらで持つ（フォルダと排他）
-          onToggle();
-        }}
-      >
-        <span className="side-twist" aria-hidden="true" />
-        <MenuIcon name="tag" />
-        <span className="side-label">タグ</span>
-        <span className="side-count">{tags.length}</span>
-      </summary>
+    <SideSection
+      className="tag-section"
+      icon="tag"
+      label="タグ"
+      count={tags.length}
+      open={open}
+      onToggle={onToggle}
+    >
       <ul>
         {tags.map(({ tag, count }) => (
           <li key={tag}>
@@ -42,12 +39,7 @@ export function TagSection({
               className={`tag-row${tag === tagFilter ? " selected" : ""}`}
               title="右クリックで絞る・検索・コピー"
               onClick={() => onFilter(tag === tagFilter ? null : tag)}
-              // **OS の既定のメニューを出さない**（要望 2026-09-04）。
-              // 「Google で検索」「共有」など、選んだ文字を外へ出す道が並ぶ
-              onContextMenu={(event) => {
-                event.preventDefault();
-                onMenu({ tag, x: event.clientX, y: event.clientY });
-              }}
+              onContextMenu={menuAt(onMenu, { tag })}
             >
               <span className="tag-name">#{tag}</span>
               <span className="tag-count">{count}</span>
@@ -55,6 +47,6 @@ export function TagSection({
           </li>
         ))}
       </ul>
-    </details>
+    </SideSection>
   );
 }

@@ -40,3 +40,20 @@ export function anchorAbove(
     bottom: viewport.height - box.top + gap,
   };
 }
+
+/// 右クリックの定型（19-3）: OS の既定のメニューを出さず（「Google で検索」
+/// 「共有」など選んだ文字を外へ出す道が並ぶ。要望 2026-09-04）、押した場所と
+/// 添えた値でこちらのメニューを開く。8 か所で同じ 4 行を書いていた
+export function menuAt<T extends object>(
+  open: (menu: T & Point) => void,
+  data: T,
+): (event: {
+  preventDefault(): void;
+  clientX: number;
+  clientY: number;
+}) => void {
+  return (event) => {
+    event.preventDefault();
+    open({ ...data, x: event.clientX, y: event.clientY });
+  };
+}

@@ -9,6 +9,9 @@
   /* ペインや帯の区切り線。**1 か所に置く** — 濃さを揃えたいときに
      ここだけを触ればよい（要望 2026-09-04） */
   --pane-line: color-mix(in srgb, currentColor 8%, transparent);
+  /* 強調色（macOS の青）。選択・ピン・主ボタン・つまみが同じ色。11 か所に
+     直書きしていた（19-3） */
+  --accent: #0a84ff;
   font-family: -apple-system, "Hiragino Sans", sans-serif;
 }
 
@@ -554,7 +557,7 @@ body {
 }
 
 .pane-resizer:hover {
-  background: color-mix(in srgb, #0a84ff 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* ドラッグ中に本文が選択されるのを止める */
@@ -774,11 +777,11 @@ body.resizing {
   margin-bottom: 0.4rem;
   padding: 0.25rem 0.5rem;
   border-radius: 6px;
-  background: color-mix(in srgb, #0a84ff 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .tag-filter-name {
-  color: #0a84ff;
+  color: var(--accent);
   font-size: 0.85rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1170,8 +1173,8 @@ body.resizing {
    どこへ落ちるかが分からないまま指を離すのがいちばん怖い */
 .folder-row.drop-target,
 .folder-section summary.drop-target {
-  background: color-mix(in srgb, #0a84ff 18%, transparent);
-  outline: 1px solid color-mix(in srgb, #0a84ff 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: -1px;
 }
 
@@ -1279,7 +1282,7 @@ details[open] > summary > .side-twist::before {
 }
 
 .tag-name {
-  color: #0a84ff;
+  color: var(--accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1490,7 +1493,7 @@ button.danger {
 }
 
 .editor-host .cm-tooltip-autocomplete > ul > li[aria-selected] {
-  background: #0a84ff;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -1650,7 +1653,7 @@ button.danger {
 
 /* 押すことになるほうを目立たせる（Enter でも同じところへ進む） */
 .dialog-actions button.primary {
-  background: #0a84ff;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -1706,8 +1709,8 @@ button.danger {
   border-left: none;
 }
 .pref-tabs button.selected {
-  background: #0a84ff;
-  border-color: #0a84ff;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 .pref-page {
@@ -1772,12 +1775,6 @@ button.danger {
 }
 .sp-line {
   fill: rgba(0, 0, 0, 0.4);
-}
-.sp-code {
-  fill: #22272e;
-}
-.sp-table {
-  fill: rgba(0, 0, 0, 0.12);
 }
 .sp-image {
   fill: rgba(0, 0, 0, 0.08);
@@ -1899,7 +1896,7 @@ button.danger {
   gap: 0.5rem;
 }
 .pref-actions button.primary {
-  background: #0a84ff;
+  background: var(--accent);
   color: #fff;
 }
 

@@ -2,13 +2,12 @@
 // hitofude の置き場所に合わせる。
 
 import { sheets, type TextStats } from "../editor/stats";
+import { clockValue } from "../lib/day";
 
 /// 保存時刻（時:分）。日付は出さない — 開いている間に保存した時刻なので、
 /// 日付まで出すと情報が増えるだけで読み取りが遅くなる。
 function clockOf(at: number): string {
-  const time = new Date(at);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(time.getHours())}:${pad(time.getMinutes())}`;
+  return clockValue(new Date(at));
 }
 
 export type StatusBarProps = {

@@ -18,9 +18,8 @@ import type { Settings } from "../lib/settings";
 import { slideMetrics } from "../lib/slide-grid";
 import { overflowingSlides } from "../lib/slide-lint";
 import { previewOf, SAMPLE_DECKS } from "../lib/slide-preview";
-import { splitForDensity } from "../lib/slide-split";
-import { diagramsAsImages, splitDeck } from "../lib/slides";
 import { SlidePreview } from "./SlidePreview";
+import { buildDeck } from "../lib/slide-split";
 
 export type PptxPreferencesProps = {
   settings: Settings;
@@ -59,11 +58,7 @@ export function PptxPreferences({
     const text = noteText();
     if (!text.trim()) return null;
     const metrics = slideMetrics(pptxSettings);
-    const deck = splitForDensity(
-      diagramsAsImages(splitDeck(text, pptxSettings.layout.splitLevel)),
-      pptxSettings,
-      metrics,
-    );
+    const deck = buildDeck(text, pptxSettings, metrics);
     return overflowingSlides(deck, metrics);
   }, [noteText, pptxSettings]);
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { splitDeck } from "./slides";
 import { slideMetrics } from "./slide-grid";
 import { DEFAULT_PPTX_SETTINGS, type PptxSettings } from "./pptx-settings";
-import { splitForDensity } from "./slide-split";
+import { buildDeck, splitForDensity } from "./slide-split";
 import { overflowingSlides } from "./slide-lint";
 
 const settings = (
@@ -154,5 +154,23 @@ describe("触らないもの", () => {
     expect(deck.slides[0].notes).toBe("話すこと");
     expect(deck.slides[1].images).toEqual([]);
     expect(deck.slides[1].notes).toBe("");
+  });
+});
+
+// デッキの組み立て（分ける → 図を絵に → 量で割る）は App / 設定画面 / プレビューの
+// 3 か所に同じ 3 行があった（19-3）。順序が 1 か所に固定される
+describe("buildDeck", () => {
+  it("test_splitDeck_diagramsAsImages_splitForDensity_を同じ順で通す", () => {
+    const text = "# 題\n\n## 一\n\n- a\n\n```mermaid\ngraph TD; A-->B\n```\n";
+    const settings: PptxSettings = DEFAULT_PPTX_SETTINGS;
+    const metrics = slideMetrics(settings);
+    const built = buildDeck(text, settings, metrics);
+    expect(built.slides.length).toBeGreaterThan(0);
+    // 図は絵として置かれる（描ける前提）: 画像の url が `mermaid:` で始まる
+    expect(JSON.stringify(built)).toContain('"url":"mermaid:');
+    // 描けない図はコードのまま
+    const asCode = buildDeck(text, settings, metrics, () => false);
+    expect(JSON.stringify(asCode)).not.toContain('"url":"mermaid:');
+    expect(JSON.stringify(asCode)).toContain('"language":"mermaid"');
   });
 });

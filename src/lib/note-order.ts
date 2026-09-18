@@ -1,3 +1,5 @@
+import { stampValue } from "./day";
+
 // ノート一覧の並び順（参照実装 C-3 / note_list_pane の役目）。
 
 export type NoteEntry = {
@@ -27,12 +29,6 @@ export function sortNotes(entries: NoteEntry[], order: SortOrder): NoteEntry[] {
   return sorted;
 }
 
-const pad = (value: number) => String(value).padStart(2, "0");
-
 export function formatStamp(mtimeMs: number): string {
-  const date = new Date(mtimeMs);
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    ` ${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
+  return stampValue(new Date(mtimeMs));
 }

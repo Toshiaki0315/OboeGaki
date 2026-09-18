@@ -3,7 +3,7 @@
 
 import type { TaskRow } from "../lib/ipc";
 import { noteStem } from "../lib/note-path";
-import { MenuIcon } from "./MenuIcon";
+import { SideSection } from "./SideSection";
 
 export type TaskSectionProps = {
   tasks: readonly TaskRow[];
@@ -16,7 +16,7 @@ export type TaskSectionProps = {
 };
 
 /// 期限は短く（今年なら月/日）。表の幅を取らない
-export function shortDue(due: string): string {
+function shortDue(due: string): string {
   const [year, month, day] = due.split("-");
   const thisYear = String(new Date().getFullYear());
   return year === thisYear ? `${month}/${day}` : `${year}/${month}/${day}`;
@@ -30,18 +30,14 @@ export function TaskSection({
   onComplete,
 }: TaskSectionProps) {
   return (
-    <details className="task-section" open={open}>
-      <summary
-        onClick={(event) => {
-          event.preventDefault(); // 開閉はこちらで持つ（フォルダ・タグと排他）
-          onToggle();
-        }}
-      >
-        <span className="side-twist" aria-hidden="true" />
-        <MenuIcon name="task" />
-        <span className="side-label">やること</span>
-        <span className="side-count">{tasks.length}</span>
-      </summary>
+    <SideSection
+      className="task-section"
+      icon="task"
+      label="やること"
+      count={tasks.length}
+      open={open}
+      onToggle={onToggle}
+    >
       <ul>
         {tasks.map((task) => (
           <li key={`${task.path}:${task.line}`} className="task-row">
@@ -69,6 +65,6 @@ export function TaskSection({
           <li className="no-hits">未完了のやることはありません</li>
         )}
       </ul>
-    </details>
+    </SideSection>
   );
 }

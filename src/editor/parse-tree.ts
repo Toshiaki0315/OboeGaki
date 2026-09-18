@@ -14,7 +14,7 @@ import type { EditorState } from "@codemirror/state";
 import type { Tree } from "@lezer/common";
 
 /// 木の解析を待つ上限。
-export const PARSE_WAIT_MS = 1000;
+const PARSE_WAIT_MS = 1000;
 
 /// `upto` まで解析した木。間に合わなければ、そこまでの木で答える
 /// （黙って固まるよりは、欠けたまま動くほうがまし）。

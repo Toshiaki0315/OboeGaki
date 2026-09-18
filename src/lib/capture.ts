@@ -2,7 +2,7 @@
 // 主窓と書き取りの窓は同じ index.html を使い、URL の印で描くものを変える。
 
 export const CAPTURE_LABEL = "capture";
-export const CAPTURE_QUERY = "capture";
+const CAPTURE_QUERY = "capture";
 
 /// この WebView は書き取りの窓か（`index.html?capture=1`）
 export function isCaptureWindow(search: string): boolean {

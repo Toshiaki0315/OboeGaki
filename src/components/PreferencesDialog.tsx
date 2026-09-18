@@ -10,6 +10,7 @@ import { AssistantPreferences } from "./AssistantPreferences";
 import { GeneralPreferences } from "./GeneralPreferences";
 import { McpPreferences } from "./McpPreferences";
 import { PptxPreferences } from "./PptxPreferences";
+import { Dialog } from "./Dialog";
 
 type Tab = "general" | "pptx" | "mcp" | "assistant";
 
@@ -89,69 +90,61 @@ export function PreferencesDialog(props: PreferencesProps) {
   ];
 
   return (
-    <div className="palette-backdrop" onMouseDown={onClose}>
-      <div
-        className="palette preferences"
-        role="dialog"
-        aria-label="環境設定"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="palette-title">環境設定</header>
-        <div className="pref-tabs" role="tablist" aria-label="設定のページ">
-          {tabs.map((entry) => (
-            <button
-              key={entry.id}
-              role="tab"
-              aria-selected={tab === entry.id}
-              className={tab === entry.id ? "selected" : ""}
-              onClick={() => setTab(entry.id)}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
-        {tab === "general" ? (
-          <GeneralPreferences
-            settings={settings}
-            onChangeSettings={onChangeSettings}
-            fontSize={fontSize}
-            onChangeFontSize={onChangeFontSize}
-            vaultRoot={props.vaultRoot}
-            onChooseVault={props.onChooseVault}
-            historyUsage={usage}
-            bodyFontChoices={props.bodyFontChoices}
-            codeFontChoices={props.codeFontChoices}
-            captureShortcutError={props.captureShortcutError ?? null}
-          />
-        ) : tab === "mcp" ? (
-          <McpPreferences onCopyMcpConfig={props.onCopyMcpConfig} />
-        ) : tab === "pptx" ? (
-          <PptxPreferences
-            settings={settings}
-            onChangeSettings={onChangeSettings}
-            onChooseSlideTemplate={props.onChooseSlideTemplate}
-            pptxSettings={props.pptxSettings}
-            onChangePptxSettings={props.onChangePptxSettings}
-            onResetPptxSettings={props.onResetPptxSettings}
-            noteText={props.noteText}
-          />
-        ) : (
-          <AssistantPreferences
-            settings={settings}
-            onChangeSettings={onChangeSettings}
-            installedModels={models}
-          />
-        )}
-        <div className="pref-actions">
-          <button onClick={onReset}>デフォルトに戻す</button>
-          <span className="pref-actions-right">
-            <button onClick={cancel}>キャンセル</button>
-            <button className="primary" onClick={onClose}>
-              OK
-            </button>
-          </span>
-        </div>
+    <Dialog title="環境設定" className="preferences" onClose={onClose}>
+      <div className="pref-tabs" role="tablist" aria-label="設定のページ">
+        {tabs.map((entry) => (
+          <button
+            key={entry.id}
+            role="tab"
+            aria-selected={tab === entry.id}
+            className={tab === entry.id ? "selected" : ""}
+            onClick={() => setTab(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
       </div>
-    </div>
+      {tab === "general" ? (
+        <GeneralPreferences
+          settings={settings}
+          onChangeSettings={onChangeSettings}
+          fontSize={fontSize}
+          onChangeFontSize={onChangeFontSize}
+          vaultRoot={props.vaultRoot}
+          onChooseVault={props.onChooseVault}
+          historyUsage={usage}
+          bodyFontChoices={props.bodyFontChoices}
+          codeFontChoices={props.codeFontChoices}
+          captureShortcutError={props.captureShortcutError ?? null}
+        />
+      ) : tab === "mcp" ? (
+        <McpPreferences onCopyMcpConfig={props.onCopyMcpConfig} />
+      ) : tab === "pptx" ? (
+        <PptxPreferences
+          settings={settings}
+          onChangeSettings={onChangeSettings}
+          onChooseSlideTemplate={props.onChooseSlideTemplate}
+          pptxSettings={props.pptxSettings}
+          onChangePptxSettings={props.onChangePptxSettings}
+          onResetPptxSettings={props.onResetPptxSettings}
+          noteText={props.noteText}
+        />
+      ) : (
+        <AssistantPreferences
+          settings={settings}
+          onChangeSettings={onChangeSettings}
+          installedModels={models}
+        />
+      )}
+      <div className="pref-actions">
+        <button onClick={onReset}>デフォルトに戻す</button>
+        <span className="pref-actions-right">
+          <button onClick={cancel}>キャンセル</button>
+          <button className="primary" onClick={onClose}>
+            OK
+          </button>
+        </span>
+      </div>
+    </Dialog>
   );
 }

@@ -1,7 +1,7 @@
 // 保存した検索（サイドバー）。押すと式を検索欄に流す。
 
 import type { SavedSearch } from "../lib/saved-searches";
-import { MenuIcon } from "./MenuIcon";
+import { SideSection } from "./SideSection";
 
 export function SavedSearchSection({
   searches,
@@ -13,13 +13,13 @@ export function SavedSearchSection({
   onRemove: (name: string) => void;
 }) {
   return (
-    <details className="search-section" open>
-      <summary>
-        <span className="side-twist" aria-hidden="true" />
-        <MenuIcon name="search" />
-        <span className="side-label">保存した検索</span>
-        <span className="side-count">{searches.length}</span>
-      </summary>
+    <SideSection
+      className="search-section"
+      icon="search"
+      label="保存した検索"
+      count={searches.length}
+      open
+    >
       <ul>
         {searches.map((entry) => (
           <li key={entry.name}>
@@ -40,6 +40,6 @@ export function SavedSearchSection({
           </li>
         ))}
       </ul>
-    </details>
+    </SideSection>
   );
 }

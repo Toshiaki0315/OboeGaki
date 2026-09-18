@@ -4,6 +4,7 @@
 // 「＋ 新規」だけ右に残す。
 
 import type { SortOrder } from "../lib/note-order";
+import { menuAt } from "../lib/context-menu";
 
 export type ListControlsProps = {
   sortOrder: SortOrder;
@@ -41,10 +42,7 @@ export function ListControls({
         className="new-note-button"
         title={`${newTitle}（右クリックで作り方を選べます）`}
         onClick={onNew}
-        onContextMenu={(event) => {
-          event.preventDefault(); // OS の既定のメニューを出さない
-          onNewMenu({ x: event.clientX, y: event.clientY });
-        }}
+        onContextMenu={menuAt(onNewMenu, {})}
       >
         ＋ 新規
       </button>

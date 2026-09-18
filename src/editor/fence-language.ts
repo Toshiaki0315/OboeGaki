@@ -50,7 +50,7 @@ export function fencePrefixAt(line: string, column: number): string | null {
 }
 
 /// 前方一致で絞る。大文字小文字は区別しない。
-export function matchLanguages(
+function matchLanguages(
   prefix: string,
   options: readonly LanguageOption[] = LANGUAGE_OPTIONS,
 ): LanguageOption[] {

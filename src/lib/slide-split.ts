@@ -8,7 +8,7 @@
 // 「割ったのに溢れている」が起きる。
 
 import type { Deck, Slide, SlideBlock } from "./slides";
-import { plainText } from "./slides";
+import { plainText, diagramsAsImages, splitDeck } from "./slides";
 import type { SlideMetrics } from "./slide-grid";
 import type { PptxSettings } from "./pptx-settings";
 import { estimateHeightIn } from "./slide-lint";
@@ -86,4 +86,20 @@ function splitOne(
     images: index === 0 ? slide.images : [],
     notes: index === 0 ? notes : "",
   }));
+}
+
+/// デッキを組む: 見出しで分ける → Mermaid を絵に → 量で割る（CFG-40 / CFG-46）。
+/// App（書き出し）・設定画面（見直し）・プレビューが同じ 3 行を各自で書いていた
+/// （19-3）。順序を変えるならここだけ。`canDraw` は描けた図（描けない図はコードのまま）
+export function buildDeck(
+  text: string,
+  settings: PptxSettings,
+  metrics: SlideMetrics,
+  canDraw: (source: string) => boolean = () => true,
+): Deck {
+  return splitForDensity(
+    diagramsAsImages(splitDeck(text, settings.layout.splitLevel), canDraw),
+    settings,
+    metrics,
+  );
 }

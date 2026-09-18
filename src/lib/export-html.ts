@@ -26,6 +26,7 @@ import {
 } from "../editor/note-container";
 import footnote from "markdown-it-footnote";
 import taskLists from "markdown-it-task-lists";
+import { proseLines } from "../markdown/prose-lines";
 
 // ruler.before が期待する規則の型をそのまま借りる（.mjs/.d.mts の二重解決で
 // 名前で import すると別物と判定されるため）
@@ -157,20 +158,13 @@ const mathBlockRule = (
 };
 
 /// 行まるごとの `![[名前]]` / `![[名前#見出し]]`（ADR-0058）
-export const EMBED_LINE_RE = /^!\[\[([^\]|]+)\]\]\s*$/;
+const EMBED_LINE_RE = /^!\[\[([^\]|]+)\]\]\s*$/;
 
 /// 本文の中の埋め込みの対象（`名前#見出し` の字面）。書き出しの前に App が
 /// 解決して `embeds` に入れる
 export function collectEmbeds(markdownText: string): string[] {
   const found: string[] = [];
-  let inFence = false;
-  for (const line of markdownText.split("\n")) {
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
+  for (const { line } of proseLines(markdownText)) {
     const match = EMBED_LINE_RE.exec(line.trim());
     if (match && !found.includes(match[1].trim())) found.push(match[1].trim());
   }
