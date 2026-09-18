@@ -23,7 +23,7 @@ import {
   StateField,
   type EditorState,
 } from "@codemirror/state";
-import { splitFenceInfo } from "./code-blocks";
+import { splitFenceInfo } from "../markdown/fence-info";
 import { treeOf } from "./parse-tree";
 
 export type CodeBlock = {

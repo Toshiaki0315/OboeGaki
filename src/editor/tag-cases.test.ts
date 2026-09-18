@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import { normalizeTag } from "../lib/tag-name";
+import { normalizeTag } from "../markdown/tag-name";
 import { LANG } from "./test-utils";
 
 type Case = { text: string; tags: string[] };

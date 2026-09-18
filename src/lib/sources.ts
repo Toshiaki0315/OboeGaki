@@ -4,7 +4,7 @@
 /// 探せないし、どのノートを見たかを画面に出せるのはこちら側だけ
 /// （出典を作文させない）。
 
-import { frontMatterRange } from "../editor/frontmatter";
+import { frontMatterRange } from "../markdown/front-matter";
 
 /// 材料にするノートの数。多く渡すほど当たりは増えるが、**文脈から
 /// あふれると黙って切れる**。5 本 × 2,000 字で 1 万字、日本語で約 5,000

@@ -7,6 +7,13 @@
 import type { StateCommand } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
+import {
+  ATX_HEADING_RE as HEADING_RE,
+  BULLET_ITEM_RE as UNORDERED_RE,
+  LIST_HEAD_RE as BULLET_RE,
+  LIST_TASK_RE as TASK_RE,
+  ORDERED_ITEM_RE as ORDERED_RE,
+} from "../markdown/syntax";
 
 /// `[start, end)` を `text` で置き換え、そのあと `[selectStart, selectEnd)` を選ぶ。
 export type Replacement = {
@@ -95,10 +102,7 @@ export function insertLink(
 
 // 3 文字までの字下げは見出しの一部（CommonMark）。字下げを見ずに先頭へ `#`
 // を足すと `#   # 題` になっていた（棚卸し 2026-09-17）
-const HEADING_RE = /^( {0,3})(#{1,6})[ \t]+/;
 const HEADING_INDENT_RE = /^ {0,3}/;
-const TASK_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)\[( |[xX])\][ \t]+/;
-const BULLET_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)/;
 const MAX_HEADING_LEVEL = 6;
 
 /// 見出しレベルを増減する（spec §5.4 の Cmd+Ctrl+↑/↓）。
@@ -253,8 +257,6 @@ function lineCommand(
 
 const TOOLBAR_MAX_HEADING_LEVEL = 3;
 const INDENT_RE = /^[ \t]*/;
-const ORDERED_RE = /^[ \t]*\d{1,9}[.)][ \t]+/;
-const UNORDERED_RE = /^[ \t]*[-*+][ \t]+/;
 const QUOTE_RE = /^> ?/;
 
 /// 段落 → H1 → H2 → H3 → 段落 と一周させる。行き止まりを作らない —

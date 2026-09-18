@@ -6,9 +6,9 @@
 // 使える。数式は MathML → OMML が要るので元の LaTeX を等幅で置く。Mermaid は
 // PNG（PowerPoint と同じ経路）。設定タブは作らない。
 
-import { frontMatterRange } from "../editor/frontmatter";
-import { splitFenceInfo } from "../editor/code-blocks";
-import { splitImageAlt } from "../editor/image-size";
+import { frontMatterRange } from "../markdown/front-matter";
+import { splitFenceInfo } from "../markdown/fence-info";
+import { splitImageAlt } from "../markdown/image-size";
 import { markdownTokens } from "./export-html";
 
 /// markdown-it のトークン（export-html と同じ型を使う。@types の方と attrs の形が違う）

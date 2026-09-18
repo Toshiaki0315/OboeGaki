@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { frontMatterRange } from "./frontmatter";
+import { frontMatterRange } from "../markdown/front-matter";
 import { LANG } from "./test-utils";
 
 type GoldenLine = { line: number; text: string; block: string };

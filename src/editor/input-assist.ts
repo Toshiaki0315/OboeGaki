@@ -16,9 +16,11 @@ import { syntaxTree } from "@codemirror/language";
 
 export const INDENT = "  ";
 
-const TASK_RE = /^([ \t]*[-*+][ \t]+)\[[ xX]\]([ \t]+)/;
-const ORDERED_RE = /^([ \t]*)(\d{1,9})([.)])([ \t]+)/;
-const BULLET_RE = /^[ \t]*[-*+][ \t]+/;
+import {
+  BULLET_ITEM_RE as BULLET_RE,
+  BULLET_TASK_RE as TASK_RE,
+  ORDERED_PARTS_RE as ORDERED_RE,
+} from "../markdown/syntax";
 const QUOTE_RE = /^[ \t]*>[ \t]?/;
 const LEADING_SPACE_RE = /^[ \t]+/;
 

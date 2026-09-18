@@ -7,7 +7,7 @@
 
 import { EditorState, Facet, type Extension } from "@codemirror/state";
 import { EditorView, WidgetType } from "@codemirror/view";
-import { sectionOf, splitEmbedTarget } from "../lib/section";
+import { sectionOf, splitEmbedTarget } from "../markdown/section";
 
 export type EmbedSource = { path: string; text: string };
 

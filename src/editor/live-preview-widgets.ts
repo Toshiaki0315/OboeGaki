@@ -3,7 +3,7 @@
 
 import { EditorView, WidgetType } from "@codemirror/view";
 import { Facet } from "@codemirror/state";
-import { clampImageWidth, withImageWidth } from "./image-size";
+import { clampImageWidth, withImageWidth } from "../markdown/image-size";
 import { svgFromDataUrl, svgNaturalSize } from "../lib/svg-png";
 import { renderMermaid, type MermaidTheme } from "./mermaid";
 

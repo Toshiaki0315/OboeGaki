@@ -14,7 +14,7 @@
 /// **読めない値は既定へ倒す。** 打ち間違いで書き出せなくなるより、既定で
 /// 出るほうがよい（画面には front matter が出ないので、間違いに気づけない）。
 
-import { parseFrontMatterMeta } from "../editor/frontmatter";
+import { parseFrontMatterMeta } from "../markdown/front-matter";
 import { isThemeRef, type PptxSettings } from "./pptx-settings";
 
 export type SlideTheme = {

@@ -17,7 +17,7 @@ import type {
   MarkdownConfig,
 } from "@lezer/markdown";
 import { Tag, tags } from "@lezer/highlight";
-import { mathSpanAt } from "./math";
+import { mathSpanAt } from "../markdown/math-span";
 
 /// ハイライト（`::目立つ::`）のスタイル付けに使う専用タグ。
 export const highlightTag = Tag.define();

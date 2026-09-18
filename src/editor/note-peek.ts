@@ -12,7 +12,7 @@
 
 import type { EditorView } from "@codemirror/view";
 import { embedResolver } from "./embed";
-import { frontMatterRange } from "./frontmatter";
+import { frontMatterRange } from "../markdown/front-matter";
 
 /// 触れてから出すまでの待ち。**短すぎると通り過ぎるだけで出る。**
 /// ツールチップの標準（500ms 前後）より気持ち早める — こちらは `Cmd` を

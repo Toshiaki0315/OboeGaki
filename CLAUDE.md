@@ -180,7 +180,7 @@ CM6 は composition 中の DOM 更新を保留する。この性質を壊す拡�
 
 spec と実装が食い違ったら、まず spec（の意図）が正しいと考える。
 覆すなら理由を述べて確認を取り、`docs/adr/` に記録を残す（番号は
-hitofude から通しで継続。次は 0067）。
+hitofude から通しで継続。次は 0068）。
 
 ---
 
@@ -194,7 +194,8 @@ OboeGaki/
 ├── fixtures/              # 挙動検証用 .md と golden（スタック非依存の仕様資産）
 ├── spikes/                # 移行時の技術検証の記録（触らない・消さない）
 ├── src/                   # フロントエンド（React + TS）
-│   ├── editor/            # CM6 エディタ層（拡張は DOM 非依存に保つ）
+│   ├── markdown/          # Markdown 方言の純粋な知識（CM6 非依存。editor と lib の両方が読む。ADR-0067）
+│   ├── editor/            # CM6 エディタ層（拡張は DOM 非依存に保つ。markdown/ を読む）
 │   ├── components/        # App.tsx から切り出した UI 部品（ダイアログなど。ADR-0048）
 │   ├── hooks/             # App.tsx から切り出した状態と処理（ADR-0049。Tauri は lib/ipc 経由）
 │   └── ...                # アプリ UI 層（Zustand はここ）

@@ -29,7 +29,7 @@ import { type Activation } from "./activation";
 import { dropFiles, type SaveAttachment } from "./attachments";
 import { clearColorEdit, colorEdits } from "./text-color-commands";
 import { NO_EMBED, type EmbedResolver } from "./embed";
-import { frontMatterRange } from "./frontmatter";
+import { frontMatterRange } from "../markdown/front-matter";
 import { insertTableAt } from "./table-format";
 import {
   diagramThemeField,

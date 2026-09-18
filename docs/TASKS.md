@@ -1043,7 +1043,13 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             ／`vault::is_markdown` を history にも／テスト専用の `pub` 5 つを下げた。
             **やらなかった**: `guarded` 2 種の統合（GUI は絶対パスで未存在も許す、MCP は
             相対で `.md` 限定 — 意図が違う）、`llm_generate` の引数 10 個の構造体化
-            （TS の ipc 側の引数の形も変わる。19-4 の `lib/ipc` 拡充と一緒に）: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
+            （TS の ipc 側の引数の形も変わる。19-4 の `lib/ipc` 拡充と一緒に）
+      - [x] `src/markdown/`（ADR-0067。2026-09-18）: front-matter（範囲・本文・`key: 値`）・
+            image-size・math-span・fence-info・tasks・tag-name・section・syntax（リスト／
+            やること／見出しの正規表現 9 定義を 1 か所に。意図して違う 3 つは名前で区別）。
+            eslint の `no-restricted-imports` で CM6・React・Tauri・他層を読まないことを
+            守る。`lib → editor` は 15 本 → 6 本（残りは Lezer 拡張 2 本・`Text` 型を受ける
+            囲み 2 本・`renderMath`・言語解決。意図して残す。ADR に理由）: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
       ／NFC・封じ込め・front matter 剥がし・skip-dir・stem 分割の横断ヘルパ
       ／版の時刻整形と `read_note` の統一、関連ノートの計算を `related.rs` に
       （NoteService の前半）／`src/markdown/`（image-size・math の走査・fence info・

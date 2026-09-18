@@ -4,7 +4,8 @@
 // `$` は値段にも出てくるので、ここが緩いと**ふつうの文章が壊れる**。
 
 import { describe, expect, test } from "vitest";
-import { mathSpanAt, renderMath } from "./math";
+import { renderMath } from "./math";
+import { mathSpanAt } from "../markdown/math-span";
 
 /// 最初の `$` から測る（見つからなければ null）。
 function span(text: string) {

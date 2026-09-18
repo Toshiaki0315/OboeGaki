@@ -48,4 +48,38 @@ export default tseslint.config(
       "react-hooks/purity": "off",
     },
   },
+  {
+    // `src/markdown/` は Markdown 方言の純粋な知識（ADR-0067）。CM6・React・他層を
+    // 読まない — 書き出し（lib）とエディタ（editor）の両方がここに依存する向きを守る
+    files: ["src/markdown/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@codemirror/*",
+                "@lezer/*",
+                "react",
+                "react-dom",
+                "@tauri-apps/*",
+              ],
+              message: "markdown/ は CM6・React・Tauri を読まない（ADR-0067）",
+            },
+            {
+              group: [
+                "../editor/*",
+                "../lib/*",
+                "../components/*",
+                "../hooks/*",
+                "../stores/*",
+              ],
+              message: "markdown/ は他の層を読まない（ADR-0067）",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

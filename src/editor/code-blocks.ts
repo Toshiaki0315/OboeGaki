@@ -11,19 +11,7 @@
 import { HighlightStyle, LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { tags } from "@lezer/highlight";
-
-/// フェンスの情報文字列を言語とファイル名に分ける（ADR-0008）。
-/// `lang` に `python:aaa.py` を丸ごと入れると色分けが言語を見つけられない。
-export function splitFenceInfo(info: string): {
-  lang: string;
-  fileName: string | null;
-} {
-  const trimmed = info.trim();
-  const colon = trimmed.indexOf(":");
-  if (colon < 0) return { lang: trimmed, fileName: null };
-  const fileName = trimmed.slice(colon + 1);
-  return { lang: trimmed.slice(0, colon), fileName: fileName || null };
-}
+import { splitFenceInfo } from "../markdown/fence-info";
 
 /// フェンスの情報文字列から言語を見つける（markdown の codeLanguages 用）。
 export function resolveCodeLanguage(info: string): LanguageDescription | null {

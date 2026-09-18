@@ -11,43 +11,6 @@
 
 import temml from "temml";
 
-export type MathSpan = {
-  /// `$`（または `$$`）の閉じの次の位置。
-  end: number;
-  latex: string;
-  display: boolean;
-};
-
-// かな・カナ・漢字。数式には出てこないので、含むものは取り違えと見なす
-const JAPANESE = /[぀-ヿ㐀-䶿一-鿿]/;
-const DIGIT = /[0-9]/;
-
-/// `text[start]` から始まる数式。数式でなければ null。
-///
-/// **`$$` を `$` より先に見る**（あとに見ると `$$a$$` が `$` と `$a$` に
-/// 割れて範囲がずれる。参照実装が実機で踏んだ）。
-export function mathSpanAt(text: string, start: number): MathSpan | null {
-  if (text[start] !== "$") return null;
-  const display = text[start + 1] === "$";
-  const marker = display ? "$$" : "$";
-  const from = start + marker.length;
-  // 開きの直後が空白（`$ x $`）や数字（`$100`）なら数式ではない
-  const opener = text[from];
-  if (opener === undefined || /\s/.test(opener) || DIGIT.test(opener)) {
-    return null;
-  }
-  const close = text.indexOf(marker, from);
-  if (close < 0) return null;
-  const latex = text.slice(from, close);
-  if (!latex || latex.includes("\n")) return null;
-  // 閉じの直前が空白、直後が数字なら数式ではない
-  if (/\s$/.test(latex) || DIGIT.test(text[close + marker.length] ?? "")) {
-    return null;
-  }
-  if (JAPANESE.test(latex)) return null;
-  return { end: close + marker.length, latex, display };
-}
-
 // 組んだ結果の覚え。装飾の再計算は同じ式を何度も見るので、組み直すと
 // 数式の多いノートで打鍵 p95 が 16ms を割る（レビュー 2026-09-04 で実測）。
 // 組めなかった式（null）も覚える — 壊れた式ほど何度も見るため

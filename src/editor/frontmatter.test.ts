@@ -4,13 +4,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, test } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import { frontMatterHide, frontMatterField } from "./frontmatter";
 import {
   bodyText,
-  frontMatterHide,
-  frontMatterField,
   frontMatterRange,
   parseFrontMatterMeta,
-} from "./frontmatter";
+} from "../markdown/front-matter";
 
 const FM = "---\nid: 01ABC\npinned: true\n---\n";
 const DOC = `${FM}# 本文\n`;

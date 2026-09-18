@@ -13,7 +13,7 @@
 
 import type { EditorState } from "@codemirror/state";
 import { plainTextOf } from "./plain-copy";
-import { frontMatterRange } from "./frontmatter";
+import { frontMatterRange } from "../markdown/front-matter";
 
 export type TextStats = {
   characters: number;

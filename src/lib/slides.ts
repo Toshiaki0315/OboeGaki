@@ -18,7 +18,7 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
-import { splitImageAlt } from "../editor/image-size";
+import { splitImageAlt } from "../markdown/image-size";
 import {
   hexForPptx,
   isSpanClose,

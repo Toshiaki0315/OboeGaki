@@ -10,11 +10,12 @@
 
 import MarkdownIt from "markdown-it";
 import container from "markdown-it-container";
-import { mathSpanAt, renderMath } from "../editor/math";
-import { bodyText } from "../editor/frontmatter";
-import { splitFenceInfo } from "../editor/code-blocks";
+import { renderMath } from "../editor/math";
+import { mathSpanAt } from "../markdown/math-span";
+import { bodyText } from "../markdown/front-matter";
+import { splitFenceInfo } from "../markdown/fence-info";
 import { DEFAULT_SUMMARY } from "../editor/details-container";
-import { splitImageAlt } from "../editor/image-size";
+import { splitImageAlt } from "../markdown/image-size";
 import { escapeHtml } from "./html-escape";
 import { parseColorSpan, styleAttribute } from "./text-color";
 import {

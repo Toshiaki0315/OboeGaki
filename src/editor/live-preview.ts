@@ -22,8 +22,9 @@ import {
 } from "@codemirror/state";
 import { syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { mathSpanAt, renderMath } from "./math";
-import { splitImageAlt } from "./image-size";
+import { renderMath } from "./math";
+import { mathSpanAt } from "../markdown/math-span";
+import { splitImageAlt } from "../markdown/image-size";
 import { EmbedWidget } from "./embed";
 import {
   type ColorSpan,
@@ -31,7 +32,7 @@ import {
   parseColorSpan,
   spanStyleOf,
 } from "../lib/text-color";
-import { splitFenceInfo } from "./code-blocks";
+import { splitFenceInfo } from "../markdown/fence-info";
 
 import {
   hideQuoteMarks,

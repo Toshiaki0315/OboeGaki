@@ -4,7 +4,8 @@ import { describe, expect, it, test } from "vitest";
 import { EditorState, type Range } from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
 import { previewDecorations } from "./live-preview";
-import { resolveCodeLanguage, splitFenceInfo } from "./code-blocks";
+import { resolveCodeLanguage } from "./code-blocks";
+import { splitFenceInfo } from "../markdown/fence-info";
 import { LANG } from "./test-utils";
 
 describe("splitFenceInfo", () => {

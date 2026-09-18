@@ -94,8 +94,8 @@ import { windowTitle } from "./lib/window-title";
 import { renameStatusText } from "./lib/rename-status";
 import { buildDocx } from "./lib/export-docx";
 import { tagRenamePlan } from "./lib/tag-rename";
-import { lineStartOffset, setTaskDone } from "./lib/tasks";
-import { sectionOf, splitEmbedTarget } from "./lib/section";
+import { lineStartOffset, setTaskDone } from "./markdown/tasks";
+import { sectionOf, splitEmbedTarget } from "./markdown/section";
 import type { EmbedResolver } from "./editor/embed";
 import { startupAction } from "./lib/startup-note";
 import {

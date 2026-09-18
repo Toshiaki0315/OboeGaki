@@ -8,7 +8,7 @@
 import type { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { treeOf } from "./parse-tree";
-import { frontMatterRange } from "./frontmatter";
+import { frontMatterRange } from "../markdown/front-matter";
 
 // 落とすマーカーのノード名。URL は残す（リンク先も文章の一部）
 const MARK_NODES = new Set([
