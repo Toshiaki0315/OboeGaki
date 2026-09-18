@@ -534,7 +534,7 @@ impl McpVault {
     }
 
     /// その版の本文。**時刻で名指す** — 版の場所を受け取ると、vault の中の
-    /// 好きなファイルを「版」として覗けてしまう（commands.rs の
+    /// 好きなファイルを「版」として覗けてしまう（commands/ の
     /// version_in_history と同じ構え）
     pub fn history_text(&self, relative: &str, stamp: &str) -> Result<NoteText, String> {
         let (cleaned, _) = self.guarded(relative)?;
