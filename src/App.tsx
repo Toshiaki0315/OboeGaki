@@ -27,10 +27,15 @@ import {
   toggleSidePane,
   type SideKind,
 } from "./lib/side-pane";
+import {
+  AppContextMenus,
+  menuOpener,
+  type MenuKind,
+  type OpenMenu,
+} from "./components/AppContextMenus";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
-import { ContextMenu } from "./components/ContextMenu";
 import { FolderSection } from "./components/FolderSection";
 import { FormatToolbar } from "./components/FormatToolbar";
 import { FuzzyPalette } from "./components/FuzzyPalette";
@@ -39,19 +44,6 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { ListControls } from "./components/ListControls";
 
 import { ListPalette } from "./components/ListPalette";
-import {
-  folderMenuItems,
-  noteMenuItems,
-  trashMenuItems,
-} from "./components/note-menu";
-import { editorMenuItems } from "./components/editor-menu";
-import { gearMenuItems } from "./components/gear-menu";
-import {
-  newNoteMenuItems,
-  outlineMenuItems,
-  tagMenuItems,
-} from "./components/side-menus";
-import { MenuList } from "./components/MenuList";
 import { NoteActions } from "./components/NoteActions";
 import { NoteTitle } from "./components/NoteTitle";
 import { NoteRows } from "./components/NoteRows";
@@ -69,7 +61,6 @@ import { TagSection } from "./components/TagSection";
 import { TaskSection } from "./components/TaskSection";
 import { TrashRows } from "./components/TrashRows";
 
-import { anchorAbove } from "./lib/context-menu";
 import {
   confirmMessage,
   dictUrl,
@@ -364,39 +355,11 @@ function App() {
     title: string;
     text: string;
   } | null>(null);
-  const [folderMenu, setFolderMenu] = useState<{
-    folder: string;
-    x: number;
-    y: number;
-  } | null>(null);
-  const [tagMenu, setTagMenu] = useState<{
-    tag: string;
-    x: number;
-    y: number;
-  } | null>(null);
-  // 歯車のメニューは**押したものの真上**に出す（下端にあるので上へ伸びる）
-  const [gearMenu, setGearMenu] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
-  const [editorMenu, setEditorMenu] = useState<{
-    x: number;
-    y: number;
-    selected: boolean;
-  } | null>(null);
-  const [trashMenu, setTrashMenu] = useState<{
-    /// null なら「ゴミ箱そのもの」への操作（空にする）
-    path: string | null;
-    x: number;
-    y: number;
-  } | null>(null);
-  // 「＋ 新規」の右クリック（作り方を選ぶ）。null は閉じている
-  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
-  const [noteMenu, setNoteMenu] = useState<{
-    path: string;
-    x: number;
-    y: number;
-  } | null>(null);
+  // 右クリックのメニュー 8 種（本文・歯車・新規・ノート・タグ・フォルダ・目次・
+  // ゴミ箱）。**1 つの状態で持つ**ので、同時に 2 つ開くことが表現できない（20-2）
+  const [menu, setMenu] = useState<OpenMenu | null>(null);
+  const closeMenu = () => setMenu(null);
+  const openMenu = <K extends MenuKind>(kind: K) => menuOpener(setMenu, kind);
   // 「テンプレートに登録…」の名前入力。null は閉じている
   const [templateName, setTemplateName] = useState<string | null>(null);
   // 「フォルダへ移動…」の対象（右クリックからは開いていないノートも動かす）
@@ -692,13 +655,6 @@ function App() {
     getStats: () =>
       editorRef.current?.getStats() ?? { characters: 0, lines: 0 },
   });
-  // 目次の右クリック（7-1）。節ごと動かす
-  const [outlineMenu, setOutlineMenu] = useState<{
-    from: number;
-    x: number;
-    y: number;
-  } | null>(null);
-
   function toggleOutline() {
     const next = togglePane(rightPane, "outline");
     setRightPane(next);
@@ -1793,7 +1749,7 @@ function App() {
                     showSort={!trashView && !query.trim()}
                     newTitle={newNoteTitle}
                     onNew={() => void handleCreate()}
-                    onNewMenu={setNewMenu}
+                    onNewMenu={openMenu("new")}
                   />
                 </>
               )}
@@ -1822,7 +1778,7 @@ function App() {
                       currentPath={currentPath}
                       trashDays={settings.trashDays}
                       onOpen={(path) => void openNote(path)}
-                      onMenu={setTrashMenu}
+                      onMenu={openMenu("trash")}
                     />
                   ) : (
                     <NoteRows
@@ -1839,7 +1795,7 @@ function App() {
                         setSelectedNotes(new Set([path]));
                         void openNote(path);
                       }}
-                      onMenu={setNoteMenu}
+                      onMenu={openMenu("note")}
                       onDragStart={(paths) => {
                         draggingNotes.current = paths;
                       }}
@@ -1894,8 +1850,10 @@ function App() {
                   open={sideOpen === "folders"}
                   onToggle={() => toggleSide("folders")}
                   onFilter={filterByFolder}
-                  onFolderMenu={setFolderMenu}
-                  onTrashMenu={({ x, y }) => setTrashMenu({ path: null, x, y })}
+                  onFolderMenu={openMenu("folder")}
+                  onTrashMenu={({ x, y }) =>
+                    setMenu({ kind: "trash", path: null, x, y })
+                  }
                   acceptsDrop={acceptsDrop}
                   onDrop={(folder, carried) => {
                     const dragged = draggingNotes.current.length
@@ -1926,7 +1884,7 @@ function App() {
                   open={sideOpen === "tags"}
                   onToggle={() => toggleSide("tags")}
                   onFilter={filterByTag}
-                  onMenu={setTagMenu}
+                  onMenu={openMenu("tag")}
                 />
               )}
               {settings.treesVisible && (
@@ -2052,7 +2010,8 @@ function App() {
                   // 「Google で検索」「共有」など、本文を外へ出す道が並ぶ
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    setEditorMenu({
+                    setMenu({
+                      kind: "editor",
                       x: event.clientX,
                       y: event.clientY,
                       selected:
@@ -2217,240 +2176,132 @@ function App() {
               ]}
             />
           )}
-          {newMenu !== null && (
-            <ContextMenu at={newMenu} onClose={() => setNewMenu(null)}>
-              {/* 左クリックは無題のノート。ここは**別の作り方**だけを並べる
-                  （メニューバーの「ファイル」と同じ動作を使い回す） */}
-              <MenuList
-                onPick={() => setNewMenu(null)}
-                items={newNoteMenuItems({
-                  onTemplate: () =>
-                    void runWithStatus(setStatus, "雛形の一覧", () =>
-                      chooseTemplate(),
-                    ),
-                  onDaily: () => void handleDailyNote(),
-                })}
-              />
-            </ContextMenu>
-          )}
-          {noteMenu !== null &&
-            (() => {
-              const target = noteMenu.path;
-              return (
-                <ContextMenu at={noteMenu} onClose={() => setNoteMenu(null)}>
-                  <MenuList
-                    onPick={() => setNoteMenu(null)}
-                    items={noteMenuItems(
-                      {
-                        path: target,
-                        pinned:
-                          notes.find((entry) => entry.path === target)
-                            ?.pinned ?? false,
-                        hiddenFromMcp: isHiddenFromMcp(
-                          mcpHiddenList,
-                          relativeIn(vaultRoot ?? "", target),
-                        ),
-                        hiddenBy: hiddenByAncestor(
-                          mcpHiddenList,
-                          relativeIn(vaultRoot ?? "", target),
-                        ),
-                      },
-                      {
-                        onPin: (path) => void handlePin(path),
-                        onToggleMcpHidden: (path) => void toggleMcpHidden(path),
-                        onOpenBeside: (path) => void openBeside(path),
-                        onDuplicate: (path) => void handleDuplicate(path),
-                        onMove: (path) => {
-                          setMoveTarget(path);
-                          setMoveOpen(true);
-                        },
-                        onSaveTemplate: (path) => setTemplateName(path),
-                        onCopyLink: (path) => void copyNoteLink(path),
-                        onReveal: (path) => void revealInFinder(path),
-                        onTrash: (path) => void handleTrash(path),
-                      },
-                    )}
-                  />
-                </ContextMenu>
-              );
-            })()}
-          {editorMenu !== null &&
-            (() => {
-              return (
-                <ContextMenu
-                  at={editorMenu}
-                  onClose={() => setEditorMenu(null)}
-                >
-                  <MenuList
-                    onPick={() => setEditorMenu(null)}
-                    items={editorMenuItems(
-                      { selected: editorMenu.selected },
-                      {
-                        onClipboard: (action) => void editorClipboard(action),
-                        onFormat: (kind) =>
-                          editorRef.current?.applyFormat(kind),
-                        onInsertTable: () => setTableDialog(true),
-                        onHandOff: (handoff) => void handOff(handoff),
-                        onDictionary: () => void lookUpInDictionary(),
-                      },
-                    )}
-                  />
-                </ContextMenu>
-              );
-            })()}
-          {gearMenu !== null &&
-            (() => {
-              // 参照実装（ui/menus.build_gear_menu）と同じ考え方:
-              // **メニューバーと同じ動作を使い回し、よく使うものだけ**。
-              // 全部の写しにすると、探す手間がメニューバーと変わらない
-              return (
-                // 歯車は**押した絵の真上**に出す（測って置くのではなく、
-                // 下端を歯車に合わせる = lib/context-menu の anchorAbove）
-                <div
-                  className="menu-backdrop"
-                  onMouseDown={() => setGearMenu(null)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setGearMenu(null);
-                  }}
-                >
-                  <ul
-                    className="context-menu"
-                    style={anchorAbove(gearMenu, 230, {
-                      width: window.innerWidth,
-                      height: window.innerHeight,
-                    })}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <MenuList
-                      onPick={() => setGearMenu(null)}
-                      items={gearMenuItems(
-                        {
-                          treesVisible: settings.treesVisible,
-                          notesVisible: settings.notesVisible,
-                          outlineOpen,
-                          assistantEnabled: settings.assistantEnabled,
-                          assistantOpen,
-                          sourceMode,
-                          wysiwygMode,
-                          focus: editorModes.focus,
-                          typewriter: editorModes.typewriter,
-                        },
-                        {
-                          onPreferences: openPreferences,
-                          onToggleTrees: () => appMenu.run("toggle-trees"),
-                          onToggleNotes: () => appMenu.run("toggle-notes"),
-                          onToggleOutline: toggleOutline,
-                          onToggleAssistant: () => appMenu.run("assistant"),
-                          onInlineMode: () => appMenu.run("inline-mode"),
-                          onSourceMode: () => appMenu.run("source-mode"),
-                          onPreviewMode: () => appMenu.run("preview-mode"),
-                          onFocusMode: () => appMenu.run("focus-mode"),
-                          onTypewriter: () => appMenu.run("typewriter"),
-                        },
-                      )}
-                    />
-                  </ul>
-                </div>
-              );
-            })()}
-          {tagMenu !== null &&
-            (() => {
-              const target = tagMenu.tag;
-              const filtered = target === tagFilter;
-              return (
-                <ContextMenu at={tagMenu} onClose={() => setTagMenu(null)}>
-                  <MenuList
-                    onPick={() => setTagMenu(null)}
-                    items={tagMenuItems(
-                      { tag: target, filtered },
-                      {
-                        onFilter: filterByTag,
-                        onSearch: searchByTag,
-                        onCopy: (tag) => void copyTag(tag),
-                        onRename: setTagDialog,
-                      },
-                    )}
-                  />
-                </ContextMenu>
-              );
-            })()}
-          {folderMenu !== null &&
-            (() => {
-              const target = folderMenu.folder;
-              return (
-                <ContextMenu
-                  at={folderMenu}
-                  onClose={() => setFolderMenu(null)}
-                >
-                  <MenuList
-                    onPick={() => setFolderMenu(null)}
-                    items={folderMenuItems(
-                      {
-                        folder: target,
-                        hiddenFromMcp: isHiddenFromMcp(mcpHiddenList, target),
-                        hiddenBy: hiddenByAncestor(mcpHiddenList, target),
-                      },
-                      {
-                        onNewNote: (folder) => void handleCreate(folder),
-                        onNewFolder: (folder) =>
-                          setFolderDialog({ kind: "create", folder }),
-                        onReveal: (folder) => void openInFinder(folder),
-                        onToggleMcpHidden: (folder) =>
-                          void toggleMcpHidden(folder),
-                        onRename: (folder) =>
-                          setFolderDialog({ kind: "rename", folder }),
-                        onDelete: (folder) => void handleDeleteFolder(folder),
-                      },
-                    )}
-                  />
-                </ContextMenu>
-              );
-            })()}
-          {outlineMenu !== null && (
-            <ContextMenu at={outlineMenu} onClose={() => setOutlineMenu(null)}>
-              {/* 節ごと動かす（7-1。ポメラのアウトライン相当）。
-                  端では押しても何も起きないので、知らせを出す */}
-              <MenuList
-                onPick={() => setOutlineMenu(null)}
-                items={outlineMenuItems({
-                  onMove: (delta) => {
-                    if (
-                      !editorRef.current?.moveSection(outlineMenu.from, delta)
-                    ) {
-                      setStatus(
-                        delta < 0
-                          ? "これより上には動かせません"
-                          : "これより下には動かせません",
-                      );
-                    }
-                  },
-                })}
-              />
-            </ContextMenu>
-          )}
-          {trashMenu !== null && (
-            <ContextMenu at={trashMenu} onClose={() => setTrashMenu(null)}>
-              <MenuList
-                onPick={() => setTrashMenu(null)}
-                items={trashMenuItems(trashMenu.path, {
-                  onReveal: () => void openInFinder(TRASH_FOLDER),
-                  onEmpty: () =>
-                    void runWithStatus(setStatus, "ゴミ箱を空にする", () =>
-                      handleEmptyTrash(),
-                    ),
-                  onRestore: (path) =>
-                    void runWithStatus(setStatus, "戻す", () =>
-                      handleRestore(path),
-                    ),
-                  onDeleteForever: (path) =>
-                    void runWithStatus(setStatus, "完全な削除", () =>
-                      handleDeleteForever(path),
-                    ),
-                })}
-              />
-            </ContextMenu>
-          )}
+          <AppContextMenus
+            menu={menu}
+            onClose={closeMenu}
+            // 左クリックは無題のノート。ここは**別の作り方**だけを並べる
+            // （メニューバーの「ファイル」と同じ動作を使い回す）
+            newNote={{
+              onTemplate: () =>
+                void runWithStatus(setStatus, "雛形の一覧", () =>
+                  chooseTemplate(),
+                ),
+              onDaily: () => void handleDailyNote(),
+            }}
+            note={{
+              facts: (path) => ({
+                pinned:
+                  notes.find((entry) => entry.path === path)?.pinned ?? false,
+                hiddenFromMcp: isHiddenFromMcp(
+                  mcpHiddenList,
+                  relativeIn(vaultRoot ?? "", path),
+                ),
+                hiddenBy: hiddenByAncestor(
+                  mcpHiddenList,
+                  relativeIn(vaultRoot ?? "", path),
+                ),
+              }),
+              actions: {
+                onPin: (path) => void handlePin(path),
+                onToggleMcpHidden: (path) => void toggleMcpHidden(path),
+                onOpenBeside: (path) => void openBeside(path),
+                onDuplicate: (path) => void handleDuplicate(path),
+                onMove: (path) => {
+                  setMoveTarget(path);
+                  setMoveOpen(true);
+                },
+                onSaveTemplate: (path) => setTemplateName(path),
+                onCopyLink: (path) => void copyNoteLink(path),
+                onReveal: (path) => void revealInFinder(path),
+                onTrash: (path) => void handleTrash(path),
+              },
+            }}
+            editor={{
+              onClipboard: (action) => void editorClipboard(action),
+              onFormat: (kind) => editorRef.current?.applyFormat(kind),
+              onInsertTable: () => setTableDialog(true),
+              onHandOff: (handoff) => void handOff(handoff),
+              onDictionary: () => void lookUpInDictionary(),
+            }}
+            gear={{
+              facts: {
+                treesVisible: settings.treesVisible,
+                notesVisible: settings.notesVisible,
+                outlineOpen,
+                assistantEnabled: settings.assistantEnabled,
+                assistantOpen,
+                sourceMode,
+                wysiwygMode,
+                focus: editorModes.focus,
+                typewriter: editorModes.typewriter,
+              },
+              actions: {
+                onPreferences: openPreferences,
+                onToggleTrees: () => appMenu.run("toggle-trees"),
+                onToggleNotes: () => appMenu.run("toggle-notes"),
+                onToggleOutline: toggleOutline,
+                onToggleAssistant: () => appMenu.run("assistant"),
+                onInlineMode: () => appMenu.run("inline-mode"),
+                onSourceMode: () => appMenu.run("source-mode"),
+                onPreviewMode: () => appMenu.run("preview-mode"),
+                onFocusMode: () => appMenu.run("focus-mode"),
+                onTypewriter: () => appMenu.run("typewriter"),
+              },
+            }}
+            tag={{
+              filtered: (tag) => tag === tagFilter,
+              actions: {
+                onFilter: filterByTag,
+                onSearch: searchByTag,
+                onCopy: (tag) => void copyTag(tag),
+                onRename: setTagDialog,
+              },
+            }}
+            folder={{
+              facts: (folder) => ({
+                hiddenFromMcp: isHiddenFromMcp(mcpHiddenList, folder),
+                hiddenBy: hiddenByAncestor(mcpHiddenList, folder),
+              }),
+              actions: {
+                onNewNote: (folder) => void handleCreate(folder),
+                onNewFolder: (folder) =>
+                  setFolderDialog({ kind: "create", folder }),
+                onReveal: (folder) => void openInFinder(folder),
+                onToggleMcpHidden: (folder) => void toggleMcpHidden(folder),
+                onRename: (folder) =>
+                  setFolderDialog({ kind: "rename", folder }),
+                onDelete: (folder) => void handleDeleteFolder(folder),
+              },
+            }}
+            // 節ごと動かす（7-1。ポメラのアウトライン相当）。端では押しても
+            // 何も起きないので、知らせを出す
+            outline={{
+              onMove: (from, delta) => {
+                if (!editorRef.current?.moveSection(from, delta)) {
+                  setStatus(
+                    delta < 0
+                      ? "これより上には動かせません"
+                      : "これより下には動かせません",
+                  );
+                }
+              },
+            }}
+            trash={{
+              onReveal: () => void openInFinder(TRASH_FOLDER),
+              onEmpty: () =>
+                void runWithStatus(setStatus, "ゴミ箱を空にする", () =>
+                  handleEmptyTrash(),
+                ),
+              onRestore: (path) =>
+                void runWithStatus(setStatus, "戻す", () =>
+                  handleRestore(path),
+                ),
+              onDeleteForever: (path) =>
+                void runWithStatus(setStatus, "完全な削除", () =>
+                  handleDeleteForever(path),
+                ),
+            }}
+          />
           {styleFindings !== null && (
             <StyleCheckDialog
               findings={styleFindings}
@@ -2599,7 +2450,7 @@ function App() {
               items={outline.items}
               currentIndex={outline.currentIndex}
               onJump={(from) => editorRef.current?.revealPos(from)}
-              onMenu={setOutlineMenu}
+              onMenu={openMenu("outline")}
             />
           )}
         </div>
@@ -2607,7 +2458,7 @@ function App() {
           status={status}
           stats={currentPath !== null ? outline.stats : null}
           savedAt={savedAt}
-          onMenu={setGearMenu}
+          onMenu={openMenu("gear")}
         />
       </main>
       {/* 印刷用（ADR-0038）。画面では隠れていて、紙にはここだけが出る。
