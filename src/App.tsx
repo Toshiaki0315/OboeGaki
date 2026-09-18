@@ -17,7 +17,7 @@ import { useExport } from "./hooks/useExport";
 import { useOutline } from "./hooks/useOutline";
 import { usePreferences } from "./hooks/usePreferences";
 import { editModeChecks } from "./lib/menu-checks";
-import { runWithStatus } from "./lib/run-command";
+import { failureText, runWithStatus } from "./lib/run-command";
 import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
 import {
   rememberSidePane,
@@ -507,7 +507,7 @@ function App() {
     } catch (error) {
       // 画面下の知らせは環境設定の裏に隠れる。**閉じたあとに残る**ぶんは
       // ここで、**その場で見えるぶん**は MCP タブが出す
-      setStatus(`コピーできませんでした: ${String(error)}`);
+      setStatus(failureText("コピー", error));
       return false;
     }
   }
@@ -520,7 +520,7 @@ function App() {
       await writeClipboardText(link);
       setStatus(`${link} をコピーしました`);
     } catch (error) {
-      setStatus(`コピーできませんでした: ${String(error)}`);
+      setStatus(failureText("コピー", error));
     }
   }
 
@@ -1016,7 +1016,7 @@ function App() {
           : head,
       );
     } catch (error) {
-      setStatus(`タグの改名に失敗: ${String(error)}`);
+      setStatus(failureText("タグを改名", error));
     }
   }
 
@@ -1049,7 +1049,7 @@ function App() {
       await taskComplete(vaultRoot, path, line);
       await refresh();
     } catch (error) {
-      setStatus(`完了にできませんでした: ${String(error)}`);
+      setStatus(failureText("完了に", error));
     }
   }
 
@@ -1120,7 +1120,7 @@ function App() {
           : head,
       );
     } catch (error) {
-      setStatus(`置換に失敗: ${String(error)}`);
+      setStatus(failureText("置換", error));
     }
   }
 
@@ -1309,7 +1309,7 @@ function App() {
       headingRef.current = firstHeading(text);
       setStatus(renameStatusText(outcome));
     } catch (error) {
-      setStatus(`改名に失敗: ${String(error)}`);
+      setStatus(failureText("改名", error));
     } finally {
       renaming.current = false;
     }
@@ -1346,7 +1346,7 @@ function App() {
       saveLastNote(localStorage, vaultRoot, renamed);
       await refresh();
     } catch (error) {
-      setStatus(`見出しに合わせた改名に失敗: ${String(error)}`);
+      setStatus(failureText("見出しに合わせて改名", error));
     } finally {
       renaming.current = false;
     }
@@ -1401,7 +1401,7 @@ function App() {
     try {
       text = await pinNote(vaultRoot, path, !current?.pinned);
     } catch (error) {
-      setStatus(`ピン留めに失敗: ${String(error)}`);
+      setStatus(failureText("ピン留め", error));
       return;
     }
     // 開いているノートなら、書き換わった front matter を読み直す
@@ -1558,7 +1558,7 @@ function App() {
       await writeClipboardText(`#${tag}`);
       setStatus(`#${tag} をコピーしました`);
     } catch (error) {
-      setStatus(`コピーできませんでした: ${String(error)}`);
+      setStatus(failureText("コピー", error));
     }
   }
 
@@ -1812,9 +1812,7 @@ function App() {
     return useAppStore
       .getState()
       .refresh()
-      .catch((error) =>
-        setStatus(`一覧を更新できませんでした: ${String(error)}`),
-      );
+      .catch((error) => setStatus(failureText("一覧を更新", error)));
   }
 
   /// 編集モードを指定して入る（メニューの「インラインモード」と右上のボタン）。

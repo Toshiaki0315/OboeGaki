@@ -5,13 +5,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { confirmDialog } from "../lib/ipc";
 import { APP_NAME } from "../lib/app-name";
-import { contrastVerdict } from "../lib/contrast";
 import {
-  hexColor,
-  isThemeRef,
   MAX_PAGE_IN,
   MIN_PAGE_IN,
-  themeRef,
   type PptxSettings,
 } from "../lib/pptx-settings";
 import type { Settings } from "../lib/settings";
@@ -19,6 +15,16 @@ import { slideMetrics } from "../lib/slide-grid";
 import { overflowingSlides } from "../lib/slide-lint";
 import { previewOf, SAMPLE_DECKS } from "../lib/slide-preview";
 import { SlidePreview } from "./SlidePreview";
+import {
+  PptxDecorationSection,
+  PptxDensitySection,
+  PptxFooterSection,
+  PptxLintSection,
+  PptxNotesSection,
+  PptxSplitSection,
+  PptxThemeSection,
+  type PatchPptx,
+} from "./PptxSections";
 import { buildDeck } from "../lib/slide-split";
 
 export type PptxPreferencesProps = {
@@ -41,6 +47,12 @@ export function PptxPreferences({
   onResetPptxSettings,
   noteText,
 }: PptxPreferencesProps) {
+  /// 組の中の 1 項目を差し替える（20 か所で `{ group: { ...pptxSettings.group, k } }`
+  /// を書いていた。19-4）
+  const patch: PatchPptx = (group, part) =>
+    onChangePptxSettings({
+      [group]: Object.assign({}, pptxSettings[group], part),
+    } as Partial<PptxSettings>);
   // プレビュー（8-6）。見本を選ぶ／編集中のノートで見る（PV-02 / PV-03）
   const [previewSample, setPreviewSample] = useState(1);
   const [previewOwn, setPreviewOwn] = useState(false);
@@ -76,9 +88,7 @@ export function PptxPreferences({
       );
       if (!ok) return;
     }
-    onChangePptxSettings({
-      notes: { ...pptxSettings.notes, keepOriginalText: keep },
-    });
+    patch("notes", { keepOriginalText: keep });
   }
 
   useEffect(() => {
@@ -107,12 +117,9 @@ export function PptxPreferences({
           <select
             value={pptxSettings.page.preset}
             onChange={(event) =>
-              onChangePptxSettings({
-                page: {
-                  ...pptxSettings.page,
-                  preset: event.currentTarget
-                    .value as PptxSettings["page"]["preset"],
-                },
+              patch("page", {
+                preset: event.currentTarget
+                  .value as PptxSettings["page"]["preset"],
               })
             }
           >
@@ -136,11 +143,8 @@ export function PptxPreferences({
                 step={0.1}
                 value={pptxSettings.page.customWidthIn}
                 onChange={(event) =>
-                  onChangePptxSettings({
-                    page: {
-                      ...pptxSettings.page,
-                      customWidthIn: Number(event.currentTarget.value),
-                    },
+                  patch("page", {
+                    customWidthIn: Number(event.currentTarget.value),
                   })
                 }
               />
@@ -151,11 +155,8 @@ export function PptxPreferences({
                 step={0.1}
                 value={pptxSettings.page.customHeightIn}
                 onChange={(event) =>
-                  onChangePptxSettings({
-                    page: {
-                      ...pptxSettings.page,
-                      customHeightIn: Number(event.currentTarget.value),
-                    },
+                  patch("page", {
+                    customHeightIn: Number(event.currentTarget.value),
                   })
                 }
               />
@@ -167,12 +168,9 @@ export function PptxPreferences({
           <select
             value={pptxSettings.layout.marginScale}
             onChange={(event) =>
-              onChangePptxSettings({
-                layout: {
-                  ...pptxSettings.layout,
-                  marginScale: event.currentTarget
-                    .value as PptxSettings["layout"]["marginScale"],
-                },
+              patch("layout", {
+                marginScale: event.currentTarget
+                  .value as PptxSettings["layout"]["marginScale"],
               })
             }
           >
@@ -186,12 +184,9 @@ export function PptxPreferences({
           <select
             value={pptxSettings.font.scale}
             onChange={(event) =>
-              onChangePptxSettings({
-                font: {
-                  ...pptxSettings.font,
-                  scale: event.currentTarget
-                    .value as PptxSettings["font"]["scale"],
-                },
+              patch("font", {
+                scale: event.currentTarget
+                  .value as PptxSettings["font"]["scale"],
               })
             }
           >
@@ -273,361 +268,23 @@ export function PptxPreferences({
           ）。用紙を大きくするか、字を小さくすると収まります。
         </p>
       )}
-      <h3 className="pref-section">スライドの分け方</h3>
-      <p className="pref-note">
-        どの見出しで 1 枚に分けるか。浅い見出しは扉、深い見出しは
-        枚の中の小見出しになります。
-      </p>
-      <div className="preferences-fields">
-        <label>
-          <span>分ける見出し</span>
-          <select
-            value={String(pptxSettings.layout.splitLevel)}
-            onChange={(event) =>
-              onChangePptxSettings({
-                layout: {
-                  ...pptxSettings.layout,
-                  splitLevel: Number(event.currentTarget.value) as 1 | 2 | 3,
-                },
-              })
-            }
-          >
-            <option value="1">見出し 1（#）</option>
-            <option value="2">見出し 2（##）</option>
-            <option value="3">見出し 3（###）</option>
-          </select>
-        </label>
-      </div>
-      <h3 className="pref-section">1 枚に載せる量</h3>
-      <p className="pref-note">
-        収まらないぶんは**次の枚へ送ります**（字を縮めたり、
-        書いた文を削ったりはしません）。
-      </p>
-      <div className="preferences-fields">
-        <label>
-          <span>載せ方</span>
-          <select
-            value={pptxSettings.layout.density}
-            onChange={(event) =>
-              onChangePptxSettings({
-                layout: {
-                  ...pptxSettings.layout,
-                  density: event.currentTarget
-                    .value as PptxSettings["layout"]["density"],
-                },
-              })
-            }
-          >
-            <option value="full">詳しく</option>
-            <option value="normal">標準</option>
-            <option value="sparse">要点のみ</option>
-          </select>
-        </label>
-        <p className="pref-note">
-          {pptxSettings.layout.density === "sparse"
-            ? "要点のみ — スライドは短く、本文は発表者ノートに入ります"
-            : pptxSettings.layout.density === "full"
-              ? "詳しく — 書いたものをそのまま載せます（溢れたら次の枚へ）"
-              : "標準 — 収まらないときだけ次の枚へ送ります"}
-        </p>
-        <label>
-          <span>箇条書きの上限</span>
-          <span className="pref-check">
-            <input
-              type="range"
-              min={3}
-              max={10}
-              value={pptxSettings.layout.maxBulletItems}
-              onChange={(event) =>
-                onChangePptxSettings({
-                  layout: {
-                    ...pptxSettings.layout,
-                    maxBulletItems: Number(event.currentTarget.value),
-                  },
-                })
-              }
-            />
-            1 枚に {pptxSettings.layout.maxBulletItems} 項目まで
-          </span>
-        </label>
-        <label>
-          <span>続きの枚の印</span>
-          <input
-            value={pptxSettings.layout.continuationSuffix}
-            onChange={(event) =>
-              onChangePptxSettings({
-                layout: {
-                  ...pptxSettings.layout,
-                  continuationSuffix: event.currentTarget.value,
-                },
-              })
-            }
-          />
-        </label>
-      </div>
-      <h3 className="pref-section">見た目</h3>
-      <p className="pref-note">
-        色と書体。**ノートの front matter に書いてあれば
-        そちらが勝ちます**（そのノートだけ変えたいとき）。
-      </p>
-      <div className="preferences-fields">
-        <label>
-          <span>見出しの色</span>
-          <span className="pref-check">
-            <input
-              type="checkbox"
-              checked={isThemeRef(pptxSettings.theme.palette.accent)}
-              onChange={(event) =>
-                onChangePptxSettings({
-                  theme: {
-                    ...pptxSettings.theme,
-                    palette: {
-                      ...pptxSettings.theme.palette,
-                      accent: event.currentTarget.checked
-                        ? themeRef("accent1")
-                        : { hex: "1E2761" },
-                    },
-                  },
-                })
-              }
-            />
-            テーマに従う（PowerPoint 側で替えると一緒に変わる）
-          </span>
-        </label>
-        {!isThemeRef(pptxSettings.theme.palette.accent) && (
-          <label>
-            <span>色を選ぶ</span>
-            <input
-              type="color"
-              value={`#${(pptxSettings.theme.palette.accent as { hex: string }).hex}`}
-              onChange={(event) => {
-                const picked = hexColor(event.currentTarget.value);
-                if (!picked) return;
-                onChangePptxSettings({
-                  theme: {
-                    ...pptxSettings.theme,
-                    palette: {
-                      ...pptxSettings.theme.palette,
-                      accent: picked,
-                    },
-                  },
-                });
-              }}
-            />
-          </label>
-        )}
-        {!isThemeRef(pptxSettings.theme.palette.accent) &&
-          (() => {
-            // **白い紙に置いたときの読みやすさ**（CFG-19）。
-            // 白は「表の見出しの字の色」でもあるので、
-            // この 1 組が両方の見え方をあらわす
-            const found = contrastVerdict(
-              (
-                pptxSettings.theme.palette.accent as {
-                  hex: string;
-                }
-              ).hex,
-              "FFFFFF",
-            );
-            return (
-              <p className="pref-note">
-                白い背景での見えかた: {found.ratio.toFixed(1)}:1
-                {found.body === "warn"
-                  ? found.heading === "warn"
-                    ? "（薄すぎます。大きな字でも読みにくい色です）"
-                    : "（見出しには足りますが、本文には薄い色です）"
-                  : "（読みやすい色です）"}
-              </p>
-            );
-          })()}
-        <label>
-          <span>本文の書体</span>
-          <input
-            value={pptxSettings.font.jp}
-            placeholder="選んでいません（テンプレートに従う）"
-            onChange={(event) =>
-              onChangePptxSettings({
-                font: {
-                  ...pptxSettings.font,
-                  jp: event.currentTarget.value,
-                },
-              })
-            }
-          />
-        </label>
-        <label>
-          <span>コードの書体</span>
-          <input
-            value={pptxSettings.font.mono}
-            onChange={(event) =>
-              onChangePptxSettings({
-                font: {
-                  ...pptxSettings.font,
-                  mono: event.currentTarget.value,
-                },
-              })
-            }
-          />
-        </label>
-        <label>
-          <span>テンプレート</span>
-          <span className="pref-vault-row">
-            <input
-              value={settings.slideTemplate}
-              readOnly
-              placeholder="選んでいません（既定の見た目）"
-            />
-            <button onClick={() => onChooseSlideTemplate()}>選ぶ…</button>
-            {settings.slideTemplate && (
-              <button onClick={() => onChangeSettings({ slideTemplate: "" })}>
-                外す
-              </button>
-            )}
-          </span>
-        </label>
-      </div>
-      <h3 className="pref-section">フッタ</h3>
-      <p className="pref-note">
-        どの枚にも同じように入る帯。空にすると、ノートの題名が 入ります。
-      </p>
-      <div className="preferences-fields">
-        <label>
-          <span>ページ番号</span>
-          <span className="pref-check">
-            <input
-              type="checkbox"
-              checked={pptxSettings.footer.pageNumber}
-              onChange={(event) =>
-                onChangePptxSettings({
-                  footer: {
-                    ...pptxSettings.footer,
-                    pageNumber: event.currentTarget.checked,
-                  },
-                })
-              }
-            />
-            右下にページ番号を入れる
-          </span>
-        </label>
-        <label>
-          <span>フッタの字</span>
-          <input
-            value={pptxSettings.footer.text}
-            placeholder="空ならノートの題名"
-            onChange={(event) =>
-              onChangePptxSettings({
-                footer: {
-                  ...pptxSettings.footer,
-                  text: event.currentTarget.value,
-                },
-              })
-            }
-          />
-        </label>
-        <label>
-          <span>日付</span>
-          <span className="pref-check">
-            <input
-              type="checkbox"
-              checked={pptxSettings.footer.showDate}
-              onChange={(event) =>
-                onChangePptxSettings({
-                  footer: {
-                    ...pptxSettings.footer,
-                    showDate: event.currentTarget.checked,
-                  },
-                })
-              }
-            />
-            書き出した日を入れる
-          </span>
-        </label>
-      </div>
-      <h3 className="pref-section">発表者ノート</h3>
-      <p className="pref-note">
-        スライドに載らなかった本文の行き先。ノートの本文
-        （`.md`）は、どちらにしても変わりません。
-      </p>
-      <div className="preferences-fields">
-        <label>
-          <span>載らなかった本文</span>
-          <span className="pref-check">
-            <input
-              type="checkbox"
-              checked={pptxSettings.notes.keepOriginalText}
-              onChange={(event) =>
-                void changeKeepOriginal(event.currentTarget.checked)
-              }
-            />
-            発表者ノートに残す
-          </span>
-        </label>
-      </div>
-      <h3 className="pref-section">書き出す前のチェック</h3>
-      <p className="pref-note">
-        文字が枠に収まるかを見ます。**当たりをつけるだけ**の
-        見積もりなので、多めに知らせます。
-      </p>
-      <div className="preferences-fields">
-        <label>
-          <span>収まらないとき</span>
-          <select
-            value={pptxSettings.advanced.lintLevel}
-            onChange={(event) =>
-              onChangePptxSettings({
-                advanced: {
-                  ...pptxSettings.advanced,
-                  lintLevel: event.currentTarget
-                    .value as PptxSettings["advanced"]["lintLevel"],
-                },
-              })
-            }
-          >
-            <option value="off">調べない</option>
-            <option value="warn">知らせる（書き出しは続ける）</option>
-            <option value="strict">書き出しを止める</option>
-          </select>
-        </label>
-      </div>
-      <h3 className="pref-section">コードと画像</h3>
-      <div className="preferences-fields">
-        <label>
-          <span>言語名</span>
-          <span className="pref-check">
-            <input
-              type="checkbox"
-              checked={pptxSettings.decoration.codeLanguageLabel}
-              onChange={(event) =>
-                onChangePptxSettings({
-                  decoration: {
-                    ...pptxSettings.decoration,
-                    codeLanguageLabel: event.currentTarget.checked,
-                  },
-                })
-              }
-            />
-            コードの上に言語名を小さく出す
-          </span>
-        </label>
-        <label>
-          <span>画像の説明</span>
-          <span className="pref-check">
-            <input
-              type="checkbox"
-              checked={pptxSettings.decoration.imageCaption}
-              onChange={(event) =>
-                onChangePptxSettings({
-                  decoration: {
-                    ...pptxSettings.decoration,
-                    imageCaption: event.currentTarget.checked,
-                  },
-                })
-              }
-            />
-            画像の下に説明（`![説明](…)`）を出す
-          </span>
-        </label>
-      </div>
+      <PptxSplitSection pptxSettings={pptxSettings} patch={patch} />
+      <PptxDensitySection pptxSettings={pptxSettings} patch={patch} />
+      <PptxThemeSection
+        pptxSettings={pptxSettings}
+        patch={patch}
+        settings={settings}
+        onChangeSettings={onChangeSettings}
+        onChooseSlideTemplate={onChooseSlideTemplate}
+        onChangePptxSettings={onChangePptxSettings}
+      />
+      <PptxFooterSection pptxSettings={pptxSettings} patch={patch} />
+      <PptxNotesSection
+        pptxSettings={pptxSettings}
+        onKeepOriginal={(keep) => void changeKeepOriginal(keep)}
+      />
+      <PptxLintSection pptxSettings={pptxSettings} patch={patch} />
+      <PptxDecorationSection pptxSettings={pptxSettings} patch={patch} />
       <div className="pref-actions">
         <button onClick={onResetPptxSettings}>
           PowerPoint の設定を既定に戻す

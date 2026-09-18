@@ -5,6 +5,12 @@
 // 無反応に見えた（棚卸し 2026-09-17 / 17-6）。成功の知らせは操作ごとに
 // 違うので呼ぶ側が持ち、ここは失敗だけを引き受ける。
 
+/// 失敗をステータスの文にする: 「○○できませんでした: 理由」。App.tsx の catch は
+/// 全部この形（以前は「〜に失敗:」と「〜できませんでした:」が混ざっていた。19-4）
+export function failureText(label: string, error: unknown): string {
+  return `${label}できませんでした: ${String(error)}`;
+}
+
 export async function runWithStatus(
   setStatus: (message: string) => void,
   label: string,
@@ -14,7 +20,7 @@ export async function runWithStatus(
     await run();
     return true;
   } catch (error) {
-    setStatus(`${label}できませんでした: ${String(error)}`);
+    setStatus(failureText(label, error));
     return false;
   }
 }

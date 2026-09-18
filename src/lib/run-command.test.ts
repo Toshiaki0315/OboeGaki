@@ -2,7 +2,7 @@
 // `void handleX()` で呼ぶだけだと、Rust が断っても無反応に見えていた。
 
 import { describe, expect, test, vi } from "vitest";
-import { runWithStatus } from "./run-command";
+import { failureText, runWithStatus } from "./run-command";
 
 describe("runWithStatus", () => {
   test("test_失敗したら_何が_できなかったかをステータスに出して_false", async () => {
@@ -27,5 +27,13 @@ describe("runWithStatus", () => {
     const setStatus = vi.fn();
     await runWithStatus(setStatus, "同期", () => Promise.reject("busy"));
     expect(setStatus).toHaveBeenCalledWith("同期できませんでした: busy");
+  });
+});
+
+describe("failureText", () => {
+  test("test_何が_できなかったかと理由を_1_つの形で", () => {
+    expect(failureText("改名", new Error("busy"))).toBe(
+      "改名できませんでした: Error: busy",
+    );
   });
 });
