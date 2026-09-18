@@ -1023,11 +1023,14 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       `#[cfg(test)] mod test_support`（`temp_vault` / `note` / `at`）で 3 点セット 87 か所
       と重複ヘルパ 4 つを置き換えた。jsdom の `afterEach(cleanup)` 36 ファイルは
       `src/test-setup.ts`（vitest の setupFiles。document が無ければ何もしない）に
-- [ ] **19-2. 純粋な移動**: `vault.rs` → `vault/`（paths / scan / trash / history_carry /
-      attachments / templates / daily / text）、`lib.rs` のメニュー構築 → `menu.rs`
-      （`include_str!("lib.rs")` の自己参照テストを追従）、`live-preview.ts` の
-      theme / widgets / reveal / table-data / block-zones の切り出し。
-      `vault.rs:167` の `mcp::ensure_ignore_file` 呼びを commands 側へ（層の逆転）
+- [x] **19-2. 純粋な移動**（2026-09-18）: `vault.rs`（3,453 行）→ `vault/`（mod / paths /
+      text / scan / notes / templates / attachments / daily / seed / trash / history_carry。
+      最大 676 行。外から見える名前は mod.rs で再エクスポート）。`lib.rs` のメニュー構築と
+      「について」→ `menu.rs`（lib.rs は 217 行に。`include_str!` の自己参照テストも追従）。
+      `live-preview.ts`（2,214 行）→ `live-preview-{reveal,widgets,table-data,zones,theme}.ts`
+      （階層は増やさず接頭辞で並べる。本体は 519 行、`export *` で import 先は変えない）。
+      `ensure_layout` の `mcp::ensure_ignore_file` 呼びを `commands::vault_open` と
+      `McpVault::open` へ移し、vault → mcp の依存（層の逆転）を解いた
 - [ ] **19-3. 一本化の小物**: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
       ／NFC・封じ込め・front matter 剥がし・skip-dir・stem 分割の横断ヘルパ
       ／版の時刻整形と `read_note` の統一、関連ノートの計算を `related.rs` に

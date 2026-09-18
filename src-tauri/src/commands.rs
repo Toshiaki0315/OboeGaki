@@ -163,6 +163,9 @@ pub async fn vault_open(
 ) -> Result<(), String> {
     let vault = Vault::new(&root);
     vault.ensure_layout().map_err(|e| e.to_string())?;
+    // 「何を渡さないか」を書く場所は、最初から在った方が気付ける（中身は説明
+    // だけで、何も隠さない）。vault 本体は MCP を知らない（19-2 で層の逆転を解いた）
+    crate::mcp::ensure_ignore_file(vault.root()).map_err(|e| e.to_string())?;
     // 同じ vault の二重起動を止める（H-1 層 2 / spec §6.1）。2 窓で開くと
     // watcher が互いの保存に反応し、競合ダイアログが行き来する。
     // **先に手放してから取る** — 同じ vault を開き直すとき、自分の持って

@@ -28,6 +28,11 @@ pub fn note(root: &Path, name: &str, text: &str) -> PathBuf {
     path
 }
 
+/// 中身が `# note` だけのノートを置く（場所だけが要るテスト向け）
+pub fn blank_note(dir: &Path, name: &str) -> PathBuf {
+    note(dir, name, "# note\n")
+}
+
 /// ローカル時刻（秒は 0）
 pub fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
     Local
