@@ -13,6 +13,7 @@ import { useCaptureShortcut } from "./hooks/useCaptureShortcut";
 import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { useLatest } from "./hooks/useLatest";
+import { useAppMenu } from "./hooks/useAppMenu";
 import { useExport } from "./hooks/useExport";
 import { useOutline } from "./hooks/useOutline";
 import { usePreferences } from "./hooks/usePreferences";
@@ -158,7 +159,6 @@ import {
   imageSource,
   placeManual,
   placeMcpManual,
-  setMenuChecks,
   mcpConfig,
   templateList,
   pinNote,
@@ -192,7 +192,6 @@ import {
   subscribeIndexUpdated,
   subscribeIndexSynced,
   subscribeIndexSyncFailed,
-  subscribeMenu,
   writeClipboardText,
 } from "./lib/ipc";
 import { useAppStore } from "./stores/app";
@@ -1688,11 +1687,10 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // メニューの印（✓）を今の状態に合わせる（要望 2026-09-13）。**状態を持つ
-  // のは画面**（T2）で、Rust は言われたとおりに付け外しするだけ。変わるたびに
-  // 全部まとめて送る — 1 つずつ送ると、どれかを送り忘れたときに気付けない
-  useEffect(() => {
-    void setMenuChecks({
+  // ネイティブのメニューバーとの配線（19-4 で hooks/useAppMenu に）。印は状態が
+  // 変わるたびに全部まとめて送り、押されたら最新の動作を呼ぶ
+  const appMenu = useAppMenu({
+    checks: {
       "toggle-trees": settings.treesVisible,
       "toggle-notes": settings.notesVisible,
       outline: outlineOpen,
@@ -1700,113 +1698,101 @@ function App() {
       ...editModeChecks({ source: sourceMode, preview: wysiwygMode }),
       "focus-mode": editorModes.focus,
       typewriter: editorModes.typewriter,
-    }).catch(() => {
-      // メニューの印が付かないだけ。書けなくなるわけではない
-    });
-  }, [
-    settings.treesVisible,
-    settings.notesVisible,
-    outlineOpen,
-    assistantOpen,
-    sourceMode,
-    wysiwygMode,
-    editorModes.focus,
-    editorModes.typewriter,
-  ]);
+    },
+    actions: {
+      "new-note": () => void handleCreate(),
+      "new-from-template": () =>
+        void runWithStatus(setStatus, "雛形の一覧", () => chooseTemplate()),
+      "daily-note": () => void handleDailyNote(),
+      "pick-day": openDayDialog,
+      "move-note": () => {
+        if (currentPathRef.current) setMoveOpen(true);
+      },
+      "place-manual": () => void handlePlaceManual(),
+      "place-mcp-manual": () => void handlePlaceMcpManual(),
+      preferences: openPreferences,
+      "open-vault": () => void chooseVault(),
+      resync: () =>
+        void runWithStatus(setStatus, "同期", () => handleSync(false)),
+      "rebuild-index": () =>
+        void runWithStatus(setStatus, "同期", () => handleSync(true)),
+      "cleanup-attachments": () =>
+        void runWithStatus(setStatus, "添付の片づけ", () =>
+          handleCleanupAttachments(),
+        ),
+      save: () => sync.flush(),
+      "export-html": () =>
+        void runWithStatus(setStatus, "HTML の書き出し", () => handleExport()),
+      "export-pptx": () =>
+        void runWithStatus(setStatus, "PowerPoint の書き出し", () =>
+          handleExportPptx(),
+        ),
+      "export-docx": () =>
+        void runWithStatus(setStatus, "Word の書き出し", () =>
+          handleExportDocx(),
+        ),
+      "export-pdf": () => void handlePrint(true),
+      "import-pdf": () => void handleImport("pdf"),
+      "import-pptx": () => void handleImport("pptx"),
+      "import-image": () => void handleImport("image"),
+      print: () => void handlePrint(),
+      history: () => void openHistory(),
+      trash: () => void handleTrash(),
+      "quick-open": () => {
+        setQuickOpen((open) => !open);
+      },
+      "search-all": () => searchInputRef.current?.focus(),
+      "save-search": () => {
+        const typed = queryRef.current.trim();
+        if (!typed) {
+          setStatus("保存する検索式がありません（検索欄に打ってから）");
+          return;
+        }
+        setSavingSearch(typed);
+      },
+      outline: toggleOutline,
+      assistant: () => {
+        // **切ってあるときは出さない**（要望 2026-09-04）。ただし黙って
+        // 無視すると壊れて見えるので、どこで戻せるかを言う
+        if (!settings.assistantEnabled) {
+          setStatus(
+            "アシスタントは環境設定で切ってあります（Cmd+, で戻せます）",
+          );
+          return;
+        }
+        setRightPane((pane) => togglePane(pane, "assistant"));
+      },
+      "llm-unload": () => void assistant.unloadModel(),
+      "heading-palette": openHeadingPalette,
+      "style-check": checkStyleNow,
+      "toggle-trees": () =>
+        changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
+      "toggle-notes": () =>
+        changeSettings({ notesVisible: !settingsRef.current.notesVisible }),
+      "format-heading": () => editorRef.current?.applyFormat("heading"),
+      "format-bullet": () => editorRef.current?.applyFormat("bullet"),
+      "format-ordered": () => editorRef.current?.applyFormat("ordered"),
+      "format-quote": () => editorRef.current?.applyFormat("quote"),
+      extract: () => void handleExtract(),
+      "link-graph": () => void showLinkGraph(DEFAULT_DEPTH),
+      "insert-table": () => {
+        if (currentPathRef.current) setTableDialog(true);
+      },
+      "zoom-in": () => changeFontSize(fontSizeRef.current + FONT_STEP_PX),
+      "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
+      "zoom-reset": () => changeFontSize(DEFAULT_FONT_PX),
+      // 編集モード（要望 2026-09-15）。上 3 つは排他: インラインは「両方切」、
+      // ソースとプレビューは押すと入り、もう一度押すとインラインへ戻る
+      // （`Cmd+/` を今までどおり行き帰りに使えるように、選ぶだけの radio に
+      // はしない）
+      "inline-mode": () => applyEditMode("inline"),
+      "source-mode": () => editorRef.current?.toggleSourceMode(),
+      "preview-mode": () => editorRef.current?.toggleWysiwygMode(),
+      "focus-mode": () => editorRef.current?.toggleFocusMode(),
+      typewriter: () => editorRef.current?.toggleTypewriterMode(),
+    },
+  });
 
-  // ネイティブメニュー（Rust 側 build_menu）からのイベント。
-  // ハンドラは一度だけ登録し、最新の動作は ref 経由で読む
-  const menuActions = useRef<Record<string, () => void>>({});
-  menuActions.current = {
-    "new-note": () => void handleCreate(),
-    "new-from-template": () =>
-      void runWithStatus(setStatus, "雛形の一覧", () => chooseTemplate()),
-    "daily-note": () => void handleDailyNote(),
-    "pick-day": openDayDialog,
-    "move-note": () => {
-      if (currentPathRef.current) setMoveOpen(true);
-    },
-    "place-manual": () => void handlePlaceManual(),
-    "place-mcp-manual": () => void handlePlaceMcpManual(),
-    preferences: openPreferences,
-    "open-vault": () => void chooseVault(),
-    resync: () =>
-      void runWithStatus(setStatus, "同期", () => handleSync(false)),
-    "rebuild-index": () =>
-      void runWithStatus(setStatus, "同期", () => handleSync(true)),
-    "cleanup-attachments": () =>
-      void runWithStatus(setStatus, "添付の片づけ", () =>
-        handleCleanupAttachments(),
-      ),
-    save: () => sync.flush(),
-    "export-html": () =>
-      void runWithStatus(setStatus, "HTML の書き出し", () => handleExport()),
-    "export-pptx": () =>
-      void runWithStatus(setStatus, "PowerPoint の書き出し", () =>
-        handleExportPptx(),
-      ),
-    "export-docx": () =>
-      void runWithStatus(setStatus, "Word の書き出し", () =>
-        handleExportDocx(),
-      ),
-    "export-pdf": () => void handlePrint(true),
-    "import-pdf": () => void handleImport("pdf"),
-    "import-pptx": () => void handleImport("pptx"),
-    "import-image": () => void handleImport("image"),
-    print: () => void handlePrint(),
-    history: () => void openHistory(),
-    trash: () => void handleTrash(),
-    "quick-open": () => {
-      setQuickOpen((open) => !open);
-    },
-    "search-all": () => searchInputRef.current?.focus(),
-    "save-search": () => {
-      const typed = queryRef.current.trim();
-      if (!typed) {
-        setStatus("保存する検索式がありません（検索欄に打ってから）");
-        return;
-      }
-      setSavingSearch(typed);
-    },
-    outline: toggleOutline,
-    assistant: () => {
-      // **切ってあるときは出さない**（要望 2026-09-04）。ただし黙って
-      // 無視すると壊れて見えるので、どこで戻せるかを言う
-      if (!settings.assistantEnabled) {
-        setStatus("アシスタントは環境設定で切ってあります（Cmd+, で戻せます）");
-        return;
-      }
-      setRightPane((pane) => togglePane(pane, "assistant"));
-    },
-    "llm-unload": () => void assistant.unloadModel(),
-    "heading-palette": openHeadingPalette,
-    "style-check": checkStyleNow,
-    "toggle-trees": () =>
-      changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
-    "toggle-notes": () =>
-      changeSettings({ notesVisible: !settingsRef.current.notesVisible }),
-    "format-heading": () => editorRef.current?.applyFormat("heading"),
-    "format-bullet": () => editorRef.current?.applyFormat("bullet"),
-    "format-ordered": () => editorRef.current?.applyFormat("ordered"),
-    "format-quote": () => editorRef.current?.applyFormat("quote"),
-    extract: () => void handleExtract(),
-    "link-graph": () => void showLinkGraph(DEFAULT_DEPTH),
-    "insert-table": () => {
-      if (currentPathRef.current) setTableDialog(true);
-    },
-    "zoom-in": () => changeFontSize(fontSizeRef.current + FONT_STEP_PX),
-    "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
-    "zoom-reset": () => changeFontSize(DEFAULT_FONT_PX),
-    // 編集モード（要望 2026-09-15）。上 3 つは排他: インラインは「両方切」、
-    // ソースとプレビューは押すと入り、もう一度押すとインラインへ戻る
-    // （`Cmd+/` を今までどおり行き帰りに使えるように、選ぶだけの radio に
-    // はしない）
-    "inline-mode": () => applyEditMode("inline"),
-    "source-mode": () => editorRef.current?.toggleSourceMode(),
-    "preview-mode": () => editorRef.current?.toggleWysiwygMode(),
-    "focus-mode": () => editorRef.current?.toggleFocusMode(),
-    typewriter: () => editorRef.current?.toggleTypewriterMode(),
-  };
   /// 一覧を引き直し、できなければステータスに出す（3 か所にあった同じ catch を 1 つに）
   function refreshOrStatus(): Promise<void> {
     return useAppStore
@@ -1829,9 +1815,6 @@ function App() {
       editor.setWysiwygMode(true);
     }
   }
-  useEffect(() => {
-    return subscribeMenu((id) => menuActions.current[id]?.());
-  }, []);
 
   /// 使っていない添付を片づける（E-5）。
   ///
@@ -2588,7 +2571,6 @@ function App() {
               // 参照実装（ui/menus.build_gear_menu）と同じ考え方:
               // **メニューバーと同じ動作を使い回し、よく使うものだけ**。
               // 全部の写しにすると、探す手間がメニューバーと変わらない
-              const menu = menuActions.current;
               return (
                 // 歯車は**押した絵の真上**に出す（測って置くのではなく、
                 // 下端を歯車に合わせる = lib/context-menu の anchorAbove）
@@ -2624,15 +2606,15 @@ function App() {
                         },
                         {
                           onPreferences: openPreferences,
-                          onToggleTrees: () => menu["toggle-trees"]?.(),
-                          onToggleNotes: () => menu["toggle-notes"]?.(),
+                          onToggleTrees: () => appMenu.run("toggle-trees"),
+                          onToggleNotes: () => appMenu.run("toggle-notes"),
                           onToggleOutline: toggleOutline,
-                          onToggleAssistant: () => menu.assistant?.(),
-                          onInlineMode: () => menu["inline-mode"]?.(),
-                          onSourceMode: () => menu["source-mode"]?.(),
-                          onPreviewMode: () => menu["preview-mode"]?.(),
-                          onFocusMode: () => menu["focus-mode"]?.(),
-                          onTypewriter: () => menu.typewriter?.(),
+                          onToggleAssistant: () => appMenu.run("assistant"),
+                          onInlineMode: () => appMenu.run("inline-mode"),
+                          onSourceMode: () => appMenu.run("source-mode"),
+                          onPreviewMode: () => appMenu.run("preview-mode"),
+                          onFocusMode: () => appMenu.run("focus-mode"),
+                          onTypewriter: () => appMenu.run("typewriter"),
                         },
                       )}
                     />
