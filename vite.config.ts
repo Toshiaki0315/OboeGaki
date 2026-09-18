@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { resolveDevPort } from "./src/lib/dev-port";
 
@@ -12,6 +12,9 @@ const { port, hmrPort } = resolveDevPort(process.env);
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+
+  // テストの共通の後始末（jsdom の cleanup）。環境は各ファイルの先頭で宣言する
+  test: { setupFiles: ["src/test-setup.ts"] },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // ゴミ箱の中身の一覧（要望 2026-09-05）の検証。出せる操作は右クリックに絞る。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { TrashRows, type TrashRowsProps } from "./TrashRows";
-
-afterEach(cleanup);
 
 const ROOT = "/v";
 

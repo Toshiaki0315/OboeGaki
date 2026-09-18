@@ -4,16 +4,13 @@ import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import {
   closingTail,
   linkCompletionEdit,
   noteLinkCompletion,
   noteLinkPrefixAt,
 } from "./note-link-complete";
+import { LANG } from "./test-utils";
 
 describe("noteLinkPrefixAt", () => {
   test("打ちかけのノート名を返す", () => {
@@ -81,11 +78,7 @@ function complete(
   const state = EditorState.create({
     doc,
     selection: { anchor: pos },
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
   const source = noteLinkCompletion(() => titles);
   const view = { composing } as unknown as EditorView;

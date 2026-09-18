@@ -857,14 +857,9 @@ fn clip(text: String) -> (String, bool) {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+    use crate::test_support::{note, temp_vault};
     use std::fs;
     use tempfile::TempDir;
-
-    fn note(root: &std::path::Path, name: &str, text: &str) {
-        let path = root.join(name);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, text).unwrap();
-    }
 
     #[test]
     fn test_ignore_list_行ごとのフォルダ_コメントと空行_区切りで見る() {
@@ -889,9 +884,7 @@ mod tests {
 
     #[test]
     fn test_mcp_vault_索引を読み_無視の中は出さない_開いていなければ自分で同期する() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(
             root.path(),
             "会議メモ.md",
@@ -926,9 +919,7 @@ mod tests {
 
     #[test]
     fn test_related_notes_指している_同じタグ_題名の出現を根拠ごと返す() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(
             root.path(),
             "設計.md",
@@ -960,9 +951,7 @@ mod tests {
     #[test]
     fn test_note_history_版の一覧と本文_読むだけ() {
         use chrono::NaiveDate;
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "設計.md", "# 設計\n\n今の本文\n");
         let store = crate::history::store_root(&vault.managed_dir());
         let at = |d: u32| {
@@ -1007,9 +996,7 @@ mod tests {
 
     #[test]
     fn test_list_resources_一覧に出るノートだけを資源として並べる() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(root.path(), "会議.md", "# 会議\n\n本文\n");
         note(root.path(), "秘密/裏.md", "# 裏\n\n本文\n");
         fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
@@ -1023,9 +1010,7 @@ mod tests {
 
     #[test]
     fn test_create_note_フォルダと雛形で作る_見せない場所には作らない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         fs::create_dir_all(root.path().join("仕事")).unwrap();
         fs::write(
             vault.templates_dir().join("議事録.md"),
@@ -1064,9 +1049,7 @@ mod tests {
 
     #[test]
     fn test_append_to_note_末尾と節の末尾に足す_前の行に繋げない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(
             root.path(),
             "設計.md",
@@ -1097,9 +1080,7 @@ mod tests {
     fn test_mcp_ignore_を書き換えたら_開き直さなくても次の呼び出しから効く() {
         // Claude Desktop は MCP サーバを常駐させる。GUI で「渡さない」に
         // した瞬間から効かないと、画面の印と実態が食い違う（レビュー 2026-09-14）
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(root.path(), "秘密/給与.md", "# 給与\n\n会議では言わない\n");
         let mcp = McpVault::open(root.path()).unwrap();
         assert!(mcp.read_note("秘密/給与.md").is_ok());
@@ -1115,9 +1096,7 @@ mod tests {
 
     #[test]
     fn test_list_tags_見せない場所のノートは数えない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(
             root.path(),
             "会議メモ.md",
@@ -1143,9 +1122,7 @@ mod tests {
 
     #[test]
     fn test_daily_note_今日のノートが見せない場所なら_作らず追記もしない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         let mcp = McpVault::open(root.path()).unwrap();
         let today = mcp.daily_note(None).unwrap();
         let before = read_note(&root.path().join(&today.path)).unwrap();
@@ -1159,9 +1136,7 @@ mod tests {
 
     #[test]
     fn test_daily_note_今日のノートを返し_文があれば末尾に足す() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         let mcp = McpVault::open(root.path()).unwrap();
 
         let first = mcp.daily_note(None).unwrap();
@@ -1178,9 +1153,7 @@ mod tests {
 
     #[test]
     fn test_replace_note_更新時刻が合わなければ断る_版を残してから差し替える() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(root.path(), "設計.md", "# 設計\n\n古い本文\n");
         let mcp = McpVault::open(root.path()).unwrap();
         let before = mcp.read_note("設計.md").unwrap();
@@ -1214,9 +1187,7 @@ mod tests {
         // 「アプリが動いていればアプリの保存が残す」は成り立たない —
         // watcher は外部変更で版を残さないので、開いていないノートを差し替え
         // ると旧本文が消える（レビュー 2026-09-14。ADR-0023 / T7）
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "設計.md", "# 設計\n\n古い本文\n");
         let mcp = McpVault::open(root.path()).unwrap();
         let _app = crate::vault_lock::acquire(&vault.managed_dir());
@@ -1250,9 +1221,7 @@ mod tests {
     #[test]
     fn test_history_text_mtime_msはローカル時刻として読む() {
         use chrono::{NaiveDate, TimeZone};
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "設計.md", "# 設計\n");
         let store = crate::history::store_root(&vault.managed_dir());
         let at = NaiveDate::from_ymd_opt(2026, 9, 1)
@@ -1277,9 +1246,7 @@ mod tests {
     fn test_append_to_note_同時に足しても片方が消えない() {
         // rmcp は要求ごとにタスクを立てるので、同じノートへの追記が並ぶ。
         // read-modify-write に排他が無いと後勝ちで片方が消える（レビュー 2026-09-14）
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(root.path(), "日誌.md", "# 日誌\n");
         let mcp = McpVault::open(root.path()).unwrap();
         let rounds = 40;
@@ -1318,9 +1285,7 @@ mod tests {
 
     #[test]
     fn test_read_note_mdでないものは読まない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         fs::write(root.path().join("メモ.txt"), "秘密の設定\n").unwrap();
         let mcp = McpVault::open(root.path()).unwrap();
         assert!(mcp.read_note("メモ.txt").is_err());
@@ -1353,9 +1318,7 @@ mod tests {
 
     #[test]
     fn test_create_note_front_matter_の下に見出しを置く() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         let mcp = McpVault::open(root.path()).unwrap();
         let made = mcp
             .create_note("設計", Some("---\ntags: [a]\n---\n本文\n"), None, None)
@@ -1457,9 +1420,7 @@ mod tests {
 
     #[test]
     fn test_list_folders_見せないノートは数えない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(root.path(), "仕事/a.md", "# a\n");
         note(root.path(), "仕事/b.md", "# b\n");
         fs::write(root.path().join(".mcp-ignore"), "仕事/b.md\n").unwrap();
@@ -1474,9 +1435,7 @@ mod tests {
     #[test]
     fn test_move_note_行き先へ移し_履歴も連れて行く() {
         use chrono::NaiveDate;
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "設計.md", "# 設計\n\n本文\n");
         fs::create_dir_all(root.path().join("仕事")).unwrap();
         fs::write(root.path().join(".mcp-ignore"), "秘密\n").unwrap();
@@ -1502,9 +1461,7 @@ mod tests {
 
     #[test]
     fn test_trash_note_ゴミ箱へ入れる_ピン留めは断る_空にはしない() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         note(root.path(), "要らない.md", "# 要らない\n");
         note(root.path(), "大事.md", "---\npinned: true\n---\n# 大事\n");
         let mcp = McpVault::open(root.path()).unwrap();
@@ -1620,9 +1577,7 @@ mod tests {
 
     #[test]
     fn test_read_note_長い本文は先頭だけにして続きがある印() {
-        let root = TempDir::new().unwrap();
-        let vault = crate::vault::Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         let long: String = (0..5000).map(|i| format!("行 {i}\n")).collect();
         note(root.path(), "長い.md", &long);
         let mcp = McpVault::open(root.path()).unwrap();

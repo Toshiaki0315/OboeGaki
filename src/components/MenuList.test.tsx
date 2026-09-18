@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 右クリックメニューの項目（配列から描く）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { MenuList, type MenuEntry } from "./MenuList";
-
-afterEach(cleanup);
 
 function setup(items: MenuEntry[]) {
   const onPick = vi.fn();

@@ -1,15 +1,8 @@
 // 埋め込み `![[ノート名]]`（ADR-0058 / 12-7）の記法。Lezer の木で確かめる
-import { markdown } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
-import { Table, TaskList } from "@lezer/markdown";
 import { describe, expect, test } from "vitest";
-import { extendedInline } from "./extended-inline";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
+import { LANG } from "./test-utils";
 
 function nodesOf(doc: string): { name: string; from: number; to: number }[] {
   const state = EditorState.create({ doc, extensions: [LANG] });

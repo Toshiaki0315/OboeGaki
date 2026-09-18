@@ -2,20 +2,8 @@
 // 畳む範囲は純関数。見出しの行末から、同じか浅い見出しの手前まで。
 
 import { describe, expect, test } from "vitest";
-import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { headingSection } from "./folding";
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
-
-function stateOf(doc: string): EditorState {
-  return EditorState.create({ doc, extensions: [LANG] });
-}
+import { stateOf } from "./test-utils";
 
 function sectionText(doc: string, lineNumber: number): string | null {
   const state = stateOf(doc);

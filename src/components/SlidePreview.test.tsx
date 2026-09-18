@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 // スライドの下絵（環境設定 PowerPoint タブのプレビュー）の検証。
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, test } from "vitest";
 import { DEFAULT_PPTX_SETTINGS } from "../lib/pptx-settings";
 import { previewOf, SAMPLE_DECKS } from "../lib/slide-preview";
 import { SlidePreview } from "./SlidePreview";
-
-afterEach(cleanup);
 
 describe("SlidePreview", () => {
   test("test_枚の題名を読み上げ名にした絵になる", () => {

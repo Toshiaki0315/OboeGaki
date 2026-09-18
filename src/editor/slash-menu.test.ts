@@ -4,16 +4,13 @@ import { describe, expect, test } from "vitest";
 import { EditorState, type Transaction } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import {
   matchSlash,
   slashCompletion,
   slashPrefixAt,
   SLASH_COMMANDS,
 } from "./slash-menu";
+import { LANG } from "./test-utils";
 
 describe("slashPrefixAt", () => {
   test("test_行頭の / の直後は空文字（そこで全部の候補を出す）", () => {
@@ -100,11 +97,7 @@ function complete(doc: string, pos: number, composing = false) {
   const state = EditorState.create({
     doc,
     selection: { anchor: pos },
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
   const view = { composing } as unknown as EditorView;
   return slashCompletion()(new CompletionContext(state, pos, false, view));

@@ -2,21 +2,14 @@
 
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
 import { syntaxTree } from "@codemirror/language";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { treeOf } from "./parse-tree";
+import { LANG } from "./test-utils";
 
 function stateOf(doc: string) {
   return EditorState.create({
     doc,
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
 }
 

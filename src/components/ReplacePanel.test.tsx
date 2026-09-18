@@ -1,17 +1,10 @@
 // @vitest-environment jsdom
 // 保管フォルダ全体の置換（ADR-0055 / 12-3）。検索欄の字を置き換える。
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { ReplacePanel } from "./ReplacePanel";
 
-afterEach(cleanup);
 const settle = () =>
   act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 

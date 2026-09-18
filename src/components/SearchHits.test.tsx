@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 検索結果の一覧（一覧ペインの中身が差し替わる）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { SearchHits } from "./SearchHits";
-
-afterEach(cleanup);
 
 describe("SearchHits", () => {
   test("test_題と抜き書きを並べ_押すと相対パスが渡る", () => {

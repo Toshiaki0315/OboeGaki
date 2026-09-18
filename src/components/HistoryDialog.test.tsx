@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // 版の履歴ダイアログ（ADR-0023）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { HistoryDialog } from "./HistoryDialog";
 
 const ENTRIES = [
@@ -33,8 +33,6 @@ function setup(entries = ENTRIES, currentText = "見出し\n二行目\n三行目
   return { onRestore, onClose, readVersion };
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-afterEach(cleanup);
 
 describe("HistoryDialog", () => {
   test("test_版ごとに日時と「戻す」が並ぶ", () => {

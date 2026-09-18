@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 // ノート一覧の行（開く・右クリック・フォルダへ掴んで落とす）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { NOTE_DRAG_TYPE } from "../lib/note-drop";
 import { NoteRows, type NoteRowsProps } from "./NoteRows";
-
-afterEach(cleanup);
 
 const NOTES = [
   {

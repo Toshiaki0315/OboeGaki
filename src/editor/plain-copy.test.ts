@@ -3,15 +3,8 @@
 
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { copyRange, plainTextOf } from "./plain-copy";
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
+import { LANG } from "./test-utils";
 
 function plain(doc: string, from = 0, to = doc.length): string {
   const state = EditorState.create({ doc, extensions: [LANG] });

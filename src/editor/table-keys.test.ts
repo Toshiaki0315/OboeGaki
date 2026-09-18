@@ -3,11 +3,8 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { EditorState, type StateCommand } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { tableEnter, tableNextCell, tablePrevCell } from "./table-keys";
+import { LANG } from "./test-utils";
 
 /// `｜` の位置にカーソルを置いてコマンドを実行する。対象外なら null
 function press(command: StateCommand, docWithCursor: string): string | null {
@@ -17,11 +14,7 @@ function press(command: StateCommand, docWithCursor: string): string | null {
   const state = EditorState.create({
     doc,
     selection: { anchor },
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
   let result: string | null = null;
   const handled = command({
@@ -130,11 +123,7 @@ describe("選択があるとき", () => {
     const state = EditorState.create({
       doc,
       selection: { anchor: doc.indexOf("1"), head: doc.indexOf("1") + 1 },
-      extensions: [
-        markdown({
-          extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-        }),
-      ],
+      extensions: [LANG],
     });
     const dispatch = vi.fn();
     expect(tableEnter({ state, dispatch })).toBe(false);

@@ -1721,6 +1721,7 @@ fn sort_by_trashed(entries: &mut [TrashEntry]) {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+    use crate::test_support::{at, temp_vault};
 
     #[test]
     fn test_UTF8_はそのまま読む() {
@@ -1751,10 +1752,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn note(dir: &Path, name: &str) -> PathBuf {
-        let path = dir.join(name);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, "# note\n").unwrap();
-        path
+        crate::test_support::note(dir, name, "# note\n")
     }
 
     #[test]
@@ -1789,9 +1787,7 @@ mod tests {
 
     #[test]
     fn test_folder_既存参照でも予約フォルダとドット始まりは弾く() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         assert!(vault.delete_folder(".trash").is_err());
         assert!(vault.rename_folder(".OboeGaki", "x").is_err());
         let note_path = note(root.path(), "メモ.md");
@@ -1971,9 +1967,7 @@ mod tests {
     #[test]
     fn test_delete_permanently_ゴミ箱の外は消さずにエラー() {
         // 押し間違いが取り返しのつかない結果にならないための境界
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let alive = note(root.path(), "生きている.md");
         assert!(vault.delete_permanently(&alive).is_err());
         assert!(alive.exists());
@@ -1984,9 +1978,7 @@ mod tests {
 
     #[test]
     fn test_delete_permanently_既に無ければ何もしない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         let gone = vault.trash_dir().join("無い.md");
         assert!(vault.delete_permanently(&gone).is_ok());
     }
@@ -2391,9 +2383,7 @@ mod tests {
 
     #[test]
     fn test_trash_階層を保ってゴミ箱へ移す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let path = note(root.path(), "sub/捨てる.md");
         let moved = vault.trash(&path).unwrap();
         assert_eq!(moved, vault.trash_dir().join("sub/捨てる.md"));
@@ -2403,9 +2393,7 @@ mod tests {
 
     #[test]
     fn test_trash_同名があればタイムスタンプを付ける() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let first = note(root.path(), "同名.md");
         vault.trash(&first).unwrap();
         let second = note(root.path(), "同名.md");
@@ -2417,9 +2405,7 @@ mod tests {
 
     #[test]
     fn test_trash_既にゴミ箱の中なら動かさない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let path = note(root.path(), "x.md");
         let moved = vault.trash(&path).unwrap();
         assert_eq!(vault.trash(&moved).unwrap(), moved);
@@ -2439,9 +2425,7 @@ mod tests {
 
     #[test]
     fn test_trash_list_ゴミ箱の中の階層ごとノートを名前順で返す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let a = vault.trash(&note(root.path(), "a.md")).unwrap();
         let inner = vault.trash(&note(root.path(), "sub/inner.md")).unwrap();
         note(root.path(), "生きている.md"); // ゴミ箱の外は入らない
@@ -2490,9 +2474,7 @@ mod tests {
 
     #[test]
     fn test_trash_entries_捨てた時刻を読む() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let moved = vault.trash(&note(root.path(), "a.md")).unwrap();
 
         let entries = vault.trash_entries();
@@ -2540,9 +2522,7 @@ mod tests {
 
     #[test]
     fn test_restore_元のフォルダへ戻しフォルダが消えていれば作り直す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let moved = vault.trash(&note(root.path(), "sub/a.md")).unwrap();
         fs::remove_dir(root.path().join("sub")).unwrap(); // 元フォルダが消えた状況
 
@@ -2557,9 +2537,7 @@ mod tests {
 
     #[test]
     fn test_restore_同名があれば連番を付ける() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let moved = vault.trash(&note(root.path(), "a.md")).unwrap();
         note(root.path(), "a.md"); // 同名の後継が生まれている
 
@@ -2569,9 +2547,7 @@ mod tests {
 
     #[test]
     fn test_restore_ゴミ箱の外は拒否する() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let alive = note(root.path(), "生きている.md");
         assert!(vault.restore(&alive).is_err());
         assert!(alive.exists());
@@ -2579,18 +2555,9 @@ mod tests {
 
     // ------------------------------------------------------- テンプレート（E-4）
 
-    fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
-        use chrono::TimeZone;
-        Local
-            .with_ymd_and_hms(year, month, day, hour, minute, 0)
-            .unwrap()
-    }
-
     #[test]
     fn test_templates_雛形を名前順で返し_走査には出さない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         fs::write(vault.templates_dir().join("議事録.md"), "# {{title}}\n").unwrap();
         fs::write(vault.templates_dir().join("日報.md"), "# {{date}}\n").unwrap();
         fs::write(vault.templates_dir().join("メモ.txt"), "雛形ではない").unwrap();
@@ -2611,9 +2578,7 @@ mod tests {
 
     #[test]
     fn test_seed_templates_初回だけ置く_手で消したものは復活しない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
 
         let placed = vault.seed_templates().unwrap();
         assert_eq!(placed.len(), DEFAULT_TEMPLATES.len());
@@ -2630,9 +2595,7 @@ mod tests {
 
     #[test]
     fn test_seed_templates_手で直した雛形を上書きしない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         fs::create_dir_all(vault.templates_dir()).unwrap();
         fs::write(vault.templates_dir().join("日次.md"), "# 自分の日次\n").unwrap();
 
@@ -2644,9 +2607,7 @@ mod tests {
 
     #[test]
     fn test_create_from_template_印を埋めてノートを作る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let template = vault.templates_dir().join("議事録.md");
         fs::write(&template, "# {{title}}\n\n{{date}}\n\n- {{cursor}}\n").unwrap();
 
@@ -2662,9 +2623,7 @@ mod tests {
 
     #[test]
     fn test_create_from_template_題名を省いたら雛形の名前() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let template = vault.templates_dir().join("議事録.md");
         fs::write(&template, "# {{title}}\n").unwrap();
 
@@ -2678,9 +2637,7 @@ mod tests {
 
     #[test]
     fn test_create_from_template_雛形のfront_matterは持ち込まない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         let template = vault.templates_dir().join("議事録.md");
         // 管理情報（ピン留めなど）は雛形の持ち物で、ノートの持ち物ではない
         fs::write(&template, "---\npinned: true\n---\n# {{title}}\n").unwrap();
@@ -2694,9 +2651,7 @@ mod tests {
 
     #[test]
     fn test_create_from_template_雛形の外のパスは拒否する() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let outside = note(root.path(), "普通のノート.md");
         // パスは手で編集できる。外のファイルをノートに変えさせない
         assert!(vault
@@ -2707,9 +2662,7 @@ mod tests {
     // どこからでも書き取り（ADR-0057 / 12-6）: 今日のノートの末尾に追記
     #[test]
     fn test_append_to_daily_無ければ作り_末尾に改行を挟んで足す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let now = at(2026, 9, 11, 9, 0);
 
         let path = vault.append_to_daily(&now, "思いつき").unwrap();
@@ -2731,9 +2684,7 @@ mod tests {
 
     #[test]
     fn test_daily_note_同じ日に何度呼んでも同じノート() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         fs::write(
             vault.templates_dir().join(DAILY_TEMPLATE),
             "# {{date}}\n\n- [ ] {{cursor}}\n",
@@ -2757,9 +2708,7 @@ mod tests {
 
     #[test]
     fn test_daily_note_雛形が無ければ見出しだけ() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
 
         let made = vault.daily_note(&at(2026, 9, 3, 14, 5)).unwrap();
 
@@ -2768,9 +2717,7 @@ mod tests {
 
     #[test]
     fn test_seed_manual_空のvaultに一度だけ置く() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
 
         let placed = vault.seed_manual().unwrap().unwrap();
         assert_eq!(placed, root.path().join(format!("{MANUAL_TITLE}.md")));
@@ -2783,9 +2730,7 @@ mod tests {
 
     #[test]
     fn test_seed_manual_ノートがあるvaultには置かない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "先にあるノート.md");
 
         assert!(vault.seed_manual().unwrap().is_none());
@@ -2800,9 +2745,7 @@ mod tests {
 
     #[test]
     fn test_place_mcp_manual_置いた場所を返し_既にあるノートを消さない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let first = vault.place_mcp_manual().unwrap();
         assert_eq!(first, root.path().join(format!("{MCP_MANUAL_TITLE}.md")));
         let second = vault.place_mcp_manual().unwrap();
@@ -2827,9 +2770,7 @@ mod tests {
 
     #[test]
     fn test_place_manual_既にあるノートを消さずに置く() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
 
         let first = vault.place_manual().unwrap();
         fs::write(&first, "# 書き足したメモ\n").unwrap();
@@ -2843,9 +2784,7 @@ mod tests {
 
     #[test]
     fn test_unused_attachments_どこからも指されていないものだけ() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         for name in ["使用中.png", "孤児.png", ".DS_Store"] {
             fs::write(vault.attachments_dir().join(name), "x").unwrap();
         }
@@ -2866,9 +2805,7 @@ mod tests {
         // **守るはずのものを守れない**穴（7-6 の追い込み 2026-09-06）。
         // 読めないノートを飛ばすと、使っている画像が「孤児」に見えて
         // ゴミ箱へ行く
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         fs::write(vault.attachments_dir().join("使用中.png"), "x").unwrap();
         let sjis = encoding_rs::SHIFT_JIS
             .encode("# 会議\n\n![](attachments/使用中.png)\n")
@@ -2919,9 +2856,7 @@ mod tests {
 
     #[test]
     fn test_unused_attachments_ゴミ箱と雛形の参照も数える() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         for name in ["ゴミ箱から.png", "雛形から.png"] {
             fs::write(vault.attachments_dir().join(name), "x").unwrap();
         }
@@ -2942,9 +2877,7 @@ mod tests {
 
     #[test]
     fn test_trash_attachments_添付以外は動かさない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let orphan = vault.attachments_dir().join("孤児.png");
         fs::write(&orphan, "x").unwrap();
         let note = note(root.path(), "巻き込まれない.md");
@@ -2961,9 +2894,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_元と同じフォルダに作り見出しも揃える() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = root.path().join("仕事/会議.md");
         fs::create_dir_all(source.parent().unwrap()).unwrap();
         fs::write(&source, "# 会議\n\n本文。\n").unwrap();
@@ -2978,9 +2909,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_vaultの外は断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         let outside = TempDir::new().unwrap();
         let path = outside.path().join("外.md");
         fs::write(&path, "# 外\n").unwrap();
@@ -2990,9 +2919,7 @@ mod tests {
 
     #[test]
     fn test_register_template_front_matterを持ち込まず見出しを印にする() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "議事の型.md");
         fs::write(&source, "---\npinned: true\n---\n# 議事の型\n\n## 議題\n").unwrap();
 
@@ -3008,9 +2935,7 @@ mod tests {
 
     #[test]
     fn test_register_template_同じ名前は断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "型.md");
         vault.register_template(&source, "議事録").unwrap();
 
@@ -3022,9 +2947,7 @@ mod tests {
 
     #[test]
     fn test_restore_stash_別ファイルとして元のフォルダに置く() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "仕事/会議.md");
 
         let restored = vault
@@ -3043,9 +2966,7 @@ mod tests {
 
     #[test]
     fn test_restore_stash_箱が消えていたら直下へ() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         // 無い箱は作らない（spec §7.1）
         let gone = root.path().join("消えた/会議.md");
 
@@ -3058,9 +2979,7 @@ mod tests {
 
     #[test]
     fn test_restore_stash_同じ名前があれば連番() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "会議.md");
 
         let first = vault
@@ -3076,9 +2995,7 @@ mod tests {
 
     #[test]
     fn test_restore_stash_vaultの外は断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
         let outside = TempDir::new().unwrap().path().join("外.md");
 
         assert!(vault.restore_stash(&outside, "本文", "2026-09-03").is_err());
@@ -3091,9 +3008,7 @@ mod tests {
         // 雛形の読みだけ `fs::read_to_string` のままで、Shift_JIS / CRLF のノート
         // では失敗し `\r` が混じっていた（他は 7-6 で read_note に統一済み。
         // 棚卸し 2026-09-17）
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = root.path().join("挨拶.md");
         // 「こんにちは」の Shift_JIS + CRLF
         let mut sjis = vec![0x82, 0xB1, 0x82, 0xF1, 0x82, 0xC9, 0x82, 0xBF, 0x82, 0xCD];
@@ -3115,9 +3030,7 @@ mod tests {
         // canonicalize した実体（/var → /private/var、NFD のまま）、after_folder_moved
         // は scan() の NFC、carry_history は生 root の剥がし。同じノートの版が
         // 経路によって見つからない
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let nfd = root.path().join("フ\u{309A}.md"); // Finder が作る形
         fs::write(&nfd, "# a\n").unwrap();
         let want = "path:プ.md".to_string();
@@ -3143,9 +3056,7 @@ mod tests {
     fn test_rename_拡張子を保ち_版も連れて行く() {
         // `.md` 決め打ちで `.markdown` のノートを改名すると拡張子が変わり、同名の
         // 判定も外れていた。版の付け替えは commands 側にあった（監査 2026-09-17）
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let path = root.path().join("a.markdown");
         fs::write(&path, "# a\n").unwrap();
         let store = crate::history::store_root(&vault.managed_dir());
@@ -3166,9 +3077,7 @@ mod tests {
     fn test_restore_ゴミ箱から戻すと版も連れて戻る() {
         // trash は版を連れて行く（carry_history）のに、restore は連れて戻らず
         // commands 側が別の鍵で付け替えていた（非対称。監査 2026-09-17）
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let path = note(root.path(), "a.md");
         let store = crate::history::store_root(&vault.managed_dir());
         let at = chrono::NaiveDate::from_ymd_opt(2026, 9, 1)
@@ -3189,9 +3098,7 @@ mod tests {
         // macOS の read_dir は NFD で作った名前を NFD のまま返す。scan() は NFC に
         // 揃えるのに folders() が揃えないと、索引（NFC）の件数が 0 になり中身も
         // 空に見える（監査 2026-09-17）
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let nfd = root.path().join("フ\u{309A}ロシ\u{3099}ェクト");
         fs::create_dir_all(&nfd).unwrap();
         fs::write(nfd.join("a.md"), "# a\n").unwrap();
@@ -3200,9 +3107,7 @@ mod tests {
 
     #[test]
     fn test_folders_ディスクから引いて予約フォルダと隠しは外す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         fs::create_dir_all(root.path().join("仕事/2026")).unwrap();
         fs::create_dir_all(root.path().join("日記")).unwrap();
         fs::create_dir_all(root.path().join(".隠し")).unwrap();
@@ -3220,9 +3125,7 @@ mod tests {
 
     #[test]
     fn test_create_folder_作って既にあれば断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
 
         let made = vault.create_folder("仕事/2026").unwrap();
 
@@ -3234,9 +3137,7 @@ mod tests {
 
     #[test]
     fn test_create_folder_予約フォルダとvaultの外は断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (_root, vault) = temp_vault();
 
         assert!(vault.create_folder("attachments/中").is_err());
         assert!(vault.create_folder(".trash/中").is_err());
@@ -3246,9 +3147,7 @@ mod tests {
 
     #[test]
     fn test_rename_folder_中身は触らず名前だけ変える() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "仕事/会議.md");
 
         let renamed = vault.rename_folder("仕事", "業務").unwrap();
@@ -3260,9 +3159,7 @@ mod tests {
 
     #[test]
     fn test_rename_folder_名前は1段ぶん_衝突は断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         fs::create_dir_all(root.path().join("仕事")).unwrap();
         fs::create_dir_all(root.path().join("日記")).unwrap();
 
@@ -3278,9 +3175,7 @@ mod tests {
 
     #[test]
     fn test_move_folder_中身ごと別のフォルダの中へ移す_要望2026_09_10() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "仕事/会議/議事録.md");
         fs::create_dir_all(root.path().join("保管")).unwrap();
 
@@ -3296,9 +3191,7 @@ mod tests {
 
     #[test]
     fn test_move_folder_自分の中_同じ親_同名との衝突は断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "仕事/会議/議事録.md");
         fs::create_dir_all(root.path().join("保管/会議")).unwrap();
 
@@ -3315,9 +3208,7 @@ mod tests {
 
     #[test]
     fn test_is_empty_ゴミ箱と雛形しか無い_vault_は空() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         assert!(vault.is_empty());
         note(root.path(), &format!("{TRASH_DIR}/捨てた.md"));
         note(root.path(), "templates/雛形.md");
@@ -3328,9 +3219,7 @@ mod tests {
 
     #[test]
     fn test_delete_folder_ノートが残っていたら消さない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "仕事/会議.md");
 
         // フォルダの削除にゴミ箱は無い。中身ごと消える操作は用意しない
@@ -3340,9 +3229,7 @@ mod tests {
 
     #[test]
     fn test_delete_folder_空なら消す_DS_Storeは無視する() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         fs::create_dir_all(root.path().join("仕事/2026")).unwrap();
         fs::write(root.path().join("仕事/.DS_Store"), "").unwrap();
 
@@ -3354,9 +3241,7 @@ mod tests {
     #[test]
     fn test_trash_note_ピン留めは断り_履歴を連れて行く() {
         use chrono::NaiveDate;
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let ordinary = root.path().join("要らない.md");
         fs::write(&ordinary, "# 要らない\n").unwrap();
         let pinned = root.path().join("大事.md");
@@ -3385,9 +3270,7 @@ mod tests {
     #[test]
     fn test_move_note_履歴も連れて行く() {
         use chrono::NaiveDate;
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let path = note(root.path(), "設計.md");
         let store = crate::history::store_root(&vault.managed_dir());
         let at = NaiveDate::from_ymd_opt(2026, 9, 1)
@@ -3406,9 +3289,7 @@ mod tests {
 
     #[test]
     fn test_move_note_フォルダへ移し_無ければ作る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "会議.md");
 
         let moved = vault.move_note(&source, "仕事/2026").unwrap();
@@ -3421,9 +3302,7 @@ mod tests {
 
     #[test]
     fn test_move_note_直下へ戻す_同じ場所なら何もしない() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "仕事/会議.md");
 
         let moved = vault.move_note(&source, "").unwrap();
@@ -3436,9 +3315,7 @@ mod tests {
 
     #[test]
     fn test_move_note_同名があれば連番_予約フォルダは断る() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let source = note(root.path(), "仕事/会議.md");
         note(root.path(), "会議.md");
 

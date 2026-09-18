@@ -2,10 +2,8 @@
 // リンクの図（M-2）の窓の検証。図そのものは Mermaid が描いた SVG を受け取る。
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { GraphDialog, type GraphDialogProps } from "./GraphDialog";
-
-afterEach(cleanup);
 
 function setup(over: Partial<GraphDialogProps> = {}) {
   const props: GraphDialogProps = {

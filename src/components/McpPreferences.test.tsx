@@ -1,17 +1,9 @@
 // @vitest-environment jsdom
 // 環境設定「MCP」タブ。**押したことが分かる**（クリップボードは目に見えない）。
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { McpPreferences } from "./McpPreferences";
-
-afterEach(cleanup);
 
 describe("McpPreferences", () => {
   test("test_押すとコピーしたと出る", async () => {

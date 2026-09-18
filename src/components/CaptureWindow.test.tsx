@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // どこからでも書き取り（ADR-0057 / 12-6）の小さな窓。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { CaptureWindow } from "./CaptureWindow";
-
-afterEach(cleanup);
 
 function setup() {
   const onSubmit = vi.fn();

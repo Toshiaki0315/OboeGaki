@@ -26,6 +26,9 @@ pub mod vault_lock;
 pub mod watcher;
 pub mod wikilink;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 use std::sync::OnceLock;
 use std::time::Instant;
 

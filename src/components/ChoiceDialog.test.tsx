@@ -2,11 +2,9 @@
 // 選択肢だけの窓（未保存の復元・外部での削除・競合の 3 択 = spec §7.5）の
 // 検証。**外側を押しても閉じない** — 選ばずに済ませられない問いだから。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { ChoiceDialog } from "./ChoiceDialog";
-
-afterEach(cleanup);
 
 describe("ChoiceDialog", () => {
   test("test_題と説明と選択肢が並ぶ", () => {

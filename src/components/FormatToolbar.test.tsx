@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 // 書式ツールバー（B-1）の検証。並びと絵は editor/format-toolbar が持つ。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { FORMAT_TOOLBAR } from "../editor/format-toolbar";
 import { FormatToolbar } from "./FormatToolbar";
-
-afterEach(cleanup);
 
 function setup() {
   const onFormat = vi.fn();

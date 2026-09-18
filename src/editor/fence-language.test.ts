@@ -4,16 +4,13 @@ import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { resolveCodeLanguage } from "./code-blocks";
 import {
   fenceLanguageCompletion,
   fencePrefixAt,
   LANGUAGE_OPTIONS,
 } from "./fence-language";
+import { LANG } from "./test-utils";
 
 describe("fencePrefixAt", () => {
   test("test_フェンスの直後に打っている言葉を返す", () => {
@@ -71,11 +68,7 @@ function complete(doc: string, pos: number, composing = false) {
   const state = EditorState.create({
     doc,
     selection: { anchor: pos },
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
   const view = { composing } as unknown as EditorView;
   return fenceLanguageCompletion()(

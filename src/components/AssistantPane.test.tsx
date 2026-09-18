@@ -3,10 +3,8 @@
 // App が持ち、ここは押せる・押せないと表示だけを見る。
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { AssistantPane, type AssistantPaneProps } from "./AssistantPane";
-
-afterEach(cleanup);
 
 function setup(over: Partial<AssistantPaneProps> = {}) {
   const props: AssistantPaneProps = {

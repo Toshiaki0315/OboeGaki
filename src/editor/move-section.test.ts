@@ -2,15 +2,8 @@
 
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { moveSection } from "./move-section";
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
+import { LANG } from "./test-utils";
 
 function moved(doc: string, headingText: string, delta: -1 | 1) {
   const state = EditorState.create({ doc, extensions: [LANG] });

@@ -2,11 +2,9 @@
 // あいまい検索のパレット（クイックオープン Cmd+P / 見出しへ飛ぶ Cmd+R）の
 // 検証。絞り方は lib/fuzzy に任せ、ここでは打鍵・矢印・Enter の取り回しを見る。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { FuzzyPalette, type FuzzyPaletteProps } from "./FuzzyPalette";
-
-afterEach(cleanup);
 
 const LABELS = ["りんご", "ばなな", "みかん"];
 

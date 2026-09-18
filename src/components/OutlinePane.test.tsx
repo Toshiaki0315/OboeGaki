@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // アウトライン（Cmd+5、出しっぱなしの目次）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { OutlinePane, type OutlinePaneProps } from "./OutlinePane";
-
-afterEach(cleanup);
 
 const ITEMS = [
   { level: 1, text: "題", from: 0 },

@@ -2,37 +2,8 @@
 // 押した結果の文書とカーソルを検査できる。
 
 import { describe, expect, test } from "vitest";
-import { EditorState, type StateCommand } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { continueMarkup, indentListLess, indentListMore } from "./input-assist";
-
-/// `｜` の位置にカーソルを置いてコマンドを実行する。
-/// 対象外（false）なら null、実行されたら結果の文書（新カーソル位置に ｜）。
-function press(command: StateCommand, docWithCursor: string): string | null {
-  const anchor = docWithCursor.indexOf("｜");
-  if (anchor < 0) throw new Error("カーソル記号 ｜ が無い");
-  const doc = docWithCursor.replace("｜", "");
-  const state = EditorState.create({
-    doc,
-    selection: { anchor },
-    extensions: [
-      markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
-    ],
-  });
-  let result: string | null = null;
-  const handled = command({
-    state,
-    dispatch(tr) {
-      const head = tr.newSelection.main.head;
-      const text = tr.newDoc.toString();
-      result = text.slice(0, head) + "｜" + text.slice(head);
-    },
-  });
-  return handled ? result : null;
-}
+import { press } from "./test-utils";
 
 describe("Enter の入力補助", () => {
   test("箇条書きを継続する", () => {

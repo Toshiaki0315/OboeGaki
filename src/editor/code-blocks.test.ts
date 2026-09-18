@@ -3,12 +3,9 @@
 import { describe, expect, it, test } from "vitest";
 import { EditorState, type Range } from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { previewDecorations } from "./live-preview";
 import { resolveCodeLanguage, splitFenceInfo } from "./code-blocks";
+import { LANG } from "./test-utils";
 
 describe("splitFenceInfo", () => {
   it.each([
@@ -46,10 +43,6 @@ describe("resolveCodeLanguage", () => {
 });
 
 // --- フェンス行のファイル名ラベル（previewDecorations 経由） ---
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
 
 function decorationsOf(doc: string, anchor: number) {
   const state = EditorState.create({

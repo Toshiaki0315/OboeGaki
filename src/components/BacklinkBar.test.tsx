@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // バックリンク（E-6。本文の下に畳んで出す）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { BacklinkBar } from "./BacklinkBar";
-
-afterEach(cleanup);
 
 const LINKS = [
   { path: "a.md", title: "会議", context: "…[[題]]を参照…", relation: "" },

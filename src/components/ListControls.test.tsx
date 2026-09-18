@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 一覧の操作行（並び順と「＋ 新規」を横に並べる。要望 2026-09-07）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { ListControls, type ListControlsProps } from "./ListControls";
-
-afterEach(cleanup);
 
 function setup(over: Partial<ListControlsProps> = {}) {
   const props: ListControlsProps = {

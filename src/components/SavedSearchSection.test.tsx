@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 保存した検索（サイドバー）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { SavedSearchSection } from "./SavedSearchSection";
-
-afterEach(cleanup);
 
 const SEARCHES = [
   { name: "今週", query: "tag:週報" },

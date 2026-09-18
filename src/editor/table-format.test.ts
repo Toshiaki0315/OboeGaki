@@ -2,10 +2,6 @@
 
 import { describe, expect, test } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import {
   formatTable,
   formatTableChange,
@@ -13,6 +9,7 @@ import {
   newTable,
   splitCells,
 } from "./table-format";
+import { LANG } from "./test-utils";
 
 describe("splitCells", () => {
   test("test_エスケープしたパイプは区切りにしない", () => {
@@ -104,10 +101,6 @@ describe("insertTableAt", () => {
 });
 
 // --- 表を離れたときの整形（formatTableChange） ---
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
 
 describe("formatTableChange", () => {
   // 区切りが揃っていない・空白が余っている表（＝整える対象）

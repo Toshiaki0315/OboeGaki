@@ -797,17 +797,14 @@ impl IndexDb {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+    use crate::test_support::{note, temp_vault};
     use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn vault_with(notes: &[(&str, &str)]) -> (TempDir, Vault) {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         for (name, text) in notes {
-            let path = root.path().join(name);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(&path, text).unwrap();
+            note(root.path(), name, text);
         }
         (root, vault)
     }

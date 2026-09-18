@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 // 文体を見る（U-4）の窓の検証。指摘するだけで直さない。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import type { Finding } from "../lib/style-check";
 import { StyleCheckDialog } from "./StyleCheckDialog";
-
-afterEach(cleanup);
 
 const TEXT = "とてもとても長い。   \n";
 const FINDINGS: Finding[] = [

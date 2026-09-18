@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // ステータスバー（窓の全幅・左端に歯車 = 参照実装と同じ）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { StatusBar, type StatusBarProps } from "./StatusBar";
-
-afterEach(cleanup);
 
 function setup(over: Partial<StatusBarProps> = {}) {
   const props: StatusBarProps = {

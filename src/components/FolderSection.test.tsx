@@ -4,7 +4,7 @@
 // 落とし先の強調はこの節だけが持つ。
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { TRASH_FOLDER } from "../lib/finder";
 import { NOTE_DRAG_TYPE, FOLDER_DRAG_TYPE } from "../lib/note-drop";
 import {
@@ -21,8 +21,6 @@ function memoryStorage() {
     removeItem: (key: string) => void map.delete(key),
   };
 }
-
-afterEach(cleanup);
 
 function setup(over: Partial<FolderSectionProps> = {}) {
   const props: FolderSectionProps = {

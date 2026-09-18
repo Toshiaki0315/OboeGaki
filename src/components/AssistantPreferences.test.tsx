@@ -2,8 +2,8 @@
 // 環境設定「アシスタント」タブ。変更の流し方（項目名と値の型）と、選択肢の
 // 呼び名を見る。未インストール警告と fieldset の無効化は PreferencesDialog.test。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { CONTEXT_CHOICES, DEFAULT_SETTINGS } from "../lib/settings";
 import {
   AssistantPreferences,
@@ -20,8 +20,6 @@ function setup(over: Partial<AssistantPreferencesProps> = {}) {
   render(<AssistantPreferences {...props} />);
   return props;
 }
-
-afterEach(cleanup);
 
 describe("AssistantPreferences", () => {
   test("test_使うかどうかと外へ渡す前の確認はチェックで", () => {

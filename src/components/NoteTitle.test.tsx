@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 題名の欄（改名 ↔ H1 同期 = ADR-0005 の入口）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { NoteTitle } from "./NoteTitle";
-
-afterEach(cleanup);
 
 describe("NoteTitle", () => {
   test("test_ファイル名の幹が入っている", () => {

@@ -56,6 +56,10 @@ docs / refactor / chore だけのコミットでは上げない）。版は 3 �
   hitofude の `core/inline_scanner.py` `scan()` の出力と突き合わせる
   （`src/editor/inline-oracle.test.ts` が手本。オラクルの生成手順は
   `spikes/01-flanking/`）
+- テストの足場は共有のものを使う: エディタは `src/editor/test-utils.ts` の
+  `stateOf` / `press`（**本番と同じ `markdownConfig()`** で状態を作る。各ファイルで
+  `markdown({...})` を組まない）、Rust は `test_support::{temp_vault, note, at}`。
+  jsdom の `cleanup` は `src/test-setup.ts` が毎回やるので書かない
 - **打鍵レベルの日本語 IME は自動テストで再現できない**（Qt でも Web でも
   同じ）。IME 周りは手動チェックリスト（docs/manual_test.md）で担保する
 - **オフセットの単位差に注意**: JS/CM6 は UTF-16 コード単位、Python

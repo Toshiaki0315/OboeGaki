@@ -1728,6 +1728,8 @@ pub fn note_restore(
 // 小文字に崩さないため、snake_case の警告はこの mod だけ黙らせる
 #[allow(non_snake_case)]
 mod tests {
+    use crate::test_support::temp_vault;
+
     #[test]
     fn test_history_key_は_guarded_の実体パスからでも相対のNFC鍵になる() {
         // guarded は canonicalize した実体を返す（TempDir は /var → /private/var）。
@@ -1743,9 +1745,7 @@ mod tests {
 
     #[test]
     fn test_rekey_moved_folder_フォルダの改名と移動で版が付いて回る() {
-        let root = tempfile::TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         std::fs::create_dir_all(root.path().join("仕事")).unwrap();
         std::fs::write(root.path().join("仕事/a.md"), "# a\n").unwrap();
         let store = super::history_root(root.path().to_str().unwrap());
@@ -1774,9 +1774,7 @@ mod tests {
     /// 容量の不調で復元が失敗するのはまさに退避が要る場面（監査 2026-09-17）
     #[test]
     fn test_restore_pending_復元できたものだけ捨て_失敗した退避は残す() {
-        let root = tempfile::TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let dir = tempfile::TempDir::new().unwrap();
         let inside = root.path().join("a.md");
         let outside = std::path::Path::new("/etc/よそ.md"); // 保管フォルダの外 → 復元は断られる
@@ -1798,9 +1796,7 @@ mod tests {
     /// 「版」として覗ける
     #[test]
     fn test_version_in_history_そのノートの履歴フォルダの中だけ受ける() {
-        let root = tempfile::TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         let root_str = root.path().to_str().unwrap();
         let note = root.path().join("a.md");
         std::fs::write(&note, "# a\n").unwrap();
@@ -1924,9 +1920,7 @@ mod tests {
 
     #[test]
     fn test_restore_version_今の内容を残してから版を書き戻す() {
-        let root = tempfile::TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, _vault) = temp_vault();
         let root_str = root.path().to_str().unwrap();
         let note = root.path().join("a.md");
         std::fs::write(&note, "新\n").unwrap();

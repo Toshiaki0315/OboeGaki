@@ -4,21 +4,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { normalizeTag } from "../lib/tag-name";
+import { LANG } from "./test-utils";
 
 type Case = { text: string; tags: string[] };
 const cases: Case[] = JSON.parse(
   readFileSync("fixtures/tag-cases.json", "utf8"),
 ).cases;
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
 
 /// 本文が持つタグ（出現順・重複なし・正規化済み）。Rust の extract_tags と同じ形
 function tagsOf(doc: string): string[] {

@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
 // 環境設定「PowerPoint」タブ（ADR-0046 / TASKS 第 8 群）の検証。
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { DEFAULT_PPTX_SETTINGS } from "../lib/pptx-settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
@@ -29,7 +23,6 @@ function setup(over: Partial<PptxPreferencesProps> = {}) {
 }
 
 afterEach(() => {
-  cleanup();
   vi.useRealTimers();
 });
 

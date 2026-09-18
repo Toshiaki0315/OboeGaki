@@ -2,13 +2,7 @@
 // 書き取りの窓の土台（ADR-0057）。保管フォルダは主窓と同じ localStorage から。
 // 送ったら閉じる、失敗したら赤字、Esc は書いていれば確かめる。
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("../lib/ipc", () => ({
@@ -42,7 +36,6 @@ beforeEach(() => {
   close.mockResolvedValue(undefined);
 });
 afterEach(() => {
-  cleanup();
   vi.unstubAllGlobals();
 });
 

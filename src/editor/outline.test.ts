@@ -2,20 +2,13 @@
 
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { outlineOf } from "./outline";
+import { LANG } from "./test-utils";
 
 function outline(doc: string) {
   const state = EditorState.create({
     doc,
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
   return outlineOf(state);
 }

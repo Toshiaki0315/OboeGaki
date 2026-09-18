@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 一覧から 1 つ選ぶパレット（テンプレートを選ぶ / フォルダへ移動）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { ListPalette, type ListPaletteProps } from "./ListPalette";
-
-afterEach(cleanup);
 
 const ITEMS = [
   { key: ".", label: "直下", indent: 0 },

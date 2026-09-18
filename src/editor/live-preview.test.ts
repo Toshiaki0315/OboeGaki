@@ -10,11 +10,7 @@ import {
   type Range,
 } from "@codemirror/state";
 import type { Decoration } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { FORMAT_COMMANDS } from "./format-commands";
 import {
   bulletGlyph,
@@ -32,6 +28,7 @@ import {
   wysiwygField,
   type TableData,
 } from "./live-preview";
+import { LANG } from "./test-utils";
 
 type Deco = {
   from: number;
@@ -39,10 +36,6 @@ type Deco = {
   kind: string; // "hide" | "line:<class>" | "mark:<class>" | "bullet:<glyph>" | "checkbox:<checked>" | "hr"
   style?: string; // line / mark の style 属性（ぶら下げ幅など）
 };
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
 
 function stateOf(doc: string, anchor: number): EditorState {
   return EditorState.create({ doc, selection: { anchor }, extensions: [LANG] });
@@ -319,10 +312,7 @@ describe("previewDecorations（ブロック系）", () => {
     const doc = "# 見出し\n\n**強調**と > 引用\n\n- 項目";
     const base = EditorState.create({
       doc,
-      extensions: [
-        markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
-        sourceModeField,
-      ],
+      extensions: [LANG, sourceModeField],
     });
     expect(previewDecorations(base, 0, doc.length).length).toBeGreaterThan(0);
     const raw = base.update({ effects: setSourceMode.of(true) }).state;
@@ -337,9 +327,7 @@ describe("previewDecorations（ブロック系）", () => {
       doc,
       // 行頭の「これ」だけを選択（強調のマーカーにも端にも触れていない）
       selection: EditorSelection.single(0, 2),
-      extensions: [
-        markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
-      ],
+      extensions: [LANG],
     });
     const decos = previewDecorations(state, 0, doc.length).map(simplify);
     const strong = doc.indexOf("**強調**");
@@ -589,9 +577,7 @@ describe("previewDecorations（ブロック系）", () => {
     const state = EditorState.create({
       doc,
       selection: { anchor: doc.length },
-      extensions: [
-        markdown({ extensions: [relaxedAsterisk, extendedInline, TaskList] }),
-      ],
+      extensions: [LANG],
     });
     const checkbox = previewDecorations(state, 0, doc.length)
       .map(

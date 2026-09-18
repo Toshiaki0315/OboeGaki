@@ -2,7 +2,7 @@
 // 「Claude に渡さない」の一覧と付け外し（ADR-0049 の続き / 15-14）。
 // 読み直しの合図（窓に戻る）と、付け外したあとの一覧の差し替えを見る。
 
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("../lib/ipc", () => ({
@@ -27,7 +27,6 @@ beforeEach(() => {
 afterEach(() => {
   // 前のテストの hook が残っていると、その focus の聞き手も読みに行って
   // 回数が合わない。毎回はずす
-  cleanup();
   vi.restoreAllMocks();
 });
 

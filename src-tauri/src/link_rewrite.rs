@@ -125,23 +125,14 @@ pub fn rewrite_links_to(vault: &Vault, db: &mut IndexDb, old: &str, new: &str) -
 mod tests {
     use super::*;
     use crate::index_db::IndexDb;
-    use crate::vault::Vault;
+    use crate::test_support::{note, temp_vault};
     use std::fs;
-    use tempfile::TempDir;
-
-    fn note(root: &std::path::Path, name: &str, text: &str) {
-        let path = root.join(name);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, text).unwrap();
-    }
 
     #[test]
     fn test_rewrite_all_読めないノートは失敗に数えて_残りは書き換える() {
         // 1 件の不調で止めないことが設計（ADR-0055）。止めないことを確かめる
         use std::os::unix::fs::PermissionsExt;
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "a.md", "旧い\n");
         note(root.path(), "b.md", "旧い\n");
         let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
@@ -167,9 +158,7 @@ mod tests {
         // ADR-0055: 置換は元に戻せない操作なので、書き換えたノートの版を履歴に
         // 残すことで受け止める。開いていないノートを書き換えると旧本文がどこにも
         // 残らなかった（監査 2026-09-17。T7: 履歴は作り直せない）
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "a.md", "# a\n\n旧い話\n");
         let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
         db.sync(&vault).unwrap();
@@ -189,9 +178,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_links_to_書き換える前の版を残す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "旧.md", "# 旧\n");
         note(root.path(), "b.md", "# b\n\n[[旧]] を見る\n");
         let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
@@ -211,9 +198,7 @@ mod tests {
     /// その経路で backlinks が引けることを確かめる
     #[test]
     fn test_rewrite_all_全ノートを走査して書き換え_数を返す_索引も追う() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "a.md", "旧い話\n");
         note(root.path(), "仕事/b.md", "旧い\n旧い\n");
         note(root.path(), "c.md", "関係ない\n");
@@ -253,9 +238,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_links_to_自動保存の_upsert_で育てた索引でも引ける() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
         db.sync(&vault).unwrap(); // 空で開いた
         note(root.path(), "99_テスト/会議メモ.md", "# 会議メモ\n");
@@ -280,9 +263,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_links_to_指しているノートだけ書き換え_件数を返す() {
-        let root = TempDir::new().unwrap();
-        let vault = Vault::new(root.path());
-        vault.ensure_layout().unwrap();
+        let (root, vault) = temp_vault();
         note(root.path(), "会議メモ.md", "# 会議メモ\n");
         note(root.path(), "入口.md", "[[会議メモ]] を見よ\n");
         note(

@@ -8,20 +8,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline, wikilinkTarget } from "./extended-inline";
+import { wikilinkTarget } from "./extended-inline";
+import { LANG } from "./test-utils";
 
 type Case = { text: string; names: string[] };
 const cases: Case[] = JSON.parse(
   readFileSync("fixtures/wikilink-cases.json", "utf8"),
 ).cases;
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
 
 /// その本文が指しているノート名（出現順・重複なし）。**本番と同じ関数**
 /// （`wikilinkTarget`）で名前を取る — テストが自前で整えると、本番の

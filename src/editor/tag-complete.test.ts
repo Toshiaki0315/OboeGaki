@@ -4,11 +4,8 @@ import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
-import { markdown } from "@codemirror/lang-markdown";
-import { Table, TaskList } from "@lezer/markdown";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { matchTags, tagCompletion, tagPrefixAt } from "./tag-complete";
+import { LANG } from "./test-utils";
 
 describe("tagPrefixAt", () => {
   test("打ちかけのタグを返す", () => {
@@ -68,11 +65,7 @@ function complete(
   const state = EditorState.create({
     doc,
     selection: { anchor: pos },
-    extensions: [
-      markdown({
-        extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-      }),
-    ],
+    extensions: [LANG],
   });
   const source = tagCompletion(() => known);
   // view は変換中かの判定にしか使わないので、それだけの偽物で足りる

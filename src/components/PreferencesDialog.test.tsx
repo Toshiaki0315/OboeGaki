@@ -2,14 +2,8 @@
 // 環境設定ダイアログ（TASKS 3-9）の殻 — タブ・キャンセル・OK の検証。
 // 各タブの中身は GeneralPreferences / PptxPreferences / AssistantPreferences。
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { DEFAULT_PPTX_SETTINGS } from "../lib/pptx-settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 import { PreferencesDialog, type PreferencesProps } from "./PreferencesDialog";
@@ -39,8 +33,6 @@ function setup(over: Partial<PreferencesProps> = {}) {
   const view = render(<PreferencesDialog {...props} />);
   return { props, view };
 }
-
-afterEach(cleanup);
 
 describe("PreferencesDialog", () => {
   test("test_開いた直後は「一般」で_履歴の使用量は読めたら出す", async () => {

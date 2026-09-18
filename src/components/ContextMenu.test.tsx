@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 右クリックのメニューの枠（置き場所は lib/context-menu が決める）と枝の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { ContextMenu, SubMenu } from "./ContextMenu";
-
-afterEach(cleanup);
 
 describe("ContextMenu", () => {
   test("test_項目を並べ_測ったあとに見える", () => {

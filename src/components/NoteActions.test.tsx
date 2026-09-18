@@ -2,10 +2,8 @@
 // ノートの操作ボタン列（ピン → 書き出し → 履歴 → ゴミ箱 → 編集モード）の検証。
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { NoteActions, type NoteActionsProps } from "./NoteActions";
-
-afterEach(cleanup);
 
 function setup(over: Partial<NoteActionsProps> = {}) {
   const props: NoteActionsProps = {

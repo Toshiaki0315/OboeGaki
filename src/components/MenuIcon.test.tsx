@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 // 線で描くアイコン（メニュー・ツールバー・アシスタントで共通）の検証。
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { render } from "@testing-library/react";
+import { describe, expect, test } from "vitest";
 import { MENU_ICONS } from "../lib/menu-icons";
 import { MenuIcon, PathIcon } from "./MenuIcon";
-
-afterEach(cleanup);
 
 describe("PathIcon", () => {
   test("test_渡した線をぜんぶ描く_太さの既定は 1.4", () => {

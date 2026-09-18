@@ -7,13 +7,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
-import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
-import { relaxedAsterisk } from "./relaxed-emphasis";
-import { extendedInline } from "./extended-inline";
 import { frontMatterRange } from "./frontmatter";
+import { LANG } from "./test-utils";
 
 type GoldenLine = { line: number; text: string; block: string };
 
@@ -28,10 +25,6 @@ const DIVERGENT: Record<string, string> = {
   "edge_cases:72": "HEADING",
   "edge_cases:73": "HEADING",
 };
-
-const LANG = markdown({
-  extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
-});
 
 /// その行の種類（golden の語彙で）
 function blockOf(

@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 // 表の挿入（TASKS 2-6）— 行 × 列を聞く窓の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { TableDialog } from "./TableDialog";
-
-afterEach(cleanup);
 
 function setup() {
   const onInsert = vi.fn();

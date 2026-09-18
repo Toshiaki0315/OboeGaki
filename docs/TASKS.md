@@ -1006,6 +1006,44 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       入れ子は 1 から、親は続きから、先頭の番号は保つ。Enter の継続は §5.5-3 の
       まま振り直さない（`input-assist.renumberList`。2026-09-17）
 
+## 第 19 群 — リファクタリング（2026-09-18。全体レビューで決めた 5 段。挙動は変えない）
+
+レビューの所見: T1〜T7 は守られている。破れは `vault → mcp` の依存 1 本と、App.tsx
+からの Tauri 直呼び 17 か所。問題は「同じ形の繰り返し」と巨大ファイル
+（App.tsx 3,603 / live-preview.ts 2,214 / vault.rs 3,453 / commands.rs 1,993）。
+判断 4 点（2026-09-18）: 行内数式は現状維持（行内の記法として扱う。ADR-0065 の語を
+「数式ブロック」に直す）／Hr・Setext・FileName の `ignoreEvent` を他と揃えて
+`false`／`src/markdown/` を新設して純粋な構文の知識を集める（Lezer 拡張は editor に
+残す。ADR-0067）／`NoteService` は 2 段階（食い違いの芽を先に潰し、共有層は最後に
+読み系から）。各段は refactor コミット（版は上げない）で `make check` を通す。
+
+- [x] **19-1. 安全網**（2026-09-18）: エディタのテスト 24 ファイルを本番と同じ構文木
+      （`markdownConfig()`）に統一し、`src/editor/test-utils.ts`（`LANG` / `stateOf` /
+      `press`）に足場を寄せた（`stateOf` 7 種・`press` 2 コピーを吸収）。Rust は
+      `#[cfg(test)] mod test_support`（`temp_vault` / `note` / `at`）で 3 点セット 87 か所
+      と重複ヘルパ 4 つを置き換えた。jsdom の `afterEach(cleanup)` 36 ファイルは
+      `src/test-setup.ts`（vitest の setupFiles。document が無ければ何もしない）に
+- [ ] **19-2. 純粋な移動**: `vault.rs` → `vault/`（paths / scan / trash / history_carry /
+      attachments / templates / daily / text）、`lib.rs` のメニュー構築 → `menu.rs`
+      （`include_str!("lib.rs")` の自己参照テストを追従）、`live-preview.ts` の
+      theme / widgets / reveal / table-data / block-zones の切り出し。
+      `vault.rs:167` の `mcp::ensure_ignore_file` 呼びを commands 側へ（層の逆転）
+- [ ] **19-3. 一本化の小物**: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
+      ／NFC・封じ込め・front matter 剥がし・skip-dir・stem 分割の横断ヘルパ
+      ／版の時刻整形と `read_note` の統一、関連ノートの計算を `related.rs` に
+      （NoteService の前半）／`src/markdown/`（image-size・math の走査・fence info・
+      frontmatter の解析部・正規表現集約・tasks/tag-name/section）／日付整形 4 か所・
+      フェンス走査 3 か所・デッキ構築 3 か所／`Dialog` の殻 8 コピー・`SideSection`
+      4 コピー・`useContextMenu` 8 か所／`SimpleWidget` と `ignoreEvent` の揃え
+      ／`#0a84ff` 11 か所を `--accent` に、死にセレクタ 2 つ／未使用 export 約 40
+- [ ] **19-4. App.tsx の分解**: `lib/ipc` を先に拡充（invoke 10 種 + dialog/opener/
+      clipboard 7 か所）→ 書き出し一式（約 320 行）→ 環境設定 → アウトライン →
+      ダイアログ 16 枚と右クリック 7 種の JSX → メニュー配線 55 項目 → openNote 系。
+      `setStatus` 98 か所の文言を `statusError` に、flush→処理→refresh→openNote
+      8 か所を 1 本に。PptxPreferences の節分け、export-docx の `buildDocx` 490 行
+- [ ] **19-5. 大きい投資**: `NoteService` の読み系 5 操作（一覧・読み・検索・版・関連）
+      → 書き系。書き出しの `Run` 中間モデル統合（docx と slides の `runsOf`。別 ADR）
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち

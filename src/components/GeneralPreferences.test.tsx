@@ -3,7 +3,7 @@
 //（項目名と値の型）を見る。棚卸し 2026-09-17 で足した。
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   DEFAULT_SETTINGS,
   HISTORY_CHOICES,
@@ -31,8 +31,6 @@ function setup(over: Partial<GeneralPreferencesProps> = {}) {
   render(<GeneralPreferences {...props} />);
   return props;
 }
-
-afterEach(cleanup);
 
 describe("GeneralPreferences", () => {
   test("test_select_の変更は項目名つきで親へ", () => {

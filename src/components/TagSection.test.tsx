@@ -2,10 +2,8 @@
 // サイドバーのタグ一覧（C-4）の検証。開閉はフォルダと排他なので親が持つ。
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { TagSection, type TagSectionProps } from "./TagSection";
-
-afterEach(cleanup);
 
 function setup(over: Partial<TagSectionProps> = {}) {
   const props: TagSectionProps = {

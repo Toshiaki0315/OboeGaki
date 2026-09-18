@@ -2,11 +2,9 @@
 // 名前や日付を 1 つ聞く窓（フォルダ名・検索の保存・テンプレート登録・
 // 日付を選ぶ）の検証。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 import { PromptDialog, type PromptDialogProps } from "./PromptDialog";
-
-afterEach(cleanup);
 
 function setup(over: Partial<PromptDialogProps> = {}) {
   const props: PromptDialogProps = {
