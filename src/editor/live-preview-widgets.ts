@@ -23,40 +23,43 @@ export const BULLET_WIDTH_EM = 1.2;
 /// 行の字で測った点の幅（ぶら下げ幅に使う）
 export const BULLET_HANG = `${(BULLET_WIDTH_EM * BULLET_FONT_SCALE).toFixed(2)}em`;
 
-export class BulletWidget extends WidgetType {
-  constructor(readonly glyph: string) {
+/// 描くだけの widget（点・折りたたみの見出し・ファイル名・水平線・Setext の線）。
+/// class と文字だけの span を出し、`eq` は字面で決める。**イベントは CM6 に渡す**
+/// （押せばキャレットが置かれ、リビールで生に戻る）。5 つが同じ 3 メソッドを各自で
+/// 書いていて、うち 3 つは `ignoreEvent` を書き忘れて既定（渡さない）になっていた
+/// — 水平線をマウスで押しても生に戻らなかった（19-3）
+class SimpleWidget extends WidgetType {
+  constructor(
+    readonly className: string,
+    readonly text = "",
+  ) {
     super();
   }
-  eq(other: BulletWidget): boolean {
-    return other.glyph === this.glyph;
+  eq(other: SimpleWidget): boolean {
+    return other.className === this.className && other.text === this.text;
   }
   toDOM(): HTMLElement {
     const span = document.createElement("span");
-    span.className = "cm-list-bullet";
-    span.textContent = this.glyph;
+    span.className = this.className;
+    if (this.text) span.textContent = this.text;
     return span;
   }
-  ignoreEvent(): boolean {
+  ignoreEvent(_event: Event): boolean {
     return false;
   }
 }
 
+/// 箇条書きの点（深さで ● ○ ■）
+export class BulletWidget extends SimpleWidget {
+  constructor(readonly glyph: string) {
+    super("cm-list-bullet", glyph);
+  }
+}
+
 /// 折りたたみの見出し（6-2）。`:::details 呼び名` の行をこれに差し替える。
-export class SummaryWidget extends WidgetType {
+export class SummaryWidget extends SimpleWidget {
   constructor(readonly summary: string) {
-    super();
-  }
-  eq(other: SummaryWidget): boolean {
-    return other.summary === this.summary;
-  }
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.className = "cm-details-summary";
-    span.textContent = this.summary;
-    return span;
-  }
-  ignoreEvent(): boolean {
-    return false;
+    super("cm-details-summary", summary);
   }
 }
 
@@ -348,42 +351,24 @@ export class TableWidget extends WidgetType {
 
 /// フェンスのファイル名ラベル（ADR-0008）。` ```python:aaa.py ` の
 /// aaa.py を、フェンス行を潰す代わりに出す。
-export class FileNameWidget extends WidgetType {
+export class FileNameWidget extends SimpleWidget {
   constructor(readonly fileName: string) {
-    super();
-  }
-  eq(other: FileNameWidget): boolean {
-    return other.fileName === this.fileName;
-  }
-  toDOM(): HTMLElement {
-    const label = document.createElement("span");
-    label.className = "cm-code-filename";
-    label.textContent = this.fileName;
-    return label;
+    super("cm-code-filename", fileName);
   }
 }
 
-export class HrWidget extends WidgetType {
-  eq(): boolean {
-    return true;
-  }
-  toDOM(): HTMLElement {
-    const rule = document.createElement("span");
-    rule.className = "cm-hr-widget";
-    return rule;
+/// 水平線（`---`）
+export class HrWidget extends SimpleWidget {
+  constructor() {
+    super("cm-hr-widget");
   }
 }
 
 /// Setext 見出し（`題\n===`）の下線。`===` を隠すだけだと下線の行が空の 1 行
 /// として残るので、細い線として描く（2026-09-17 に決めた）。テストは `rule` で見分ける
-export class SetextRuleWidget extends WidgetType {
+export class SetextRuleWidget extends SimpleWidget {
   readonly rule = true;
-  eq(): boolean {
-    return true;
-  }
-  toDOM(): HTMLElement {
-    const rule = document.createElement("span");
-    rule.className = "cm-setext-rule";
-    return rule;
+  constructor() {
+    super("cm-setext-rule");
   }
 }

@@ -1031,7 +1031,7 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       （階層は増やさず接頭辞で並べる。本体は 519 行、`export *` で import 先は変えない）。
       `ensure_layout` の `mcp::ensure_ignore_file` 呼びを `commands::vault_open` と
       `McpVault::open` へ移し、vault → mcp の依存（層の逆転）を解いた
-- [ ] **19-3. 一本化の小物**
+- [x] **19-3. 一本化の小物**（2026-09-18）
       - [x] Rust（2026-09-18）: `CmdError` / `CmdResult`（`From` で `?` に。commands.rs の
             `map_err(|e| e.to_string())` 66 か所が 1 つに。mcp.rs の 23 か所は
             `Result<_, String>` の API を rmcp が読むので据え置き）／`front_matter::split`
@@ -1056,7 +1056,11 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             `components/Dialog`（殻 9 コピー。Esc と focus trap は足していない — 足すなら
             ここ 1 か所）／`components/SideSection`（節ヘッダ 3 コピー。フォルダは別）／
             `lib/context-menu.menuAt`（右クリック 4 か所）／`--accent`（`#0a84ff` 11 か所）
-            と死にセレクタ 2 つ／自ファイルでしか使わない `export` 17 個を外した: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
+            と死にセレクタ 2 つ／自ファイルでしか使わない `export` 17 個を外した
+      - [x] `SimpleWidget`（描くだけの widget 5 つの基底。2026-09-18）。Hr / Setext /
+            FileName は `ignoreEvent` を書き忘れて既定（渡さない）になっていて、水平線を
+            マウスで押しても生に戻らなかった → 揃えて直した（fix）。判断 1（行内数式は
+            行内の記法のまま）は ADR-0065 の語を「数式ブロック」に直して記録: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
       ／NFC・封じ込め・front matter 剥がし・skip-dir・stem 分割の横断ヘルパ
       ／版の時刻整形と `read_note` の統一、関連ノートの計算を `related.rs` に
       （NoteService の前半）／`src/markdown/`（image-size・math の走査・fence info・
