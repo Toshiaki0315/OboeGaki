@@ -19,6 +19,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
 import { splitImageAlt } from "../markdown/image-size";
+import { plainText, sameStyle, type Run } from "../markdown/runs";
 import {
   hexForPptx,
   isSpanClose,
@@ -28,19 +29,9 @@ import {
 import { relaxedAsterisk } from "../editor/relaxed-emphasis";
 import { extendedInline } from "../editor/extended-inline";
 
-/// 装飾を持った文字のかたまり（TASKS 5-1）。**記号は落とすが装飾は落とさない** —
-/// 素の文字にすると、書いた人が PowerPoint 側で付け直すことになる。
-export type Run = {
-  text: string;
-  bold?: boolean;
-  italic?: boolean;
-  strike?: boolean;
-  code?: boolean;
-  /// リンクの行き先（`[題](url)` の url）
-  link?: string;
-  /// 文字色（`RRGGBB`。ADR-0061）
-  color?: string;
-};
+/// 装飾を持った文字のかたまり（TASKS 5-1）。Word と共有（ADR-0068 / markdown/runs）
+export type { Run } from "../markdown/runs";
+export { plainText } from "../markdown/runs";
 
 export type SlideBlock =
   | { kind: "paragraph"; runs: Run[] }
@@ -51,11 +42,6 @@ export type SlideBlock =
   /// 棚卸し 2026-09-17: 行のまま持って `split("|")` していたので列がずれ、
   /// 記号がそのまま載っていた）
   | { kind: "table"; rows: Run[][][] };
-
-/// 装飾を落とした文字（題名・発表者ノート・テストが使う）。
-export function plainText(runs: readonly Run[]): string {
-  return runs.map((run) => run.text).join("");
-}
 
 /// スライドに載せる画像。**説明も持つ**（CFG-72 の見出しに使う）。
 export type SlideImage = { url: string; alt: string };
@@ -431,15 +417,7 @@ function tidy(runs: Run[]): Run[] {
   const merged: Run[] = [];
   for (const run of folded) {
     const last = merged[merged.length - 1];
-    const sameStyle =
-      last &&
-      last.bold === run.bold &&
-      last.italic === run.italic &&
-      last.strike === run.strike &&
-      last.color === run.color &&
-      last.code === run.code &&
-      last.link === run.link;
-    if (sameStyle) last.text += run.text;
+    if (last && sameStyle(last, run)) last.text += run.text;
     else merged.push({ ...run });
   }
   if (merged.length > 0) {

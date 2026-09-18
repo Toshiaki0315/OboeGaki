@@ -8,12 +8,11 @@
 
 import { frontMatterRange } from "../markdown/front-matter";
 import { splitFenceInfo } from "../markdown/fence-info";
-import { splitImageAlt } from "../markdown/image-size";
 import { markdownTokens } from "./export-html";
+import { inlinePieces } from "./export-runs";
 
 /// markdown-it のトークン（export-html と同じ型を使う。@types の方と attrs の形が違う）
 type Token = ReturnType<typeof markdownTokens>[number];
-import { hexForPptx, parseColorSpan } from "./text-color";
 
 export type DocxOptions = {
   /// 表題（front matter の title が無いときは使わない — H1 が題）
@@ -40,16 +39,6 @@ const LEVELS = [0, 1, 2, 3, 4, 5];
 function numbersReference(start: number): string {
   return start === 1 ? NUMBERS : `${NUMBERS}-${start}`;
 }
-
-type Style = {
-  bold?: boolean;
-  italics?: boolean;
-  strike?: boolean;
-  code?: boolean;
-  color?: string;
-  highlight?: boolean;
-  link?: string;
-};
 
 /// front matter の `title:`（Word の表題に使う）
 function frontMatterTitle(markdownText: string): string | null {
@@ -162,117 +151,57 @@ export async function buildDocx(
   let quoteDepth = 0;
   let embedDepth = 0;
 
-  type Run =
+  type DocxRun =
     | InstanceType<typeof TextRun>
     | InstanceType<typeof ExternalHyperlink>
     | InstanceType<typeof ImageRun>;
-  const runsOf = async (inline: Token): Promise<Run[]> => {
-    const out: Run[] = [];
-    const stack: Style[] = [{}];
-    const current = () => stack[stack.length - 1];
-    const push = (patch: Style) => stack.push({ ...current(), ...patch });
-    const pop = () => {
-      if (stack.length > 1) stack.pop();
-    };
-    const text = (value: string, extra: Style = {}) => {
-      const style = { ...current(), ...extra };
-      const run = new TextRun({
-        text: value,
-        bold: style.bold,
-        italics: style.italics,
-        strike: style.strike,
-        color: style.color,
-        highlight: style.highlight ? "yellow" : undefined,
-        font: style.code ? { name: mono } : body ? { name: body } : undefined,
-        shading: style.code
-          ? { type: ShadingType.CLEAR, fill: CODE_FILL, color: "auto" }
-          : undefined,
-      });
-      if (style.link) {
+  /// 行内の装飾は Run（markdown/runs）に落としてから Word の run にする
+  /// （ADR-0068。以前はここで style stack を持っていた）
+  const runsOf = async (inline: Token): Promise<DocxRun[]> => {
+    const out: DocxRun[] = [];
+    for (const piece of inlinePieces(inline)) {
+      if (piece.kind === "break") {
+        out.push(new TextRun({ break: 1 }));
+        continue;
+      }
+      if (piece.kind === "image") {
+        const run = await imageRun(piece.src, options.resolveImage, {
+          width: piece.width,
+          height: piece.height,
+        });
+        if (run) out.push(run);
+        continue;
+      }
+      const { run } = piece;
+      if (run.link) {
         out.push(
           new ExternalHyperlink({
-            link: style.link,
+            link: run.link,
             children: [
               new TextRun({
-                text: value,
+                text: run.text,
                 style: "Hyperlink",
-                bold: style.bold,
+                bold: run.bold,
               }),
             ],
           }),
         );
-      } else {
-        out.push(run);
+        continue;
       }
-    };
-    for (const child of inline.children ?? []) {
-      switch (child.type) {
-        case "text":
-          text(child.content);
-          break;
-        case "softbreak":
-          text(" ");
-          break;
-        case "hardbreak":
-          out.push(new TextRun({ break: 1 }));
-          break;
-        case "strong_open":
-          push({ bold: true });
-          break;
-        case "em_open":
-          push({ italics: true });
-          break;
-        case "s_open":
-          push({ strike: true });
-          break;
-        case "mark_open":
-          push({ highlight: true });
-          break;
-        case "link_open":
-          push({ link: String(child.attrGet("href") ?? "") });
-          break;
-        case "color_span_open": {
-          const parsed = parseColorSpan(String(child.attrGet("style") ?? ""));
-          push({ color: parsed?.color ? hexForPptx(parsed.color) : undefined });
-          break;
-        }
-        case "strong_close":
-        case "em_close":
-        case "s_close":
-        case "mark_close":
-        case "link_close":
-        case "color_span_close":
-          pop();
-          break;
-        case "code_inline":
-          text(child.content, { code: true });
-          break;
-        case "html_inline":
-          // 数式（元の LaTeX を等幅で）。やることの印（markdown-it-task-lists の
-          // <input>）は ☐ / ☑ に。他の生 HTML はここに来ない（html: false）
-          if (child.meta?.latex) text(String(child.meta.latex), { code: true });
-          else if (/^<input\b/i.test(child.content)) {
-            text(/\bchecked\b/i.test(child.content) ? "☑ " : "☐ ");
-          }
-          break;
-        case "image": {
-          const { width, height } = splitImageAlt(child.content ?? "");
-          const run = await imageRun(
-            String(child.attrGet("src") ?? ""),
-            options.resolveImage,
-            { width, height },
-          );
-          if (run) out.push(run);
-          break;
-        }
-        case "footnote_ref":
-          text(
-            `[${(child.meta?.label as string | undefined) ?? child.meta?.id ?? "*"}]`,
-          );
-          break;
-        default:
-          if (child.content) text(child.content);
-      }
+      out.push(
+        new TextRun({
+          text: run.text,
+          bold: run.bold,
+          italics: run.italic,
+          strike: run.strike,
+          color: run.color,
+          highlight: run.highlight ? "yellow" : undefined,
+          font: run.code ? { name: mono } : body ? { name: body } : undefined,
+          shading: run.code
+            ? { type: ShadingType.CLEAR, fill: CODE_FILL, color: "auto" }
+            : undefined,
+        }),
+      );
     }
     return out;
   };

@@ -1089,13 +1089,17 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             119 行しか無いので、先に golden を足してから）／Rust `llm_generate` の引数
             10 個の構造体化（ipc の引数の形も変わる）／App.tsx に残る
             `setStatus(String(error))` 12 か所（Rust の文をそのまま出す意図。据え置き）
-- [ ] **19-5. 大きい投資**
+- [x] **19-5. 大きい投資**（2026-09-18）
       - [x] `note_service.rs`（2026-09-18）: 一覧（フォルダ × タグ）・フォルダと件数・
             タグと件数・版の一覧と時刻での引き当て。GUI（commands）と MCP が別々に組んで
             いた読み系を 1 本にし、`keep`（見せないノートを数えない）だけを MCP が被せる。
             `IndexDb::folder_counts` は消えた。**書き系（ゴミ箱・移動・日次）は既に
             Vault の 1 本を両側が通っている**ので層を足さない（差は Suppressor と索引の
-            後追い = GUI だけの仕事）: `NoteService` の読み系 5 操作（一覧・読み・検索・版・関連）
+            後追い = GUI だけの仕事）
+      - [x] Run 中間モデル（ADR-0068。2026-09-18）: `markdown/runs.ts`（`Run` / `plainText`
+            / `sameStyle`）を Word とスライドで共有。markdown-it 側は `lib/export-runs.
+            inlinePieces`（run / break / image の断片）。export-docx の style stack は
+            消えた。解析器は 2 つのまま（理由は ADR）: `NoteService` の読み系 5 操作（一覧・読み・検索・版・関連）
       → 書き系。書き出しの `Run` 中間モデル統合（docx と slides の `runsOf`。別 ADR）
 
 ## 待ち — 外部要因でブロック中
