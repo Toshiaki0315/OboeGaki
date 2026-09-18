@@ -1068,11 +1068,27 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       フェンス走査 3 か所・デッキ構築 3 か所／`Dialog` の殻 8 コピー・`SideSection`
       4 コピー・`useContextMenu` 8 か所／`SimpleWidget` と `ignoreEvent` の揃え
       ／`#0a84ff` 11 か所を `--accent` に、死にセレクタ 2 つ／未使用 export 約 40
-- [ ] **19-4. App.tsx の分解**: `lib/ipc` を先に拡充（invoke 10 種 + dialog/opener/
-      clipboard 7 か所）→ 書き出し一式（約 320 行）→ 環境設定 → アウトライン →
-      ダイアログ 16 枚と右クリック 7 種の JSX → メニュー配線 55 項目 → openNote 系。
-      `setStatus` 98 か所の文言を `statusError` に、flush→処理→refresh→openNote
-      8 か所を 1 本に。PptxPreferences の節分け、export-docx の `buildDocx` 490 行
+- [x] **19-4. App.tsx の分解**（2026-09-18。3,603 → 2,909 行。残りは下に）
+      - [x] `lib/ipc` に invoke 10 本・OS の窓 8 本・購読 4 本を足し、App と部品の Tauri
+            直呼び 20 か所を寄せた。`src/` で `@tauri-apps/*` を読むのは lib/ipc.ts だけ
+      - [x] `hooks/useExport`（書き出し・印刷・取り込み。約 320 行、テスト 5 本）／
+            `usePreferences`（設定・文字サイズ・PowerPoint。置き場を引数に。テスト 3 本）／
+            `useOutline`（目次と統計。テスト 3 本）。フォントの候補の測りは
+            PreferencesDialog の中へ
+      - [x] 右クリック 5 種（本文・歯車・新規・タグ・目次）を `editor-menu` / `gear-menu` /
+            `side-menus` の純関数に（note-menu と同じ構え。テスト 8 本）
+      - [x] `run-command.failureText` で失敗の文を 1 つの形に（「〜に失敗:」5 か所を揃えた）
+      - [x] PptxPreferences を `PptxSections`（7 節）と `patch(group, part)`（18 か所）に
+            （643 → 295 行）
+      - [ ] **残り**（App にテストが無いまま動かす量が大きいので、別の回で）:
+            メニュー配線 55 項目の hook 化（`menuActions` は App の依存グラフのハブで、
+            50 近い関数の束を渡す型が要る）／`openNote` を中心にした作成・改名・ゴミ箱・
+            ピン・復元の hook（sync / store / localStorage / status の 4 方向に触る）／
+            flush → 処理 → refresh → openNote の 8 か所（順序が少しずつ違い、1 本に
+            するとどれかの意図が消える）／export-docx の `buildDocx` 490 行（テストが
+            119 行しか無いので、先に golden を足してから）／Rust `llm_generate` の引数
+            10 個の構造体化（ipc の引数の形も変わる）／App.tsx に残る
+            `setStatus(String(error))` 12 か所（Rust の文をそのまま出す意図。据え置き）
 - [ ] **19-5. 大きい投資**: `NoteService` の読み系 5 操作（一覧・読み・検索・版・関連）
       → 書き系。書き出しの `Run` 中間モデル統合（docx と slides の `runsOf`。別 ADR）
 
