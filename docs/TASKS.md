@@ -1163,6 +1163,17 @@ Rust / ipc の大きいファイル」。挙動を変えるのは Dialog の Esc
       eslint の `no-restricted-imports` を `src/**`（`ipc-*.ts` とテストを除く）に足して
       見張る形にした
 
+- [x] **20-6. 依存の更新**（2026-09-18）: マイナー一式（CodeMirror・React 19.3・jsdom・
+      markdown-it・prettier・typescript-eslint など）を 1 コミット、メジャーは 1 つずつ —
+      vite 8 / vitest 5 / plugin-react 6（同じ組。vite build は rolldown に）、mermaid 12
+      （内蔵ブラウザで flowchart と sequenceDiagram を描いて確認）。
+      **TypeScript 7 は見送り**: typescript-eslint 8.70 が「TS 7.0 は未対応」で止まる。
+      typescript-eslint が追従したら再挑戦（5.8.3 のまま）
+- [x] **20-7. ハイライトの書き出し**（2026-09-18）: 提案では「`==印==` が書き出しで効か
+      ない」と書いたが、この方言のハイライトは `::印::`（spec §3.4）で、HTML / Word には
+      既に出ていた。見本が方言と違っていただけなので、Word の golden の見本を `::印::`
+      に直して `<w:highlight>` が出ることを golden が見るようにした
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち
