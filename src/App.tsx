@@ -37,13 +37,19 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { ListControls } from "./components/ListControls";
 
 import { ListPalette } from "./components/ListPalette";
-import { MenuIcon, PathIcon } from "./components/MenuIcon";
 import {
   folderMenuItems,
   noteMenuItems,
   trashMenuItems,
 } from "./components/note-menu";
-import { MenuList, type MenuEntry } from "./components/MenuList";
+import { editorMenuItems } from "./components/editor-menu";
+import { gearMenuItems } from "./components/gear-menu";
+import {
+  newNoteMenuItems,
+  outlineMenuItems,
+  tagMenuItems,
+} from "./components/side-menus";
+import { MenuList } from "./components/MenuList";
 import { NoteActions } from "./components/NoteActions";
 import { NoteTitle } from "./components/NoteTitle";
 import { NoteRows } from "./components/NoteRows";
@@ -61,17 +67,13 @@ import { TagSection } from "./components/TagSection";
 import { TaskSection } from "./components/TaskSection";
 import { TrashRows } from "./components/TrashRows";
 
-import type { FormatKind } from "./editor/format-commands";
-import { FORMAT_TOOLBAR } from "./editor/format-toolbar";
 import { anchorAbove } from "./lib/context-menu";
 import {
-  AI_HANDOFFS,
   confirmMessage,
   dictUrl,
   handoffUrl,
   needsConfirm,
   searchUrl,
-  SEARCH_HANDOFF,
   type Handoff,
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
@@ -2508,21 +2510,13 @@ function App() {
                   （メニューバーの「ファイル」と同じ動作を使い回す） */}
               <MenuList
                 onPick={() => setNewMenu(null)}
-                items={[
-                  {
-                    label: "テンプレートから新規…",
-                    icon: <MenuIcon name="template" />,
-                    onSelect: () =>
-                      void runWithStatus(setStatus, "雛形の一覧", () =>
-                        chooseTemplate(),
-                      ),
-                  },
-                  {
-                    label: "今日のノート",
-                    icon: <MenuIcon name="noteNew" />,
-                    onSelect: () => void handleDailyNote(),
-                  },
-                ]}
+                items={newNoteMenuItems({
+                  onTemplate: () =>
+                    void runWithStatus(setStatus, "雛形の一覧", () =>
+                      chooseTemplate(),
+                    ),
+                  onDaily: () => void handleDailyNote(),
+                })}
               />
             </ContextMenu>
           )}
@@ -2569,23 +2563,6 @@ function App() {
             })()}
           {editorMenu !== null &&
             (() => {
-              const selected = editorMenu.selected;
-              // 書式の絵は**ツールバーと同じもの**を引く（同じ言葉に同じ絵）
-              const format = (kind: FormatKind, label: string): MenuEntry => ({
-                label,
-                icon: (
-                  <PathIcon
-                    className="menu-icon"
-                    paths={
-                      FORMAT_TOOLBAR.flat().find((found) => found.kind === kind)
-                        ?.paths ?? []
-                    }
-                    strokeWidth={1.3}
-                  />
-                ),
-                onSelect: () => editorRef.current?.applyFormat(kind),
-              });
-              const handoffIcon = <MenuIcon name="handoff" />;
               return (
                 <ContextMenu
                   at={editorMenu}
@@ -2593,76 +2570,17 @@ function App() {
                 >
                   <MenuList
                     onPick={() => setEditorMenu(null)}
-                    items={[
-                      // 選んでいないときは押せない状態で見せる
-                      // （項目ごと消すと、なぜ無いのか分からない）
+                    items={editorMenuItems(
+                      { selected: editorMenu.selected },
                       {
-                        label: "切り取り",
-                        icon: <MenuIcon name="cut" />,
-                        disabled: !selected,
-                        onSelect: () => void editorClipboard("cut"),
+                        onClipboard: (action) => void editorClipboard(action),
+                        onFormat: (kind) =>
+                          editorRef.current?.applyFormat(kind),
+                        onInsertTable: () => setTableDialog(true),
+                        onHandOff: (handoff) => void handOff(handoff),
+                        onDictionary: () => void lookUpInDictionary(),
                       },
-                      {
-                        label: "コピー",
-                        icon: <MenuIcon name="copy" />,
-                        disabled: !selected,
-                        onSelect: () => void editorClipboard("copy"),
-                      },
-                      {
-                        label: "貼り付け",
-                        icon: <MenuIcon name="paste" />,
-                        onSelect: () => void editorClipboard("paste"),
-                      },
-                      { kind: "separator" },
-                      format("strong", "太字"),
-                      format("emphasis", "斜体"),
-                      format("code", "コード"),
-                      format("link", "リンク"),
-                      { kind: "separator" },
-                      format("heading", "見出し"),
-                      format("bullet", "箇条書き"),
-                      format("quote", "引用"),
-                      { kind: "separator" },
-                      {
-                        label: "表を挿入…",
-                        icon: <MenuIcon name="table" />,
-                        onSelect: () => setTableDialog(true),
-                      },
-                      { kind: "separator" },
-                      // **外へ出る道**（要望 2026-09-05）。生成 AI は 4 つを
-                      // 枝にまとめる — 平らに並べるとメニューの半分を占める。
-                      // 選んでいないときは押せない状態で見せる（渡すものが無い）
-                      selected
-                        ? {
-                            kind: "submenu",
-                            label: "生成AIに渡す",
-                            icon: handoffIcon,
-                            items: AI_HANDOFFS.map((handoff) => ({
-                              label: handoff.name,
-                              onSelect: () => void handOff(handoff),
-                            })),
-                          }
-                        : {
-                            label: "生成AIに渡す",
-                            icon: handoffIcon,
-                            disabled: true,
-                            onSelect: () => {},
-                          },
-                      {
-                        label: SEARCH_HANDOFF.label,
-                        icon: <MenuIcon name="search" />,
-                        disabled: !selected,
-                        onSelect: () => void handOff(SEARCH_HANDOFF),
-                      },
-                      // 手元の辞書（7-2。ポメラの電子辞書相当）。**外へ出ない**
-                      // ので、生成 AI のような確認は挟まない
-                      {
-                        label: "辞書で調べる",
-                        icon: <MenuIcon name="dictionary" />,
-                        disabled: !selected,
-                        onSelect: () => void lookUpInDictionary(),
-                      },
-                    ]}
+                    )}
                   />
                 </ContextMenu>
               );
@@ -2694,68 +2612,31 @@ function App() {
                   >
                     <MenuList
                       onPick={() => setGearMenu(null)}
-                      items={[
+                      items={gearMenuItems(
                         {
-                          label: "環境設定…",
-                          icon: <MenuIcon name="preferences" />,
-                          onSelect: openPreferences,
-                        },
-                        { kind: "separator" },
-                        {
-                          label: "サイドバー",
-                          checked: settings.treesVisible,
-                          onSelect: () => menu["toggle-trees"]?.(),
-                        },
-                        {
-                          label: "ノート一覧",
-                          checked: settings.notesVisible,
-                          onSelect: () => menu["toggle-notes"]?.(),
+                          treesVisible: settings.treesVisible,
+                          notesVisible: settings.notesVisible,
+                          outlineOpen,
+                          assistantEnabled: settings.assistantEnabled,
+                          assistantOpen,
+                          sourceMode,
+                          wysiwygMode,
+                          focus: editorModes.focus,
+                          typewriter: editorModes.typewriter,
                         },
                         {
-                          label: "アウトライン",
-                          checked: outlineOpen,
-                          onSelect: toggleOutline,
+                          onPreferences: openPreferences,
+                          onToggleTrees: () => menu["toggle-trees"]?.(),
+                          onToggleNotes: () => menu["toggle-notes"]?.(),
+                          onToggleOutline: toggleOutline,
+                          onToggleAssistant: () => menu.assistant?.(),
+                          onInlineMode: () => menu["inline-mode"]?.(),
+                          onSourceMode: () => menu["source-mode"]?.(),
+                          onPreviewMode: () => menu["preview-mode"]?.(),
+                          onFocusMode: () => menu["focus-mode"]?.(),
+                          onTypewriter: () => menu.typewriter?.(),
                         },
-                        // 使わない設定のときは並べない（押せない項目を見せない）
-                        ...(settings.assistantEnabled
-                          ? [
-                              {
-                                label: "アシスタント",
-                                checked: assistantOpen,
-                                onSelect: () => menu.assistant?.(),
-                              } satisfies MenuEntry,
-                            ]
-                          : []),
-                        { kind: "separator" },
-                        // 編集モード（メニューバーの「編集モード」と同じ並び）。
-                        // 上 3 つは排他、下 2 つは併用できる
-                        {
-                          label: "インラインモード",
-                          checked: !sourceMode && !wysiwygMode,
-                          onSelect: () => menu["inline-mode"]?.(),
-                        },
-                        {
-                          label: "ソースモード",
-                          checked: sourceMode,
-                          onSelect: () => menu["source-mode"]?.(),
-                        },
-                        {
-                          label: "プレビューモード",
-                          checked: wysiwygMode,
-                          onSelect: () => menu["preview-mode"]?.(),
-                        },
-                        { kind: "separator" },
-                        {
-                          label: "フォーカスモード",
-                          checked: editorModes.focus,
-                          onSelect: () => menu["focus-mode"]?.(),
-                        },
-                        {
-                          label: "タイプライターモード",
-                          checked: editorModes.typewriter,
-                          onSelect: () => menu.typewriter?.(),
-                        },
-                      ]}
+                      )}
                     />
                   </ul>
                 </div>
@@ -2769,34 +2650,15 @@ function App() {
                 <ContextMenu at={tagMenu} onClose={() => setTagMenu(null)}>
                   <MenuList
                     onPick={() => setTagMenu(null)}
-                    items={[
+                    items={tagMenuItems(
+                      { tag: target, filtered },
                       {
-                        label: filtered
-                          ? "絞り込みを解除"
-                          : `#${target} で絞り込む`,
-                        onSelect: () => filterByTag(filtered ? null : target),
+                        onFilter: filterByTag,
+                        onSearch: searchByTag,
+                        onCopy: (tag) => void copyTag(tag),
+                        onRename: setTagDialog,
                       },
-                      // 絞り込みは一覧を狭めるだけ。**本文まで見たいとき**は
-                      // 検索へ回す（同じ書き方が検索欄でも効く）
-                      {
-                        label: "このタグで全ノート検索",
-                        icon: <MenuIcon name="search" />,
-                        onSelect: () => searchByTag(target),
-                      },
-                      { kind: "separator" },
-                      {
-                        label: "タグ名をコピー",
-                        icon: <MenuIcon name="copy" />,
-                        onSelect: () => void copyTag(target),
-                      },
-                      { kind: "separator" },
-                      // 全ノートの #タグ を書き換える（ADR-0055）。既にある
-                      // 名前なら統合
-                      {
-                        label: "名前を変更…",
-                        onSelect: () => setTagDialog(target),
-                      },
-                    ]}
+                    )}
                   />
                 </ContextMenu>
               );
@@ -2839,30 +2701,19 @@ function App() {
                   端では押しても何も起きないので、知らせを出す */}
               <MenuList
                 onPick={() => setOutlineMenu(null)}
-                items={[
-                  {
-                    label: "この節を上へ動かす",
-                    icon: <MenuIcon name="moveUp" />,
-                    onSelect: () => {
-                      if (
-                        !editorRef.current?.moveSection(outlineMenu.from, -1)
-                      ) {
-                        setStatus("これより上には動かせません");
-                      }
-                    },
+                items={outlineMenuItems({
+                  onMove: (delta) => {
+                    if (
+                      !editorRef.current?.moveSection(outlineMenu.from, delta)
+                    ) {
+                      setStatus(
+                        delta < 0
+                          ? "これより上には動かせません"
+                          : "これより下には動かせません",
+                      );
+                    }
                   },
-                  {
-                    label: "この節を下へ動かす",
-                    icon: <MenuIcon name="moveDown" />,
-                    onSelect: () => {
-                      if (
-                        !editorRef.current?.moveSection(outlineMenu.from, 1)
-                      ) {
-                        setStatus("これより下には動かせません");
-                      }
-                    },
-                  },
-                ]}
+                })}
               />
             </ContextMenu>
           )}
