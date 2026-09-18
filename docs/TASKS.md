@@ -1089,10 +1089,18 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             完全削除／空にする／移す。同期は口（NoteSyncPort）で受け、Tauri は lib/ipc。
             App.tsx は 2,909 → 2,625 行（テスト 6 本）。flush → refresh → openNote の
             並びはこの hook の中に集まったので、1 本化の必要は消えた
-      - [ ] **残り**（別の回で）: export-docx の `buildDocx` 490 行（テストが 119 行しか
-            無いので、先に golden を足してから）／Rust `llm_generate` の引数 10 個の
-            構造体化（ipc の引数の形も変わる）／App.tsx に残る `setStatus(String(error))`
-            12 か所（Rust の文をそのまま出す意図。据え置き）
+      - [x] `export-docx` の golden（2026-09-18）: ブロックの種類を全部含む 1 本の Markdown
+            から組んだ document.xml / numbering.xml を `fixtures/golden/export-docx.*.xml`
+            に固定（ハイパーリンクの r:id は docx が乱数で振るので揃えてから比べる）。
+            意図して変えるときは `npx vitest run -u` で写しを更新して差分を見る
+      - [x] `buildDocx` の分割（2026-09-18）: `lib/docx-blocks.DocxEmitter`（トークン →
+            Word の段落・表・画像。runsOf / paragraphFor / codeBlock / closeParagraph）と、
+            Document の組み立てだけの export-docx（593 → 115 行）。golden の字面は 1 字も
+            変わっていない
+      - [x] Rust `llm_generate` の引数 10 個を `GenerateRequest` に（2026-09-18。ipc は
+            `{ request }` で送る。`too_many_arguments` の allow が消えた）
+      - 据え置き: App.tsx に残る `setStatus(String(error))` 12 か所（Rust の文をそのまま
+            出す意図）
 - [x] **19-5. 大きい投資**（2026-09-18）
       - [x] `note_service.rs`（2026-09-18）: 一覧（フォルダ × タグ）・フォルダと件数・
             タグと件数・版の一覧と時刻での引き当て。GUI（commands）と MCP が別々に組んで
