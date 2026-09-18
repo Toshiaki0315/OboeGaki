@@ -509,27 +509,6 @@ impl IndexDb {
         rows.collect()
     }
 
-    /// フォルダごとのノート件数（**直下だけ**）。空文字の項目は直下。
-    ///
-    /// 件数は索引（速い）、フォルダの存在はディスク（`Vault::folders`）が
-    /// 決める（ADR-0024 追記 1。索引にあってディスクに無いものは出さない）。
-    /// パスの組み立ては SQL でやらずこちらで数える — ノート数ぶんの文字列
-    /// 操作だが、SQL に階層を組み込むより読める。
-    pub fn folder_counts(&self) -> rusqlite::Result<HashMap<String, i64>> {
-        let mut counts: HashMap<String, i64> = HashMap::new();
-        let mut statement = self.conn.prepare("SELECT path FROM notes")?;
-        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
-        for path in rows {
-            let path = path?;
-            let folder = match path.rsplit_once('/') {
-                Some((head, _)) => head.to_string(),
-                None => String::new(),
-            };
-            *counts.entry(folder).or_insert(0) += 1;
-        }
-        Ok(counts)
-    }
-
     /// その題名を `[[…]]` で指しているノート（E-6）。
     ///
     /// **大小は無視する**（`COLLATE NOCASE`）。開くときの解決が無視する以上、
@@ -1339,24 +1318,6 @@ mod tests {
         assert_eq!(paths("仕事場"), vec!["仕事場/別物.md".to_string()]);
         // 空文字は直下
         assert_eq!(paths(""), vec!["直下.md".to_string()]);
-    }
-
-    #[test]
-    fn test_folder_counts_直下だけを数える() {
-        let (_root, vault) = vault_with(&[
-            ("直下.md", "# 直下\n"),
-            ("仕事/会議.md", "# 会議\n"),
-            ("仕事/日報.md", "# 日報\n"),
-            ("仕事/2026/計画.md", "# 計画\n"),
-        ]);
-        let db = synced(&vault);
-
-        let counts = db.folder_counts().unwrap();
-
-        // 親が子のぶんまで数えると「2 と出ているのに 1 件しか出ない」になる
-        assert_eq!(counts.get(""), Some(&1));
-        assert_eq!(counts.get("仕事"), Some(&2));
-        assert_eq!(counts.get("仕事/2026"), Some(&1));
     }
 
     #[test]

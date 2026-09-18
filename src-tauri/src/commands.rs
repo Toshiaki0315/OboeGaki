@@ -382,15 +382,13 @@ pub struct HistoryEntry {
 #[tauri::command]
 pub fn history_list(root: String, path: String) -> CmdResult<Vec<HistoryEntry>> {
     let path = guarded(&root, &path)?;
-    Ok(
-        history::versions(&history_root(&root), &history_key(&root, &path))
-            .into_iter()
-            .map(|version| HistoryEntry {
-                stamp: version.stamp(),
-                path: version.path.to_string_lossy().into_owned(),
-            })
-            .collect(),
-    )
+    Ok(crate::note_service::versions(&Vault::new(&root), &path)
+        .into_iter()
+        .map(|version| HistoryEntry {
+            stamp: version.stamp(),
+            path: version.path.to_string_lossy().into_owned(),
+        })
+        .collect())
 }
 
 /// version が**このノートの履歴フォルダの中**にあることを確かめる。vault 内
@@ -512,18 +510,16 @@ pub fn attachment_save(root: String, data: String, suffix: String) -> CmdResult<
 #[tauri::command]
 pub fn tag_list(root: String) -> CmdResult<Vec<(String, i64)>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.tag_list())
-        .map_err(CmdError::from)
+    let db = IndexDb::open(&vault.managed_dir())?;
+    Ok(crate::note_service::tags_with_counts(&db, |_| true)?)
 }
 
 /// 一覧の素材（題名・プレビュー・更新時刻）。並び順はフロント側の持ち物。
 #[tauri::command]
 pub async fn note_list(root: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.list_notes())
-        .map_err(CmdError::from)
+    let db = IndexDb::open(&vault.managed_dir())?;
+    Ok(crate::note_service::list_notes(&db, None, None)?)
 }
 
 /// ノートを複製する（一覧の右クリック）。作った先を返す。
@@ -583,9 +579,8 @@ pub async fn attachments_trash(
 #[tauri::command]
 pub fn notes_with_tag(root: String, tag: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.notes_with_tag(&tag))
-        .map_err(CmdError::from)
+    let db = IndexDb::open(&vault.managed_dir())?;
+    Ok(crate::note_service::list_notes(&db, None, Some(&tag))?)
 }
 
 /// 検索の結果。読めなかった `after:` / `before:` を一緒に返す。
@@ -1295,23 +1290,20 @@ pub fn link_map(root: String) -> CmdResult<Vec<(String, String, String)>> {
 #[tauri::command]
 pub async fn folder_list(root: String) -> CmdResult<Vec<(String, i64)>> {
     let vault = Vault::new(&root);
-    let counts = IndexDb::open(&vault.managed_dir()).and_then(|db| db.folder_counts())?;
-    let count_of = |folder: &str| counts.get(folder).copied().unwrap_or(0);
-    let mut found = vec![(String::new(), count_of(""))];
-    for folder in vault.folders() {
-        let count = count_of(&folder);
-        found.push((folder, count));
-    }
-    Ok(found)
+    let db = IndexDb::open(&vault.managed_dir())?;
+    Ok(crate::note_service::folders_with_counts(
+        &vault,
+        &db,
+        |_| true,
+    )?)
 }
 
 /// そのフォルダ**直下**のノート（ADR-0024 追記 4）。
 #[tauri::command]
 pub fn notes_in_folder(root: String, folder: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.notes_in_folder(&folder))
-        .map_err(CmdError::from)
+    let db = IndexDb::open(&vault.managed_dir())?;
+    Ok(crate::note_service::list_notes(&db, Some(&folder), None)?)
 }
 
 #[tauri::command]

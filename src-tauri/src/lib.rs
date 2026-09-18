@@ -11,6 +11,7 @@ pub mod index_db;
 pub mod link_rewrite;
 pub mod llm;
 pub mod mcp;
+pub mod note_service;
 pub mod ocr;
 pub mod pdf;
 pub mod recovery;

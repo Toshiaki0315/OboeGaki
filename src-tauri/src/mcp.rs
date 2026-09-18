@@ -419,22 +419,7 @@ impl McpVault {
         tag: Option<&str>,
     ) -> Result<Vec<NoteMeta>, String> {
         let db = self.index()?;
-        let mut rows = match (folder, tag) {
-            (_, Some(tag)) => db.notes_with_tag(tag).map_err(|e| e.to_string())?,
-            (Some(folder), None) => db.notes_in_folder(folder).map_err(|e| e.to_string())?,
-            (None, None) => db.list_notes().map_err(|e| e.to_string())?,
-        };
-        if let (Some(folder), Some(_)) = (folder, tag) {
-            let cleaned = folder.trim_matches('/');
-            rows.retain(|row| {
-                let parent = row
-                    .path
-                    .rsplit_once('/')
-                    .map(|(head, _)| head)
-                    .unwrap_or("");
-                parent == cleaned
-            });
-        }
+        let rows = crate::note_service::list_notes(&db, folder, tag).map_err(|e| e.to_string())?;
         Ok(self.visible(rows, |row| row.path.as_str()))
     }
 
@@ -442,28 +427,14 @@ impl McpVault {
         let db = self.index()?;
         let ignore = self.ignore();
         // 件数は**見えるノートだけ**数える（索引の集計はファイル単位で隠した
-        // ノートも含む）
-        let mut counts: std::collections::HashMap<String, i64> = Default::default();
-        for row in db.list_notes().map_err(|e| e.to_string())? {
-            if ignore.is_ignored(&row.path) {
-                continue;
-            }
-            let folder = row
-                .path
-                .rsplit_once('/')
-                .map(|(head, _)| head)
-                .unwrap_or("");
-            *counts.entry(folder.to_string()).or_insert(0) += 1;
-        }
-        let mut folders: Vec<(String, i64)> = self
-            .vault
-            .folders()
-            .into_iter()
-            .filter(|folder| !ignore.is_ignored(folder))
-            .map(|folder| {
-                let count = counts.get(&folder).copied().unwrap_or(0);
-                (folder, count)
+        // ノートも含む）。直下（空文字）は資源として並べないので落とす
+        let mut folders: Vec<(String, i64)> =
+            crate::note_service::folders_with_counts(&self.vault, &db, |path| {
+                !ignore.is_ignored(path)
             })
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter(|(folder, _)| !folder.is_empty())
             .collect();
         folders.sort();
         Ok(folders)
@@ -472,18 +443,10 @@ impl McpVault {
     /// タグの一覧。**見せない場所のノートは数えない** — 索引の集計を素通し
     /// すると、隠したノートにしか無いタグがその存在ごと漏れる
     pub fn list_tags(&self) -> Result<Vec<(String, i64)>, String> {
-        let uses = self.index()?.tag_uses().map_err(|e| e.to_string())?;
+        let db = self.index()?;
         let ignore = self.ignore();
-        let mut counts: std::collections::HashMap<String, i64> = Default::default();
-        for (path, tag) in uses {
-            if !ignore.is_ignored(&path) {
-                *counts.entry(tag).or_insert(0) += 1;
-            }
-        }
-        let mut tags: Vec<(String, i64)> = counts.into_iter().collect();
-        // 索引の `tag_list` と同じ並び（使われている順、同数なら名前順）
-        tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        Ok(tags)
+        crate::note_service::tags_with_counts(&db, |path| !ignore.is_ignored(path))
+            .map_err(|e| e.to_string())
     }
 
     /// 相対パスを確かめて（無視の中・保管フォルダの外は断る）整えた形と
@@ -575,11 +538,9 @@ impl McpVault {
     /// version_in_history と同じ構え）
     pub fn history_text(&self, relative: &str, stamp: &str) -> Result<NoteText, String> {
         let (cleaned, _) = self.guarded(relative)?;
-        let version = self
-            .versions(&cleaned)
-            .into_iter()
-            .find(|version| version.stamp() == stamp)
-            .ok_or_else(|| format!("その版はありません: {stamp}"))?;
+        let version =
+            crate::note_service::version_at(&self.vault, &self.vault.root().join(&cleaned), stamp)
+                .ok_or_else(|| format!("その版はありません: {stamp}"))?;
         let text = read_note(&version.path).map_err(|e| e.to_string())?;
         let (text, truncated) = clip(text);
         Ok(NoteText {
@@ -814,10 +775,7 @@ impl McpVault {
     }
 
     fn versions(&self, cleaned: &str) -> Vec<crate::history::Version> {
-        let store = crate::history::store_root(&self.vault.managed_dir());
-        // 鍵の字面は vault の 1 本に任せる（アプリ側と同じ版を引く）
-        let key = self.vault.history_key(&self.vault.root().join(cleaned));
-        crate::history::versions(&store, &key)
+        crate::note_service::versions(&self.vault, &self.vault.root().join(cleaned))
     }
 }
 
