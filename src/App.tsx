@@ -33,6 +33,12 @@ import {
   type MenuKind,
   type OpenMenu,
 } from "./components/AppContextMenus";
+import {
+  isPrompt,
+  promptSpec,
+  type OpenDialog,
+  type OpenPrompt,
+} from "./components/app-dialogs";
 import { AssistantPane } from "./components/AssistantPane";
 import { BacklinkBar } from "./components/BacklinkBar";
 import { ChoiceDialog } from "./components/ChoiceDialog";
@@ -112,7 +118,7 @@ import {
 import { collectEmbeds } from "./lib/export-html";
 import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
-import { checkStyle, type Finding } from "./lib/style-check";
+import { checkStyle } from "./lib/style-check";
 import { DEFAULT_FONT_PX, FONT_STEP_PX, zoomActionFor } from "./lib/font-size";
 import {
   forgetLastNote,
@@ -228,14 +234,15 @@ function App() {
   // メニューのハンドラは一度だけ登録するので、最新の式は ref で読む
   const queryRef = useLatest(query);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  // 「検索を保存…」の名前入力。null は閉じている
-  const [savingSearch, setSavingSearch] = useState<string | null>(null);
+  // 今開いているダイアログ（パレット・問い・環境設定・履歴・図…）。
+  // **1 つの状態で持つ**ので、同時に 2 つ開くことが表現できない（20-2。
+  // 外部の変更・削除・復元の 3 択は useNoteSync が持つ）
+  const [dialog, setDialog] = useState<OpenDialog | null>(null);
+  const closeDialog = () => setDialog(null);
 
-  function confirmSaveSearch(name: string) {
-    const typed = savingSearch?.trim() ?? "";
-    if (!typed) return;
-    setSavingSearch(null);
-    search.rememberSearch(name, typed);
+  function confirmSaveSearch(query: string, name: string) {
+    closeDialog();
+    search.rememberSearch(name, query);
     setStatus(`検索「${name}」を保存しました`);
   }
 
@@ -305,23 +312,20 @@ function App() {
   const handlePlaceMcpManual = () => noteCommands.place("mcp");
   /// 雛形の窓を閉じてから作る
   async function handleCreateFromTemplate(template: string) {
-    setTemplates(null);
+    closeDialog();
     await noteCommands.fromTemplate(template);
   }
-  /// 開いているノート（右クリックからは開いていないノートも）をフォルダへ
-  async function handleMoveNote(folder: string) {
-    const path = moveTarget ?? currentPath;
+  /// 開いているノート（右クリックからは開いていないノートも = target）をフォルダへ
+  async function handleMoveNote(target: string | null, folder: string) {
+    const path = target ?? currentPath;
     if (!vaultRoot || !path) return;
-    setMoveOpen(false);
-    setMoveTarget(null);
+    closeDialog();
     await noteCommands.moveTo(path, folder);
   }
   // 環境設定ダイアログ（components/PreferencesDialog）。**開閉だけ**をここで
   // 持ち、タブやキャンセル用のスナップショットはダイアログの中で閉じる
-  const [preferences, setPreferences] = useState(false);
-
   function openPreferences() {
-    setPreferences(true);
+    setDialog({ kind: "preferences" });
   }
 
   /// 履歴フォルダの大きさ（環境設定の「履歴の使用量」）。vault が無ければ 0。
@@ -360,22 +364,11 @@ function App() {
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const closeMenu = () => setMenu(null);
   const openMenu = <K extends MenuKind>(kind: K) => menuOpener(setMenu, kind);
-  // 「テンプレートに登録…」の名前入力。null は閉じている
-  const [templateName, setTemplateName] = useState<string | null>(null);
-  // 「フォルダへ移動…」の対象（右クリックからは開いていないノートも動かす）
-  const [moveTarget, setMoveTarget] = useState<string | null>(null);
-
-  // リンクの図（M-2）。null は閉じている
-  const [graph, setGraph] = useState<{ svg: string; dropped: number } | null>(
-    null,
-  );
-  const [graphDepth, setGraphDepth] = useState(DEFAULT_DEPTH);
 
   /// 開いているノートを起点に、リンクの図を出す。
   /// **絞らないと開けない**ので、深さで区切る（M-2）。
   async function showLinkGraph(depth: number) {
     if (!vaultRoot || !currentPath) return;
-    setGraphDepth(depth);
     setStatus("リンクの図を組んでいます…");
     const links = (await linkMap(vaultRoot)).map(([from, to, relation]) => ({
       from,
@@ -395,7 +388,7 @@ function App() {
       setStatus("図を組めませんでした");
       return;
     }
-    setGraph({ svg, dropped: built.dropped });
+    setDialog({ kind: "graph", svg, dropped: built.dropped, depth });
     setStatus("");
   }
 
@@ -447,10 +440,9 @@ function App() {
     }
   }
 
-  async function confirmRegisterTemplate(typed: string) {
-    const path = templateName;
-    if (!vaultRoot || !path) return;
-    setTemplateName(null);
+  async function confirmRegisterTemplate(path: string, typed: string) {
+    if (!vaultRoot) return;
+    closeDialog();
     try {
       await registerTemplate(vaultRoot, path, typed);
       setStatus(`「${typed}」として登録しました（Cmd+Shift+N で使えます）`);
@@ -517,9 +509,6 @@ function App() {
     }
   }
 
-  // 文体の指摘（U-4）。null は閉じている
-  const [styleFindings, setStyleFindings] = useState<Finding[] | null>(null);
-
   /// 文体を見る。**まずパレットで出す** — 本文に波線を引くのは打鍵ごとの
   /// 経路に入る（spec §6.6 の 16ms）ので、「見たいときに見る」形から始める。
   /// **空のパレットは出さない**（何も無いことが分かればよい）。
@@ -530,13 +519,11 @@ function App() {
       setStatus("気になるところはありませんでした");
       return;
     }
-    setStyleFindings(found);
+    setDialog({ kind: "styleCheck", findings: found });
   }
 
   // 見出しパレット（Cmd+R、C-2）。**飛んだら閉じる道具**なので、
   // 出しっぱなしのアウトライン（Cmd+5）とは別に持つ
-  const [headings, setHeadings] = useState<OutlineItem[] | null>(null);
-
   /// 今のノートの見出しでパレットを開く。**空のパレットは出さない**
   /// （何も無いことが分かればよい）。
   function openHeadingPalette() {
@@ -545,12 +532,12 @@ function App() {
       setStatus("このノートには見出しがありません");
       return;
     }
-    setHeadings(found);
+    setDialog({ kind: "headings", items: found });
   }
 
   function jumpToHeading(item: OutlineItem | undefined) {
     if (!item) return;
-    setHeadings(null);
+    closeDialog();
     editorRef.current?.revealPos(item.from);
   }
 
@@ -578,38 +565,20 @@ function App() {
     });
   }
 
-  // クイックオープン（Cmd+O、spec §5.4）
-  const [quickOpen, setQuickOpen] = useState(false);
-
-  // 表の挿入（TASKS 2-6）。行 × 列を聞いてから差し込む
-  const [tableDialog, setTableDialog] = useState(false);
-  // テンプレートの選択（E-4）。null は閉じている
-  const [templates, setTemplates] = useState<string[] | null>(null);
-  // フォルダの作成・改名の入力（ADR-0024）。null は閉じている
-  // タグの改名・統合（ADR-0055 / 12-4）。右クリックの「名前を変更…」から
-  const [tagDialog, setTagDialog] = useState<string | null>(null);
-  const [folderDialog, setFolderDialog] = useState<{
-    kind: "create" | "rename";
-    folder: string; // create: 親（"" は直下）/ rename: 対象
-  } | null>(null);
-  // 「フォルダへ移動…」の行き先選び。null は閉じている
-  const [moveOpen, setMoveOpen] = useState(false);
+  /// 表の挿入（TASKS 2-6）。行 × 列を聞いてから差し込む
+  const openTableDialog = () => setDialog({ kind: "table" });
   // このノートを指しているノート（E-6）。本文の下に畳んで出す
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
 
-  // 版の履歴（ADR-0023）
-  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(
-    null,
-  );
-  // 差分の「今の本文」（開いた時点で書き切ったもの。ADR-0054）
-  const [historyBase, setHistoryBase] = useState("");
-
+  /// 版の履歴（ADR-0023）。差分の「今の本文」は開いた時点で書き切ったもの
+  /// （ADR-0054）
   async function openHistory() {
     if (!vaultRoot || !currentPath) return;
     await sync.flush(); // 未保存分を書き切ってから一覧を出す
     try {
-      setHistoryBase(editorRef.current?.getText() ?? "");
-      setHistoryEntries(await historyList(vaultRoot, currentPath));
+      const base = editorRef.current?.getText() ?? "";
+      const entries = await historyList(vaultRoot, currentPath);
+      setDialog({ kind: "history", entries, base });
     } catch (error) {
       setStatus(`履歴を開けませんでした: ${String(error)}`);
     }
@@ -634,7 +603,7 @@ function App() {
       return;
     }
     adopt(text);
-    setHistoryEntries(null);
+    closeDialog();
     setStatus(`${entry.stamp} の版に戻しました`);
   }
 
@@ -841,25 +810,26 @@ function App() {
       setStatus(`「${vaultRoot}/templates」に .md を置くと、ここから使えます`);
       return;
     }
-    setTemplates(found);
+    setDialog({ kind: "templates", paths: found });
   }
 
   /// 日付を選ぶ窓（7-5）。既定は今日。
-  const [dayDialog, setDayDialog] = useState<string | null>(null);
   function openDayDialog() {
-    setDayDialog(dayValue(new Date()));
+    setDialog({ kind: "day", date: dayValue(new Date()) });
   }
   function confirmDay(day: string) {
-    setDayDialog(null);
+    closeDialog();
     void handleDailyNote(day);
   }
 
-  async function confirmFolderName(typed: string) {
-    const dialog = folderDialog;
-    if (!vaultRoot || !dialog) return;
-    setFolderDialog(null);
+  async function confirmFolderName(
+    dialog: Extract<OpenDialog, { kind: "folder" }>,
+    typed: string,
+  ) {
+    if (!vaultRoot) return;
+    closeDialog();
     try {
-      if (dialog.kind === "create") {
+      if (dialog.mode === "create") {
         const parent = dialog.folder ? `${dialog.folder}/` : "";
         await createFolder(vaultRoot, `${parent}${typed}`);
         setStatus(`フォルダ「${typed}」を作りました`);
@@ -883,12 +853,27 @@ function App() {
     }
   }
 
+  /// 名前を 1 つ聞く窓 5 種の決定。字面は components/app-dialogs.promptSpec
+  function confirmPrompt(prompt: OpenPrompt, typed: string) {
+    switch (prompt.kind) {
+      case "day":
+        return confirmDay(typed);
+      case "tag":
+        return void confirmTagName(prompt.tag, typed);
+      case "folder":
+        return void confirmFolderName(prompt, typed);
+      case "saveSearch":
+        return confirmSaveSearch(prompt.query, typed);
+      case "template":
+        return void confirmRegisterTemplate(prompt.path, typed);
+    }
+  }
+
   /// タグの改名・統合（ADR-0055 / 12-4）。統合なら確認を 1 回挟む。開いて
   /// いるノートは先に書き切り、対象だったら読み直す
-  async function confirmTagName(typed: string) {
-    const from = tagDialog;
-    setTagDialog(null);
-    if (!vaultRoot || !from) return;
+  async function confirmTagName(from: string, typed: string) {
+    closeDialog();
+    if (!vaultRoot) return;
     const plan = tagRenamePlan(
       tags.map((entry) => entry.tag),
       from,
@@ -1394,7 +1379,7 @@ function App() {
       "daily-note": () => void handleDailyNote(),
       "pick-day": openDayDialog,
       "move-note": () => {
-        if (currentPathRef.current) setMoveOpen(true);
+        if (currentPathRef.current) setDialog({ kind: "move", path: null });
       },
       "place-manual": () => void handlePlaceManual(),
       "place-mcp-manual": () => void handlePlaceMcpManual(),
@@ -1427,7 +1412,9 @@ function App() {
       history: () => void openHistory(),
       trash: () => void handleTrash(),
       "quick-open": () => {
-        setQuickOpen((open) => !open);
+        setDialog((open) =>
+          open?.kind === "quickOpen" ? null : { kind: "quickOpen" },
+        );
       },
       "search-all": () => searchInputRef.current?.focus(),
       "save-search": () => {
@@ -1436,7 +1423,7 @@ function App() {
           setStatus("保存する検索式がありません（検索欄に打ってから）");
           return;
         }
-        setSavingSearch(typed);
+        setDialog({ kind: "saveSearch", query: typed });
       },
       outline: toggleOutline,
       assistant: () => {
@@ -1464,7 +1451,7 @@ function App() {
       extract: () => void handleExtract(),
       "link-graph": () => void showLinkGraph(DEFAULT_DEPTH),
       "insert-table": () => {
-        if (currentPathRef.current) setTableDialog(true);
+        if (currentPathRef.current) openTableDialog();
       },
       "zoom-in": () => changeFontSize(fontSizeRef.current + FONT_STEP_PX),
       "zoom-out": () => changeFontSize(fontSizeRef.current - FONT_STEP_PX),
@@ -1914,28 +1901,30 @@ function App() {
               onPointerDown={(event) => startResize(event, "outlineWidth", -1)}
             />
           )}
-          {headings !== null && (
+          {dialog?.kind === "headings" && (
             <FuzzyPalette
               placeholder="見出しへ飛ぶ"
               // 空の見出し（`##` だけの行）も選べるようにする
-              labels={headings.map((item) => item.text || "（無題の見出し）")}
+              labels={dialog.items.map(
+                (item) => item.text || "（無題の見出し）",
+              )}
               limit={30}
               // 字下げで階層を見せる（深さを数字で出しても読み取りにくい）
-              indentOf={(index) => (headings[index].level - 1) * 0.9}
-              onChoose={(index) => jumpToHeading(headings[index])}
-              onClose={() => setHeadings(null)}
+              indentOf={(index) => (dialog.items[index].level - 1) * 0.9}
+              onChoose={(index) => jumpToHeading(dialog.items[index])}
+              onClose={closeDialog}
             />
           )}
-          {quickOpen && (
+          {dialog?.kind === "quickOpen" && (
             <FuzzyPalette
               placeholder="ノート名で開く"
               labels={notes.map((entry) => entry.label)}
               limit={20}
               onChoose={(index) => {
-                setQuickOpen(false);
+                closeDialog();
                 void openNote(notes[index].path);
               }}
-              onClose={() => setQuickOpen(false)}
+              onClose={closeDialog}
             />
           )}
           <section className="editor-pane">
@@ -1984,7 +1973,7 @@ function App() {
                 <FormatToolbar
                   onFormat={(kind) => editorRef.current?.applyFormat(kind)}
                   onColor={(hex) => editorRef.current?.applyColor(hex)}
-                  onTable={() => setTableDialog(true)}
+                  onTable={openTableDialog}
                 />
                 <Editor
                   // **ノートを開いた回数で作り直す。パスでは作り直さない** —
@@ -2059,66 +2048,31 @@ function App() {
               />
             )}
           </section>
-          {templates !== null && (
+          {dialog?.kind === "templates" && (
             <ListPalette
               title="テンプレートを選ぶ"
-              items={templates.map((path) => ({
+              items={dialog.paths.map((path) => ({
                 key: path,
                 label: noteStem(path),
               }))}
               onChoose={(index) =>
                 void runWithStatus(setStatus, "雛形からの作成", () =>
-                  handleCreateFromTemplate(templates[index]),
+                  handleCreateFromTemplate(dialog.paths[index]),
                 )
               }
-              onClose={() => setTemplates(null)}
+              onClose={closeDialog}
             />
           )}
-          {/* 日付を選んでその日のノートへ（7-5。ポメラの日付メモ相当） */}
-          {dayDialog !== null && (
+          {/* 名前や日付を 1 つ聞く窓 5 種（日付・タグ・フォルダ・検索の保存・
+              テンプレートの登録）。字面は promptSpec、決定は confirmPrompt */}
+          {dialog !== null && isPrompt(dialog) && (
             <PromptDialog
-              title="日付を選んで開く"
-              label="日付"
-              type="date"
-              defaultValue={dayDialog}
-              note="その日のノートが無ければ、日次の雛形から作ります。"
-              confirmLabel="開く"
-              onConfirm={confirmDay}
-              onClose={() => setDayDialog(null)}
+              {...promptSpec(dialog)}
+              onConfirm={(typed) => confirmPrompt(dialog, typed)}
+              onClose={closeDialog}
             />
           )}
-          {tagDialog !== null && (
-            <PromptDialog
-              title={`タグ「#${tagDialog}」の名前を変更`}
-              label="新しい名前"
-              defaultValue={tagDialog}
-              note="全ノートの本文の #タグ を書き換えます。既にある名前にすると、そのタグに統合されます。"
-              confirmLabel="決定"
-              onConfirm={(typed) => void confirmTagName(typed)}
-              onClose={() => setTagDialog(null)}
-            />
-          )}
-          {folderDialog !== null && (
-            <PromptDialog
-              title={
-                folderDialog.kind === "create"
-                  ? folderDialog.folder
-                    ? `「${folderDialog.folder}」の中に新しいフォルダ`
-                    : "新しいフォルダ"
-                  : `「${folderDialog.folder}」の名前を変更`
-              }
-              label="名前"
-              defaultValue={
-                folderDialog.kind === "rename"
-                  ? folderLabel(folderDialog.folder)
-                  : ""
-              }
-              confirmLabel="決定"
-              onConfirm={(typed) => void confirmFolderName(typed)}
-              onClose={() => setFolderDialog(null)}
-            />
-          )}
-          {moveOpen && (
+          {dialog?.kind === "move" && (
             <ListPalette
               title="フォルダへ移動"
               items={folders.map(({ folder }) => ({
@@ -2126,11 +2080,13 @@ function App() {
                 label: folderLabel(folder),
                 indent: folderDepth(folder),
               }))}
-              onChoose={(index) => void handleMoveNote(folders[index].folder)}
-              onClose={() => setMoveOpen(false)}
+              onChoose={(index) =>
+                void handleMoveNote(dialog.path, folders[index].folder)
+              }
+              onClose={closeDialog}
             />
           )}
-          {preferences && (
+          {dialog?.kind === "preferences" && (
             <PreferencesDialog
               settings={settings}
               onChangeSettings={changeSettings}
@@ -2144,20 +2100,20 @@ function App() {
               onChangePptxSettings={changePptxSettings}
               onResetPptxSettings={resetPptxSettings}
               onReset={resetPreferences}
-              onClose={() => setPreferences(false)}
+              onClose={closeDialog}
               noteText={noteText}
               historyUsage={loadHistoryUsage}
               installedModels={loadInstalledModels}
               captureShortcutError={captureShortcut.error}
             />
           )}
-          {tableDialog && (
+          {dialog?.kind === "table" && (
             <TableDialog
               onInsert={(rows, columns) => {
-                setTableDialog(false);
+                closeDialog();
                 editorRef.current?.insertTable(rows, columns);
               }}
-              onClose={() => setTableDialog(false)}
+              onClose={closeDialog}
             />
           )}
           {sync.recovery > 0 && (
@@ -2206,11 +2162,8 @@ function App() {
                 onToggleMcpHidden: (path) => void toggleMcpHidden(path),
                 onOpenBeside: (path) => void openBeside(path),
                 onDuplicate: (path) => void handleDuplicate(path),
-                onMove: (path) => {
-                  setMoveTarget(path);
-                  setMoveOpen(true);
-                },
-                onSaveTemplate: (path) => setTemplateName(path),
+                onMove: (path) => setDialog({ kind: "move", path }),
+                onSaveTemplate: (path) => setDialog({ kind: "template", path }),
                 onCopyLink: (path) => void copyNoteLink(path),
                 onReveal: (path) => void revealInFinder(path),
                 onTrash: (path) => void handleTrash(path),
@@ -2219,7 +2172,7 @@ function App() {
             editor={{
               onClipboard: (action) => void editorClipboard(action),
               onFormat: (kind) => editorRef.current?.applyFormat(kind),
-              onInsertTable: () => setTableDialog(true),
+              onInsertTable: openTableDialog,
               onHandOff: (handoff) => void handOff(handoff),
               onDictionary: () => void lookUpInDictionary(),
             }}
@@ -2254,7 +2207,7 @@ function App() {
                 onFilter: filterByTag,
                 onSearch: searchByTag,
                 onCopy: (tag) => void copyTag(tag),
-                onRename: setTagDialog,
+                onRename: (tag) => setDialog({ kind: "tag", tag }),
               },
             }}
             folder={{
@@ -2265,11 +2218,11 @@ function App() {
               actions: {
                 onNewNote: (folder) => void handleCreate(folder),
                 onNewFolder: (folder) =>
-                  setFolderDialog({ kind: "create", folder }),
+                  setDialog({ kind: "folder", mode: "create", folder }),
                 onReveal: (folder) => void openInFinder(folder),
                 onToggleMcpHidden: (folder) => void toggleMcpHidden(folder),
                 onRename: (folder) =>
-                  setFolderDialog({ kind: "rename", folder }),
+                  setDialog({ kind: "folder", mode: "rename", folder }),
                 onDelete: (folder) => void handleDeleteFolder(folder),
               },
             }}
@@ -2302,47 +2255,24 @@ function App() {
                 ),
             }}
           />
-          {styleFindings !== null && (
+          {dialog?.kind === "styleCheck" && (
             <StyleCheckDialog
-              findings={styleFindings}
+              findings={dialog.findings}
               text={editorRef.current?.getText() ?? ""}
               onJump={(pos) => {
-                setStyleFindings(null);
+                closeDialog();
                 editorRef.current?.revealPos(pos);
               }}
-              onClose={() => setStyleFindings(null)}
+              onClose={closeDialog}
             />
           )}
-          {graph !== null && (
+          {dialog?.kind === "graph" && (
             <GraphDialog
-              svg={graph.svg}
-              dropped={graph.dropped}
-              depth={graphDepth}
+              svg={dialog.svg}
+              dropped={dialog.dropped}
+              depth={dialog.depth}
               onDepth={(depth) => void showLinkGraph(depth)}
-              onClose={() => setGraph(null)}
-            />
-          )}
-          {savingSearch !== null && (
-            <PromptDialog
-              title="検索を保存"
-              label="サイドバーに出す名前"
-              // 既定は式そのもの（短い式ならそのまま通せる）
-              defaultValue={savingSearch}
-              note={`検索式: ${savingSearch}`}
-              confirmLabel="保存"
-              onConfirm={confirmSaveSearch}
-              onClose={() => setSavingSearch(null)}
-            />
-          )}
-          {templateName !== null && (
-            <PromptDialog
-              title="テンプレートに登録"
-              label="名前"
-              defaultValue={noteStem(templateName)}
-              note="見出しは {{title}} に置き換わります（この雛形から作ったノートには新しい題名が入ります）。"
-              confirmLabel="登録"
-              onConfirm={(typed) => void confirmRegisterTemplate(typed)}
-              onClose={() => setTemplateName(null)}
+              onClose={closeDialog}
             />
           )}
           {sync.deleted !== null && (
@@ -2377,17 +2307,17 @@ function App() {
               ]}
             />
           )}
-          {historyEntries !== null && (
+          {dialog?.kind === "history" && (
             <HistoryDialog
-              entries={historyEntries}
-              currentText={historyBase}
+              entries={dialog.entries}
+              currentText={dialog.base}
               readVersion={(entry) =>
                 vaultRoot && currentPath
                   ? historyRead(vaultRoot, currentPath, entry.path)
                   : Promise.resolve("")
               }
               onRestore={(entry) => void restoreVersion(entry)}
-              onClose={() => setHistoryEntries(null)}
+              onClose={closeDialog}
             />
           )}
           {assistantOpen && (
