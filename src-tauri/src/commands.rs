@@ -901,25 +901,45 @@ pub async fn llm_unload(
 /// **打鍵の経路に入れない**（spec §6.6）。生成は別スレッドで回し、流れて
 /// きたぶんは `llm-chunk` で送る（最初の 1 文字まで数秒あり、黙って
 /// 待たせない）。終わりは `llm-done`、失敗は `llm-failed`。
-#[allow(clippy::too_many_arguments)]
+/// 生成の注文（画面の `lib/ipc.llmGenerate` が組む）。設定（port / model / context /
+/// timeout / keep_alive）と注文（task / title / body / question / sources）を 1 つに
+/// （引数 10 個で clippy の警告を黙らせていた。19-4 の残り）
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateRequest {
+    pub port: u16,
+    pub model: String,
+    pub task: String,
+    pub title: String,
+    pub body: String,
+    /// vault 全体への質問（L-2）。`task` が `question` のときだけ使う。
+    /// 材料（題名, 本文）を**探すのは画面側**（索引を引く）
+    pub question: Option<String>,
+    pub sources: Option<Vec<(String, String)>>,
+    pub context: u32,
+    pub timeout_minutes: u64,
+    pub keep_alive: String,
+}
+
 #[tauri::command]
 pub fn llm_generate(
     app: tauri::AppHandle,
     state: tauri::State<'_, WatchState>,
-    port: u16,
-    model: String,
-    task: String,
-    title: String,
-    body: String,
-    // vault 全体への質問（L-2）。`task` が `question` のときだけ使う。
-    // 材料（題名, 本文）を**探すのは画面側**（索引を引く）
-    question: Option<String>,
-    sources: Option<Vec<(String, String)>>,
-    context: u32,
-    timeout_minutes: u64,
-    keep_alive: String,
+    request: GenerateRequest,
 ) -> CmdResult<bool> {
     use std::sync::atomic::Ordering;
+    let GenerateRequest {
+        port,
+        model,
+        task,
+        title,
+        body,
+        question,
+        sources,
+        context,
+        timeout_minutes,
+        keep_alive,
+    } = request;
     if state.generating.swap(true, Ordering::SeqCst) {
         return Ok(false);
     }

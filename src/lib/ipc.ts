@@ -535,13 +535,16 @@ export function llmGenerate(
   settings: LlmSettings,
   order: LlmOrder,
 ): Promise<boolean> {
+  // Rust 側は 1 つの構造体（GenerateRequest）で受ける
   return invoke<boolean>("llm_generate", {
-    port: settings.llmPort,
-    model: settings.llmModel,
-    context: settings.llmContext,
-    timeoutMinutes: settings.llmTimeoutMinutes,
-    keepAlive: settings.llmKeepAlive,
-    ...order,
+    request: {
+      port: settings.llmPort,
+      model: settings.llmModel,
+      context: settings.llmContext,
+      timeoutMinutes: settings.llmTimeoutMinutes,
+      keepAlive: settings.llmKeepAlive,
+      ...order,
+    },
   });
 }
 

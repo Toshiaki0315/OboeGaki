@@ -216,14 +216,16 @@ describe("LLM の包み", () => {
       { task: "summary", title: "題", body: "本文" },
     );
     expect(invoked).toHaveBeenCalledWith("llm_generate", {
-      port: 1,
-      model: "m",
-      context: 8192,
-      timeoutMinutes: 6,
-      keepAlive: "5m",
-      task: "summary",
-      title: "題",
-      body: "本文",
+      request: {
+        port: 1,
+        model: "m",
+        context: 8192,
+        timeoutMinutes: 6,
+        keepAlive: "5m",
+        task: "summary",
+        title: "題",
+        body: "本文",
+      },
     });
   });
 
