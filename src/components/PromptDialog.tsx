@@ -56,7 +56,7 @@ export function PromptDialog({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 if (!ime.isImeEnter(event.nativeEvent)) confirm();
-              } else if (event.key === "Escape") onClose();
+              }
             }}
           />
         </label>

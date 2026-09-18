@@ -1099,8 +1099,8 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             変わっていない
       - [x] Rust `llm_generate` の引数 10 個を `GenerateRequest` に（2026-09-18。ipc は
             `{ request }` で送る。`too_many_arguments` の allow が消えた）
-      - 据え置き: App.tsx に残る `setStatus(String(error))` 12 か所（Rust の文をそのまま
-            出す意図）
+      - 据え置き: App.tsx に残る `setStatus(String(error))`（Rust の文をそのまま出す
+            意図。hook へ移した分を除いて 8 か所 — 2026-09-18 に数え直し）
 - [x] **19-5. 大きい投資**（2026-09-18）
       - [x] `note_service.rs`（2026-09-18）: 一覧（フォルダ × タグ）・フォルダと件数・
             タグと件数・版の一覧と時刻での引き当て。GUI（commands）と MCP が別々に組んで
@@ -1113,6 +1113,31 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
             inlinePieces`（run / break / image の断片）。export-docx の style stack は
             消えた。解析器は 2 つのまま（理由は ADR）: `NoteService` の読み系 5 操作（一覧・読み・検索・版・関連）
       → 書き系。書き出しの `Run` 中間モデル統合（docx と slides の `runsOf`。別 ADR）
+
+## 第 20 群 — リファクタリングの続き（2026-09-18。第 19 群の後に挙げた提案を順に）
+
+順番は「安く済んで守りが固まるもの → App.tsx のもう一段 → 性能の再計測 →
+Rust / ipc の大きいファイル」。挙動を変えるのは Dialog の Esc と focus だけ（fix）。
+
+- [x] **20-1. 守りの固め**（2026-09-18）
+      - [x] `clippy::unwrap_used` を Cargo.toml の `[lints]` に固定（本番コードの unwrap は
+            0 だった。テストは lib.rs の `cfg_attr(test, allow)`、結合テストは自分で allow）
+      - [x] `Dialog` に Esc・focus の面倒を 1 か所で（開いたら中へ、autoFocus が居れば
+            奪わない、Tab は中で回す、閉じたら開く前の場所へ — 呼び手が別へ移して
+            いたら尊重。変換中の Esc は IME の取り消しなので閉じない = T5）。
+            PromptDialog / FuzzyPalette / ListPalette が各自で見ていた Esc を外した
+            （二重に閉じない）。テスト 11 本
+      - [x] TASKS の据え置きの数を直した（12 → 8）
+- [ ] **20-2. App.tsx のもう一段**: 右クリック 8 種の位置と中身を 1 つの状態に／
+      ダイアログの開閉を「今開いているのは 1 つ」の判別共用体に／JSX 973 行を
+      左ペインとダイアログ群の部品に
+- [ ] **20-3. 性能の再計測**: docs/bench.md の 3 指標は 2026-09-04 の値。第 19 群の
+      後で測り直して記録する（`make bench-search` / bench.html / `make bench-startup`）
+- [ ] **20-4. Rust の大きいファイル**: commands.rs（2,008 行・77 コマンド）を領域別に
+      `commands/` へ純粋に移動／mcp.rs（1,527 行）は rmcp のマクロの都合を調べてから
+- [ ] **20-5. `lib/ipc.ts`**（872 行・export 114）を live-preview と同じ接頭辞方式で
+      分ける。「`@tauri-apps/*` を読むのは ipc だけ」は eslint の規則を `ipc-*.ts` に
+      書き換えて維持
 
 ## 待ち — 外部要因でブロック中
 

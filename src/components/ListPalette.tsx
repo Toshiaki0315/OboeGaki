@@ -32,8 +32,7 @@ export function ListPalette({
       title={title}
       onClose={onClose}
       onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-        else if (event.key === "ArrowDown") {
+        if (event.key === "ArrowDown") {
           event.preventDefault();
           setAt((i) => Math.min(i + 1, items.length - 1));
         } else if (event.key === "ArrowUp") {

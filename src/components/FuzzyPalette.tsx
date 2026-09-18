@@ -55,8 +55,7 @@ export function FuzzyPalette({
         }}
         onCompositionEnd={(event) => ime.onCompositionEnd(event.nativeEvent)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-          else if (event.key === "ArrowDown") {
+          if (event.key === "ArrowDown") {
             event.preventDefault();
             setAt((i) => Math.min(i + 1, ranked.length - 1));
           } else if (event.key === "ArrowUp") {
