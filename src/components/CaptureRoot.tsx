@@ -2,8 +2,11 @@
 // 読む（同じアプリの窓は同じ origin）。送ったら閉じる。
 
 import { useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
-import { appendDaily, closeCurrentWindow as closeSelf } from "../lib/ipc";
+import {
+  appendDaily,
+  closeCurrentWindow as closeSelf,
+  confirmDialog,
+} from "../lib/ipc";
 import { VAULT_KEY } from "../lib/last-vault";
 import { APP_NAME } from "../lib/app-name";
 import { CaptureWindow } from "./CaptureWindow";
@@ -39,7 +42,7 @@ export function CaptureRoot() {
             void closeSelf();
             return;
           }
-          confirm("書いたものを捨てますか？", {
+          confirmDialog("書いたものを捨てますか？", {
             title: APP_NAME,
             kind: "warning",
           })

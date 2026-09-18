@@ -4,6 +4,12 @@
 // のもここ。
 
 import { invoke } from "@tauri-apps/api/core";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import {
+  readText as readClipboard,
+  writeText as writeClipboard,
+} from "@tauri-apps/plugin-clipboard-manager";
 import { CAPTURE_LABEL, captureUrl } from "./capture";
 import type { McpHidden } from "./mcp-hidden";
 import type { MenuChecks } from "./menu-checks";
@@ -722,4 +728,142 @@ export async function openCaptureWindow(): Promise<void> {
 export async function closeCurrentWindow(): Promise<void> {
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   await getCurrentWindow().close();
+}
+
+// ---- 書き出し・取り込み・OS の窓（19-4）。App.tsx が直接呼んでいた 17 か所を
+//      ここに寄せた（ADR-0049: 画面側は Tauri を知らない。hooks に切り出すとき
+//      「hook が Tauri を直接呼ぶ」にならないための前提）
+
+/// 書き出したファイルを置く（文字）
+export function exportWrite(path: string, text: string): Promise<void> {
+  return invoke("export_write", { path, text });
+}
+
+/// 書き出したファイルを置く（base64 の中身。Word / PowerPoint）
+export function exportWriteBinary(path: string, data: string): Promise<void> {
+  return invoke("export_write_binary", { path, data });
+}
+
+/// 取り込むファイルを読む（base64。上限は Rust 側）
+export function importRead(path: string): Promise<string> {
+  return invoke<string>("import_read", { path });
+}
+
+/// PDF のページ数（pdf.js が 1 ページも返さない PDF の保険。ADR-0027 追記）
+export function pdfPageCount(data: string): Promise<number> {
+  return invoke<number>("pdf_page_count", { data });
+}
+
+/// 印刷パネルを出す（ADR-0038）
+export function printPage(): Promise<void> {
+  return invoke("print_page", {});
+}
+
+/// 既定の保管フォルダ（無ければ作る場所。ADR-0032）
+export function defaultVault(): Promise<string> {
+  return invoke<string>("default_vault", {});
+}
+
+/// Finder で開く。**開ける先は保管フォルダの中だけ**（中かどうかは Rust が確かめる）
+export function openInFinder(root: string, path: string): Promise<void> {
+  return invoke("open_in_finder", { root, path });
+}
+
+/// 外のアプリの URL スキーム／辞書を開く（許した綴りだけ。Rust が見る）
+export function openHandoffUrl(url: string): Promise<void> {
+  return invoke("open_handoff_url", { url });
+}
+
+/// 外のアプリを名前で開く（許した名前だけ。Rust が見る）
+export function openHandoffApp(app: string): Promise<void> {
+  return invoke("open_handoff_app", { app });
+}
+
+/// 起動 → UI マウントの実測（spec §6.6）
+export function startupElapsedMs(): Promise<number> {
+  return invoke<number>("startup_elapsed_ms", {});
+}
+
+/// 背景の索引同期が終わった知らせ
+export function subscribeIndexUpdated(handler: () => void): () => void {
+  return safeSubscribe(() => listen("index-updated", () => handler()));
+}
+
+/// 走査の結果（M-6）。`full` は全部を見直したか
+export function subscribeIndexSynced(
+  handler: (full: boolean, result: SyncResult) => void,
+): () => void {
+  return safeSubscribe(() =>
+    listen<[boolean, SyncResult]>("index-synced", (event) =>
+      handler(event.payload[0], event.payload[1]),
+    ),
+  );
+}
+
+/// 索引の同期の失敗（理由の文）
+export function subscribeIndexSyncFailed(
+  handler: (message: string) => void,
+): () => void {
+  return safeSubscribe(() =>
+    listen<string>("index-sync-failed", (event) => handler(event.payload)),
+  );
+}
+
+/// ネイティブのメニューが押された（項目の id）
+export function subscribeMenu(handler: (id: string) => void): () => void {
+  return safeSubscribe(() =>
+    listen<string>("menu", (event) => handler(event.payload)),
+  );
+}
+
+/// 確認の窓（OK なら true）
+export function confirmDialog(
+  message: string,
+  options?: { title?: string; kind?: "info" | "warning" | "error" },
+): Promise<boolean> {
+  return confirm(message, options);
+}
+
+export type FileFilter = { name: string; extensions: string[] };
+
+/// ファイルを 1 つ選ぶ。選ばなければ null
+export async function pickFile(options: {
+  filters?: FileFilter[];
+}): Promise<string | null> {
+  const picked = await open({ multiple: false, ...options });
+  return typeof picked === "string" ? picked : null;
+}
+
+/// フォルダを 1 つ選ぶ。選ばなければ null
+export async function pickFolder(): Promise<string | null> {
+  const picked = await open({ directory: true });
+  return typeof picked === "string" ? picked : null;
+}
+
+/// 保存先を選ぶ。やめれば null
+export function saveTo(options: {
+  defaultPath?: string;
+  filters?: FileFilter[];
+}): Promise<string | null> {
+  return save(options);
+}
+
+/// 既定のブラウザで開く
+export function openExternalUrl(url: string): Promise<void> {
+  return openUrl(url);
+}
+
+/// Finder でファイルを見せる
+export function revealInFinder(path: string): Promise<void> {
+  return revealItemInDir(path);
+}
+
+/// クリップボード。**Rust 側から触る** — WebView の `navigator.clipboard.readText()`
+/// は許可が下りず、貼り付けが動かなかった（実機報告 2026-09-04）
+export function readClipboardText(): Promise<string> {
+  return readClipboard();
+}
+
+export function writeClipboardText(text: string): Promise<void> {
+  return writeClipboard(text);
 }

@@ -4,6 +4,19 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  confirm: vi.fn(),
+  open: vi.fn(),
+  save: vi.fn(),
+}));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(),
+  revealItemInDir: vi.fn(),
+}));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  readText: vi.fn(),
+  writeText: vi.fn(),
+}));
 const unlisten = vi.fn();
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(unlisten)),
@@ -11,7 +24,20 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as pluginOpen } from "@tauri-apps/plugin-dialog";
 import {
+  defaultVault,
+  exportWrite,
+  exportWriteBinary,
+  importRead,
+  openHandoffApp,
+  openHandoffUrl,
+  openInFinder,
+  pdfPageCount,
+  pickFile,
+  pickFolder,
+  printPage,
+  startupElapsedMs,
   appendDaily,
   clearRecovery,
   conflictCopy,
@@ -389,6 +415,52 @@ describe("包みのコマンド名と引数（表）", () => {
       { root: "/v", path: "/v/.trash/a.md" },
     ],
     ["emptyTrash", () => emptyTrash("/v"), "trash_empty", { root: "/v" }],
+    // 書き出し・取り込み・OS（19-4 で App.tsx から寄せた 10 本）
+    [
+      "exportWrite",
+      () => exportWrite("/out.html", "<p>x</p>"),
+      "export_write",
+      { path: "/out.html", text: "<p>x</p>" },
+    ],
+    [
+      "exportWriteBinary",
+      () => exportWriteBinary("/out.docx", "AAAA"),
+      "export_write_binary",
+      { path: "/out.docx", data: "AAAA" },
+    ],
+    [
+      "importRead",
+      () => importRead("/in.pdf"),
+      "import_read",
+      { path: "/in.pdf" },
+    ],
+    [
+      "pdfPageCount",
+      () => pdfPageCount("AAAA"),
+      "pdf_page_count",
+      { data: "AAAA" },
+    ],
+    ["printPage", () => printPage(), "print_page", {}],
+    ["defaultVault", () => defaultVault(), "default_vault", {}],
+    [
+      "openInFinder",
+      () => openInFinder("/v", "/v/仕事"),
+      "open_in_finder",
+      { root: "/v", path: "/v/仕事" },
+    ],
+    [
+      "openHandoffUrl",
+      () => openHandoffUrl("dict://語"),
+      "open_handoff_url",
+      { url: "dict://語" },
+    ],
+    [
+      "openHandoffApp",
+      () => openHandoffApp("Notes"),
+      "open_handoff_app",
+      { app: "Notes" },
+    ],
+    ["startupElapsedMs", () => startupElapsedMs(), "startup_elapsed_ms", {}],
     ["templateList", () => templateList("/v"), "template_list", { root: "/v" }],
     [
       "createFromTemplate（題は雛形の名前 = 空を送る）",
@@ -667,5 +739,30 @@ describe("包みのコマンド名と引数（表）", () => {
       expect.arrayContaining(["llm-chunk", "llm-done", "llm-failed"]),
     );
     stop();
+  });
+});
+
+// ---- OS の窓の包み（19-4）。選ばなかった／複数が返った形は null に揃える
+describe("OS の窓の包み", () => {
+  const opened = vi.mocked(pluginOpen);
+  beforeEach(() => opened.mockReset());
+
+  test("test_pickFile_は_1_つだけ選ばせ_選ばなければ_null", async () => {
+    opened.mockResolvedValueOnce("/a.pdf");
+    expect(
+      await pickFile({ filters: [{ name: "PDF", extensions: ["pdf"] }] }),
+    ).toBe("/a.pdf");
+    expect(opened).toHaveBeenCalledWith({
+      multiple: false,
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    opened.mockResolvedValueOnce(null);
+    expect(await pickFile({})).toBeNull();
+  });
+
+  test("test_pickFolder_はフォルダを選ばせる", async () => {
+    opened.mockResolvedValueOnce("/v");
+    expect(await pickFolder()).toBe("/v");
+    expect(opened).toHaveBeenCalledWith({ directory: true });
   });
 });

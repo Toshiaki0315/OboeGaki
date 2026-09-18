@@ -3,7 +3,7 @@
 // **下絵の状態（どの見本・何枚目・組み直し待ち）はこのタブで閉じる。**
 
 import { useEffect, useMemo, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirmDialog } from "../lib/ipc";
 import { APP_NAME } from "../lib/app-name";
 import { contrastVerdict } from "../lib/contrast";
 import {
@@ -68,7 +68,7 @@ export function PptxPreferences({
   /// 入れ直すときは黙って入れる。
   async function changeKeepOriginal(keep: boolean) {
     if (!keep) {
-      const ok = await confirm(
+      const ok = await confirmDialog(
         "「要点のみ」で書き出したとき、スライドに載らなかった本文が" +
           "発表者ノートにも残らなくなります。\n" +
           "（ノートの本文そのものは消えません）",

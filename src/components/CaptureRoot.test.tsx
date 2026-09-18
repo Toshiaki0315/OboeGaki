@@ -8,16 +8,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("../lib/ipc", () => ({
   appendDaily: vi.fn(),
   closeCurrentWindow: vi.fn(),
+  confirmDialog: vi.fn(),
 }));
-vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 
-import { confirm } from "@tauri-apps/plugin-dialog";
 import * as ipc from "../lib/ipc";
 import { VAULT_KEY } from "../lib/last-vault";
 import { CaptureRoot } from "./CaptureRoot";
 
 const mocked = vi.mocked(ipc);
-const confirmed = vi.mocked(confirm);
+const confirmed = mocked.confirmDialog;
 const close = mocked.closeCurrentWindow;
 const box = () => screen.getByRole("textbox", { name: "書き取り" });
 

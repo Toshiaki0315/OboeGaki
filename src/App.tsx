@@ -6,16 +6,6 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { confirm, open, save } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-// **クリップボードは Rust 側から触る**（要望 2026-09-04）。WebView の
-// `navigator.clipboard.readText()` は許可が下りず、貼り付けが動かなかった
-import {
-  readText as readClipboard,
-  writeText as writeClipboard,
-} from "@tauri-apps/plugin-clipboard-manager";
 import { Editor, type EditorHandle } from "./editor/Editor";
 import { useAssistant } from "./hooks/useAssistant";
 import { useNoteSync } from "./hooks/useNoteSync";
@@ -137,7 +127,6 @@ import {
   type RightPane,
   togglePane,
 } from "./lib/right-pane";
-import { safeSubscribe } from "./lib/subscribe";
 import { createDebouncer } from "./lib/debounce";
 import {
   codeKey,
@@ -254,7 +243,28 @@ import {
   writeNote,
   type Backlink,
   type HistoryEntry,
-  type SyncResult,
+  confirmDialog,
+  defaultVault,
+  exportWrite,
+  exportWriteBinary,
+  importRead,
+  openExternalUrl,
+  openHandoffApp,
+  openHandoffUrl,
+  openInFinder as openInFinderIpc,
+  pdfPageCount,
+  pickFile,
+  pickFolder,
+  printPage,
+  readClipboardText,
+  revealInFinder,
+  saveTo,
+  startupElapsedMs,
+  subscribeIndexUpdated,
+  subscribeIndexSynced,
+  subscribeIndexSyncFailed,
+  subscribeMenu,
+  writeClipboardText,
 } from "./lib/ipc";
 import { useAppStore } from "./stores/app";
 import "./App.css";
@@ -645,7 +655,7 @@ function App() {
     if (!vaultRoot) return false;
     try {
       const snippet = await mcpConfig(vaultRoot);
-      await writeClipboard(snippet);
+      await writeClipboardText(snippet);
       setStatus(
         "MCP の設定をコピーしました（Claude Desktop の設定に貼って開き直してください）",
       );
@@ -663,7 +673,7 @@ function App() {
   async function copyNoteLink(path: string) {
     const link = `[[${noteStem(path)}]]`;
     try {
-      await writeClipboard(link);
+      await writeClipboardText(link);
       setStatus(`${link} をコピーしました`);
     } catch (error) {
       setStatus(`コピーできませんでした: ${String(error)}`);
@@ -842,7 +852,7 @@ function App() {
     await sync.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
-    const target = await save({
+    const target = await saveTo({
       defaultPath: `${title}.docx`,
       filters: [{ name: "Word", extensions: ["docx"] }],
     });
@@ -857,7 +867,7 @@ function App() {
         bodyFont: settings.bodyFont,
         monoFont: settings.monoFont,
       });
-      await invoke("export_write_binary", { path: target, data });
+      await exportWriteBinary(target, data);
       setStatus(`書き出しました: ${target}`);
     } catch (error) {
       setStatus(`Word の書き出しに失敗: ${String(error)}`);
@@ -869,7 +879,7 @@ function App() {
     await sync.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
-    const target = await save({
+    const target = await saveTo({
       defaultPath: `${title}.pptx`,
       filters: [{ name: "PowerPoint", extensions: ["pptx"] }],
     });
@@ -925,7 +935,7 @@ function App() {
           codeRuns,
         },
       );
-      await invoke("export_write_binary", { path: target, data });
+      await exportWriteBinary(target, data);
       setStatus(
         over.length > 0
           ? `書き出しました: ${target}（${over.length} 枚で文字が収まらないかもしれません）`
@@ -948,8 +958,7 @@ function App() {
   /// 失敗があれば知らせの文を返す
   async function readPdfPages(bytes: Uint8Array, data: string) {
     const pages = await pdfPages(bytes);
-    const count =
-      pages.length || (await invoke<number>("pdf_page_count", { data }));
+    const count = pages.length || (await pdfPageCount(data));
     const reader = ocrReaderFrom(settingsRef.current);
     // **絵にするのも Rust の仕事**（同じ機械の中で完結させる）
     const found = await fillBlankPages(
@@ -975,11 +984,11 @@ function App() {
   /// 読み方の振り分けは今までどおり拡張子で行う
   async function handleImport(kind: ImportKind) {
     if (!vaultRoot) return;
-    const picked = await open({ filters: [importFilter(kind)] });
+    const picked = await pickFile({ filters: [importFilter(kind)] });
     if (typeof picked !== "string") return;
     setStatus("読み込んでいます…");
     try {
-      const data = await invoke<string>("import_read", { path: picked });
+      const data = await importRead(picked);
       const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
       const name = picked.split("/").pop() ?? "資料";
       const title = importTitle(name);
@@ -1038,12 +1047,12 @@ function App() {
       ),
       vaultRoot,
     );
-    const target = await save({
+    const target = await saveTo({
       defaultPath: `${title}.html`,
       filters: [{ name: "HTML", extensions: ["html"] }],
     });
     if (!target) return;
-    await invoke("export_write", { path: target, text: html });
+    await exportWrite(target, html);
     setStatus(`書き出しました: ${target}`);
   }
 
@@ -1089,7 +1098,7 @@ function App() {
     // 自動保存が発火すると、戻したはずの版が今の本文で潰れる
     //（レビュー 2026-09-04。openHistory が書き切っているので失うものは無い）
     sync.cancel();
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `${entry.stamp} の版に戻しますか？\n（今の内容も履歴に残ります）`,
       { title: APP_NAME, kind: "warning" },
     );
@@ -1149,7 +1158,7 @@ function App() {
   }, [outlineOpen, doc, currentPath]);
 
   async function chooseVault() {
-    const picked = await open({ directory: true });
+    const picked = await pickFolder();
     if (typeof picked !== "string") return;
     await sync.flush(); // 前の vault の未保存分を書き切ってから移る
     try {
@@ -1211,7 +1220,7 @@ function App() {
   useEffect(() => {
     if (printBody === null) return;
     const frame = requestAnimationFrame(() => {
-      void invoke("print_page").catch((error) =>
+      void printPage().catch((error) =>
         setStatus(`印刷できませんでした: ${String(error)}`),
       );
     });
@@ -1293,7 +1302,7 @@ function App() {
         // 無ければそこに作る（`vault_open` が中身を整える）。
         // 場所を保存はしない — 保存すると、あとで新しい既定へ移った人が
         // 旧い場所に留まってしまう（既定値運用のまま置いておく）
-        const fallback = await invoke<string>("default_vault");
+        const fallback = await defaultVault();
         await openVault(fallback, days);
       })
       .catch((error) => {
@@ -1456,7 +1465,7 @@ function App() {
       return;
     }
     if (plan.kind === "merge") {
-      const ok = await confirm(
+      const ok = await confirmDialog(
         `「#${from}」を「#${plan.to}」に統合しますか？\n（全ノートの #${from} が #${plan.to} になります）`,
         { title: APP_NAME, kind: "warning" },
       );
@@ -1564,7 +1573,7 @@ function App() {
   async function handleReplaceAll(to: string, options: ReplaceOptions) {
     if (!vaultRoot) return;
     const from = query;
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `「${from}」を「${to}」に置き換えます。元には戻せません（各ノートの履歴には残ります）。続けますか？`,
       { title: APP_NAME, kind: "warning" },
     );
@@ -1616,7 +1625,7 @@ function App() {
   /// 削除にゴミ箱は無いので、中身ごと消える操作は用意しない）。
   async function handleDeleteFolder(folder: string) {
     if (!vaultRoot) return;
-    const ok = await confirm(`フォルダ「${folder}」を削除しますか？`, {
+    const ok = await confirmDialog(`フォルダ「${folder}」を削除しますか？`, {
       title: "フォルダの削除",
       kind: "warning",
     });
@@ -1694,7 +1703,7 @@ function App() {
       setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
       return;
     }
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `${targets.length} 件のノートをゴミ箱へ移しますか？` +
         (pinned.length ? `（ピン留め中の ${pinned.length} 件は残します）` : ""),
       { title: APP_NAME, kind: "warning" },
@@ -1831,7 +1840,7 @@ function App() {
       setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
       return;
     }
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `「${noteLabel(vaultRoot, path)}」をゴミ箱へ移しますか？`,
       { title: APP_NAME, kind: "warning" },
     );
@@ -1883,7 +1892,7 @@ function App() {
     const path = settingsRef.current.slideTemplate;
     if (!path) return null;
     try {
-      const base64 = await invoke<string>("import_read", { path });
+      const base64 = await importRead(path);
       const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
       const parts = await readTemplateTheme(bytes);
       if (!parts)
@@ -1899,8 +1908,7 @@ function App() {
   /// **場所を覚えるだけ** — 中身は書き出すときに読む（選んだあとに
   /// 差し替えられても、そのときの中身が使われる）。
   async function chooseSlideTemplate() {
-    const picked = await open({
-      multiple: false,
+    const picked = await pickFile({
       filters: [{ name: "PowerPoint", extensions: ["pptx"] }],
     });
     if (typeof picked !== "string") return;
@@ -1949,10 +1957,7 @@ function App() {
     const root = vaultRootRef.current;
     if (!root) return;
     try {
-      await invoke("open_in_finder", {
-        root,
-        path: finderTarget(root, folder),
-      });
+      await openInFinderIpc(root, finderTarget(root, folder));
     } catch (error) {
       setStatus(String(error));
     }
@@ -1969,7 +1974,7 @@ function App() {
       return;
     }
     try {
-      await invoke("open_handoff_url", { url });
+      await openHandoffUrl(url);
     } catch (error) {
       setStatus(String(error));
     }
@@ -1983,7 +1988,7 @@ function App() {
     const selected = editorRef.current?.getSelection() ?? "";
     if (!selected.trim()) return;
     if (needsConfirm(handoff, settingsRef.current.confirmHandoff)) {
-      const ok = await confirm(confirmMessage(handoff, selected), {
+      const ok = await confirmDialog(confirmMessage(handoff, selected), {
         title: APP_NAME,
         kind: "warning",
       });
@@ -1991,19 +1996,19 @@ function App() {
     }
     try {
       if (handoff.search) {
-        await openUrl(searchUrl(selected));
+        await openExternalUrl(searchUrl(selected));
         return;
       }
       // 文字ごと渡せるアプリには直接渡す（貼り付けが要らない）。
       // 渡せないアプリと、URL に載せきれない長さは**クリップボードに倒す**
       const direct = handoffUrl(handoff, selected);
       if (direct) {
-        await invoke("open_handoff_url", { url: direct });
+        await openHandoffUrl(direct);
         setStatus(`${handoff.app} に渡しました`);
         return;
       }
-      await writeClipboard(selected);
-      await invoke("open_handoff_app", { app: handoff.app });
+      await writeClipboardText(selected);
+      await openHandoffApp(handoff.app ?? "");
       setStatus(
         `クリップボードに入れて ${handoff.app} を開きました（⌘V で貼り付け）`,
       );
@@ -2022,13 +2027,13 @@ function App() {
     if (!editor) return;
     try {
       if (action === "paste") {
-        const text = await readClipboard();
+        const text = await readClipboardText();
         if (text) editor.replaceSelection(text);
         return;
       }
       const selected = editor.getSelection();
       if (!selected) return;
-      await writeClipboard(selected);
+      await writeClipboardText(selected);
       if (action === "cut") editor.replaceSelection("");
     } catch {
       setStatus(
@@ -2042,7 +2047,7 @@ function App() {
   /// タグ名をコピーする。**`#` ごと**（本文に貼ればそのままタグになる）。
   async function copyTag(tag: string) {
     try {
-      await writeClipboard(`#${tag}`);
+      await writeClipboardText(`#${tag}`);
       setStatus(`#${tag} をコピーしました`);
     } catch (error) {
       setStatus(`コピーできませんでした: ${String(error)}`);
@@ -2084,7 +2089,7 @@ function App() {
     const root = vaultRootRef.current;
     if (!root) return;
     if (action.kind === "link") {
-      void openUrl(action.payload);
+      void openExternalUrl(action.payload);
       return;
     }
     if (action.kind === "tag") {
@@ -2119,7 +2124,7 @@ function App() {
   // 完全削除は取り返しがつかないので、必ず確認を挟む（G-3）
   async function handleDeleteForever(path: string) {
     if (!vaultRoot) return;
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `「${trashLabel(vaultRoot, path)}」を完全に削除しますか？\nこの操作は取り消せません。`,
       { title: APP_NAME, kind: "warning" },
     );
@@ -2130,7 +2135,7 @@ function App() {
 
   async function handleEmptyTrash() {
     if (!vaultRoot) return;
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `ゴミ箱の ${trashNotes.length} 件をすべて完全に削除しますか？\nこの操作は取り消せません。`,
       { title: APP_NAME, kind: "warning" },
     );
@@ -2333,12 +2338,7 @@ function App() {
     }
   }
   useEffect(() => {
-    const unlisten = safeSubscribe(() =>
-      listen<string>("menu", (event) => {
-        menuActions.current[event.payload]?.();
-      }),
-    );
-    return unlisten;
+    return subscribeMenu((id) => menuActions.current[id]?.());
   }, []);
 
   /// 使っていない添付を片づける（E-5）。
@@ -2361,7 +2361,7 @@ function App() {
       .map((path) => `・${path.split("/").pop()}`)
       .join("\n");
     const more = found.length > 10 ? `\n…ほか ${found.length - 10} 件` : "";
-    const ok = await confirm(
+    const ok = await confirmDialog(
       `どのノートからも使われていない添付が ${found.length} 件あります。\n` +
         `ゴミ箱へ移しますか？（${settingsRef.current.trashDays} 日は戻せます）\n\n${names}${more}`,
       { title: "使っていない添付を片づける", kind: "warning" },
@@ -2392,9 +2392,8 @@ function App() {
   // 走査の結果を知らせる（M-6）。**「変わりはありません」まで言う** —
   // 変わらなかったことを言わないと、押した人には失敗と区別が付かない
   useEffect(() => {
-    const unlisten = safeSubscribe(() =>
-      listen<[boolean, SyncResult]>("index-synced", (event) => {
-        const [full, result] = event.payload;
+    const unlisten = subscribeIndexSynced((full, result) => {
+      {
         const parts = [
           result.added > 0 && `${result.added} 件増えました`,
           result.updated > 0 && `${result.updated} 件変わりました`,
@@ -2407,33 +2406,25 @@ function App() {
             : `${head}（変わりはありません）`,
         );
         void refreshOrStatus();
-      }),
-    );
+      }
+    });
     return unlisten;
   }, []);
 
   useEffect(() => {
-    const unlisten = safeSubscribe(() =>
-      listen<string>("index-sync-failed", (event) => {
-        setStatus(`索引の同期に失敗しました: ${event.payload}`);
-      }),
+    return subscribeIndexSyncFailed((message) =>
+      setStatus(`索引の同期に失敗しました: ${message}`),
     );
-    return unlisten;
   }, []);
 
   // 背景の索引同期が終わったら一覧を引き直す（大きな vault の初回同期）
   useEffect(() => {
-    const unlisten = safeSubscribe(() =>
-      listen("index-updated", () => {
-        void refreshOrStatus();
-      }),
-    );
-    return unlisten;
+    return subscribeIndexUpdated(() => void refreshOrStatus());
   }, []);
 
   // 起動時間の実測（spec §6.6）。ベンチ時は Rust 側が印字して終了する
   useEffect(() => {
-    invoke<number>("startup_elapsed_ms")
+    startupElapsedMs()
       .then((ms) => console.info(`起動 → UI マウント: ${ms}ms`))
       .catch(() => {}); // Tauri 外（素のブラウザ）では黙って無視
   }, []);
@@ -3092,7 +3083,7 @@ function App() {
                         },
                         onSaveTemplate: (path) => setTemplateName(path),
                         onCopyLink: (path) => void copyNoteLink(path),
-                        onReveal: (path) => void revealItemInDir(path),
+                        onReveal: (path) => void revealInFinder(path),
                         onTrash: (path) => void handleTrash(path),
                       },
                     )}
