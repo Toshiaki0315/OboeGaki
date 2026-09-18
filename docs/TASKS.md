@@ -1080,15 +1080,19 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       - [x] `run-command.failureText` で失敗の文を 1 つの形に（「〜に失敗:」5 か所を揃えた）
       - [x] PptxPreferences を `PptxSections`（7 節）と `patch(group, part)`（18 か所）に
             （643 → 295 行）
-      - [ ] **残り**（App にテストが無いまま動かす量が大きいので、別の回で）:
-            メニュー配線 55 項目の hook 化（`menuActions` は App の依存グラフのハブで、
-            50 近い関数の束を渡す型が要る）／`openNote` を中心にした作成・改名・ゴミ箱・
-            ピン・復元の hook（sync / store / localStorage / status の 4 方向に触る）／
-            flush → 処理 → refresh → openNote の 8 か所（順序が少しずつ違い、1 本に
-            するとどれかの意図が消える）／export-docx の `buildDocx` 490 行（テストが
-            119 行しか無いので、先に golden を足してから）／Rust `llm_generate` の引数
-            10 個の構造体化（ipc の引数の形も変わる）／App.tsx に残る
-            `setStatus(String(error))` 12 か所（Rust の文をそのまま出す意図。据え置き）
+      - [x] `hooks/useAppMenu`（2026-09-18）: 印は全部まとめて送り（同じ中身なら送り直さ
+            ない）、押されたら最新の動作を呼ぶ。55 項目の表は `actions` として渡す形に。
+            `checks` は MenuChecks 型なので送り忘れは型で気付く（テスト 2 本）
+      - [x] `hooks/useNoteCommands`（2026-09-18）: 開いているノート（本文・カーソル・
+            世代・見出しの控え）と、開く／閉じる／作る（無題・雛形・日次・同梱）／改名
+            （題名の欄・保存後の見出しの追従）／ゴミ箱（1 件・まとめて）／ピン／戻す／
+            完全削除／空にする／移す。同期は口（NoteSyncPort）で受け、Tauri は lib/ipc。
+            App.tsx は 2,909 → 2,625 行（テスト 6 本）。flush → refresh → openNote の
+            並びはこの hook の中に集まったので、1 本化の必要は消えた
+      - [ ] **残り**（別の回で）: export-docx の `buildDocx` 490 行（テストが 119 行しか
+            無いので、先に golden を足してから）／Rust `llm_generate` の引数 10 個の
+            構造体化（ipc の引数の形も変わる）／App.tsx に残る `setStatus(String(error))`
+            12 か所（Rust の文をそのまま出す意図。据え置き）
 - [x] **19-5. 大きい投資**（2026-09-18）
       - [x] `note_service.rs`（2026-09-18）: 一覧（フォルダ × タグ）・フォルダと件数・
             タグと件数・版の一覧と時刻での引き当て。GUI（commands）と MCP が別々に組んで

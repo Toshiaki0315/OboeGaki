@@ -14,6 +14,7 @@ import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { useLatest } from "./hooks/useLatest";
 import { useAppMenu } from "./hooks/useAppMenu";
+import { useNoteCommands } from "./hooks/useNoteCommands";
 import { useExport } from "./hooks/useExport";
 import { useOutline } from "./hooks/useOutline";
 import { usePreferences } from "./hooks/usePreferences";
@@ -79,15 +80,13 @@ import {
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
-import { noteLabel, noteStem, nfcUnder } from "./lib/note-path";
+import { noteStem } from "./lib/note-path";
 import {
   isHiddenFromMcp,
   relativeIn,
   hiddenByAncestor,
 } from "./lib/mcp-hidden";
-import { firstHeading, sanitizeStem } from "./lib/note-title";
 import { windowTitle } from "./lib/window-title";
-import { renameStatusText } from "./lib/rename-status";
 import { tagRenamePlan } from "./lib/tag-rename";
 import { lineStartOffset, setTaskDone } from "./markdown/tasks";
 import { sectionOf, splitEmbedTarget } from "./markdown/section";
@@ -106,7 +105,7 @@ import {
   splitFolders,
 } from "./lib/folder-tree";
 import { dayValue } from "./lib/day";
-import { folderFilterLabel, trashLabel } from "./lib/trash-label";
+import { folderFilterLabel } from "./lib/trash-label";
 import { canDropInto, isFileDrag, isNoteDrag } from "./lib/note-drop";
 import { fontStack } from "./lib/fonts";
 import type { Activation } from "./editor/activation";
@@ -128,15 +127,12 @@ import {
   forgetLastNote,
   lastNoteFor,
   restoreLastVault,
-  saveLastNote,
   saveLastVault,
   vaultErrorText,
 } from "./lib/last-vault";
 import { contentWidthCss, resolveTheme } from "./lib/settings";
 import {
   createNote,
-  deleteForever,
-  emptyTrash,
   historyList,
   historyRead,
   historyUsage,
@@ -144,8 +140,6 @@ import {
   createFolder,
   duplicateNote,
   registerTemplate,
-  createFromTemplate,
-  dailyNote,
   deleteFolder,
   linkMap,
   moveNote,
@@ -157,14 +151,10 @@ import {
   unusedAttachments,
   historyRestore,
   imageSource,
-  placeManual,
-  placeMcpManual,
   mcpConfig,
   templateList,
-  pinNote,
   readNote,
   saveAttachment,
-  renameNote,
   renameTag,
   subscribeVaultChanged,
   replaceApply,
@@ -173,8 +163,6 @@ import {
   type ReplaceOptions,
   vaultIsEmpty,
   setWindowTitle,
-  restoreNote,
-  trashNote,
   writeNote,
   type Backlink,
   type HistoryEntry,
@@ -215,7 +203,6 @@ function App() {
     refresh,
     selectNote,
   } = useAppStore();
-  const [doc, setDoc] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   // Claude（MCP）に渡さないもの。真実は `.mcp-ignore`（T1 と同じ構え）で、
   // ここはその写し（読み直しと付け外しは hooks/useMcpHidden）
@@ -284,16 +271,60 @@ function App() {
     replaceText: (text) => editorRef.current?.replaceText(text),
     onStatus: setStatus,
     refreshLists: refresh,
-    onCloseNote: () => {
-      selectNote(null);
-      setDoc(null);
-      forgetLastNote(localStorage);
-    },
+    onCloseNote: () => noteCommands.closeNote(),
     onRecovered: async (written) => {
-      if (written[0]) await openNote(written[0]);
+      if (written[0]) await noteCommands.openNote(written[0]);
     },
   });
   const { savedAt } = sync;
+  // 開いているノートと、ノートへの操作（19-4 で hooks/useNoteCommands に）
+  const noteCommands = useNoteCommands({
+    vaultRoot,
+    currentPath,
+    notes,
+    trashCount: trashNotes.length,
+    savedAt,
+    selectNote,
+    refreshLists: refresh,
+    sync,
+    onStatus: setStatus,
+    onOpened: () => discardPrintBody(), // 前のノートの印刷用の組みを捨てる（ADR-0038）
+    editorText: () => editorRef.current?.getText(),
+    defaultFolder: () => newNoteFolder(folderFilter),
+    clearSelection: () => setSelectedNotes(new Set()),
+  });
+  const {
+    doc,
+    initialCursor,
+    editorSession,
+    openNote,
+    adopt,
+    clearDoc,
+    create: handleCreate,
+    daily: handleDailyNote,
+    rename: handleRename,
+    trash: handleTrash,
+    trashMany: handleTrashMany,
+    pin: handlePin,
+    restore: handleRestore,
+    deleteForever: handleDeleteForever,
+    emptyTrash: handleEmptyTrash,
+  } = noteCommands;
+  const handlePlaceManual = () => noteCommands.place("manual");
+  const handlePlaceMcpManual = () => noteCommands.place("mcp");
+  /// 雛形の窓を閉じてから作る
+  async function handleCreateFromTemplate(template: string) {
+    setTemplates(null);
+    await noteCommands.fromTemplate(template);
+  }
+  /// 開いているノート（右クリックからは開いていないノートも）をフォルダへ
+  async function handleMoveNote(folder: string) {
+    const path = moveTarget ?? currentPath;
+    if (!vaultRoot || !path) return;
+    setMoveOpen(false);
+    setMoveTarget(null);
+    await noteCommands.moveTo(path, folder);
+  }
   // 環境設定ダイアログ（components/PreferencesDialog）。**開閉だけ**をここで
   // 持ち、タブやキャンセル用のスナップショットはダイアログの中で閉じる
   const [preferences, setPreferences] = useState(false);
@@ -600,8 +631,6 @@ function App() {
   } | null>(null);
   // 「フォルダへ移動…」の行き先選び。null は閉じている
   const [moveOpen, setMoveOpen] = useState(false);
-  // 雛形の `{{cursor}}`。開いた直後のキャレット位置としてエディタへ渡す
-  const [initialCursor, setInitialCursor] = useState<number | null>(null);
   // このノートを指しているノート（E-6）。本文の下に畳んで出す
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
 
@@ -641,7 +670,7 @@ function App() {
       setStatus(`版を戻せませんでした: ${String(error)}`);
       return;
     }
-    sync.adopt(text);
+    adopt(text);
     setHistoryEntries(null);
     setStatus(`${entry.stamp} の版に戻しました`);
   }
@@ -696,7 +725,7 @@ function App() {
     // 終わると index-synced が知らせて一覧を引き直す
     void syncIndex(picked, true);
     saveLastVault(localStorage, picked);
-    setDoc(null);
+    clearDoc();
   }
 
   // アシスタント（TASKS 4-8 / ADR-0025）。**無ければ機能ごと畳む**
@@ -838,31 +867,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function openNote(given: string, cursor: number | null = null) {
-    if (!vaultRoot) return;
-    // 字面を索引・監視イベントと揃える（ADR-0050）。前回のノートの記憶などに
-    // NFD が残っていても、開いたあとは NFC で持つ
-    const path = nfcUnder(vaultRoot, given);
-    await sync.flush(); // 前のノートの未保存分を書き切ってから切り替える
-    let text: string;
-    try {
-      text = await readNote(vaultRoot, path);
-    } catch (error) {
-      // 一覧と実体がずれている（外で消された等）。無反応に見せない
-      setStatus(`開けませんでした: ${String(error)}`);
-      return;
-    }
-    selectNote(path);
-    saveLastNote(localStorage, vaultRoot, path); // 次回の起動で開き直す
-    setInitialCursor(cursor);
-    setDoc(text);
-    setEditorSession((session) => session + 1); // 別のノート = 作り直す
-    sync.markOpened({ path, text });
-    headingRef.current = firstHeading(text);
-    setStatus("");
-    discardPrintBody(); // 前のノートの印刷用の組みは捨てる（ADR-0038）
-  }
-
   /// 新しいノート（Cmd+N・フォルダの右クリック）。
   /// フォルダを渡すとその中に作る（空文字は直下）。渡さなければ
   /// **絞っているフォルダの中**（要望 2026-09-07。lib/folder-tree）
@@ -870,17 +874,6 @@ function App() {
   const newNoteTitle = newNoteFolder(folderFilter)
     ? `「${newNoteFolder(folderFilter)}」の中に作る`
     : "直下に作る";
-
-  async function handleCreate(folder = newNoteFolder(folderFilter)) {
-    if (!vaultRoot) return;
-    try {
-      const path = await createNote(vaultRoot, "無題", folder);
-      await refresh();
-      await openNote(path);
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }
 
   /// テンプレートを選ぶ（Cmd+Shift+N）。**題名は聞かない** — 雛形の名前を
   /// そのまま題名にする（題名の欄で直せば見出しも追いかける = ADR-0005）。
@@ -895,27 +888,6 @@ function App() {
     setTemplates(found);
   }
 
-  async function handleCreateFromTemplate(template: string) {
-    if (!vaultRoot) return;
-    setTemplates(null);
-    const made = await createFromTemplate(vaultRoot, template);
-    await refresh();
-    await openNote(made.path, made.cursor);
-  }
-
-  /// 今日のノート（Cmd+T）。あれば開くだけ、無ければ日次の雛形から作る。
-  /// **日付を渡せばその日のぶん**（7-5。昨日・先週に戻れる）。
-  async function handleDailyNote(day?: string) {
-    if (!vaultRoot) return;
-    try {
-      const made = await dailyNote(vaultRoot, day);
-      await refresh();
-      await openNote(made.path, made.cursor);
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }
-
   /// 日付を選ぶ窓（7-5）。既定は今日。
   const [dayDialog, setDayDialog] = useState<string | null>(null);
   function openDayDialog() {
@@ -924,24 +896,6 @@ function App() {
   function confirmDay(day: string) {
     setDayDialog(null);
     void handleDailyNote(day);
-  }
-
-  /// 使い方のノートを今の内容で置き直す（ヘルプ）。既にあるノートは
-  /// 消さず、別のファイルとして置かれる。
-  async function handlePlaceManual() {
-    if (!vaultRoot) return;
-    const placed = await placeManual(vaultRoot);
-    await refresh();
-    await openNote(placed);
-  }
-
-  /// MCP（Claude とつなぐ）の手引きを置いて開く。初回には置かないので、
-  /// 繋ぎたくなった人がここから出す
-  async function handlePlaceMcpManual() {
-    if (!vaultRoot) return;
-    const placed = await placeMcpManual(vaultRoot);
-    await refresh();
-    await openNote(placed);
   }
 
   async function confirmFolderName(typed: string) {
@@ -1001,7 +955,7 @@ function App() {
       const outcome = await renameTag(vaultRoot, from, plan.to);
       if (currentPath && outcome.paths.includes(currentPath)) {
         const text = await readNote(vaultRoot, currentPath);
-        sync.adopt(text);
+        adopt(text);
       }
       if (tagFilter === from) filterByTag(plan.to.toLowerCase());
       await refresh();
@@ -1108,8 +1062,7 @@ function App() {
       const outcome = await replaceApply(vaultRoot, from, to, options);
       if (currentPath && outcome.paths.includes(currentPath)) {
         const text = await readNote(vaultRoot, currentPath);
-        sync.adopt(text);
-        headingRef.current = firstHeading(text);
+        adopt(text);
       }
       await refresh();
       const head = `${outcome.notes} 件のノート・${outcome.occurrences} 箇所を置換しました`;
@@ -1212,76 +1165,6 @@ function App() {
     );
   }
 
-  /// 複数のノートをまとめてゴミ箱へ（一覧の複数選択をゴミ箱へ落とした）。
-  /// 確認は 1 回。ピン留めは外して知らせる（spec §7.3）
-  async function handleTrashMany(paths: string[]) {
-    if (!vaultRoot) return;
-    if (paths.length === 1) {
-      await handleTrash(paths[0]);
-      return;
-    }
-    const pinned = paths.filter(
-      (path) => notes.find((entry) => entry.path === path)?.pinned,
-    );
-    const targets = paths.filter((path) => !pinned.includes(path));
-    if (targets.length === 0) {
-      setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
-      return;
-    }
-    const ok = await confirmDialog(
-      `${targets.length} 件のノートをゴミ箱へ移しますか？` +
-        (pinned.length ? `（ピン留め中の ${pinned.length} 件は残します）` : ""),
-      { title: APP_NAME, kind: "warning" },
-    );
-    if (!ok) return;
-    if (currentPath !== null && targets.includes(currentPath)) {
-      sync.dropPending();
-    }
-    const failed: string[] = [];
-    for (const path of targets) {
-      try {
-        await trashNote(vaultRoot, path);
-      } catch (error) {
-        failed.push(`${noteStem(path)}: ${String(error)}`);
-      }
-    }
-    await refresh();
-    setSelectedNotes(new Set());
-    if (currentPath !== null && targets.includes(currentPath)) {
-      selectNote(null);
-      setDoc(null);
-      forgetLastNote(localStorage);
-    }
-    setStatus(
-      failed.length
-        ? `${targets.length - failed.length} 件をゴミ箱へ移しました（移せなかった: ${failed.join("、")}）`
-        : `${targets.length} 件をゴミ箱へ移しました`,
-    );
-  }
-
-  /// 開いているノートをフォルダへ移す（ADR-0024）。本文は書き換えない。
-  async function handleMoveNote(folder: string) {
-    // 右クリックからは開いていないノートも動かす
-    const path = moveTarget ?? currentPath;
-    if (!vaultRoot || !path) return;
-    setMoveOpen(false);
-    setMoveTarget(null);
-    await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
-    try {
-      const moved = await moveNote(vaultRoot, path, folder);
-      await refresh();
-      await openNote(moved);
-      setStatus(folder ? `「${folder}」へ移しました` : "直下へ移しました");
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }
-
-  // Enter とフォーカス外しの両方から呼ばれるので、二重発火を弾く
-  // （1 回目の改名で旧パスが消え、2 回目が「見つからない」で落ちる）
-  const renaming = useRef(false);
-  // エディタを作り直す単位（openNote ごとに進む。改名では進めない）
-  const [editorSession, setEditorSession] = useState(0);
   // どこからでも書き取り（ADR-0057）。設定のショートカットを OS に登録する
   const captureShortcut = useCaptureShortcut(settings.captureShortcut);
 
@@ -1289,127 +1172,6 @@ function App() {
   useEffect(() => {
     setWindowTitle(windowTitle(currentPath)).catch(() => {});
   }, [currentPath]);
-
-  async function handleRename(title: string) {
-    if (!vaultRoot || !currentPath || renaming.current) return;
-    const trimmed = title.trim();
-    if (!trimmed || trimmed === noteStem(currentPath)) return;
-    renaming.current = true;
-    await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
-    try {
-      const outcome = await renameNote(vaultRoot, currentPath, trimmed);
-      const renamed = outcome.path;
-      await refresh();
-      const text = await readNote(vaultRoot, renamed);
-      selectNote(renamed);
-      saveLastNote(localStorage, vaultRoot, renamed);
-      setDoc(text); // Rust が本文の見出しも書き換えている（ADR-0005）
-      sync.markOpened({ path: renamed, text });
-      headingRef.current = firstHeading(text);
-      setStatus(renameStatusText(outcome));
-    } catch (error) {
-      setStatus(failureText("改名", error));
-    } finally {
-      renaming.current = false;
-    }
-  }
-
-  // ---- 見出し → ファイル名（ADR-0005 追記、要望 2026-09-10）。保存が済んだ
-  // あとに、本文の H1 が変わっていたらファイル名を追わせる。**ファイル名が
-  // それまでの見出しに従っていたときだけ**動かす — Finder で意図して別名を
-  // 付けたノートを保存のたびに改名しない（参照実装 _rename_if_title_changed）。
-  // 見出しの無いノートはファイル名に従っているとみなす（無題に H1 を書けば
-  // その名前になる）
-  const headingRef = useRef<string | null>(null);
-  async function followHeading() {
-    if (!vaultRoot || !currentPath || renaming.current) return;
-    const text = editorRef.current?.getText();
-    if (text === undefined) return;
-    const heading = firstHeading(text);
-    const previous = headingRef.current;
-    if (heading === previous) return;
-    headingRef.current = heading;
-    const stem = noteStem(currentPath);
-    if (heading === null || sanitizeStem(previous ?? stem) !== stem) return;
-    if (sanitizeStem(heading) === stem) return;
-    renaming.current = true;
-    try {
-      const outcome = await renameNote(vaultRoot, currentPath, heading);
-      const renamed = outcome.path;
-      if (renamed === currentPath) return;
-      setStatus(renameStatusText(outcome));
-      // 本文はそのまま（エディタを作り直さない = キャレットが飛ばない）。
-      // 予約の書き先と今のパスだけ付け替える
-      sync.renamed(currentPath, renamed);
-      selectNote(renamed);
-      saveLastNote(localStorage, vaultRoot, renamed);
-      await refresh();
-    } catch (error) {
-      setStatus(failureText("見出しに合わせて改名", error));
-    } finally {
-      renaming.current = false;
-    }
-  }
-  const followHeadingRef = useLatest(followHeading);
-  useEffect(() => {
-    if (savedAt === null) return;
-    void followHeadingRef.current();
-  }, [savedAt, followHeadingRef]);
-
-  async function handleTrash(target?: string) {
-    const path = target ?? currentPath;
-    if (!vaultRoot || !path) return;
-    // ピン留め中は削除ガード（spec §7.3）。Rust 側も拒むが、確認を
-    // 出す前にここで止めるほうが親切
-    if (notes.find((entry) => entry.path === path)?.pinned) {
-      setStatus("ピン留め中のノートはゴミ箱へ移せません（先にピンを外す）");
-      return;
-    }
-    const ok = await confirmDialog(
-      `「${noteLabel(vaultRoot, path)}」をゴミ箱へ移しますか？`,
-      { title: APP_NAME, kind: "warning" },
-    );
-    if (!ok) return;
-    // 捨てるのが開いているノートなら、保存予約も破棄する
-    if (path === currentPath) {
-      sync.dropPending();
-    }
-    try {
-      await trashNote(vaultRoot, path);
-    } catch (error) {
-      setStatus(String(error));
-      return;
-    }
-    await refresh();
-    if (path === currentPath) {
-      selectNote(null);
-      setDoc(null);
-      forgetLastNote(localStorage);
-    }
-    setStatus("");
-  }
-
-  // ピン留めの付け外し（spec §7.3）。front matter が書き換わるので、
-  // 開いているエディタの内容も返ってきた本文で差し替える
-  async function handlePin(target?: string) {
-    const path = target ?? currentPath;
-    if (!vaultRoot || !path) return;
-    const current = notes.find((entry) => entry.path === path);
-    await sync.flush(); // 未保存分を書き切ってから front matter を触る
-    let text: string;
-    try {
-      text = await pinNote(vaultRoot, path, !current?.pinned);
-    } catch (error) {
-      setStatus(failureText("ピン留め", error));
-      return;
-    }
-    // 開いているノートなら、書き換わった front matter を読み直す
-    if (path === currentPath) {
-      sync.adopt(text);
-    }
-    await refresh();
-    setStatus(current?.pinned ? "ピンを外しました" : "ピン留めしました");
-  }
 
   /// PowerPoint のテンプレートを選ぶ（TASKS 5-6）。
   /// **場所を覚えるだけ** — 中身は書き出すときに読む（選んだあとに
@@ -1619,36 +1381,6 @@ function App() {
     const created = await createNote(root, action.payload);
     await refresh();
     await openNote(created);
-  }
-
-  async function handleRestore(path: string) {
-    if (!vaultRoot) return;
-    const restored = await restoreNote(vaultRoot, path);
-    await refresh();
-    await openNote(restored); // 戻したノートをそのまま開いて見せる
-  }
-
-  // 完全削除は取り返しがつかないので、必ず確認を挟む（G-3）
-  async function handleDeleteForever(path: string) {
-    if (!vaultRoot) return;
-    const ok = await confirmDialog(
-      `「${trashLabel(vaultRoot, path)}」を完全に削除しますか？\nこの操作は取り消せません。`,
-      { title: APP_NAME, kind: "warning" },
-    );
-    if (!ok) return;
-    await deleteForever(vaultRoot, path);
-    await refresh();
-  }
-
-  async function handleEmptyTrash() {
-    if (!vaultRoot) return;
-    const ok = await confirmDialog(
-      `ゴミ箱の ${trashNotes.length} 件をすべて完全に削除しますか？\nこの操作は取り消せません。`,
-      { title: APP_NAME, kind: "warning" },
-    );
-    if (!ok) return;
-    await emptyTrash(vaultRoot);
-    await refresh();
   }
 
   function handleDocChanged(getText: () => string) {
