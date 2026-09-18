@@ -115,16 +115,7 @@ impl Vault {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            let stem = target
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("無題")
-                .to_string();
-            let suffix = target
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| format!(".{s}"))
-                .unwrap_or_default();
+            let (stem, suffix) = split_name(&target, "");
             let parent = target.parent().map(Path::to_path_buf).unwrap_or_default();
             // タイムスタンプでも衝突したら（同一秒に 2 回捨てた）連番で逃がす
             unique_path(&parent, &format!("{stem}-{stamp}"), &suffix, None)
@@ -160,11 +151,7 @@ impl Vault {
     }
 
     /// `purge_trash` の時刻注入版（テスト用に分離。history と同じ作法）。
-    pub fn purge_trash_at(
-        &self,
-        days: u64,
-        now: std::time::SystemTime,
-    ) -> io::Result<Vec<PathBuf>> {
+    fn purge_trash_at(&self, days: u64, now: std::time::SystemTime) -> io::Result<Vec<PathBuf>> {
         let trash = self.trash_dir();
         if !trash.is_dir() {
             return Ok(vec![]);
@@ -319,16 +306,8 @@ impl Vault {
             None => self.root.clone(),
         };
         fs::create_dir_all(&destination)?;
-        let stem = resolved
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(UNTITLED);
-        let suffix = resolved
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| format!(".{s}"))
-            .unwrap_or_default();
-        let target = unique_path(&destination, stem, &suffix, None);
+        let (stem, suffix) = split_name(&resolved, "");
+        let target = unique_path(&destination, &stem, &suffix, None);
         fs::rename(&resolved, &target)?;
         // 版も連れて戻る（trash と対称。戻した先の名前が変わっても鍵は付いて回る）
         self.carry_history(&resolved, &target);

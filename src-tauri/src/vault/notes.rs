@@ -41,7 +41,7 @@ impl Vault {
     }
 
     /// 本文を指定して新しいノートを作る（雛形から作るとき）。
-    pub fn create_with(&self, title: &str, text: &str) -> io::Result<PathBuf> {
+    pub(super) fn create_with(&self, title: &str, text: &str) -> io::Result<PathBuf> {
         let stem = sanitize_filename(title);
         let path = unique_path(&self.root, &stem, ".md", None);
         crate::autosave::save_atomic(&path, text)?;
@@ -111,15 +111,7 @@ impl Vault {
         if !self.inside(&destination) {
             return Err(outside_error("保管フォルダの外へは移せない", &destination));
         }
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(UNTITLED)
-            .to_string();
-        let suffix = match path.extension().and_then(|s| s.to_str()) {
-            Some(extension) => format!(".{extension}"),
-            None => ".md".to_string(),
-        };
+        let (stem, suffix) = split_name(path, ".md");
         let target = unique_path(&destination, &stem, &suffix, None);
         fs::rename(path, &target)?;
         self.carry_history(path, &target);
@@ -177,11 +169,7 @@ impl Vault {
         };
         let stem = sanitize_filename(title);
         // 拡張子は元のまま（`.markdown` を `.md` に変えない。監査 2026-09-17）
-        let suffix = path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| format!(".{s}"))
-            .unwrap_or_else(|| ".md".to_string());
+        let (_, suffix) = split_name(path, ".md");
         if folder.join(format!("{stem}{suffix}")) == *path {
             return Ok(path.to_path_buf()); // 同じ名前。動かす意味が無い
         }

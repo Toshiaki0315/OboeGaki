@@ -15,10 +15,7 @@ pub fn replace_outside_code(
     if from.is_empty() {
         return None;
     }
-    let (head, body) = match crate::front_matter::block_len(text) {
-        Some(len) => text.split_at(len),
-        None => ("", text),
-    };
+    let (head, body) = crate::front_matter::split(text);
     let mut out = String::with_capacity(text.len());
     out.push_str(head);
     let mut count = 0;
@@ -54,10 +51,7 @@ pub fn rename_tag(text: &str, old: &str, new: &str) -> Option<(String, usize)> {
     if target.is_empty() || new.is_empty() {
         return None;
     }
-    let (head, body) = match crate::front_matter::block_len(text) {
-        Some(len) => text.split_at(len),
-        None => ("", text),
-    };
+    let (head, body) = crate::front_matter::split(text);
     let mut out = String::with_capacity(text.len());
     out.push_str(head);
     let mut count = 0;

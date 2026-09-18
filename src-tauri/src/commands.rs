@@ -13,6 +13,65 @@ use crate::index_db::{IndexDb, SearchHit};
 use crate::vault::{contains, NewNote, Vault};
 use crate::watcher::{self, Suppressor};
 
+/// コマンドの失敗。画面には文字で渡す（serde で `String` になる）。
+/// 以前は 66 か所で `map_err(|e| e.to_string())` を手書きしていた — 写像の抜けが
+/// 「型が合わず 3 行増える」形で毎回出ていた（19-3。2026-09-18）。`?` で揃える
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CmdError(pub String);
+
+pub type CmdResult<T> = Result<T, CmdError>;
+
+impl std::fmt::Display for CmdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl serde::Serialize for CmdError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+/// テストや呼び手が `contains` / `starts_with` を文字のまま使えるように
+impl std::ops::Deref for CmdError {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<str> for CmdError {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for CmdError {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+macro_rules! cmd_error_from {
+    ($($ty:ty),* $(,)?) => {
+        $(impl From<$ty> for CmdError {
+            fn from(error: $ty) -> Self {
+                CmdError(error.to_string())
+            }
+        })*
+    };
+}
+cmd_error_from!(
+    String,
+    &str,
+    std::io::Error,
+    rusqlite::Error,
+    serde_json::Error,
+    tauri::Error,
+    base64::DecodeError,
+    crate::llm::LlmError,
+);
 /// ノートの履歴の鍵。字面は vault 側の 1 本（`vault::history_key`）に任せる —
 /// `guarded` の実体パス（canonicalize 済み）からでも相対の NFC になる
 fn history_key(root: &str, path: &Path) -> String {
@@ -36,10 +95,9 @@ pub fn notes_under(vault: &Vault, folder: &str) -> Vec<PathBuf> {
 /// 旧鍵は、新しい鍵の頭（`path:after`）を元の名前（`path:before`）へ戻したもの。
 /// Tauri を知らないので headless で試せる（T3）
 pub fn rekey_moved_folder(vault: &Vault, before: &str, after: &str, moved: &[PathBuf]) {
-    use unicode_normalization::UnicodeNormalization;
     let store = history::store_root(&vault.managed_dir());
-    let head_after = format!("path:{}", after.nfc().collect::<String>());
-    let head_before = format!("path:{}", before.nfc().collect::<String>());
+    let head_after = format!("path:{}", crate::vault::nfc_string(after));
+    let head_before = format!("path:{}", crate::vault::nfc_string(before));
     for path in moved {
         let after_key = vault.history_key(path);
         let old_key = after_key.replacen(&head_after, &head_before, 1);
@@ -116,7 +174,7 @@ impl Drop for FlagGuard {
 /// Finder で開いてよい場所か（保管フォルダの中の**フォルダ**だけ）。判断を
 /// `open` から分けて headless で試せるようにした（棚卸し 2026-09-17: 以前の
 /// テストは実在しないパスで canonicalize が失敗しているだけで通っていた）
-pub fn finder_target(root: &str, path: &str) -> Result<PathBuf, String> {
+pub fn finder_target(root: &str, path: &str) -> CmdResult<PathBuf> {
     let target = guarded(root, path)?;
     if !target.is_dir() {
         return Err("フォルダではありません".into());
@@ -126,7 +184,7 @@ pub fn finder_target(root: &str, path: &str) -> Result<PathBuf, String> {
 
 /// 版を書き戻す。戻す前に今の内容を 1 版残す（取り消せない操作を増やさない）。
 /// 返り値は書き戻したあとの本文。Tauri を知らないので headless で試せる（T3）
-pub fn restore_version(root: &str, note: &Path, version: &Path) -> Result<String, String> {
+pub fn restore_version(root: &str, note: &Path, version: &Path) -> CmdResult<String> {
     let version = version_in_history(root, note, version)?;
     let store = history_root(root);
     let key = history_key(root, note);
@@ -136,12 +194,13 @@ pub fn restore_version(root: &str, note: &Path, version: &Path) -> Result<String
             eprintln!("戻す前の版を残せなかった: {error}");
         }
     }
-    let text = fs::read_to_string(version).map_err(|e| e.to_string())?;
-    autosave::save_atomic(note, &text).map_err(|e| e.to_string())?;
+    // 版も Shift_JIS のことがある（読みは全部 read_note を通す。19-3）
+    let text = crate::vault::read_note(&version)?;
+    autosave::save_atomic(note, &text)?;
     Ok(text)
 }
 
-fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
+fn guarded(root: &str, path: &str) -> CmdResult<std::path::PathBuf> {
     let candidate = Path::new(path).to_path_buf();
     if contains(Path::new(root), &candidate) {
         // 検査したのと同じ実体を使う（生のパスを返すと、検査と使用の間に
@@ -149,7 +208,7 @@ fn guarded(root: &str, path: &str) -> Result<std::path::PathBuf, String> {
         // まだ無いファイル（これから書く）は正規化できないので生のまま
         Ok(candidate.canonicalize().unwrap_or(candidate))
     } else {
-        Err(format!("vault の外を指しています: {path}"))
+        Err(format!("vault の外を指しています: {path}").into())
     }
 }
 
@@ -160,12 +219,12 @@ pub async fn vault_open(
     state: tauri::State<'_, WatchState>,
     root: String,
     trash_days: Option<u64>,
-) -> Result<(), String> {
+) -> CmdResult<()> {
     let vault = Vault::new(&root);
-    vault.ensure_layout().map_err(|e| e.to_string())?;
+    vault.ensure_layout()?;
     // 「何を渡さないか」を書く場所は、最初から在った方が気付ける（中身は説明
     // だけで、何も隠さない）。vault 本体は MCP を知らない（19-2 で層の逆転を解いた）
-    crate::mcp::ensure_ignore_file(vault.root()).map_err(|e| e.to_string())?;
+    crate::mcp::ensure_ignore_file(vault.root())?;
     // 同じ vault の二重起動を止める（H-1 層 2 / spec §6.1）。2 窓で開くと
     // watcher が互いの保存に反応し、競合ダイアログが行き来する。
     // **先に手放してから取る** — 同じ vault を開き直すとき、自分の持って
@@ -185,7 +244,7 @@ pub async fn vault_open(
                 // （記憶している vault を忘れるかどうかが変わる）
                 return Err(format!(
                     "{VAULT_BUSY}: この保管フォルダは既に別のウィンドウで開いています。そちらをお使いください。"
-                ));
+                ).into());
             }
             // 置けなかっただけ。開けない保管フォルダと同じ扱いにする
             // （守るものが無い。ここで断ると嘘になる）
@@ -266,7 +325,7 @@ pub fn vault_is_empty(root: String) -> bool {
 /// 改名やゴミ箱移動の途中でも「消えた」イベントは届くので、
 /// **本当に無いときだけ聞く**ために使う。
 #[tauri::command]
-pub fn note_exists(root: String, path: String) -> Result<bool, String> {
+pub fn note_exists(root: String, path: String) -> CmdResult<bool> {
     // guarded はフォルダごと外部削除されると canonicalize に失敗して
     // 「vault の外」というエラーに化け、フロントの void 経路が全部飛ぶ
     //（削除ダイアログも退避も出ず、自動保存が消したフォルダを復活させる —
@@ -276,9 +335,9 @@ pub fn note_exists(root: String, path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn note_read(root: String, path: String) -> Result<String, String> {
+pub async fn note_read(root: String, path: String) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
-    crate::vault::read_note(&path).map_err(|e| e.to_string())
+    crate::vault::read_note(&path).map_err(CmdError::from)
 }
 
 #[tauri::command]
@@ -289,10 +348,10 @@ pub async fn note_write(
     text: String,
     // 版を残す間隔（分。環境設定）。0 は「なし」= 自分で保存したときだけ
     history_minutes: Option<i64>,
-) -> Result<(), String> {
+) -> CmdResult<()> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
-    autosave::save_atomic(&path, &text).map_err(|e| e.to_string())?;
+    autosave::save_atomic(&path, &text)?;
     // 索引の後追い。失敗しても保存は成立している（次の sync が取り直す）
     let vault = Vault::new(&root);
     if let Err(error) =
@@ -321,13 +380,13 @@ pub struct HistoryEntry {
 }
 
 #[tauri::command]
-pub fn history_list(root: String, path: String) -> Result<Vec<HistoryEntry>, String> {
+pub fn history_list(root: String, path: String) -> CmdResult<Vec<HistoryEntry>> {
     let path = guarded(&root, &path)?;
     Ok(
         history::versions(&history_root(&root), &history_key(&root, &path))
             .into_iter()
             .map(|version| HistoryEntry {
-                stamp: version.saved_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                stamp: version.stamp(),
                 path: version.path.to_string_lossy().into_owned(),
             })
             .collect(),
@@ -338,11 +397,7 @@ pub fn history_list(root: String, path: String) -> Result<Vec<HistoryEntry>, Str
 /// なら何でも通すと、任意のノートの中身を「版」として書き戻したり覗いたり
 /// できてしまう（レビュー 2026-09-04。フロントは history_list の戻りしか
 /// 渡さないが、境界の層として閉じる）
-fn version_in_history(
-    root: &str,
-    note: &Path,
-    version: &Path,
-) -> Result<std::path::PathBuf, String> {
+fn version_in_history(root: &str, note: &Path, version: &Path) -> CmdResult<std::path::PathBuf> {
     let store = history_root(root);
     let key = history_key(root, note);
     let expected = store.join(history::folder_name(&key));
@@ -353,17 +408,17 @@ fn version_in_history(
         .map(|(parent, expected)| parent == expected)
         .unwrap_or(false);
     if !inside_history {
-        return Err("このノートの版ではありません".to_string());
+        return Err("このノートの版ではありません".into());
     }
     Ok(version.to_path_buf())
 }
 
 /// 版の本文を読む（ADR-0054 の差分表示。書き戻さない）。
 #[tauri::command]
-pub fn history_read(root: String, path: String, version: String) -> Result<String, String> {
+pub fn history_read(root: String, path: String, version: String) -> CmdResult<String> {
     let note = guarded(&root, &path)?;
     let version = version_in_history(&root, &note, &guarded(&root, &version)?)?;
-    fs::read_to_string(&version).map_err(|e| e.to_string())
+    Ok(crate::vault::read_note(&version)?)
 }
 
 /// 版を書き戻す。戻す前に今の内容を 1 版残す（取り消せない操作を増やさない）。
@@ -374,7 +429,7 @@ pub fn history_restore(
     root: String,
     path: String,
     version: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let note = guarded(&root, &path)?;
     let version = guarded(&root, &version)?;
     state.suppressor.mark(&note);
@@ -397,12 +452,12 @@ pub fn conflict_copy(
     root: String,
     path: String,
     text: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let note = guarded(&root, &path)?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let copy = crate::vault::conflict_copy_path(&note, &today);
     state.suppressor.mark(&copy);
-    autosave::save_atomic(&copy, &text).map_err(|e| e.to_string())?;
+    autosave::save_atomic(&copy, &text)?;
     let vault = Vault::new(&root);
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &copy))
@@ -416,8 +471,8 @@ pub fn conflict_copy(
 /// ユーザーが選んだパスなので、vault の封じ込め検査は掛けない
 /// （掛けると書き出し先を vault の中に縛ってしまう）。
 #[tauri::command]
-pub async fn export_write(path: String, text: String) -> Result<(), String> {
-    crate::autosave::save_bytes_atomic(Path::new(&path), text.as_bytes()).map_err(|e| e.to_string())
+pub async fn export_write(path: String, text: String) -> CmdResult<()> {
+    crate::autosave::save_bytes_atomic(Path::new(&path), text.as_bytes()).map_err(CmdError::from)
 }
 
 /// プロセス開始から UI マウントまでの時間（spec §6.6: 起動 < 1.5 秒の実測）。
@@ -438,41 +493,37 @@ pub fn startup_elapsed_ms() -> u64 {
 
 /// 本文の画像参照を data URL で返す（ADR-0004）。解決の起点は vault ルート。
 #[tauri::command]
-pub fn image_read(root: String, path: String) -> Result<String, String> {
-    crate::assets::read_data_url(Path::new(&root), Path::new(&path)).map_err(|e| e.to_string())
+pub fn image_read(root: String, path: String) -> CmdResult<String> {
+    crate::assets::read_data_url(Path::new(&root), Path::new(&path)).map_err(CmdError::from)
 }
 
 /// 画像などの添付を `attachments/` へ保存し、本文へ挿す Markdown を返す
 /// （TASKS 1-2）。中身は base64 で受ける（Tauri の JSON 経路で運ぶため）。
 #[tauri::command]
-pub fn attachment_save(root: String, data: String, suffix: String) -> Result<String, String> {
+pub fn attachment_save(root: String, data: String, suffix: String) -> CmdResult<String> {
     use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&data)
-        .map_err(|e| e.to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(&data)?;
     let vault = Vault::new(&root);
-    let saved = vault
-        .add_attachment(&bytes, &suffix)
-        .map_err(|e| e.to_string())?;
+    let saved = vault.add_attachment(&bytes, &suffix)?;
     Ok(vault.attachment_link(&saved))
 }
 
 /// タグと件数（サイドバーのタグ一覧）。
 #[tauri::command]
-pub fn tag_list(root: String) -> Result<Vec<(String, i64)>, String> {
+pub fn tag_list(root: String) -> CmdResult<Vec<(String, i64)>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.tag_list())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// 一覧の素材（題名・プレビュー・更新時刻）。並び順はフロント側の持ち物。
 #[tauri::command]
-pub async fn note_list(root: String) -> Result<Vec<crate::index_db::NoteMeta>, String> {
+pub async fn note_list(root: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.list_notes())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// ノートを複製する（一覧の右クリック）。作った先を返す。
@@ -481,10 +532,10 @@ pub fn note_duplicate(
     state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
     let vault = Vault::new(&root);
-    let copy = vault.duplicate(&path).map_err(|e| e.to_string())?;
+    let copy = vault.duplicate(&path)?;
     state.suppressor.mark(&copy);
     index_one(&vault, &copy);
     Ok(copy.to_string_lossy().into_owned())
@@ -492,17 +543,17 @@ pub fn note_duplicate(
 
 /// ノートを雛形として登録する（一覧の右クリック）。置いた場所を返す。
 #[tauri::command]
-pub fn template_register(root: String, path: String, name: String) -> Result<String, String> {
+pub fn template_register(root: String, path: String, name: String) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
     Vault::new(&root)
         .register_template(&path, &name)
         .map(|placed| placed.to_string_lossy().into_owned())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// どのノートからも指されていない添付（E-5）。絶対パスを名前順で返す。
 #[tauri::command]
-pub async fn attachments_unused(root: String) -> Result<Vec<String>, String> {
+pub async fn attachments_unused(root: String) -> CmdResult<Vec<String>> {
     Ok(Vault::new(&root)
         .unused_attachments()
         .into_iter()
@@ -516,7 +567,7 @@ pub async fn attachments_trash(
     state: tauri::State<'_, WatchState>,
     root: String,
     paths: Vec<String>,
-) -> Result<usize, String> {
+) -> CmdResult<usize> {
     let vault = Vault::new(&root);
     let mut targets = Vec::new();
     for path in paths {
@@ -530,11 +581,11 @@ pub async fn attachments_trash(
 /// そのタグ（と配下のタグ）が付いたノートだけの一覧（C-4）。
 /// サイドバーのタグクリックはこれで絞る。
 #[tauri::command]
-pub fn notes_with_tag(root: String, tag: String) -> Result<Vec<crate::index_db::NoteMeta>, String> {
+pub fn notes_with_tag(root: String, tag: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.notes_with_tag(&tag))
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// 検索の結果。読めなかった `after:` / `before:` を一緒に返す。
@@ -548,11 +599,9 @@ pub struct SearchOutcome {
 }
 
 #[tauri::command]
-pub async fn note_search(root: String, query: String) -> Result<SearchOutcome, String> {
+pub async fn note_search(root: String, query: String) -> CmdResult<SearchOutcome> {
     let vault = Vault::new(&root);
-    let hits = IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.search(&query))
-        .map_err(|e| e.to_string())?;
+    let hits = IndexDb::open(&vault.managed_dir()).and_then(|db| db.search(&query))?;
     Ok(SearchOutcome {
         hits,
         unreadable: crate::search_query::parse(&query).unreadable_dates,
@@ -566,11 +615,9 @@ pub fn note_create(
     root: String,
     title: String,
     folder: Option<String>,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let vault = Vault::new(&root);
-    let path = vault
-        .create_in(folder.as_deref().unwrap_or(""), &title)
-        .map_err(|e| e.to_string())?;
+    let path = vault.create_in(folder.as_deref().unwrap_or(""), &title)?;
     state.suppressor.mark(&path);
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
@@ -582,7 +629,7 @@ pub fn note_create(
 
 /// `templates/` にある雛形の一覧（絶対パス。名前順）。
 #[tauri::command]
-pub fn template_list(root: String) -> Result<Vec<String>, String> {
+pub fn template_list(root: String) -> CmdResult<Vec<String>> {
     Ok(Vault::new(&root)
         .templates()
         .into_iter()
@@ -597,11 +644,9 @@ pub fn note_create_from_template(
     root: String,
     template: String,
     title: String,
-) -> Result<NewNote, String> {
+) -> CmdResult<NewNote> {
     let vault = Vault::new(&root);
-    let made = vault
-        .create_from_template(Path::new(&template), &title, &chrono::Local::now())
-        .map_err(|e| e.to_string())?;
+    let made = vault.create_from_template(Path::new(&template), &title, &chrono::Local::now())?;
     state.suppressor.mark(&made.path);
     index_one(&vault, &made.path);
     Ok(made)
@@ -613,14 +658,14 @@ pub fn note_daily(
     state: tauri::State<'_, WatchState>,
     root: String,
     day: Option<String>,
-) -> Result<NewNote, String> {
+) -> CmdResult<NewNote> {
     let vault = Vault::new(&root);
     // 日付を渡さなければ今日（`Cmd+T`）。渡すときは `YYYY-MM-DD`（7-5）
     let when = match day {
         Some(text) => parse_day(&text).ok_or("日付を読み取れません")?,
         None => chrono::Local::now(),
     };
-    let made = vault.daily_note(&when).map_err(|e| e.to_string())?;
+    let made = vault.daily_note(&when)?;
     state.suppressor.mark(&made.path);
     index_one(&vault, &made.path);
     Ok(made)
@@ -649,14 +694,10 @@ pub fn mcp_hidden(root: String) -> crate::mcp::Hidden {
 /// 絶対パスでも相対でも受ける（ノートは絶対、フォルダは相対で来る）。
 /// 付け外したあとの一覧を返す — 画面が聞き直さなくて済む
 #[tauri::command]
-pub fn mcp_set_hidden(
-    root: String,
-    path: String,
-    hidden: bool,
-) -> Result<crate::mcp::Hidden, String> {
+pub fn mcp_set_hidden(root: String, path: String, hidden: bool) -> CmdResult<crate::mcp::Hidden> {
     let root_path = std::path::Path::new(&root);
     let relative = crate::mcp::hidden_relative(root_path, &path)?;
-    crate::mcp::set_hidden(root_path, &relative, hidden).map_err(|e| e.to_string())?;
+    crate::mcp::set_hidden(root_path, &relative, hidden)?;
     Ok(crate::mcp::hidden_list(root_path))
 }
 
@@ -675,8 +716,8 @@ pub fn menu_checks(
 /// Claude Desktop などに貼る MCP の設定（10-6）。**パスを手で打たせない** —
 /// 束ねた `.app` の中の場所は人が知らない。本体の隣に居る前提で組み立てる
 #[tauri::command]
-pub fn mcp_config(root: String) -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+pub fn mcp_config(root: String) -> CmdResult<String> {
+    let exe = std::env::current_exe()?;
     let binary = crate::mcp::binary_next_to(&exe);
     Ok(crate::mcp::config_snippet(
         &binary,
@@ -686,20 +727,17 @@ pub fn mcp_config(root: String) -> Result<String, String> {
 
 /// MCP の手引きのノートを置く（10-6 の続き。ヘルプメニューから）
 #[tauri::command]
-pub fn mcp_manual_place(
-    state: tauri::State<'_, WatchState>,
-    root: String,
-) -> Result<String, String> {
+pub fn mcp_manual_place(state: tauri::State<'_, WatchState>, root: String) -> CmdResult<String> {
     let vault = Vault::new(&root);
-    let placed = vault.place_mcp_manual().map_err(|e| e.to_string())?;
+    let placed = vault.place_mcp_manual()?;
     state.suppressor.mark(&placed);
     Ok(placed.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub fn manual_place(state: tauri::State<'_, WatchState>, root: String) -> Result<String, String> {
+pub fn manual_place(state: tauri::State<'_, WatchState>, root: String) -> CmdResult<String> {
     let vault = Vault::new(&root);
-    let placed = vault.place_manual().map_err(|e| e.to_string())?;
+    let placed = vault.place_manual()?;
     state.suppressor.mark(&placed);
     index_one(&vault, &placed);
     Ok(placed.to_string_lossy().into_owned())
@@ -710,11 +748,11 @@ pub fn manual_place(state: tauri::State<'_, WatchState>, root: String) -> Result
 pub async fn note_backlinks(
     root: String,
     title: String,
-) -> Result<Vec<crate::index_db::Backlink>, String> {
+) -> CmdResult<Vec<crate::index_db::Backlink>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.backlinks(&title))
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// ファイルと索引を手で合わせ直す（M-6）。始めたら true、走査中なら false。
@@ -731,7 +769,7 @@ pub fn index_sync(
     state: tauri::State<'_, WatchState>,
     root: String,
     full: bool,
-) -> Result<bool, String> {
+) -> CmdResult<bool> {
     use std::sync::atomic::Ordering;
     if state.syncing.swap(true, Ordering::SeqCst) {
         return Ok(false); // 走査中。**押しても無反応に見せない**のは呼ぶ側
@@ -772,14 +810,12 @@ pub fn index_sync(
 /// PowerPoint（TASKS 4-5）のように**中身がバイト列**のものに使う。
 /// 置き場はユーザーが選んだ場所なので vault の外でよい。
 #[tauri::command]
-pub async fn export_write_binary(path: String, data: String) -> Result<(), String> {
+pub async fn export_write_binary(path: String, data: String) -> CmdResult<()> {
     use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&data)
-        .map_err(|e| e.to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(&data)?;
     // 書き出しもアトミックに（export_write と同じ）。途中で落ちて
     // 壊れた .pptx が残らない（レビュー 2026-09-04）
-    crate::autosave::save_bytes_atomic(Path::new(&path), &bytes).map_err(|e| e.to_string())
+    crate::autosave::save_bytes_atomic(Path::new(&path), &bytes).map_err(CmdError::from)
 }
 
 /// 取り込むファイルを base64 で読む（TASKS 4-5 の PowerPoint など）。
@@ -787,19 +823,20 @@ pub async fn export_write_binary(path: String, data: String) -> Result<(), Strin
 /// **vault の外を読む。** 取り込みは外から持ってくる操作で、置き場を
 /// 選ぶのはユーザー。書き込みはしないので、封じ込めの対象にしない。
 #[tauri::command]
-pub async fn import_read(path: String) -> Result<String, String> {
+pub async fn import_read(path: String) -> CmdResult<String> {
     // 丸ごとメモリへ載せて base64（1.33 倍）で運ぶ経路なので、上限を切る。
     // 500MB の PDF で実質 2GB 近く食う（レビュー 2026-09-04）
     const MAX_IMPORT_BYTES: u64 = 256 * 1024 * 1024;
-    let size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    let size = fs::metadata(&path)?.len();
     if size > MAX_IMPORT_BYTES {
         return Err(format!(
             "ファイルが大きすぎます（{}MB。上限 256MB）",
             size / (1024 * 1024)
-        ));
+        )
+        .into());
     }
     use base64::Engine;
-    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    let bytes = fs::read(&path)?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
@@ -829,9 +866,9 @@ pub async fn llm_loaded(port: u16, model: String) -> bool {
 /// 既定の保管フォルダ（ADR-0032 決定 3）。パスを保存していない人が
 /// 最初に開く場所。**まだ無ければ作るのは開くときの仕事**（`vault_open`）。
 #[tauri::command]
-pub fn default_vault(app: tauri::AppHandle) -> Result<String, String> {
+pub fn default_vault(app: tauri::AppHandle) -> CmdResult<String> {
     use tauri::Manager;
-    let documents = app.path().document_dir().map_err(|e| e.to_string())?;
+    let documents = app.path().document_dir()?;
     Ok(crate::vault::default_vault_in(&documents)
         .to_string_lossy()
         .into_owned())
@@ -855,12 +892,12 @@ pub async fn llm_unload(
     state: tauri::State<'_, WatchState>,
     port: u16,
     model: String,
-) -> Result<bool, String> {
+) -> CmdResult<bool> {
     use std::sync::atomic::Ordering;
     if state.generating.load(Ordering::SeqCst) {
         return Ok(false);
     }
-    crate::llm::unload(port, &model).map_err(|e| e.to_string())?;
+    crate::llm::unload(port, &model)?;
     Ok(true)
 }
 
@@ -886,7 +923,7 @@ pub fn llm_generate(
     context: u32,
     timeout_minutes: u64,
     keep_alive: String,
-) -> Result<bool, String> {
+) -> CmdResult<bool> {
     use std::sync::atomic::Ordering;
     if state.generating.swap(true, Ordering::SeqCst) {
         return Ok(false);
@@ -966,7 +1003,7 @@ fn ocr_timeout(minutes: u64) -> std::time::Duration {
 
 /// 読み手に応じて画像を読む。**どちらも無ければ畳む**（ADR-0027 決定 4）—
 /// Ollama が動いていなければ Err で知らせ、Vision は読めなければ空。
-fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> Result<String, String> {
+fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> CmdResult<String> {
     match reader {
         Some(reader) if reader.engine == "llm" => crate::llm::read_image(
             crate::llm::Generation {
@@ -979,18 +1016,14 @@ fn recognize_with(reader: Option<&OcrReader>, image: &[u8]) -> Result<String, St
             },
             image,
         )
-        .map_err(|error| error.to_string()),
+        .map_err(CmdError::from),
         _ => Ok(crate::ocr::recognize(image)),
     }
 }
 
 /// PDF のページを読み手に応じて読む。LLM には絵をファイルの形（PNG）で
 /// 渡し、Vision には描いた絵をそのまま渡す。描けないページは空
-fn read_pdf_page_with(
-    bytes: &[u8],
-    page: usize,
-    reader: Option<&OcrReader>,
-) -> Result<String, String> {
+fn read_pdf_page_with(bytes: &[u8], page: usize, reader: Option<&OcrReader>) -> CmdResult<String> {
     match reader {
         Some(chosen) if chosen.engine == "llm" => match crate::pdf::render_png(bytes, page) {
             Some(png) => recognize_with(Some(chosen), &png),
@@ -1004,11 +1037,9 @@ fn read_pdf_page_with(
 /// async の中で同期に待つと保存・監視・検索の IPC まで詰まる
 /// （ADR-0027 の「読み込みで固まる」と同じ種類。レビュー 2026-09-07）
 #[tauri::command]
-pub async fn ocr_image(data: String, reader: Option<OcrReader>) -> Result<String, String> {
+pub async fn ocr_image(data: String, reader: Option<OcrReader>) -> CmdResult<String> {
     let bytes = decode(&data)?;
-    tauri::async_runtime::spawn_blocking(move || recognize_with(reader.as_ref(), &bytes))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || recognize_with(reader.as_ref(), &bytes)).await?
 }
 
 /// 選んだ文字を渡す先のアプリを開く（要望 2026-09-05）。
@@ -1017,37 +1048,35 @@ pub async fn ocr_image(data: String, reader: Option<OcrReader>) -> Result<String
 /// 画面側の穴がそのまま「好きなアプリを起動できる」になる。並びは
 /// `src/lib/handoff.ts` と揃える（片方だけ増やさない）。
 #[tauri::command]
-pub fn open_handoff_app(app: String) -> Result<(), String> {
+pub fn open_handoff_app(app: String) -> CmdResult<()> {
     if !HANDOFF_APPS.contains(&app.as_str()) {
-        return Err(format!("渡せない先です: {app}"));
+        return Err(format!("渡せない先です: {app}").into());
     }
     let status = std::process::Command::new("/usr/bin/open")
         .args(["-a", &app])
-        .status()
-        .map_err(|e| e.to_string())?;
+        .status()?;
     if status.success() {
         Ok(())
     } else {
         // 入っていないアプリを選んだとき。**押してから断る**しかない
         // （入っているかどうかは、押すまで分からない）
-        Err(format!("{app} を開けませんでした（入っていますか？）"))
+        Err(format!("{app} を開けませんでした（入っていますか？）").into())
     }
 }
 
 /// 開いてよいアプリ。`src/lib/handoff.ts` の並びと同じもの。
-pub const HANDOFF_APPS: [&str; 4] = ["Claude", "Gemini", "ChatGPT", "Copilot"];
+const HANDOFF_APPS: [&str; 4] = ["Claude", "Gemini", "ChatGPT", "Copilot"];
 
 /// フォルダを Finder で開く（要望 2026-09-05）。
 ///
 /// **保管フォルダの中だけ。** 画面から来たパスをそのまま開くと、どこでも
 /// 開けてしまう（`guarded` が vault の外を断る）。
 #[tauri::command]
-pub fn open_in_finder(root: String, path: String) -> Result<(), String> {
+pub fn open_in_finder(root: String, path: String) -> CmdResult<()> {
     let target = finder_target(&root, &path)?;
     let status = std::process::Command::new("/usr/bin/open")
         .arg(&target)
-        .status()
-        .map_err(|e| e.to_string())?;
+        .status()?;
     if status.success() {
         Ok(())
     } else {
@@ -1057,21 +1086,20 @@ pub fn open_in_finder(root: String, path: String) -> Result<(), String> {
 
 /// 文字ごと渡してよい URL の頭。**ここも決め打ち** — 画面から来た URL を
 /// そのまま開くと、`file://` でも何でも開けてしまう。
-pub const HANDOFF_URLS: [&str; 2] = ["claude://claude.ai/new?q=", "dict://"];
+const HANDOFF_URLS: [&str; 2] = ["claude://claude.ai/new?q=", "dict://"];
 
 /// 文字ごと渡す（貼り付けが要らないアプリ用。要望 2026-09-05）。
 ///
 /// Claude は URL に文字を載せて渡せる（アプリの中に `q` を読む口がある。
 /// 実物で確認）。載せられない長さのものは画面側がクリップボードに倒す。
 #[tauri::command]
-pub fn open_handoff_url(url: String) -> Result<(), String> {
+pub fn open_handoff_url(url: String) -> CmdResult<()> {
     if !HANDOFF_URLS.iter().any(|head| url.starts_with(head)) {
         return Err("渡せない URL です".into());
     }
     let status = std::process::Command::new("/usr/bin/open")
         .arg(&url)
-        .status()
-        .map_err(|e| e.to_string())?;
+        .status()?;
     if status.success() {
         Ok(())
     } else {
@@ -1081,7 +1109,7 @@ pub fn open_handoff_url(url: String) -> Result<(), String> {
 
 /// PDF のページ数（TASKS 4-6）。読めなければ 0。
 #[tauri::command]
-pub async fn pdf_page_count(data: String) -> Result<usize, String> {
+pub async fn pdf_page_count(data: String) -> CmdResult<usize> {
     Ok(crate::pdf::page_count(&decode(&data)?))
 }
 
@@ -1094,18 +1122,17 @@ pub async fn ocr_pdf_page(
     data: String,
     page: usize,
     reader: Option<OcrReader>,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let bytes = decode(&data)?;
     tauri::async_runtime::spawn_blocking(move || read_pdf_page_with(&bytes, page, reader.as_ref()))
-        .await
-        .map_err(|error| error.to_string())?
+        .await?
 }
 
-fn decode(data: &str) -> Result<Vec<u8>, String> {
+fn decode(data: &str) -> CmdResult<Vec<u8>> {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD
         .decode(data)
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// 印刷（TASKS 4-3）。macOS の印刷パネルを出す（「PDF として保存」もここ）。
@@ -1113,17 +1140,17 @@ fn decode(data: &str) -> Result<Vec<u8>, String> {
 /// 印刷されるのは**この WebView に今出ているもの**なので、何を出すかは
 /// フロント側の `@media print` が決める（ADR-0038）。
 #[tauri::command]
-pub fn print_page(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.print().map_err(|e| e.to_string())
+pub fn print_page(window: tauri::WebviewWindow) -> CmdResult<()> {
+    window.print().map_err(CmdError::from)
 }
 
 /// 退避の置き場（vault ごと）。アプリのデータフォルダの下に作る。
 ///
 /// vault の中に置かないのは、**保存できない理由が vault 側にあることが多い**
 /// ため（権限・容量・同期の衝突）。書けない場所へ保険を置いても保険にならない。
-fn recovery_dir(app: &tauri::AppHandle, root: &str) -> Result<std::path::PathBuf, String> {
+fn recovery_dir(app: &tauri::AppHandle, root: &str) -> CmdResult<std::path::PathBuf> {
     use tauri::Manager;
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base = app.path().app_data_dir()?;
     Ok(crate::recovery::vault_dir(&base, Path::new(root)))
 }
 
@@ -1134,17 +1161,17 @@ pub fn recovery_stash(
     root: String,
     path: String,
     text: String,
-) -> Result<(), String> {
+) -> CmdResult<()> {
     let path = guarded(&root, &path)?;
     let dir = recovery_dir(&app, &root)?;
     crate::recovery::stash(&dir, &path, &text)
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// 保存できたので退避を捨てる。
 #[tauri::command]
-pub fn recovery_discard(app: tauri::AppHandle, root: String, path: String) -> Result<(), String> {
+pub fn recovery_discard(app: tauri::AppHandle, root: String, path: String) -> CmdResult<()> {
     let path = guarded(&root, &path)?;
     crate::recovery::discard(&recovery_dir(&app, &root)?, &path);
     Ok(())
@@ -1155,7 +1182,7 @@ pub fn recovery_discard(app: tauri::AppHandle, root: String, path: String) -> Re
 pub fn recovery_pending(
     app: tauri::AppHandle,
     root: String,
-) -> Result<Vec<crate::recovery::Stashed>, String> {
+) -> CmdResult<Vec<crate::recovery::Stashed>> {
     Ok(crate::recovery::pending(&recovery_dir(&app, &root)?))
 }
 
@@ -1168,7 +1195,7 @@ pub fn recovery_restore(
     app: tauri::AppHandle,
     state: tauri::State<'_, WatchState>,
     root: String,
-) -> Result<Vec<String>, String> {
+) -> CmdResult<Vec<String>> {
     let vault = Vault::new(&root);
     let dir = recovery_dir(&app, &root)?;
     let restored = restore_pending(&vault, &dir);
@@ -1212,7 +1239,7 @@ pub fn restore_pending(vault: &Vault, dir: &Path) -> Vec<PathBuf> {
 
 /// 退避を全部捨てる（「復元しない」を選んだとき）。
 #[tauri::command]
-pub fn recovery_clear(app: tauri::AppHandle, root: String) -> Result<(), String> {
+pub fn recovery_clear(app: tauri::AppHandle, root: String) -> CmdResult<()> {
     crate::recovery::clear_all(&recovery_dir(&app, &root)?);
     Ok(())
 }
@@ -1233,26 +1260,18 @@ pub async fn note_related(
     root: String,
     path: String,
     title: String,
-) -> Result<Vec<RelatedNote>, String> {
+) -> CmdResult<Vec<RelatedNote>> {
     let vault = Vault::new(&root);
     let relative = Path::new(&path)
         .strip_prefix(&root)
         .map(|rest| rest.to_string_lossy().into_owned())
         .unwrap_or(path.clone());
-    let db = IndexDb::open(&vault.managed_dir()).map_err(|e| e.to_string())?;
-    let signals = db
-        .related_signals(&relative, &title)
-        .map_err(|e| e.to_string())?;
-    let ranked = crate::related::rank(&signals, &relative, crate::related::DEFAULT_LIMIT);
-    let keys: Vec<String> = ranked.iter().map(|item| item.key.clone()).collect();
-    let titles = db.titles_for(&keys).map_err(|e| e.to_string())?;
+    let db = IndexDb::open(&vault.managed_dir())?;
+    let ranked = db.related_notes(&relative, &title, crate::related::DEFAULT_LIMIT, |_| true)?;
     Ok(ranked
         .into_iter()
-        .map(|item| RelatedNote {
-            title: titles
-                .get(&item.key)
-                .cloned()
-                .unwrap_or_else(|| item.key.clone()),
+        .map(|(item, found_title)| RelatedNote {
+            title: found_title.unwrap_or_else(|| item.key.clone()),
             path: item.key,
             reasons: item.reasons,
         })
@@ -1263,22 +1282,20 @@ pub async fn note_related(
 ///
 /// **図は索引から作る。** 本文を全部読み直すと大きな vault で待たされる。
 #[tauri::command]
-pub fn link_map(root: String) -> Result<Vec<(String, String, String)>, String> {
+pub fn link_map(root: String) -> CmdResult<Vec<(String, String, String)>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.link_map())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// サイドバーのフォルダツリーの素材（ADR-0024）。
 /// **存在はディスク、件数は索引**（索引にあってディスクに無いものは出さない）。
 /// 先頭は必ず直下（空文字）。
 #[tauri::command]
-pub async fn folder_list(root: String) -> Result<Vec<(String, i64)>, String> {
+pub async fn folder_list(root: String) -> CmdResult<Vec<(String, i64)>> {
     let vault = Vault::new(&root);
-    let counts = IndexDb::open(&vault.managed_dir())
-        .and_then(|db| db.folder_counts())
-        .map_err(|e| e.to_string())?;
+    let counts = IndexDb::open(&vault.managed_dir()).and_then(|db| db.folder_counts())?;
     let count_of = |folder: &str| counts.get(folder).copied().unwrap_or(0);
     let mut found = vec![(String::new(), count_of(""))];
     for folder in vault.folders() {
@@ -1290,22 +1307,19 @@ pub async fn folder_list(root: String) -> Result<Vec<(String, i64)>, String> {
 
 /// そのフォルダ**直下**のノート（ADR-0024 追記 4）。
 #[tauri::command]
-pub fn notes_in_folder(
-    root: String,
-    folder: String,
-) -> Result<Vec<crate::index_db::NoteMeta>, String> {
+pub fn notes_in_folder(root: String, folder: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.notes_in_folder(&folder))
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 #[tauri::command]
-pub fn folder_create(root: String, folder: String) -> Result<String, String> {
+pub fn folder_create(root: String, folder: String) -> CmdResult<String> {
     Vault::new(&root)
         .create_folder(&folder)
         .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// フォルダの名前を変える。新しい相対パスを返す。
@@ -1318,12 +1332,10 @@ pub fn folder_rename(
     root: String,
     folder: String,
     name: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let vault = Vault::new(&root);
     let before = folder.trim_matches('/').to_string();
-    let renamed = vault
-        .rename_folder(&folder, &name)
-        .map_err(|e| e.to_string())?;
+    let renamed = vault.rename_folder(&folder, &name)?;
     after_folder_moved(&state, &vault, &before, &renamed);
     Ok(renamed)
 }
@@ -1335,12 +1347,10 @@ pub fn folder_move(
     root: String,
     folder: String,
     into: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let vault = Vault::new(&root);
     let before = folder.trim_matches('/').to_string();
-    let moved = vault
-        .move_folder(&folder, &into)
-        .map_err(|e| e.to_string())?;
+    let moved = vault.move_folder(&folder, &into)?;
     if moved != before {
         after_folder_moved(&state, &vault, &before, &moved);
     }
@@ -1373,10 +1383,10 @@ fn after_folder_moved(
 }
 
 #[tauri::command]
-pub fn folder_delete(root: String, folder: String) -> Result<(), String> {
+pub fn folder_delete(root: String, folder: String) -> CmdResult<()> {
     Vault::new(&root)
         .delete_folder(&folder)
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// ノートをフォルダへ移す（ADR-0024）。移した先の絶対パスを返す。
@@ -1386,11 +1396,11 @@ pub fn note_move(
     root: String,
     path: String,
     folder: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
     let vault = Vault::new(&root);
     state.suppressor.mark(&path);
-    let moved = vault.move_note(&path, &folder).map_err(|e| e.to_string())?;
+    let moved = vault.move_note(&path, &folder)?;
     if moved == path {
         return Ok(moved.to_string_lossy().into_owned());
     }
@@ -1421,12 +1431,10 @@ pub fn note_rename(
     root: String,
     path: String,
     title: String,
-) -> Result<RenameOutcome, String> {
+) -> CmdResult<RenameOutcome> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
-    let renamed = Vault::new(&root)
-        .rename(&path, &title)
-        .map_err(|e| e.to_string())?;
+    let renamed = Vault::new(&root).rename(&path, &title)?;
     state.suppressor.mark(&renamed);
     let stem = |p: &Path| {
         p.file_stem()
@@ -1470,11 +1478,9 @@ pub fn note_rename(
 /// 今日のノートの末尾に追記（どこからでも書き取り = ADR-0057 / 12-6）。
 /// 書き取りの窓から呼ぶ。監視の抑制はしない（主窓が読み直す）
 #[tauri::command]
-pub fn note_append_daily(root: String, text: String) -> Result<String, String> {
+pub fn note_append_daily(root: String, text: String) -> CmdResult<String> {
     let vault = Vault::new(&root);
-    let path = vault
-        .append_to_daily(&chrono::Local::now(), &text)
-        .map_err(|e| e.to_string())?;
+    let path = vault.append_to_daily(&chrono::Local::now(), &text)?;
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
     {
@@ -1485,11 +1491,11 @@ pub fn note_append_daily(root: String, text: String) -> Result<String, String> {
 
 /// 未完了のやること（ADR-0056 / 12-5）
 #[tauri::command]
-pub fn task_list(root: String) -> Result<Vec<crate::index_db::TaskRow>, String> {
+pub fn task_list(root: String) -> CmdResult<Vec<crate::index_db::TaskRow>> {
     let vault = Vault::new(&root);
     IndexDb::open(&vault.managed_dir())
         .and_then(|db| db.open_tasks())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// やることを完了にする（開いていないノート用。開いているノートはエディタで
@@ -1500,13 +1506,13 @@ pub fn task_complete(
     root: String,
     path: String,
     line: usize,
-) -> Result<(), String> {
+) -> CmdResult<()> {
     let note = guarded(&root, &path)?;
-    let text = crate::vault::read_note(&note).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_note(&note)?;
     let rewritten = crate::tasks::set_task_done(&text, line, true)
         .ok_or_else(|| "その行はやることではありません".to_string())?;
     state.suppressor.mark(&note);
-    autosave::save_atomic(&note, &rewritten).map_err(|e| e.to_string())?;
+    autosave::save_atomic(&note, &rewritten)?;
     let vault = Vault::new(&root);
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
@@ -1523,7 +1529,7 @@ pub fn replace_preview(
     from: String,
     case_sensitive: bool,
     include_code: bool,
-) -> Result<ReplaceCount, String> {
+) -> CmdResult<ReplaceCount> {
     let vault = Vault::new(&root);
     let outcome = crate::link_rewrite::rewrite_all(&vault, None, |text| {
         crate::text_rewrite::replace_outside_code(text, &from, "", case_sensitive, include_code)
@@ -1544,9 +1550,9 @@ pub fn replace_apply(
     to: String,
     case_sensitive: bool,
     include_code: bool,
-) -> Result<ReplaceOutcome, String> {
+) -> CmdResult<ReplaceOutcome> {
     let vault = Vault::new(&root);
-    let mut db = IndexDb::open(&vault.managed_dir()).map_err(|e| e.to_string())?;
+    let mut db = IndexDb::open(&vault.managed_dir())?;
     let outcome = crate::link_rewrite::rewrite_all(&vault, Some(&mut db), |text| {
         crate::text_rewrite::replace_outside_code(text, &from, &to, case_sensitive, include_code)
     });
@@ -1573,9 +1579,9 @@ pub fn tag_rename(
     root: String,
     from: String,
     to: String,
-) -> Result<ReplaceOutcome, String> {
+) -> CmdResult<ReplaceOutcome> {
     let vault = Vault::new(&root);
-    let mut db = IndexDb::open(&vault.managed_dir()).map_err(|e| e.to_string())?;
+    let mut db = IndexDb::open(&vault.managed_dir())?;
     let outcome = crate::link_rewrite::rewrite_all(&vault, Some(&mut db), |text| {
         crate::text_rewrite::rename_tag(text, &from, &to)
     });
@@ -1621,12 +1627,12 @@ pub fn note_trash(
     state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
     let vault = Vault::new(&root);
     // 削除ガードと履歴の引っ越しは vault が持つ（MCP からも同じ道を通る）
-    let moved = vault.trash_note(&path).map_err(|e| e.to_string())?;
+    let moved = vault.trash_note(&path)?;
     state.suppressor.mark(&moved);
     // ゴミ箱の中は索引に入れない（検索・一覧の対象外）
     if let Err(error) =
@@ -1638,7 +1644,7 @@ pub fn note_trash(
 }
 
 #[tauri::command]
-pub fn trash_list(root: String) -> Result<Vec<TrashItem>, String> {
+pub fn trash_list(root: String) -> CmdResult<Vec<TrashItem>> {
     Ok(Vault::new(&root)
         .trash_entries()
         .into_iter()
@@ -1665,13 +1671,13 @@ pub fn note_pin(
     root: String,
     path: String,
     pinned: bool,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
-    let text = crate::vault::read_note(&path).map_err(|e| e.to_string())?;
+    let text = crate::vault::read_note(&path)?;
     let updated = crate::front_matter::with_pinned(&text, pinned);
     if updated != text {
         state.suppressor.mark(&path);
-        autosave::save_atomic(&path, &updated).map_err(|e| e.to_string())?;
+        autosave::save_atomic(&path, &updated)?;
         let vault = Vault::new(&root);
         if let Err(error) =
             IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
@@ -1684,25 +1690,25 @@ pub fn note_pin(
 
 /// 履歴フォルダの使用量（バイト）。設定画面の表示用。
 #[tauri::command]
-pub async fn history_usage(root: String) -> Result<u64, String> {
+pub async fn history_usage(root: String) -> CmdResult<u64> {
     Ok(history::usage(&history_root(&root)))
 }
 
 /// ゴミ箱の 1 件を完全に消す（G-3）。ゴミ箱の外は消さない。
 #[tauri::command]
-pub fn trash_delete(root: String, path: String) -> Result<(), String> {
+pub fn trash_delete(root: String, path: String) -> CmdResult<()> {
     Vault::new(&root)
         .delete_permanently(Path::new(&path))
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 /// ゴミ箱を空にする（G-3）。確認を取るのはフロント側の仕事。
 #[tauri::command]
-pub fn trash_empty(root: String) -> Result<(), String> {
+pub fn trash_empty(root: String) -> CmdResult<()> {
     Vault::new(&root)
         .empty_trash()
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(CmdError::from)
 }
 
 #[tauri::command]
@@ -1710,13 +1716,13 @@ pub fn note_restore(
     state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
     let vault = Vault::new(&root);
     // 版は vault.restore が連れて戻る（trash と対称。鍵はファイルに付いて回る =
     // ADR-0042。戻した先の名前が変わっても同じ）
-    let restored = vault.restore(&path).map_err(|e| e.to_string())?;
+    let restored = vault.restore(&path)?;
     state.suppressor.mark(&restored);
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &restored))

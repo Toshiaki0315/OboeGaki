@@ -44,6 +44,34 @@ pub struct SyncResult {
     pub removed: usize,
 }
 
+/// `SELECT path, title, preview, mtime_ns, pinned` の行を NoteMeta に（4 か所で同じ
+/// 閉包を書いていた。19-3）
+fn note_meta(row: &rusqlite::Row) -> rusqlite::Result<NoteMeta> {
+    Ok(NoteMeta {
+        path: row.get(0)?,
+        title: row.get(1)?,
+        preview: row.get(2)?,
+        mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
+        pinned: row.get(4)?,
+    })
+}
+
+/// LIKE のメタ文字（% _ \）を退避する（タグ名や検索語に入りうる）。`ESCAPE '\\'` と対
+fn like_escape(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+/// 1 ノートぶんの行を全部の表から消す。**表を足したらここに足す**（以前は 3 か所に
+/// 5 行ずつ並んでいて、tasks 表のとき漏れやすい形だった。19-3）
+fn purge_rows(tx: &rusqlite::Transaction<'_>, path: &str) -> rusqlite::Result<()> {
+    for table in ["notes", "notes_fts", "tags", "links", "tasks"] {
+        tx.execute(&format!("DELETE FROM {table} WHERE path = ?1"), [path])?;
+    }
+    Ok(())
+}
+
 /// 一覧に出すノートの素材（ADR-0022 系の一覧強化）。
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub struct NoteMeta {
@@ -76,7 +104,7 @@ pub struct SearchHit {
 }
 
 /// 本文の頭 200 文字（front matter と先頭の H1 を除く）。
-pub fn note_preview(text: &str) -> String {
+fn note_preview(text: &str) -> String {
     let mut lines = text.lines().peekable();
     // front matter: 先頭が `---` 行なら、次の `---` 行まで読み飛ばす
     if lines.peek().map(|l| l.trim_end()) == Some("---") {
@@ -120,8 +148,7 @@ fn day_start_ns(day: chrono::NaiveDate) -> i64 {
 /// 索引のキー（vault からの相対パス）。文字列としては **NFC** に揃える —
 /// 同じファイルが NFC と NFD の 2 行にならないように（vault::nfc_under）。
 fn key_of(relative: &Path) -> String {
-    use unicode_normalization::UnicodeNormalization;
-    relative.to_string_lossy().nfc().collect()
+    crate::vault::nfc_string(&relative.to_string_lossy())
 }
 
 fn mtime_ns(meta: &fs::Metadata) -> i64 {
@@ -350,11 +377,7 @@ impl IndexDb {
         }
         for gone in existing.keys().filter(|path| !seen.contains(*path)) {
             result.removed += 1;
-            tx.execute("DELETE FROM notes WHERE path = ?1", [gone])?;
-            tx.execute("DELETE FROM notes_fts WHERE path = ?1", [gone])?;
-            tx.execute("DELETE FROM tags WHERE path = ?1", [gone])?;
-            tx.execute("DELETE FROM links WHERE path = ?1", [gone])?;
-            tx.execute("DELETE FROM tasks WHERE path = ?1", [gone])?;
+            purge_rows(&tx, gone)?;
         }
         tx.commit()?;
         Ok(result)
@@ -381,15 +404,7 @@ impl IndexDb {
         let mut statement = self
             .conn
             .prepare("SELECT path, title, preview, mtime_ns, pinned FROM notes")?;
-        let rows = statement.query_map([], |row| {
-            Ok(NoteMeta {
-                path: row.get(0)?,
-                title: row.get(1)?,
-                preview: row.get(2)?,
-                mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
-                pinned: row.get(4)?,
-            })
-        })?;
+        let rows = statement.query_map([], note_meta)?;
         rows.collect()
     }
 
@@ -400,11 +415,7 @@ impl IndexDb {
         };
         let relative = key_of(relative);
         let tx = self.conn.transaction()?;
-        tx.execute("DELETE FROM notes WHERE path = ?1", [&relative])?;
-        tx.execute("DELETE FROM notes_fts WHERE path = ?1", [&relative])?;
-        tx.execute("DELETE FROM tags WHERE path = ?1", [&relative])?;
-        tx.execute("DELETE FROM links WHERE path = ?1", [&relative])?;
-        tx.execute("DELETE FROM tasks WHERE path = ?1", [&relative])?;
+        purge_rows(&tx, &relative)?;
         tx.commit()
     }
 
@@ -459,10 +470,7 @@ impl IndexDb {
             return Ok(Vec::new());
         }
         // LIKE のメタ文字（% _ \）はタグ名に入りうるので必ず退避する
-        let escaped = normalized
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_");
+        let escaped = like_escape(&normalized);
         let descendants = format!("{escaped}/%");
         let mut statement = self.conn.prepare(
             "SELECT notes.path, notes.title, notes.preview, notes.mtime_ns, notes.pinned
@@ -470,15 +478,7 @@ impl IndexDb {
              WHERE tags.tag = ?1 OR tags.tag LIKE ?2 ESCAPE '\\'
              GROUP BY notes.path",
         )?;
-        let rows = statement.query_map(rusqlite::params![normalized, descendants], |row| {
-            Ok(NoteMeta {
-                path: row.get(0)?,
-                title: row.get(1)?,
-                preview: row.get(2)?,
-                mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
-                pinned: row.get(4)?,
-            })
-        })?;
+        let rows = statement.query_map(rusqlite::params![normalized, descendants], note_meta)?;
         rows.collect()
     }
 
@@ -500,15 +500,7 @@ impl IndexDb {
                AND instr(substr(path, length(?1) + 2), '/') = 0"
         };
         let mut statement = self.conn.prepare(sql)?;
-        let to_meta = |row: &rusqlite::Row| {
-            Ok(NoteMeta {
-                path: row.get(0)?,
-                title: row.get(1)?,
-                preview: row.get(2)?,
-                mtime_ms: row.get::<_, i64>(3)? / 1_000_000,
-                pinned: row.get(4)?,
-            })
-        };
+        let to_meta = note_meta;
         let rows = if cleaned.is_empty() {
             statement.query_map([], to_meta)?
         } else {
@@ -562,6 +554,33 @@ impl IndexDb {
             })
         })?;
         rows.collect()
+    }
+
+    /// 関係するノートを強い順に、題名を添えて（GUI と MCP が別々に組んでいた
+    /// 「signals → rank → titles_for」を 1 本に。19-3）。`keep` で落とす鍵は根拠の段で
+    /// 除く — 並べたあとで落とすと limit がそのぶん減る
+    pub fn related_notes(
+        &self,
+        relative: &str,
+        title: &str,
+        limit: usize,
+        keep: impl Fn(&str) -> bool,
+    ) -> rusqlite::Result<Vec<(crate::related::Related, Option<String>)>> {
+        let signals: Vec<crate::related::Signal> = self
+            .related_signals(relative, title)?
+            .into_iter()
+            .filter(|signal| keep(&signal.key))
+            .collect();
+        let ranked = crate::related::rank(&signals, relative, limit);
+        let keys: Vec<String> = ranked.iter().map(|item| item.key.clone()).collect();
+        let mut titles = self.titles_for(&keys)?;
+        Ok(ranked
+            .into_iter()
+            .map(|item| {
+                let found = titles.remove(&item.key);
+                (item, found)
+            })
+            .collect())
     }
 
     /// 関連するノートの根拠を索引から集める（L-3）。
@@ -714,11 +733,7 @@ impl IndexDb {
             self.hits(&sql, bound)
         } else {
             // trigram は 2 文字以下にヒットしないので LIKE に切り替える
-            let escaped = parsed
-                .text
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
+            let escaped = like_escape(&parsed.text);
             let like = format!("%{escaped}%");
             let sql = format!(
                 "SELECT path, title, preview FROM notes
@@ -754,10 +769,7 @@ impl IndexDb {
                 " AND EXISTS (SELECT 1 FROM tags WHERE tags.path = notes.path
                     AND (tags.tag = ? OR tags.tag LIKE ? ESCAPE '\\'))",
             );
-            let escaped = tag
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
+            let escaped = like_escape(tag);
             params.push(Box::new(tag.clone()));
             params.push(Box::new(format!("{escaped}/%")));
         }

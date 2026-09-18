@@ -7,8 +7,6 @@
 // 検出の規則はエディタ側（extended-inline.ts の WikiLink）と揃える:
 // 名前に `[` `]` `|` と改行を含まない。中身が空白だけならリンクではない。
 
-use unicode_normalization::UnicodeNormalization;
-
 /// 比較のために名前を揃える。
 ///
 /// `sanitize_filename` の**うち比較に要る 2 段だけ**（NFC 正規化と空白の
@@ -16,7 +14,7 @@ use unicode_normalization::UnicodeNormalization;
 /// ファイル名の都合で、照合で真似ると `[[a/b]]` が `[[a-b]]` に当たる。
 /// NFC に寄せるのは、macOS のファイル名が分解された形で来ることがあるため。
 pub fn normalize(name: &str) -> String {
-    let composed: String = name.nfc().collect();
+    let composed = crate::vault::nfc_string(name);
     composed.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -60,10 +58,7 @@ pub fn context_line(text: &str, name: &str) -> String {
 
 /// front matter とコードフェンスの外の行だけ（インラインコードは潰す）。
 fn body_lines(text: &str) -> Vec<String> {
-    let body = match crate::front_matter::block_len(text) {
-        Some(len) => &text[len..],
-        None => text,
-    };
+    let body = crate::front_matter::body(text);
     let mut lines = Vec::new();
     let mut in_fence = false;
     for line in body.lines() {
@@ -161,10 +156,7 @@ pub fn rewrite_wikilinks(text: &str, old: &str, new: &str) -> Option<String> {
     if target.is_empty() || normalize(old) == normalize(new) {
         return None;
     }
-    let (head, body) = match crate::front_matter::block_len(text) {
-        Some(len) => text.split_at(len),
-        None => ("", text),
-    };
+    let (head, body) = crate::front_matter::split(text);
     let mut out = String::with_capacity(text.len());
     out.push_str(head);
     let mut changed = false;

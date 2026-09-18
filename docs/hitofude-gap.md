@@ -47,12 +47,12 @@
 | 前回の vault を記憶して次回起動で自動的に開く                                   | config.vault_path, Q-6                        | 実装済み（lib/last-vault.ts。前回開いていたノートも開く = 3-22）                                |
 | ピン留め（一覧の先頭固定・ピン中は削除ガード。front matter に永続化）           | §7.3, ui/note_actions.py                      | 実装済み（一覧の先頭固定・削除ガード・front matter に永続化。索引の pinned 列）                 |
 | front matter の ULID id（改名・移動でも同一性が切れない索引/履歴の鍵）          | ADR-0023, core/document.py                    | **やらない**（ADR-0023 の決定: パスを鍵にし、改名・移動は history::rekey で付け替える）         |
-| テンプレート（雛形から新規作成・日次テンプレート・Finder で追加可・初回シード） | E-4, core/template.py, resources/templates/   | 実装済み（vault.rs seed_templates / create_from_template、Cmd+Shift+N、「＋新規」の右クリック） |
-| 同梱マニュアル「覚書の使い方」の初回シード                                      | vault.py MANUAL_*                             | 実装済み（vault.rs seed_manual / place_manual。ヘルプから置き直せる）                           |
+| テンプレート（雛形から新規作成・日次テンプレート・Finder で追加可・初回シード） | E-4, core/template.py, resources/templates/   | 実装済み（vault/templates.rs seed_templates / create_from_template、Cmd+Shift+N、「＋新規」の右クリック） |
+| 同梱マニュアル「覚書の使い方」の初回シード                                      | vault.py MANUAL_*                             | 実装済み（vault/seed.rs seed_manual / place_manual。ヘルプから置き直せる）                           |
 | フォルダの作成・改名（アプリ内から）                                            | ADR-0024, vault.create_folder / rename_folder | 実装済み。**Drag & Drop での移動**も足した（ADR-0024 追記 7。参照実装には無い）                 |
 | サイドバーのフォルダツリー表示                                                  | ui/sidebar.py, ADR-0024                       | 実装済み（components/FolderSection.tsx。畳める = 3-23、直下 0 の括弧 = ADR-0024 追記 6）        |
 | 保存した検索（サイドバーに常駐）                                                | ui/sidebar.py                                 | 実装済み（components/SavedSearchSection.tsx、lib/saved-searches.ts）                            |
-| ゴミ箱の自動掃除（30 日、日数設定可）                                           | §7.6, purge_trash                             | 実装済み（vault.rs purge_trash。日数は環境設定）                                                |
+| ゴミ箱の自動掃除（30 日、日数設定可）                                           | §7.6, purge_trash                             | 実装済み（vault/trash.rs purge_trash。日数は環境設定）                                                |
 | ゴミ箱からの完全削除・「ゴミ箱を空にする」                                      | §7.6, note_actions                            | 実装済み（「ゴミ箱を空にする」。App の handleEmptyTrash）                                       |
 | 画像の貼り付け / ドロップ取り込み（attachments/ へ保存して `![]()` を挿入）     | A-2, editor/attachments.py                    | 実装済み（TASKS 1-2）。**SVG も受ける**（参照実装は QtSvg 無しで描けず対象外。2026-09-09）      |
 | 未使用の添付の片づけ（どのノートからも指されない画像の掃除）                    | E-5, vault.unused_attachments                 | 実装済み（references.rs、commands attachments_unused / attachments_trash）                      |

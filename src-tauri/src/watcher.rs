@@ -56,8 +56,7 @@ impl Suppressor {
 /// 無視リストのキー。自分は NFC で書き、FSEvents は書き手（Cocoa）の NFD で
 /// 届けることがあるので、丸ごと NFC に揃えて比べる（vault::nfc_under の説明）
 fn nfc_key(path: &Path) -> PathBuf {
-    use unicode_normalization::UnicodeNormalization;
-    PathBuf::from(path.to_string_lossy().nfc().collect::<String>())
+    PathBuf::from(crate::vault::nfc_string(&path.to_string_lossy()))
 }
 
 /// フロントへ届けるパス。vault からの相対部分を NFC に揃える — 走査・索引と
@@ -92,7 +91,7 @@ pub fn is_relevant(root: &Path, path: &Path) -> bool {
         // フォルダ成分に scan と同じ除外規則を当てる（最後の成分はファイル名）
         if components.peek().is_some() {
             let name = name.to_str().unwrap_or("");
-            if crate::vault::SKIP_DIRS.contains(&name) || name.starts_with('.') {
+            if crate::vault::is_skipped(name) {
                 return false;
             }
         }

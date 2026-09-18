@@ -24,7 +24,6 @@ use super::*;
 /// パスも実体に解決してから相対にし、NFC に寄せる。まだ無いファイル（これから
 /// 書く・戻す先）は親で解決する
 pub fn history_key(root: &Path, path: &Path) -> String {
-    use unicode_normalization::UnicodeNormalization;
     let real_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let real = resolve_existing(path);
     let relative = real
@@ -32,7 +31,7 @@ pub fn history_key(root: &Path, path: &Path) -> String {
         .or_else(|_| path.strip_prefix(root))
         .map(Path::to_path_buf)
         .unwrap_or_else(|_| path.to_path_buf());
-    let composed: String = relative.to_string_lossy().nfc().collect();
+    let composed = nfc_string(&relative.to_string_lossy());
     format!("path:{composed}")
 }
 

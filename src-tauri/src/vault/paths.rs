@@ -2,6 +2,7 @@
 // vault の中の全モジュールが使う土台（19-2 で vault.rs から分けた）
 
 use super::*;
+use unicode_normalization::UnicodeNormalization;
 
 pub(super) fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message.to_string())
@@ -46,7 +47,6 @@ pub(crate) fn is_markdown(path: &Path) -> bool {
 /// 先頭のドットを剥がす（隠しファイル化を防ぐ）→ 200 バイト以内に切り詰め。
 /// 空になったら「無題」。
 pub fn sanitize_filename(title: &str) -> String {
-    use unicode_normalization::UnicodeNormalization;
     let mut text = String::new();
     for character in title.nfc() {
         // Python の isprintable 相当の近似: 制御文字（空白は残す）と
@@ -119,11 +119,10 @@ pub fn unique_path(directory: &Path, stem: &str, suffix: &str, ignoring: Option<
 }
 
 pub fn nfc_under(root: &Path, path: &Path) -> PathBuf {
-    use unicode_normalization::UnicodeNormalization;
     let Ok(relative) = path.strip_prefix(root) else {
         return path.to_path_buf();
     };
-    let composed: String = relative.to_string_lossy().nfc().collect();
+    let composed = nfc_string(&relative.to_string_lossy());
     root.join(composed)
 }
 
@@ -159,6 +158,33 @@ pub fn contains(root: &Path, candidate: &Path) -> bool {
         Ok(resolved) => resolved.starts_with(&root),
         Err(_) => false,
     }
+}
+
+/// NFC に揃える（Finder が作る名前は NFD で来ることがある。索引の鍵・履歴の鍵・
+/// リンク名・無視リストが全部これを通る。10 か所で `nfc().collect()` を書いていた。19-3）
+pub fn nfc_string(text: &str) -> String {
+    text.nfc().collect()
+}
+
+/// 走査で飛ばすフォルダか（予約フォルダ、またはドット始まり）。scan・watcher が同じ判定
+pub fn is_skipped(name: &str) -> bool {
+    SKIP_DIRS.contains(&name) || name.starts_with('.')
+}
+
+/// ファイル名を「幹」と「点つきの拡張子」に分ける。幹が無ければ「無題」、
+/// 拡張子が無ければ `default_suffix`（4 か所で同じ組み合わせを書いていた。19-3）
+pub fn split_name(path: &Path, default_suffix: &str) -> (String, String) {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(UNTITLED)
+        .to_string();
+    let suffix = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| format!(".{s}"))
+        .unwrap_or_else(|| default_suffix.to_string());
+    (stem, suffix)
 }
 
 #[cfg(test)]

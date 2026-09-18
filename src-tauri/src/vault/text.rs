@@ -97,6 +97,13 @@ pub fn with_title(text: &str, title: &str) -> String {
     }
 }
 
+/// 末尾に改行が無ければ足す（書き込む本文は LF で終える。3 か所で同じ if を書いていた）
+pub fn ensure_trailing_newline(text: &mut String) {
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+}
+
 #[cfg(test)]
 // テスト名は日本語で書く。Finder / URL / Shift_JIS のような固有名を
 // 小文字に崩さないため、snake_case の警告はこの mod だけ黙らせる

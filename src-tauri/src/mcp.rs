@@ -10,8 +10,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use unicode_normalization::UnicodeNormalization;
-
 use crate::index_db::{IndexDb, NoteMeta, SearchHit};
 use crate::vault::{read_note, Vault, SKIP_DIRS};
 
@@ -126,7 +124,7 @@ impl IgnoreList {
         let folders = std::fs::read_to_string(root.join(IGNORE_FILE))
             .unwrap_or_default()
             .lines()
-            .map(|line| line.trim().trim_matches('/').nfc().collect::<String>())
+            .map(|line| crate::vault::nfc_string(line.trim().trim_matches('/')))
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
         Self { folders }
@@ -137,7 +135,7 @@ impl IgnoreList {
     /// 成分は**どの階層でも**見せない — `scan()` が各階層でドットフォルダを
     /// 飛ばすのと揃える（アプリに一切出ないものを MCP だけが読まない）
     pub fn is_ignored(&self, relative: &str) -> bool {
-        let relative: String = relative.nfc().collect();
+        let relative = crate::vault::nfc_string(relative);
         let first = relative.split('/').next().unwrap_or("");
         if SKIP_DIRS.contains(&first) || relative.split('/').any(|part| part.starts_with('.')) {
             return true;
@@ -520,13 +518,7 @@ impl McpVault {
             .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
-        let truncated = text.chars().count() > MAX_TEXT_CHARS;
-        let text = if truncated {
-            let head: String = text.chars().take(MAX_TEXT_CHARS).collect();
-            format!("{head}{TRUNCATED_MARK}")
-        } else {
-            text
-        };
+        let (text, truncated) = clip(text);
         Ok(NoteText {
             path: cleaned.to_string(),
             text,
@@ -551,20 +543,14 @@ impl McpVault {
             .remove(&cleaned)
             .unwrap_or_default();
         let ignore = self.ignore();
-        let signals: Vec<crate::related::Signal> = db
-            .related_signals(&cleaned, &title)
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter(|signal| !ignore.is_ignored(&signal.key))
-            .collect();
         let limit = limit.unwrap_or(crate::related::DEFAULT_LIMIT).max(1);
-        let ranked = crate::related::rank(&signals, &cleaned, limit);
-        let paths: Vec<String> = ranked.iter().map(|r| r.key.clone()).collect();
-        let titles = db.titles_for(&paths).map_err(|e| e.to_string())?;
+        let ranked = db
+            .related_notes(&cleaned, &title, limit, |key| !ignore.is_ignored(key))
+            .map_err(|e| e.to_string())?;
         Ok(ranked
             .into_iter()
-            .map(|related| RelatedNote {
-                title: titles.get(&related.key).cloned().unwrap_or_default(),
+            .map(|(related, found_title)| RelatedNote {
+                title: found_title.unwrap_or_default(),
                 path: related.key,
                 reasons: related.reasons,
                 score: related.score,
@@ -579,7 +565,7 @@ impl McpVault {
             .versions(&cleaned)
             .into_iter()
             .map(|version| HistoryEntry {
-                stamp: stamp_of(&version),
+                stamp: version.stamp(),
             })
             .collect())
     }
@@ -592,7 +578,7 @@ impl McpVault {
         let version = self
             .versions(&cleaned)
             .into_iter()
-            .find(|version| stamp_of(version) == stamp)
+            .find(|version| version.stamp() == stamp)
             .ok_or_else(|| format!("その版はありません: {stamp}"))?;
         let text = read_note(&version.path).map_err(|e| e.to_string())?;
         let (text, truncated) = clip(text);
@@ -645,8 +631,7 @@ impl McpVault {
             None => {
                 let body = text.unwrap_or("");
                 // front matter があればその**下**に置く（上に差し込むと壊れる）
-                let front_len = crate::front_matter::block_len(body).unwrap_or(0);
-                let (front, rest) = body.split_at(front_len);
+                let (front, rest) = crate::front_matter::split(body);
                 if rest.trim_start().starts_with("# ") {
                     body.to_string()
                 } else {
@@ -655,9 +640,7 @@ impl McpVault {
             }
         };
         let mut body = body;
-        if !body.ends_with('\n') {
-            body.push('\n');
-        }
+        crate::vault::ensure_trailing_newline(&mut body);
         let path = self
             .vault
             .create_in_with(&folder, title, &body)
@@ -773,9 +756,7 @@ impl McpVault {
             }
         }
         let mut text = text.to_string();
-        if !text.ends_with('\n') {
-            text.push('\n');
-        }
+        crate::vault::ensure_trailing_newline(&mut text);
         crate::autosave::save_atomic(&absolute, &text).map_err(|e| e.to_string())?;
         Ok(Written { path: cleaned })
     }
@@ -841,10 +822,6 @@ impl McpVault {
 }
 
 /// 一覧と引き当てで同じ形を使う（食い違うと「一覧に出た版が引けない」）
-fn stamp_of(version: &crate::history::Version) -> String {
-    version.saved_at.format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
 /// 長い本文は先頭だけにして印を付ける
 fn clip(text: String) -> (String, bool) {
     if text.chars().count() <= MAX_TEXT_CHARS {
@@ -863,6 +840,7 @@ mod tests {
     use crate::test_support::{note, temp_vault};
     use std::fs;
     use tempfile::TempDir;
+    use unicode_normalization::UnicodeNormalization;
 
     #[test]
     fn test_ignore_list_行ごとのフォルダ_コメントと空行_区切りで見る() {
@@ -1274,7 +1252,6 @@ mod tests {
 
     #[test]
     fn test_is_ignored_途中のドットフォルダも隠し_NFCで照合する() {
-        use unicode_normalization::UnicodeNormalization;
         let root = TempDir::new().unwrap();
         fs::write(root.path().join(".mcp-ignore"), "プライベート\n").unwrap();
         let ignore = IgnoreList::load(root.path());

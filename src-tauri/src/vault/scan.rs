@@ -71,7 +71,7 @@ impl Vault {
             }
             if entry.is_dir() {
                 let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if SKIP_DIRS.contains(&name) || name.starts_with('.') {
+                if is_skipped(name) {
                     continue;
                 }
                 // 祖先へ戻るリンクは辿らない。中を指すリンクは inside を通る
@@ -137,7 +137,7 @@ impl Vault {
                 continue;
             }
             let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if SKIP_DIRS.contains(&name) || name.starts_with('.') {
+            if is_skipped(name) {
                 continue;
             }
             let is_symlink = entry

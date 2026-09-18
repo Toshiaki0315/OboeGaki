@@ -7,10 +7,7 @@ use super::*;
 /// **雛形の front matter は持ち込まない。** ピン留めのような管理情報は
 /// 雛形の持ち物で、そこから作るノートの持ち物ではない（参照実装も同じ）。
 pub(super) fn template_body(text: &str) -> String {
-    match crate::front_matter::block_len(text) {
-        Some(len) => text[len..].to_string(),
-        None => text.to_string(),
-    }
+    crate::front_matter::body(text).to_string()
 }
 
 impl Vault {

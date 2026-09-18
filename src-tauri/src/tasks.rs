@@ -17,11 +17,11 @@ pub struct TaskItem {
 /// `- [ ] 文` / `- [x] 文` の行を、front matter とコードフェンスの外から拾う。
 /// 入れ子（字下げ）も 1 件ずつ。行番号は本文全体の中の位置（飛ばした行も数える）
 pub fn extract_tasks(text: &str) -> Vec<TaskItem> {
-    let front = crate::front_matter::block_len(text).unwrap_or(0);
-    let front_lines = text[..front].matches('\n').count();
+    let (front, rest) = crate::front_matter::split(text);
+    let front_lines = front.matches('\n').count();
     let mut found = Vec::new();
     let mut in_fence = false;
-    for (offset, line) in text[front..].lines().enumerate() {
+    for (offset, line) in rest.lines().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
             in_fence = !in_fence;

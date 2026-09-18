@@ -108,12 +108,7 @@ impl Vault {
     }
 
     /// `add_attachment` の時刻注入版（テスト用に分離）。
-    pub fn add_attachment_stamped(
-        &self,
-        data: &[u8],
-        suffix: &str,
-        stem: &str,
-    ) -> io::Result<PathBuf> {
+    fn add_attachment_stamped(&self, data: &[u8], suffix: &str, stem: &str) -> io::Result<PathBuf> {
         fs::create_dir_all(self.attachments_dir())?;
         let path = unique_path(
             &self.attachments_dir(),

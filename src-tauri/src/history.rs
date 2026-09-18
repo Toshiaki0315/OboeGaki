@@ -44,6 +44,14 @@ pub struct Version {
     pub saved_at: NaiveDateTime,
 }
 
+impl Version {
+    /// 一覧に出す時刻の字面。**一覧と引き当てで同じ形を使う**（食い違うと
+    /// 「一覧に出た版が引けない」。GUI と MCP が別々に決めていたのを 1 つに。19-3）
+    pub fn stamp(&self) -> String {
+        self.saved_at.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+}
+
 /// 今の全文を 1 版として残す。残したら場所を、残さなければ None。
 ///
 /// 残さない場合（force は間引きだけ飛ばす）: 本文が空 / interval が 0 /
@@ -124,7 +132,7 @@ fn versions_in(root: &Path, folder: &str) -> Vec<Version> {
         .filter_map(|entry| entry.ok().map(|e| e.path()))
         .filter_map(|path| {
             let stem = path.file_stem()?.to_str()?;
-            if path.extension()?.to_str()? != "md" {
+            if !crate::vault::is_markdown(&path) {
                 return None;
             }
             let saved_at = NaiveDateTime::parse_from_str(stem, STAMP_FORMAT).ok()?;
@@ -159,7 +167,7 @@ pub fn rekey(root: &Path, before: &str, after: &str) -> io::Result<Option<PathBu
     // 黙って上書きするため、同名があれば枝番で逃がす（レビュー 2026-09-04）
     for entry in fs::read_dir(&source)?.filter_map(|e| e.ok()) {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+        if !crate::vault::is_markdown(&path) {
             continue;
         }
         let mut destination = target.join(entry.file_name());

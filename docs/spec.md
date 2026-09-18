@@ -309,7 +309,7 @@ OboeGaki/
 │   └── ui/                     #   ペイン・一覧・サイドバー・パレット〔予定〕
 └── src-tauri/src/              # ── Rust 側（WebView 非依存。cargo test でヘッドレステスト）
     ├── lib.rs                  #   Tauri commands の登録だけの薄い層
-    ├── vault.rs                #   走査・CRUD・ゴミ箱・旧 .hitofude の改名引き継ぎ〔予定〕
+    ├── vault/                  #   走査・CRUD・ゴミ箱・雛形・添付・履歴の鍵（機能ごとに分割。19-2）
     ├── index_db.rs             #   SQLite + FTS5 trigram（§7.3）〔予定〕
     ├── watcher.rs              #   notify による外部変更検知（§7.5）〔予定〕
     └── autosave.rs             #   デバウンス保存・アトミック書き込み（§7.4）〔予定〕

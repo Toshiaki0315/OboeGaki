@@ -1031,7 +1031,19 @@ ADR 無し（作りの整理と、テストの穴埋め）。**順番はレビ�
       （階層は増やさず接頭辞で並べる。本体は 519 行、`export *` で import 先は変えない）。
       `ensure_layout` の `mcp::ensure_ignore_file` 呼びを `commands::vault_open` と
       `McpVault::open` へ移し、vault → mcp の依存（層の逆転）を解いた
-- [ ] **19-3. 一本化の小物**: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
+- [ ] **19-3. 一本化の小物**
+      - [x] Rust（2026-09-18）: `CmdError` / `CmdResult`（`From` で `?` に。commands.rs の
+            `map_err(|e| e.to_string())` 66 か所が 1 つに。mcp.rs の 23 か所は
+            `Result<_, String>` の API を rmcp が読むので据え置き）／`front_matter::split`
+            `body`（7 か所）／`vault::nfc_string`（10 か所）`is_skipped`（3）`split_name`（4）
+            `ensure_trailing_newline`（2）／`history::Version::stamp`（GUI と MCP で別々に
+            決めていた版の時刻の字面）／`history_read` `restore_version` を `read_note`
+            に（Shift_JIS の版が読めなかった）／`IndexDb::related_notes`（関連ノートの
+            2 実装を 1 本に）／index_db の `note_meta` `like_escape` `purge_rows`
+            ／`vault::is_markdown` を history にも／テスト専用の `pub` 5 つを下げた。
+            **やらなかった**: `guarded` 2 種の統合（GUI は絶対パスで未存在も許す、MCP は
+            相対で `.md` 限定 — 意図が違う）、`llm_generate` の引数 10 個の構造体化
+            （TS の ipc 側の引数の形も変わる。19-4 の `lib/ipc` 拡充と一緒に）: Rust `CmdError` + `From`（`map_err(|e| e.to_string())` 88 か所）
       ／NFC・封じ込め・front matter 剥がし・skip-dir・stem 分割の横断ヘルパ
       ／版の時刻整形と `read_note` の統一、関連ノートの計算を `related.rs` に
       （NoteService の前半）／`src/markdown/`（image-size・math の走査・fence info・
