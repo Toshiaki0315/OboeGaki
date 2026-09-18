@@ -1158,9 +1158,11 @@ Rust / ipc の大きいファイル」。挙動を変えるのは Dialog の Esc
             純 Rust だった。McpVault（本体）は mod.rs に残し、無視リスト（ignore 287 行）・
             URI と設定断片（uri 119 行）・節の終わり（section 151 行）を横に出した。
             mod.rs は 1,015 行（うちテスト 590 行）
-- [ ] **20-5. `lib/ipc.ts`**（872 行・export 114）を live-preview と同じ接頭辞方式で
-      分ける。「`@tauri-apps/*` を読むのは ipc だけ」は eslint の規則を `ipc-*.ts` に
-      書き換えて維持
+- [x] **20-5. `lib/ipc.ts`**（2026-09-18。872 行・export 114 → `ipc-{notes,history,assets,
+      llm,text,app,os}.ts` の 7 本、最大 335 行。`ipc.ts` は `export *` の顔で import 先は
+      変えない）。「`@tauri-apps/*` を読むのは ipc だけ」はこれまで規約だけだったので、
+      eslint の `no-restricted-imports` を `src/**`（`ipc-*.ts` とテストを除く）に足して
+      見張る形にした
 
 ## 待ち — 外部要因でブロック中
 

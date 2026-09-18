@@ -49,6 +49,26 @@ export default tseslint.config(
     },
   },
   {
+    // Tauri（`@tauri-apps/*`）を読むのは `lib/ipc-*.ts` だけ（ADR-0049 / 19-4 / 20-5）。
+    // hook や部品が直接呼ぶと、差し替えて試せない・素のブラウザで開けない。
+    // テストは vi.mock で同じモジュールを差し替えるので対象から外す
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/ipc-*.ts", "src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@tauri-apps/*"],
+              message: "Tauri は lib/ipc 経由で呼ぶ（ADR-0049）",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // `src/markdown/` は Markdown 方言の純粋な知識（ADR-0067）。CM6・React・他層を
     // 読まない — 書き出し（lib）とエディタ（editor）の両方がここに依存する向きを守る
     files: ["src/markdown/**/*.ts"],
