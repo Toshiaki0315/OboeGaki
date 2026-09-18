@@ -14,6 +14,8 @@ import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { useLatest } from "./hooks/useLatest";
 import { useExport } from "./hooks/useExport";
+import { useOutline } from "./hooks/useOutline";
+import { usePreferences } from "./hooks/usePreferences";
 import { editModeChecks } from "./lib/menu-checks";
 import { runWithStatus } from "./lib/run-command";
 import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
@@ -103,17 +105,9 @@ import {
 import { dayValue } from "./lib/day";
 import { folderFilterLabel, trashLabel } from "./lib/trash-label";
 import { canDropInto, isFileDrag, isNoteDrag } from "./lib/note-drop";
-import {
-  availableFonts,
-  BODY_FONTS,
-  CODE_FONTS,
-  FONT_SAMPLE,
-  fontStack,
-  type Measure,
-} from "./lib/fonts";
+import { fontStack } from "./lib/fonts";
 import type { Activation } from "./editor/activation";
 import type { OutlineItem } from "./editor/outline";
-import type { TextStats } from "./editor/stats";
 import { renderMermaid, type MermaidTheme } from "./editor/mermaid";
 import {
   referenceLives,
@@ -122,26 +116,11 @@ import {
   type RightPane,
   togglePane,
 } from "./lib/right-pane";
-import { createDebouncer } from "./lib/debounce";
 import { collectEmbeds } from "./lib/export-html";
 import { extractNote } from "./lib/extract";
 import { buildGraph, DEFAULT_DEPTH, graphToMermaid } from "./lib/graph";
 import { checkStyle, type Finding } from "./lib/style-check";
-import {
-  DEFAULT_PPTX_SETTINGS,
-  loadPptxSettings,
-  resetPptxSettings,
-  savePptxSettings,
-  type PptxSettings,
-} from "./lib/pptx-settings";
-import {
-  clampFontSize,
-  DEFAULT_FONT_PX,
-  FONT_STEP_PX,
-  loadFontSize,
-  saveFontSize,
-  zoomActionFor,
-} from "./lib/font-size";
+import { DEFAULT_FONT_PX, FONT_STEP_PX, zoomActionFor } from "./lib/font-size";
 import {
   forgetLastNote,
   lastNoteFor,
@@ -150,16 +129,7 @@ import {
   saveLastVault,
   vaultErrorText,
 } from "./lib/last-vault";
-import {
-  cleanSettingsPatch,
-  clampPaneWidth,
-  contentWidthCss,
-  DEFAULT_SETTINGS,
-  loadSettings,
-  resolveTheme,
-  saveSettings,
-  type Settings,
-} from "./lib/settings";
+import { contentWidthCss, resolveTheme } from "./lib/settings";
 import {
   createNote,
   deleteForever,
@@ -290,11 +260,19 @@ function App() {
     setStatus(`検索「${name}」を保存しました`);
   }
 
-  // 環境設定（TASKS 3-9）。変えたらすぐ効かせて覚える
-  const [settings, setSettings] = useState<Settings>(() =>
-    loadSettings(localStorage),
-  );
-  const settingsRef = useLatest(settings);
+  // 環境設定・文字サイズ・PowerPoint の設定（19-4 で hooks/usePreferences に）
+  const {
+    settings,
+    settingsRef,
+    changeSettings,
+    resetPreferences,
+    startResize,
+    fontSize,
+    changeFontSize,
+    pptxSettings,
+    changePptxSettings,
+    resetPptxSettings,
+  } = usePreferences();
   // 自動保存・退避・外部変更・競合は hook に（ADR-0049）。本文はエディタ
   // から手で読み書きし、hook は EditorView を持たない
   const sync = useNoteSync({
@@ -336,82 +314,9 @@ function App() {
     [settingsRef],
   );
 
-  function resetPreferences() {
-    // ダイアログに出ている項目だけを既定へ（ペイン幅や開閉は触らない）
-    changeSettings({
-      theme: DEFAULT_SETTINGS.theme,
-      contentWidth: DEFAULT_SETTINGS.contentWidth,
-      bodyFont: DEFAULT_SETTINGS.bodyFont,
-      monoFont: DEFAULT_SETTINGS.monoFont,
-      tabWidth: DEFAULT_SETTINGS.tabWidth,
-      indentedCode: DEFAULT_SETTINGS.indentedCode,
-      lineSpacing: DEFAULT_SETTINGS.lineSpacing,
-      historyMinutes: DEFAULT_SETTINGS.historyMinutes,
-      trashDays: DEFAULT_SETTINGS.trashDays,
-      llmModel: DEFAULT_SETTINGS.llmModel,
-      llmPort: DEFAULT_SETTINGS.llmPort,
-      llmContext: DEFAULT_SETTINGS.llmContext,
-      llmTimeoutMinutes: DEFAULT_SETTINGS.llmTimeoutMinutes,
-      llmKeepAlive: DEFAULT_SETTINGS.llmKeepAlive,
-      ocrEngine: DEFAULT_SETTINGS.ocrEngine,
-    });
-    changeFontSize(DEFAULT_FONT_PX);
-  }
-
   /// 左のペインは、中身が 1 つも無ければ畳む（空の帯を残さない）
   const leftVisible = settings.notesVisible || settings.treesVisible;
 
-  /// ペインの幅をドラッグで変える（spec §5.1）。`direction` は掴んだ帯が
-  /// 右へ動いたときに広がるなら 1、狭まるなら -1。
-  function startResize(
-    event: React.PointerEvent<HTMLDivElement>,
-    key: "listWidth" | "outlineWidth",
-    direction: 1 | -1,
-  ) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = settingsRef.current[key];
-    const move = (moved: PointerEvent) => {
-      const width = clampPaneWidth(
-        startWidth + (moved.clientX - startX) * direction,
-        startWidth,
-      );
-      // 引きずっている間は覚えない（放したときに 1 回だけ書く）
-      setSettings((current) => ({ ...current, [key]: width }));
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("pointercancel", stop);
-      saveSettings(localStorage, settingsRef.current);
-      document.body.classList.remove("resizing");
-    };
-    document.body.classList.add("resizing");
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop, { once: true });
-    // pointerup が来ない経路（capture の横取り・フォーカス喪失）でも
-    // move が生き残らないように（レビュー 2026-09-04）
-    window.addEventListener("pointercancel", stop, { once: true });
-  }
-
-  function changeSettings(next: Partial<Settings>) {
-    // 読めない数値だけ捨てる（規則は lib/settings の cleanSettingsPatch。
-    // 履歴の「なし」= 0 を捨てないため項目ごとに見る）
-    const cleaned = cleanSettingsPatch(next);
-    setSettings((current) => {
-      const merged = { ...current, ...cleaned };
-      saveSettings(localStorage, merged);
-      return merged;
-    });
-  }
-
-  // 本文の文字サイズ（Cmd+= / Cmd+-、TASKS 1-5）。変えたら覚える
-  const [fontSize, setFontSize] = useState(() => loadFontSize(localStorage));
-  function changeFontSize(px: number) {
-    const next = clampFontSize(px);
-    setFontSize(next);
-    saveFontSize(localStorage, next);
-  }
   const fontSizeRef = useLatest(fontSize);
 
   // 一覧の右クリックメニュー（ui/note_actions.py の役目）
@@ -427,25 +332,6 @@ function App() {
     title: string;
     text: string;
   } | null>(null);
-  // フォントの候補。**入っていないものは出さない**（要望 2026-09-04）。
-  // Web からは端末のフォント一覧を列挙できないので、名前を挙げて 1 つずつ
-  // 「その名前で組めるか」を幅で測る
-  const measureFont = useMemo<Measure | null>(() => {
-    const context = document.createElement("canvas").getContext("2d");
-    if (!context) return null;
-    return (spec) => {
-      context.font = spec;
-      return context.measureText(FONT_SAMPLE).width;
-    };
-  }, []);
-  const bodyFontChoices = useMemo(
-    () => availableFonts(BODY_FONTS, measureFont),
-    [measureFont],
-  );
-  const codeFontChoices = useMemo(
-    () => availableFonts(CODE_FONTS, measureFont),
-    [measureFont],
-  );
   const [folderMenu, setFolderMenu] = useState<{
     folder: string;
     x: number;
@@ -673,15 +559,6 @@ function App() {
     editorRef.current?.revealPos(item.from);
   }
 
-  // PowerPoint の書き出し設定（TASKS 8-1 / 8-2）。**置き場は別の鍵** —
-  // 大きな入れ子なので、ほかの設定と混ぜない
-  const [pptxSettings, setPptxSettings] = useState<PptxSettings>(() => {
-    try {
-      return loadPptxSettings(localStorage);
-    } catch {
-      return DEFAULT_PPTX_SETTINGS;
-    }
-  });
   /// 開いているノートの本文を返す。環境設定の PowerPoint タブが「このノート」
   /// の下絵と収まり具合の見直し（GR-05）に使う。開いていなければ null。
   /// **currentPath ごとに 1 つ**にして、打鍵のたびに測り直させない
@@ -689,18 +566,6 @@ function App() {
     () => (currentPath ? () => editorRef.current?.getText() ?? "" : null),
     [currentPath],
   );
-
-  function changePptxSettings(patch: Partial<PptxSettings>) {
-    setPptxSettings((current) => {
-      const next = { ...current, ...patch };
-      try {
-        savePptxSettings(localStorage, next);
-      } catch {
-        // 置けなくてもこの回は効かせる
-      }
-      return next;
-    });
-  }
 
   // 「直下」は行ではなく見出しに出す（要望 2026-09-05）
   const { root: rootNotes, sub: subFolders } = splitFolders(folders);
@@ -788,20 +653,21 @@ function App() {
   const outlineOpen = rightPane === "outline";
   // 出ていないときは数えない（ADR-0022）。**登録し直さない購読**（エディタの
   // コールバック）から見るので ref で持つ
-  const outlineOpenRef = useLatest(outlineOpen);
-  const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
+  // 目次と統計（19-4 で hooks/useOutline に）。本文は EditorView から読む
+  const outline = useOutline({
+    open: outlineOpen,
+    doc,
+    currentPath,
+    getOutline: () => editorRef.current?.getOutline() ?? [],
+    getStats: () =>
+      editorRef.current?.getStats() ?? { characters: 0, lines: 0 },
+  });
   // 目次の右クリック（7-1）。節ごと動かす
   const [outlineMenu, setOutlineMenu] = useState<{
     from: number;
     x: number;
     y: number;
   } | null>(null);
-  const [cursorPos, setCursorPos] = useState(0);
-  const outlineSoon = useMemo(() => createDebouncer(300), []);
-  // ステータスバーの統計（TASKS 3-10）。**打鍵ごとには数えない**
-  // （全文の走査は 16ms の予算を食う）。打ち終わってからまとめて数える
-  const [stats, setStats] = useState<TextStats>({ characters: 0, lines: 0 });
-  const statsSoon = useMemo(() => createDebouncer(300), []);
 
   function toggleOutline() {
     const next = togglePane(rightPane, "outline");
@@ -812,15 +678,6 @@ function App() {
       // 保存できなくても開閉自体は生かす
     }
   }
-
-  // 隠れているときは数えない（ADR-0022）
-  useEffect(() => {
-    if (!outlineOpen) {
-      setOutlineItems([]);
-      return;
-    }
-    setOutlineItems(editorRef.current?.getOutline() ?? []);
-  }, [outlineOpen, doc, currentPath]);
 
   async function chooseVault() {
     const picked = await pickFolder();
@@ -1795,22 +1652,8 @@ function App() {
 
   function handleDocChanged(getText: () => string) {
     sync.noteChanged(getText);
-    if (outlineOpenRef.current) {
-      outlineSoon.schedule(() =>
-        setOutlineItems(editorRef.current?.getOutline() ?? []),
-      );
-    }
-    statsSoon.schedule(() =>
-      setStats(editorRef.current?.getStats() ?? { characters: 0, lines: 0 }),
-    );
+    outline.docChanged();
   }
-
-  // ノートを開いたら数え直す。**エディタが立ち上がったあと**に数える
-  // （子の mount → 親の effect の順なので、ここでは既に新しい内容）
-  useEffect(() => {
-    statsSoon.cancel();
-    setStats(editorRef.current?.getStats() ?? { characters: 0, lines: 0 });
-  }, [doc, currentPath, statsSoon]);
 
   // グローバルショートカット（spec §5.4）。ハンドラは一度だけ登録し、
   // 最新の状態は ref 経由で読む
@@ -2088,15 +1931,6 @@ function App() {
       </main>
     );
   }
-
-  // 現在地: キャレット位置以前の最後の見出し
-  const currentOutlineIndex = (() => {
-    let found = -1;
-    outlineItems.forEach((item, index) => {
-      if (item.from <= cursorPos) found = index;
-    });
-    return found;
-  })();
 
   return (
     <>
@@ -2498,9 +2332,7 @@ function App() {
                         : "コードをコピーできませんでした",
                     )
                   }
-                  onCursorChanged={(pos) => {
-                    if (outlineOpenRef.current) setCursorPos(pos);
-                  }}
+                  onCursorChanged={outline.cursorMoved}
                   // **OS の既定のメニューを出さない**（要望 2026-09-04）。
                   // 「Google で検索」「共有」など、本文を外へ出す道が並ぶ
                   onContextMenu={(event) => {
@@ -2636,17 +2468,12 @@ function App() {
               onChooseSlideTemplate={() => void chooseSlideTemplate()}
               pptxSettings={pptxSettings}
               onChangePptxSettings={changePptxSettings}
-              onResetPptxSettings={() => {
-                resetPptxSettings(localStorage);
-                setPptxSettings(DEFAULT_PPTX_SETTINGS);
-              }}
+              onResetPptxSettings={resetPptxSettings}
               onReset={resetPreferences}
               onClose={() => setPreferences(false)}
               noteText={noteText}
               historyUsage={loadHistoryUsage}
               installedModels={loadInstalledModels}
-              bodyFontChoices={bodyFontChoices}
-              codeFontChoices={codeFontChoices}
               captureShortcutError={captureShortcut.error}
             />
           )}
@@ -3206,8 +3033,8 @@ function App() {
           )}
           {outlineOpen && (
             <OutlinePane
-              items={outlineItems}
-              currentIndex={currentOutlineIndex}
+              items={outline.items}
+              currentIndex={outline.currentIndex}
               onJump={(from) => editorRef.current?.revealPos(from)}
               onMenu={setOutlineMenu}
             />
@@ -3215,7 +3042,7 @@ function App() {
         </div>
         <StatusBar
           status={status}
-          stats={currentPath !== null ? stats : null}
+          stats={currentPath !== null ? outline.stats : null}
           savedAt={savedAt}
           onMenu={setGearMenu}
         />

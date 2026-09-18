@@ -26,8 +26,6 @@ function setup(over: Partial<PreferencesProps> = {}) {
     noteText: null,
     historyUsage: () => Promise.resolve(2048),
     installedModels: () => Promise.resolve(["gemma3:4b"]),
-    bodyFontChoices: [],
-    codeFontChoices: [],
     ...over,
   };
   const view = render(<PreferencesDialog {...props} />);

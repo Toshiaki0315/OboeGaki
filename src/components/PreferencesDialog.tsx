@@ -2,8 +2,14 @@
 // ためのスナップショット・履歴の使用量とモデル一覧の取り寄せは、開いて
 // いる間だけ要るものなので**ここで閉じる**。設定そのものは親（App）が持つ。
 
-import { useEffect, useRef, useState } from "react";
-import type { FontChoice } from "../lib/fonts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  availableFonts,
+  BODY_FONTS,
+  CODE_FONTS,
+  FONT_SAMPLE,
+  type Measure,
+} from "../lib/fonts";
 import type { PptxSettings } from "../lib/pptx-settings";
 import type { Settings } from "../lib/settings";
 import { AssistantPreferences } from "./AssistantPreferences";
@@ -36,13 +42,31 @@ export type PreferencesProps = {
   historyUsage: () => Promise<number>;
   /// Ollama に入っているモデル名を聞く。失敗したら空
   installedModels: () => Promise<string[]>;
-  bodyFontChoices: readonly FontChoice[];
-  codeFontChoices: readonly FontChoice[];
   /// 書き取りのショートカットが登録できなかった理由（無ければ null）
   captureShortcutError?: string | null;
 };
 
 export function PreferencesDialog(props: PreferencesProps) {
+  // フォントの候補。**入っていないものは出さない**（要望 2026-09-04）。
+  // Web からは端末のフォント一覧を列挙できないので、名前を挙げて 1 つずつ
+  // 「その名前で組めるか」を幅で測る。**窓が開いている間だけ**測る（App が
+  // 起動から抱えていた。19-4）
+  const measureFont = useMemo<Measure | null>(() => {
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) return null;
+    return (spec) => {
+      context.font = spec;
+      return context.measureText(FONT_SAMPLE).width;
+    };
+  }, []);
+  const bodyFontChoices = useMemo(
+    () => availableFonts(BODY_FONTS, measureFont),
+    [measureFont],
+  );
+  const codeFontChoices = useMemo(
+    () => availableFonts(CODE_FONTS, measureFont),
+    [measureFont],
+  );
   const {
     settings,
     onChangeSettings,
@@ -113,8 +137,8 @@ export function PreferencesDialog(props: PreferencesProps) {
           vaultRoot={props.vaultRoot}
           onChooseVault={props.onChooseVault}
           historyUsage={usage}
-          bodyFontChoices={props.bodyFontChoices}
-          codeFontChoices={props.codeFontChoices}
+          bodyFontChoices={bodyFontChoices}
+          codeFontChoices={codeFontChoices}
           captureShortcutError={props.captureShortcutError ?? null}
         />
       ) : tab === "mcp" ? (
