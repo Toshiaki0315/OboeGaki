@@ -1,153 +1,24 @@
-// MCP サーバの中核（ADR-0051、TASKS 第 10 群）。バイナリ（bin/mcp.rs）は
-// rmcp との橋渡しだけで、答えの中身はここが作る（T3: ヘッドレスに試せる）。
 //
-// - 索引は**読む**。アプリが動いていれば索引はアプリが育てている。動いて
-//   いなければ問い合わせの前に差分同期を自分で走らせる（2 つのプロセスが
-//   同時に SQLite へ書かない約束）
-// - `.mcp-ignore`（保管フォルダ直下、1 行 1 フォルダ）の中は見せない。
-//   `.trash` / `templates` / 管理フォルダは既定で見せない
+// 20-4: 無視リスト（ignore）・URI と設定断片（uri）・節の終わり（section）を
+// 横に出した。外から見える名前は `pub use` で変えない
 
+mod ignore;
+mod section;
+mod uri;
+
+pub use ignore::*;
+pub use section::*;
+pub use uri::*;
+
+use crate::index_db::{IndexDb, NoteMeta, SearchHit};
+use crate::vault::{read_note, Vault};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::index_db::{IndexDb, NoteMeta, SearchHit};
-use crate::vault::{read_note, Vault, SKIP_DIRS};
-
-/// `.mcp-ignore` の置き場（保管フォルダ直下）
-pub const IGNORE_FILE: &str = ".mcp-ignore";
 /// 1 回の応答で返す本文の上限（文字）。クライアントのコンテキストを食い潰さない
 pub const MAX_TEXT_CHARS: usize = 20_000;
+
 pub const TRUNCATED_MARK: &str = "\n…（続きがあります。先頭だけを返しました）";
-
-/// 置いておく `.mcp-ignore` の中身（保管フォルダを作るときに 1 度だけ）。
-/// **説明だけで、何も隠さない。** 隠すのは人が決めること — 勝手に決めない
-pub const DEFAULT_IGNORE: &str = "\
-# ここに書いたフォルダ・ノートは、Claude（MCP）から見えません。
-# 1 行に 1 つ、保管フォルダからの道を書きます。
-#
-#   プライベート
-#   仕事/評価
-#   秘密のメモ.md
-#
-# サイドバーやノートの右クリック →「Claude に渡さない」でも切り替えられます。
-# ゴミ箱・雛形・管理フォルダは、書かなくても最初から見えません。
-";
-
-/// `.mcp-ignore` が無ければ置く（**上書きはしない**）。保管フォルダを
-/// 開くたびに通るので、消した人のところに空のまま戻ることはある
-pub fn ensure_ignore_file(root: &Path) -> std::io::Result<()> {
-    let path = root.join(IGNORE_FILE);
-    if path.exists() {
-        return Ok(());
-    }
-    std::fs::write(path, DEFAULT_IGNORE)
-}
-
-/// 画面に渡す「見せない場所」。**最初から見せない場所も一緒に渡す** —
-/// 画面側で並べ直すと、こちらの `SKIP_DIRS` が増えたときに黙って食い違う
-/// （レビュー 2026-09-13）
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Hidden {
-    /// `.mcp-ignore` に書いてある道（人が決めたもの）
-    pub listed: Vec<String>,
-    /// 書かなくても見せない場所（ゴミ箱・雛形・管理フォルダ・添付）
-    pub builtin: Vec<String>,
-}
-
-/// いま隠しているものの一覧。画面の印に使う
-pub fn hidden_list(root: &Path) -> Hidden {
-    Hidden {
-        listed: IgnoreList::load(root).folders,
-        builtin: SKIP_DIRS.iter().map(|name| name.to_string()).collect(),
-    }
-}
-
-/// 1 つを隠す / 隠すのをやめる（GUI から。ピン留めと同じ手触り）。
-///
-/// **人が書いた行は消さない** — コメントも、他の行も、並びもそのまま。
-/// 触るのは名指しされた 1 行だけ
-pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<()> {
-    let cleaned = relative.trim().trim_matches('/');
-    if cleaned.is_empty() || cleaned.split('/').any(|part| part == ".." || part == ".") {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("保管フォルダの中の道ではありません: {relative}"),
-        ));
-    }
-    let path = root.join(IGNORE_FILE);
-    let current = std::fs::read_to_string(&path).unwrap_or_else(|_| DEFAULT_IGNORE.to_string());
-    let mut lines: Vec<String> = current.lines().map(str::to_string).collect();
-    let listed = |line: &str| line.trim().trim_matches('/') == cleaned;
-    if hidden {
-        if !lines.iter().any(|line| listed(line)) {
-            lines.push(cleaned.to_string());
-        }
-    } else {
-        lines.retain(|line| !listed(line));
-    }
-    let mut text = lines.join("\n");
-    text.push('\n');
-    std::fs::write(path, text)
-}
-
-/// GUI から来た道を `.mcp-ignore` に書く形（保管フォルダからの相対）に直す。
-/// ノートは絶対パス、フォルダは相対で来る。**外の絶対パスは断る** —
-/// 剥がせないまま `Users/…/x.md` を書くと、何も隠れないのに画面は
-/// 「渡さない」になる（レビュー 2026-09-14）。綴りが違っても実体が同じなら
-/// 中と見る（`/private/var` ↔ `/var`、シンボリックリンク）
-pub fn hidden_relative(root: &Path, path: &str) -> Result<String, String> {
-    let candidate = Path::new(path);
-    if !candidate.is_absolute() {
-        return Ok(path.trim_matches('/').to_string());
-    }
-    let outside = || format!("保管フォルダの外です: {path}");
-    if let Ok(rest) = candidate.strip_prefix(root) {
-        return Ok(rest.to_string_lossy().trim_matches('/').to_string());
-    }
-    let real_root = root.canonicalize().map_err(|_| outside())?;
-    let real = candidate.canonicalize().map_err(|_| outside())?;
-    let rest = real.strip_prefix(&real_root).map_err(|_| outside())?;
-    Ok(rest.to_string_lossy().trim_matches('/').to_string())
-}
-
-/// 見せないフォルダの一覧。`.mcp-ignore` の各行（`#` から始まる行と空行は
-/// 飛ばす）と、一覧に出ないもの（`.trash` / `templates` / 管理フォルダ）
-#[derive(Debug, Clone, Default)]
-pub struct IgnoreList {
-    folders: Vec<String>,
-}
-
-impl IgnoreList {
-    pub fn load(root: &Path) -> Self {
-        // NFC に寄せて持つ。Finder が作ったフォルダ名は分解形（NFD）で来る
-        // ことがあり、手で書いた行と字面が合わなくなる（レビュー 2026-09-14）
-        let folders = std::fs::read_to_string(root.join(IGNORE_FILE))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| crate::vault::nfc_string(line.trim().trim_matches('/')))
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .collect();
-        Self { folders }
-    }
-
-    /// vault からの相対パスがその中か。**区切りで見る**（`秘密` は `秘密2` を
-    /// 隠さない）。既定で見せないフォルダは先頭の成分で見る。ドットで始まる
-    /// 成分は**どの階層でも**見せない — `scan()` が各階層でドットフォルダを
-    /// 飛ばすのと揃える（アプリに一切出ないものを MCP だけが読まない）
-    pub fn is_ignored(&self, relative: &str) -> bool {
-        let relative = crate::vault::nfc_string(relative);
-        let first = relative.split('/').next().unwrap_or("");
-        if SKIP_DIRS.contains(&first) || relative.split('/').any(|part| part.starts_with('.')) {
-            return true;
-        }
-        self.folders
-            .iter()
-            .any(|folder| relative == *folder || relative.starts_with(&format!("{folder}/")))
-    }
-}
-
-/// resource の URI の頭（ADR-0051 の `oboegaki://note/<相対パス>`）
-pub const NOTE_URI_PREFIX: &str = "oboegaki://note/";
 
 /// 関連するノート 1 件（根拠ごと返す。**なぜ出たかが読めないと確かめようがない**）
 #[derive(Debug, Clone, serde::Serialize)]
@@ -173,143 +44,10 @@ pub struct NoteResource {
     pub title: String,
 }
 
-/// MCP サーバのバイナリの名前（本体の隣に同梱する）
-pub const MCP_BINARY: &str = "oboegaki-mcp";
-
-/// 本体（`oboegaki`）の場所から、隣に居る MCP サーバのバイナリを指す。
-/// 束ねた `.app` でも `cargo tauri dev` でも同じ並びになる
-pub fn binary_next_to(exe: &Path) -> PathBuf {
-    exe.parent().unwrap_or(Path::new(".")).join(MCP_BINARY)
-}
-
-/// Claude Desktop などに貼る設定の断片（10-6）。**パスを手で打たせない**。
-/// serde_json で組む — 空白や引用符を含むパスを自分で埋め込むと壊れる
-pub fn config_snippet(binary: &Path, root: &Path) -> String {
-    let value = serde_json::json!({
-        "mcpServers": {
-            "oboegaki": {
-                "command": binary.to_string_lossy(),
-                "args": [root.to_string_lossy()],
-            }
-        }
-    });
-    serde_json::to_string_pretty(&value).unwrap_or_default()
-}
-
-/// 相対パスを resource の URI にする。**符号化して渡す** — 空白や `#` を
-/// 素で置くと URI として壊れる（日本語は通るが揃えて encode する）
-pub fn note_uri(relative: &str) -> String {
-    let mut out = String::from(NOTE_URI_PREFIX);
-    for byte in relative.as_bytes() {
-        let c = *byte as char;
-        if c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '~' | '/') {
-            out.push(c);
-        } else {
-            out.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    out
-}
-
-/// URI から相対パスへ戻す。おぼえがきの URI でなければ None。
-/// **符号化されていない日本語のまま来ても読む**（そうするクライアントがある）
-pub fn path_from_uri(uri: &str) -> Option<String> {
-    let rest = uri.strip_prefix(NOTE_URI_PREFIX)?;
-    let bytes = rest.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
-            match u8::from_str_radix(hex, 16) {
-                Ok(byte) => {
-                    out.push(byte);
-                    i += 3;
-                    continue;
-                }
-                Err(_) => return None,
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8(out).ok()
-}
-
 /// 書いた先（10-4）。**書くのは `.md` だけ** — 索引は触らない
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Written {
     pub path: String,
-}
-
-/// その見出しの節の終わり（次の同じか浅い見出しの手前。無ければ末尾）を
-/// バイト位置で返す。見出しが見つからなければ None。
-///
-/// 規則は TS 側の `src/lib/section.ts`（埋め込みの `#見出し`）と同じ:
-/// 深い小見出しは節の中、コードフェンスの中の `#` は見出しに数えない。
-pub fn section_end(text: &str, heading: &str) -> Option<usize> {
-    let wanted = heading.trim().to_lowercase();
-    if wanted.is_empty() {
-        return None;
-    }
-    let mut fence: Option<(char, usize)> = None;
-    let mut level = 0usize;
-    let mut found = false;
-    let mut offset = 0usize;
-    for line in text.split_inclusive('\n') {
-        let trimmed = line.trim_start();
-        if let Some((open_char, open_len)) = fence {
-            // 閉じは**同じ字で同じ長さ以上**、後ろは空白だけ（CommonMark）。
-            // 種類と長さを見ずにトグルすると ```` の中の ``` で閉じてしまう
-            if let Some((c, n)) = fence_of(trimmed) {
-                if c == open_char && n >= open_len && trimmed[n..].trim().is_empty() {
-                    fence = None;
-                }
-            }
-            offset += line.len();
-            continue;
-        }
-        if let Some(opened) = fence_of(trimmed) {
-            fence = Some(opened);
-            offset += line.len();
-            continue;
-        }
-        if let Some((depth, name)) = heading_of(line) {
-            if !found {
-                if name.to_lowercase() == wanted {
-                    found = true;
-                    level = depth;
-                }
-            } else if depth <= level {
-                return Some(offset);
-            }
-        }
-        offset += line.len();
-    }
-    found.then_some(text.len())
-}
-
-/// 行頭（字下げを除く）のコードフェンス。(字, 本数)。3 本未満は None
-fn fence_of(trimmed: &str) -> Option<(char, usize)> {
-    let first = trimmed.chars().next()?;
-    if first != '`' && first != '~' {
-        return None;
-    }
-    let count = trimmed.chars().take_while(|c| *c == first).count();
-    (count >= 3).then_some((first, count))
-}
-
-/// `## 見出し ##` → (深さ, 題)。見出しでなければ None
-fn heading_of(line: &str) -> Option<(usize, String)> {
-    let depth = line.chars().take_while(|c| *c == '#').count();
-    if depth == 0 || depth > 6 {
-        return None;
-    }
-    let rest = &line[depth..];
-    if !rest.starts_with(' ') && !rest.starts_with('\t') {
-        return None;
-    }
-    Some((depth, rest.trim().trim_end_matches('#').trim().to_string()))
 }
 
 /// read_note の答え
@@ -790,36 +528,14 @@ fn clip(text: String) -> (String, bool) {
 }
 
 #[cfg(test)]
-// テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
-// 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+    use crate::mcp::ignore::set_hidden;
+    use crate::mcp::ignore::IGNORE_FILE;
     use crate::test_support::{note, temp_vault};
     use std::fs;
     use tempfile::TempDir;
-    use unicode_normalization::UnicodeNormalization;
-
-    #[test]
-    fn test_ignore_list_行ごとのフォルダ_コメントと空行_区切りで見る() {
-        let root = TempDir::new().unwrap();
-        fs::write(
-            root.path().join(".mcp-ignore"),
-            "# 見せない\n秘密\n\n仕事/私用\n",
-        )
-        .unwrap();
-        let ignore = IgnoreList::load(root.path());
-        assert!(ignore.is_ignored("秘密/a.md"));
-        assert!(ignore.is_ignored("仕事/私用/b.md"));
-        assert!(!ignore.is_ignored("秘密2/a.md")); // 前方一致ではない
-        assert!(!ignore.is_ignored("仕事/a.md"));
-        // 既定で見せないもの
-        assert!(ignore.is_ignored(".trash/a.md"));
-        assert!(ignore.is_ignored("templates/雛形.md"));
-        // 無ければ既定だけ
-        let none = IgnoreList::load(TempDir::new().unwrap().path());
-        assert!(!none.is_ignored("秘密/a.md"));
-    }
 
     #[test]
     fn test_mcp_vault_索引を読み_無視の中は出さない_開いていなければ自分で同期する() {
@@ -913,24 +629,6 @@ mod tests {
         assert!(mcp.history_text("設計.md", "2000-01-01 00:00:00").is_err());
         // 見せない場所は断る
         assert!(mcp.note_history("秘密/裏.md").is_err());
-    }
-
-    #[test]
-    fn test_note_uri_日本語や空白を往復できる() {
-        assert_eq!(
-            note_uri("仕事/会 議.md"),
-            "oboegaki://note/%E4%BB%95%E4%BA%8B/%E4%BC%9A%20%E8%AD%B0.md"
-        );
-        assert_eq!(
-            path_from_uri("oboegaki://note/%E4%BB%95%E4%BA%8B/%E4%BC%9A%20%E8%AD%B0.md").unwrap(),
-            "仕事/会 議.md"
-        );
-        // 素の日本語で来ても読む（クライアントが符号化しないことがある）
-        assert_eq!(
-            path_from_uri("oboegaki://note/仕事/会議.md").unwrap(),
-            "仕事/会議.md"
-        );
-        assert!(path_from_uri("file:///etc/passwd").is_none());
     }
 
     #[test]
@@ -1209,49 +907,12 @@ mod tests {
     }
 
     #[test]
-    fn test_is_ignored_途中のドットフォルダも隠し_NFCで照合する() {
-        let root = TempDir::new().unwrap();
-        fs::write(root.path().join(".mcp-ignore"), "プライベート\n").unwrap();
-        let ignore = IgnoreList::load(root.path());
-        // `scan()` はどの階層でもドットフォルダを飛ばす。MCP も同じ
-        assert!(ignore.is_ignored("仕事/.secret/x.md"));
-        // Finder が作ったフォルダ名は分解形（NFD）で来ることがある
-        let nfd: String = "プライベート/日記.md".nfd().collect();
-        assert_ne!(nfd, "プライベート/日記.md");
-        assert!(ignore.is_ignored(&nfd));
-    }
-
-    #[test]
     fn test_read_note_mdでないものは読まない() {
         let (root, _vault) = temp_vault();
         fs::write(root.path().join("メモ.txt"), "秘密の設定\n").unwrap();
         let mcp = McpVault::open(root.path()).unwrap();
         assert!(mcp.read_note("メモ.txt").is_err());
         assert!(mcp.read_note(IGNORE_FILE).is_err());
-    }
-
-    #[test]
-    fn test_hidden_relative_絶対パスは保管フォルダの中だけ_相対はそのまま() {
-        let root = TempDir::new().unwrap();
-        fs::create_dir_all(root.path().join("仕事")).unwrap();
-        fs::write(root.path().join("仕事/a.md"), "# a\n").unwrap();
-        let inside = root.path().join("仕事/a.md");
-        assert_eq!(
-            hidden_relative(root.path(), inside.to_str().unwrap()).unwrap(),
-            "仕事/a.md"
-        );
-        assert_eq!(hidden_relative(root.path(), "仕事").unwrap(), "仕事");
-        // 綴りが違っても実体が同じなら中（/private/var ↔ /var、シンボリックリンク）
-        let alias = TempDir::new().unwrap();
-        let link = alias.path().join("link");
-        std::os::unix::fs::symlink(root.path(), &link).unwrap();
-        let via_link = link.join("仕事/a.md");
-        assert_eq!(
-            hidden_relative(root.path(), via_link.to_str().unwrap()).unwrap(),
-            "仕事/a.md"
-        );
-        // 外の絶対パスは断る（`Users/…/x.md` を書いて何も隠れないのが最悪）
-        assert!(hidden_relative(root.path(), "/tmp/x.md").is_err());
     }
 
     #[test]
@@ -1277,83 +938,6 @@ mod tests {
             .unwrap();
         let text = fs::read_to_string(root.path().join(&made.path)).unwrap();
         assert_eq!(text.matches("# 設計2").count(), 1, "{text:?}");
-    }
-
-    #[test]
-    fn test_section_end_共有の見本と同じ答えを出す() {
-        // fixtures/section-cases.json は TS 側（lib/section.sectionOf）と同じ見本。
-        // section_end は終わりだけ返すので、見出しの行の頭はここで探す
-        let raw = include_str!("../../fixtures/section-cases.json");
-        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
-        for case in found["cases"].as_array().unwrap() {
-            let text = case["text"].as_str().unwrap();
-            let heading = case["heading"].as_str().unwrap();
-            let want = case["section"].as_str();
-            let got = section_end(text, heading).map(|end| {
-                let wanted = heading.trim().to_lowercase();
-                let mut offset = 0;
-                let mut start = None;
-                let mut fence: Option<(char, usize)> = None;
-                for line in text.split_inclusive('\n') {
-                    let trimmed = line.trim_start();
-                    if let Some((c, n)) = fence {
-                        if let Some((cc, nn)) = fence_of(trimmed) {
-                            if cc == c && nn >= n {
-                                fence = None;
-                            }
-                        }
-                    } else if let Some(open) = fence_of(trimmed) {
-                        fence = Some(open);
-                    } else if let Some((_, name)) = heading_of(line) {
-                        if name.to_lowercase() == wanted {
-                            start = Some(offset);
-                            break;
-                        }
-                    }
-                    offset += line.len();
-                }
-                let start = start.expect("見出しの行");
-                format!("{}\n", text[start..end].trim_end_matches('\n'))
-            });
-            assert_eq!(got.as_deref(), want, "見本: {text:?} / {heading}");
-        }
-    }
-
-    #[test]
-    fn test_ignore_list_共有の見本と同じ答えを出す() {
-        // fixtures/mcp-ignore-cases.json は TS 側（mcp-hidden.isHiddenFromMcp）と同じ見本
-        let raw = include_str!("../../fixtures/mcp-ignore-cases.json");
-        let found: serde_json::Value = serde_json::from_str(raw).unwrap();
-        for case in found["cases"].as_array().unwrap() {
-            let root = TempDir::new().unwrap();
-            fs::write(
-                root.path().join(IGNORE_FILE),
-                case["ignore"].as_str().unwrap(),
-            )
-            .unwrap();
-            let ignore = IgnoreList::load(root.path());
-            let relative = case["relative"].as_str().unwrap();
-            let want = case["hidden"].as_bool().unwrap();
-            // 空（保管フォルダそのもの）は TS 側の判定。Rust の guarded は先に断る
-            if relative.is_empty() {
-                continue;
-            }
-            assert_eq!(ignore.is_ignored(relative), want, "見本: {relative:?}");
-        }
-    }
-
-    #[test]
-    fn test_section_end_フェンスは同じ字で同じ長さ以上の行でだけ閉じる() {
-        // ```` の中の ``` は閉じない（CommonMark）。TS の section.ts と同じ規則
-        let text = "## A\n\n````md\n```\n## 中\n```\n````\n\n## B\n";
-        let end = section_end(text, "A").unwrap();
-        assert!(text[..end].contains("## 中"), "四本の中の三本で閉じた");
-        assert!(!text[..end].contains("## B"));
-        // ~~~ は ``` で閉じない
-        let mixed = "## A\n\n~~~\n```\n## 中\n~~~\n\n## B\n";
-        let end = section_end(mixed, "A").unwrap();
-        assert!(mixed[..end].contains("## 中"));
-        assert!(!mixed[..end].contains("## B"));
     }
 
     #[test]
@@ -1415,102 +999,6 @@ mod tests {
         assert!(root.path().join("大事.md").is_file());
         // ゴミ箱の中身には触れない（空にする道は作らない）
         assert!(mcp.trash_note(".trash/要らない.md").is_err());
-    }
-
-    #[test]
-    fn test_ensure_ignore_file_無ければ作る_あるものには触らない() {
-        let root = TempDir::new().unwrap();
-        ensure_ignore_file(root.path()).unwrap();
-        let path = root.path().join(IGNORE_FILE);
-        let text = fs::read_to_string(&path).unwrap();
-        // 置くだけでは**何も隠れない**（説明だけの中身）
-        assert!(IgnoreList::load(root.path()).folders.is_empty());
-        assert!(text.contains("Claude"));
-
-        fs::write(&path, "秘密\n").unwrap();
-        ensure_ignore_file(root.path()).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "秘密\n");
-    }
-
-    #[test]
-    fn test_set_hidden_足す_外す_コメントと他の行を残す() {
-        let root = TempDir::new().unwrap();
-        fs::write(
-            root.path().join(IGNORE_FILE),
-            "# 見せない場所\n\n仕事/評価\n",
-        )
-        .unwrap();
-
-        set_hidden(root.path(), "プライベート", true).unwrap();
-        let text = fs::read_to_string(root.path().join(IGNORE_FILE)).unwrap();
-        assert!(text.starts_with("# 見せない場所\n"), "{text:?}");
-        assert!(text.contains("仕事/評価\n"));
-        assert!(text.contains("プライベート\n"));
-        assert_eq!(
-            hidden_list(root.path()).listed,
-            ["仕事/評価", "プライベート"]
-        );
-
-        // 二度足しても増えない
-        set_hidden(root.path(), "プライベート", true).unwrap();
-        assert_eq!(hidden_list(root.path()).listed.len(), 2);
-
-        set_hidden(root.path(), "仕事/評価", false).unwrap();
-        assert_eq!(hidden_list(root.path()).listed, ["プライベート"]);
-        // コメントは残る（人が書いたものを消さない）
-        assert!(fs::read_to_string(root.path().join(IGNORE_FILE))
-            .unwrap()
-            .contains("# 見せない場所"));
-
-        // 保管フォルダの外と空は断る
-        assert!(set_hidden(root.path(), "../外", true).is_err());
-        assert!(set_hidden(root.path(), "  ", true).is_err());
-        // ファイルが無ければ作ってから足す
-        let fresh = TempDir::new().unwrap();
-        set_hidden(fresh.path(), "秘密", true).unwrap();
-        assert_eq!(hidden_list(fresh.path()).listed, ["秘密"]);
-    }
-
-    #[test]
-    fn test_config_snippet_クライアントに貼る_JSON_を作る() {
-        let snippet = config_snippet(
-            std::path::Path::new("/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp"),
-            std::path::Path::new("/Users/だれか/書類/覚 書"),
-        );
-        // **JSON として読めること**（貼って壊れない）。空白入りのパスも通る
-        let parsed: serde_json::Value = serde_json::from_str(&snippet).unwrap();
-        let server = &parsed["mcpServers"]["oboegaki"];
-        assert_eq!(
-            server["command"],
-            "/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp"
-        );
-        assert_eq!(server["args"][0], "/Users/だれか/書類/覚 書");
-    }
-
-    #[test]
-    fn test_binary_next_to_本体の隣の_MCP_を指す() {
-        let exe = std::path::Path::new("/Applications/OboeGaki.app/Contents/MacOS/oboegaki");
-        assert_eq!(
-            binary_next_to(exe),
-            std::path::Path::new("/Applications/OboeGaki.app/Contents/MacOS/oboegaki-mcp")
-        );
-    }
-
-    #[test]
-    fn test_section_end_見出しの節の終わり_コードの中の_は数えない() {
-        let text = "# 題\n\n## A\n\n本文\n\n```\n## 中\n```\n\n## B\n\n後\n";
-        let end = section_end(text, "A").unwrap();
-        assert!(
-            text[..end].contains("## 中"),
-            "コードの中は節の切れ目にしない"
-        );
-        assert!(!text[..end].contains("## B"));
-        assert!(section_end(text, "無い").is_none());
-        // 深い小見出しは含み、同じ深さで切れる
-        let nested = "## A\n\nあ\n\n### A-1\n\nい\n\n## B\n";
-        let end = section_end(nested, "A").unwrap();
-        assert!(nested[..end].contains("### A-1"));
-        assert!(!nested[..end].contains("## B"));
     }
 
     #[test]

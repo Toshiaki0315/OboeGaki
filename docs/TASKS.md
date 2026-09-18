@@ -1149,8 +1149,15 @@ Rust / ipc の大きいファイル」。挙動を変えるのは Dialog の Esc
             判定は可視のブラウザ（実機の WKWebView が本命）で採る — 手順は bench.md
       - 起動: **測れなかった**。二重起動防止（single-instance）が効いて、起動中の
             おぼえがきを前に出して終わる。アプリを終了してから `make bench-startup`
-- [ ] **20-4. Rust の大きいファイル**: commands.rs（2,008 行・77 コマンド）を領域別に
-      `commands/` へ純粋に移動／mcp.rs（1,527 行）は rmcp のマクロの都合を調べてから
+- [x] **20-4. Rust の大きいファイル**（2026-09-18。純粋な移動、外から見える名前は変えない）
+      - [x] commands.rs（2,008 行・77 コマンド）→ `commands/`（app / notes / history / folders /
+            trash / recovery / assets / llm / system / text の 10 本、最大 396 行）。mod.rs は
+            全部の子が使う土台（CmdError・WatchState・guarded・decode・index_one）だけ。
+            テストは試している関数の側へ
+      - [x] mcp.rs（1,528 行）→ `mcp/`。rmcp のマクロは bin/mcp.rs にしか無く、lib 側は
+            純 Rust だった。McpVault（本体）は mod.rs に残し、無視リスト（ignore 287 行）・
+            URI と設定断片（uri 119 行）・節の終わり（section 151 行）を横に出した。
+            mod.rs は 1,015 行（うちテスト 590 行）
 - [ ] **20-5. `lib/ipc.ts`**（872 行・export 114）を live-preview と同じ接頭辞方式で
       分ける。「`@tauri-apps/*` を読むのは ipc だけ」は eslint の規則を `ipc-*.ts` に
       書き換えて維持
