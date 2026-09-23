@@ -438,21 +438,25 @@ impl McpVault {
         // **差し替える前の姿は必ず残す**（ADR-0023 / T7）。アプリが動いていても
         // 頼らない — watcher は外部変更で版を残さないので、開いていないノート
         // を差し替えると旧本文がどこにも無くなる（レビュー 2026-09-14）。
-        // 直前の版と同じ中身なら `keep` が黙って飛ばすので二重にはならない
+        // 直前の版と同じ中身なら `keep` が黙って飛ばすので二重にはならない。
+        // **残せなかったら差し替えない** — 以前は eprintln だけで書き進めて
+        // いた。AI には isError で返り、人に見える（レビュー 2026-09-23）
         {
             let whole = read_note(&absolute).map_err(|e| e.to_string())?;
             let store = crate::history::store_root(&self.vault.managed_dir());
-            if let Err(error) = crate::history::keep(
+            crate::history::keep(
                 &store,
                 &self.vault.history_key(&absolute),
                 &whole,
                 chrono::Local::now().naive_local(),
                 true,
                 0,
-            ) {
-                // 版を残せなくても書きは進める（残せないより書けない方が困る）
-                eprintln!("版を残せなかった: {error}");
-            }
+            )
+            .map_err(|error| {
+                format!(
+                    "差し替える前の版を残せなかったので、書きませんでした: {cleaned}（{error}）"
+                )
+            })?;
         }
         let mut text = text.to_string();
         crate::vault::ensure_trailing_newline(&mut text);
@@ -837,6 +841,21 @@ mod tests {
         assert_eq!(versions.len(), 1);
         let kept = mcp.history_text("設計.md", &versions[0].stamp).unwrap();
         assert!(kept.text.contains("古い本文"));
+    }
+
+    #[test]
+    fn test_replace_note_版を残せなければ差し替えず_断る() {
+        // 版を残せないまま差し替えると旧本文がどこにも無くなる。AI には
+        // isError で返して、人に見える形で止める（レビュー 2026-09-23）
+        let (root, vault) = temp_vault();
+        note(root.path(), "設計.md", "# 設計\n\n古い本文\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+        let before = mcp.read_note("設計.md").unwrap();
+        let _locked = crate::test_support::lock_history(&vault);
+
+        let result = mcp.replace_note("設計.md", "# 設計\n\n新しい本文\n", before.mtime_ms);
+        assert!(result.is_err());
+        assert!(mcp.read_note("設計.md").unwrap().text.contains("古い本文"));
     }
 
     #[test]

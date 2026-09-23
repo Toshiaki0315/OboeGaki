@@ -1,7 +1,7 @@
 // 版の履歴（ADR-0023）: 一覧・読み・戻す・競合の写し・使用量。
 // Tauri commands の薄い層（T3）。分け方は commands/mod.rs を見る
 
-use super::{guarded, CmdResult, WatchState};
+use super::{guarded, CmdError, CmdResult, WatchState};
 use crate::autosave;
 use crate::history;
 use crate::index_db::IndexDb;
@@ -25,9 +25,23 @@ pub fn restore_version(root: &str, note: &Path, version: &Path) -> CmdResult<Str
     let store = history_root(root);
     let key = history_key(root, note);
     let now = chrono::Local::now().naive_local();
-    if let Ok(current) = crate::vault::read_note(note) {
-        if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
-            eprintln!("戻す前の版を残せなかった: {error}");
+    // **今の内容を版に残せたことが、書き戻す前提。** 残せないまま書き戻すと
+    // 今の本文はどこにも無くなる — それこそ「取り消せない操作」になる
+    // （レビュー 2026-09-23。以前は eprintln だけで書き戻していた）。
+    // ノートが無いときだけは残すものが無いので、そのまま戻してよい
+    match crate::vault::read_note(note) {
+        Ok(current) => {
+            if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
+                return Err(CmdError(format!(
+                    "今の内容を版に残せなかったので、戻すのを止めました: {error}"
+                )));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(CmdError(format!(
+                "今の内容を読めなかったので、戻すのを止めました: {error}"
+            )));
         }
     }
     // 版も Shift_JIS のことがある（読みは全部 read_note を通す。19-3）
@@ -206,5 +220,28 @@ mod tests {
         let other = root.path().join("b.md");
         std::fs::write(&other, "b\n").unwrap();
         assert!(restore_version(root_str, &other, &kept).is_err());
+    }
+
+    #[test]
+    fn test_restore_version_今の内容を版に残せなければ書き戻さない() {
+        // 戻す前の版が残らないまま書き戻すと、今の本文はどこにも無くなる。
+        // doc コメントの約束（取り消せない操作を増やさない）どおり止める
+        // （レビュー 2026-09-23）
+        let (root, vault) = temp_vault();
+        let root_str = root.path().to_str().unwrap();
+        let note = root.path().join("a.md");
+        std::fs::write(&note, "新\n").unwrap();
+        let store = history_root(root_str);
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 9, 1)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        let kept = history::keep(&store, "path:a.md", "旧\n", at, true, 0)
+            .unwrap()
+            .unwrap();
+
+        let _locked = crate::test_support::lock_history(&vault);
+        assert!(restore_version(root_str, &note, &kept).is_err());
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "新\n");
     }
 }

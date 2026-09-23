@@ -39,3 +39,35 @@ pub fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<L
         .with_ymd_and_hms(year, month, day, hour, minute, 0)
         .unwrap()
 }
+
+/// 履歴の置き場を**書けない**状態にする（版を残すのが失敗する道を試す）。
+/// 置き場と、その下のフォルダを全部読み取り専用にし、落とすときに戻す —
+/// 戻さないと TempDir が片づけられずに残る
+pub struct HistoryLocked {
+    folders: Vec<PathBuf>,
+}
+
+pub fn lock_history(vault: &Vault) -> HistoryLocked {
+    use std::os::unix::fs::PermissionsExt;
+    let store = crate::history::store_root(&vault.managed_dir());
+    fs::create_dir_all(&store).unwrap();
+    let mut folders = vec![store.clone()];
+    for entry in fs::read_dir(&store).unwrap().flatten() {
+        if entry.path().is_dir() {
+            folders.push(entry.path());
+        }
+    }
+    for folder in &folders {
+        fs::set_permissions(folder, fs::Permissions::from_mode(0o555)).unwrap();
+    }
+    HistoryLocked { folders }
+}
+
+impl Drop for HistoryLocked {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        for folder in &self.folders {
+            let _ = fs::set_permissions(folder, fs::Permissions::from_mode(0o755));
+        }
+    }
+}
