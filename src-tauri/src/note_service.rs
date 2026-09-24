@@ -10,6 +10,39 @@ use crate::history::{self, Version};
 use crate::index_db::{IndexDb, NoteMeta};
 use crate::vault::Vault;
 
+/// 関連ノートの 1 件。GUI と MCP が別々に持っていた型を 1 つに（21-4。GUI 側は
+/// score を捨てていたが、あって困らない）。題名が索引に無ければパスで代える
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RelatedNote {
+    /// vault からの相対パス
+    pub path: String,
+    pub title: String,
+    /// 出た理由（**そのまま画面に出す**。読めないと確かめようがない）
+    pub reasons: Vec<String>,
+    pub score: i32,
+}
+
+/// 関連ノート（指している・同じタグ・題名の出現。related.rs が根拠を積む）。
+/// `keep` は「そのノートを候補にするか」（MCP は見せない場所を外す）
+pub fn related(
+    db: &IndexDb,
+    relative: &str,
+    title: &str,
+    limit: usize,
+    keep: impl Fn(&str) -> bool,
+) -> rusqlite::Result<Vec<RelatedNote>> {
+    Ok(db
+        .related_notes(relative, title, limit, keep)?
+        .into_iter()
+        .map(|(item, found_title)| RelatedNote {
+            title: found_title.unwrap_or_else(|| item.key.clone()),
+            path: item.key,
+            reasons: item.reasons,
+            score: item.score,
+        })
+        .collect())
+}
+
 /// 一覧。folder は vault からの相対（None で全部、Some("") で直下）、tag は
 /// そのタグ（配下も）を持つもの。両方あれば両方で絞る
 pub fn list_notes(
@@ -186,5 +219,22 @@ mod tests {
         assert_eq!(stamp, "2026-09-18 09:30:00");
         assert!(version_at(&vault, &path, &stamp).is_some());
         assert!(version_at(&vault, &path, "2000-01-01 00:00:00").is_none());
+    }
+
+    #[test]
+    fn test_related_題名が無ければパスで代え_score_も返す() {
+        let (root, vault) = temp_vault();
+        note(root.path(), "a.md", "# a\n[[b]] を見る\n");
+        note(root.path(), "b.md", "# b\n");
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        db.sync(&vault).unwrap();
+        let found = related(&db, "b.md", "b", 5, |_| true).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, "a.md");
+        assert_eq!(found[0].title, "a");
+        assert!(found[0].score > 0);
+        assert!(!found[0].reasons.is_empty());
+        // keep で外せる
+        assert!(related(&db, "b.md", "b", 5, |_| false).unwrap().is_empty());
     }
 }

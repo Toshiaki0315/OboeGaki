@@ -20,14 +20,8 @@ pub const MAX_TEXT_CHARS: usize = 20_000;
 
 pub const TRUNCATED_MARK: &str = "\n…（続きがあります。先頭だけを返しました）";
 
-/// 関連するノート 1 件（根拠ごと返す。**なぜ出たかが読めないと確かめようがない**）
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct RelatedNote {
-    pub path: String,
-    pub title: String,
-    pub reasons: Vec<String>,
-    pub score: i32,
-}
+/// 関連するノート 1 件（根拠ごと返す。型は note_service = GUI と共通。21-4）
+pub use crate::note_service::RelatedNote;
 
 /// 版 1 つ（一覧では時刻だけ。本文は `history_text` で名指しに引く）
 #[derive(Debug, Clone, serde::Serialize)]
@@ -245,18 +239,9 @@ impl McpVault {
             .unwrap_or_default();
         let ignore = self.ignore();
         let limit = limit.unwrap_or(crate::related::DEFAULT_LIMIT).max(1);
-        let ranked = db
-            .related_notes(&cleaned, &title, limit, |key| !ignore.is_ignored(key))
-            .map_err(|e| e.to_string())?;
-        Ok(ranked
-            .into_iter()
-            .map(|(related, found_title)| RelatedNote {
-                title: found_title.unwrap_or_default(),
-                path: related.key,
-                reasons: related.reasons,
-                score: related.score,
-            })
-            .collect())
+        // 型と組み立ては note_service（GUI と共通。21-4）
+        crate::note_service::related(&db, &cleaned, &title, limit, |key| !ignore.is_ignored(key))
+            .map_err(|e| e.to_string())
     }
 
     /// 版の一覧（新しい順）。**読むだけ** — MCP から版を書き戻す道は作らない

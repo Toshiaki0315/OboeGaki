@@ -16,8 +16,12 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-/// 一時ファイルの拡張子。クラッシュの残骸の掃除はこの名前を目印にする。
-pub const TEMP_SUFFIX: &str = ".tmp";
+/// 一時ファイルの拡張子。クラッシュの残骸の掃除（`sweep_temporaries`）はこの名前を目印にする。
+const TEMP_SUFFIX: &str = ".tmp";
+
+/// 残骸と見なす古さ。書いている最中の一時ファイル（別のプロセスのぶんも）を
+/// 消さないための猶予
+const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
 /// テキストを一時ファイル経由でアトミックに書き込む。
 pub fn save_atomic(path: &Path, text: &str) -> io::Result<()> {
@@ -37,11 +41,55 @@ pub fn save_bytes_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
         .suffix(TEMP_SUFFIX)
         .tempfile_in(parent)?;
     temporary.write_all(data)?;
+    // 一時ファイルは 0600 で作られ、rename で元を置き換えるので、何もしないと
+    // 保存のたびに元の権限（共有フォルダの 0644 など）が失われる。元が在れば
+    // その権限を写す（レビュー 2026-09-24 / 21-4）
+    if let Ok(meta) = fs::metadata(path) {
+        temporary.as_file().set_permissions(meta.permissions())?;
+    }
     // fsync してから rename する。これで電源断でも「古いまま」か「新しい」の
     // どちらかにしかならない
     temporary.as_file().sync_all()?;
     temporary.persist(path).map_err(|error| error.error)?;
     Ok(())
+}
+
+/// クラッシュで残った一時ファイル（`.名前.xxxx.tmp`）を掃く。ドット始まりなので
+/// scan にも Finder にも出ず、掃かない限り溜まる一方だった（レビュー 2026-09-24）。
+/// 1 時間より新しいものは書いている最中かもしれないので残す。消した数を返す。
+/// シンボリックリンクは辿らない
+pub fn sweep_temporaries(root: &Path) -> usize {
+    let mut removed = 0;
+    let Ok(entries) = fs::read_dir(root) else {
+        return 0;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
+            removed += sweep_temporaries(&path);
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with('.') && name.ends_with(TEMP_SUFFIX)) {
+            continue;
+        }
+        let stale = meta
+            .modified()
+            .ok()
+            .and_then(|at| now.duration_since(at).ok())
+            .map(|age| age >= STALE_AFTER)
+            .unwrap_or(false);
+        if stale && fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 #[cfg(test)]
@@ -96,5 +144,45 @@ mod tests {
         let path = dir.path().join("data.bin");
         save_bytes_atomic(&path, b"a\r\nb\r\n").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"a\r\nb\r\n");
+    }
+
+    /// 元の権限を写す（共有フォルダの 0644 が保存のたびに 0600 にならない。21-4）
+    #[test]
+    fn test_save_atomic_元の権限を保つ() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        fs::write(&path, "a\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o664)).unwrap();
+        save_atomic(&path, "b\n").unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o664
+        );
+    }
+
+    /// 古い残骸だけ掃く。新しい一時ファイルと普通のファイルは触らない
+    #[test]
+    fn test_sweep_temporaries_古い残骸だけ掃く() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("仕事");
+        fs::create_dir_all(&sub).unwrap();
+        let stale = sub.join(".a.md.abcd.tmp");
+        let fresh = dir.path().join(".b.md.efgh.tmp");
+        let note = dir.path().join("c.md");
+        for path in [&stale, &fresh, &note] {
+            fs::write(path, "x").unwrap();
+        }
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert_eq!(sweep_temporaries(dir.path()), 1);
+        assert!(!stale.exists());
+        assert!(fresh.exists());
+        assert!(note.exists());
     }
 }

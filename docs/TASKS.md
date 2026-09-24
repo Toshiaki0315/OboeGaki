@@ -1241,6 +1241,14 @@ c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマ
             継続し、空の項目は引用を残してリストだけ外す／タブで字下げしたリストでも空の
             項目の解除と Shift+Tab が効く（字下げ 1 段 = タブ 1 つか空白 2 つ）／書き出しは
             `::…::` の中も Markdown として組む（`<mark><strong>` になる）。テスト 3 本
+      - [x] 2026-09-25（fix、Rust）: `save_atomic` は元の権限を写す（共有フォルダの 0644 が
+            保存のたびに 0600 になっていた）／クラッシュで残った `.名前.xxxx.tmp` を
+            `vault_open` の背景で掃く（1 時間より古いものだけ）／`RelatedNote` を
+            note_service に 1 つ（GUI と MCP。GUI も score を持つ）／テスト専用の
+            `Vault::create` `IndexDb::tag_list` を `cfg(test)` に、`SUPPRESS_WINDOW`
+            `TEMP_SUFFIX` を private に／`note_write` の間隔のコメントを実装に合わせた。
+            テスト 3 本。**据え置き**: `HistoryEntry` の GUI / MCP 二重定義 — MCP は版の
+            場所を出さない（時刻で名指す）設計なので、形が違うのは意図
       - 残り: 引用内リストの Enter で `- ` が落ちる／タブ字下げのリストで
       補助が崩れる／右クリックメニューが Esc で閉じない／改名で EditorView が作り直され
       Undo が消える（`[initialDoc]` 依存）／アシスタントの答えがノートを替えても残る／

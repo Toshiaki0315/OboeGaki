@@ -107,6 +107,11 @@ pub async fn vault_open(
                 eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
             }
             history::prune(&history_root(&root), chrono::Local::now().naive_local());
+            // クラッシュで残った一時ファイル（.名前.xxxx.tmp）も掃く（21-4）
+            let swept = crate::autosave::sweep_temporaries(vault.root());
+            if swept > 0 {
+                eprintln!("一時ファイルの残骸を {swept} 個掃いた");
+            }
             // 期限切れのゴミも一緒に掃除する（spec §7.6。日数は環境設定）
             if let Err(error) = vault.purge_trash(days) {
                 eprintln!("ゴミ箱の掃除に失敗した: {error}");

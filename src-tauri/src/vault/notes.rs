@@ -7,6 +7,7 @@ impl Vault {
     ///
     /// 本文はタイトルの見出し 1 行（ADR-0005 の「タイトル ↔ 見出し」の対応）。
     /// front matter の id は履歴（ADR-0023）を実装するときに足す。
+    #[cfg(test)]
     pub fn create(&self, title: &str) -> io::Result<PathBuf> {
         self.create_in("", title)
     }

@@ -438,6 +438,7 @@ impl IndexDb {
     }
 
     /// タグと件数（多い順 → 名前順）。サイドバーのタグ一覧の素材。
+    #[cfg(test)]
     pub fn tag_list(&self) -> rusqlite::Result<Vec<(String, i64)>> {
         let mut statement = self.conn.prepare(
             "SELECT tag, COUNT(*) AS uses FROM tags

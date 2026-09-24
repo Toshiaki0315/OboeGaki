@@ -36,7 +36,8 @@ pub async fn note_write(
     root: String,
     path: String,
     text: String,
-    // 版を残す間隔（分。環境設定）。0 は「なし」= 自分で保存したときだけ
+    // 版を残す間隔（分。環境設定）。0 は「なし」= 自動保存では版を残さない
+    // （明示保存でも同じ。残すのは版の復元・一括書き換えなど上書きの前だけ）
     history_minutes: Option<i64>,
 ) -> CmdResult<()> {
     let path = guarded(&root, &path)?;
@@ -214,36 +215,26 @@ pub async fn note_backlinks(
 
 /// 関連するノート（L-3）。**モデルは通さない** — 根拠は索引の中にある
 /// ので、Ollama を入れていなくても出る。
-#[derive(serde::Serialize)]
-pub struct RelatedNote {
-    /// vault からの相対パス
-    pub path: String,
-    pub title: String,
-    /// 出た理由（**そのまま画面に出す**。読めないと確かめようがない）
-    pub reasons: Vec<String>,
-}
-
 #[tauri::command]
 pub async fn note_related(
     root: String,
     path: String,
     title: String,
-) -> CmdResult<Vec<RelatedNote>> {
+) -> CmdResult<Vec<crate::note_service::RelatedNote>> {
     let vault = Vault::new(&root);
     let relative = Path::new(&path)
         .strip_prefix(&root)
         .map(|rest| rest.to_string_lossy().into_owned())
         .unwrap_or(path.clone());
     let db = IndexDb::open(&vault.managed_dir())?;
-    let ranked = db.related_notes(&relative, &title, crate::related::DEFAULT_LIMIT, |_| true)?;
-    Ok(ranked
-        .into_iter()
-        .map(|(item, found_title)| RelatedNote {
-            title: found_title.unwrap_or_else(|| item.key.clone()),
-            path: item.key,
-            reasons: item.reasons,
-        })
-        .collect())
+    // 型と組み立ては note_service（MCP と共通。21-4）
+    Ok(crate::note_service::related(
+        &db,
+        &relative,
+        &title,
+        crate::related::DEFAULT_LIMIT,
+        |_| true,
+    )?)
 }
 
 /// リンクの図の素材（M-2）。`(指すノートの題名, 指し先, 続柄)`。

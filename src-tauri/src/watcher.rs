@@ -23,7 +23,7 @@ pub struct Suppressor {
     entries: Mutex<HashMap<PathBuf, Instant>>,
 }
 
-pub const SUPPRESS_WINDOW: Duration = Duration::from_millis(1500);
+const SUPPRESS_WINDOW: Duration = Duration::from_millis(1500);
 
 impl Suppressor {
     pub fn new(window: Duration) -> Self {
