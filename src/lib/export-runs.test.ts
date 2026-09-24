@@ -13,6 +13,16 @@ function pieces(markdown: string) {
 }
 
 describe("inlinePieces", () => {
+  test("test_行内脚注の番号は脚注側と同じ_1_始まり（21-3）", () => {
+    // ^[…] は label を持たず id は 0 始まり。本文は [0]、脚注側は id+1 で [1] と
+    // ずれていた（レビュー 2026-09-24）
+    expect(pieces("a^[注] b")).toEqual([
+      { kind: "run", run: { text: "a" } },
+      { kind: "run", run: { text: "[1]" } },
+      { kind: "run", run: { text: " b" } },
+    ]);
+  });
+
   test("test_太字_斜体_打ち消し_コード_リンク_色を_Run_に写す", () => {
     expect(
       pieces(

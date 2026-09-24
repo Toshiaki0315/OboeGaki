@@ -172,6 +172,30 @@ describe("splitDeck", () => {
     });
   });
 
+  test("test_行ごとにセル数が違う表は_見出しの列数に揃える（GFM。21-3）", () => {
+    // pptxgenjs は列の数を 1 行目から数えるので、揃えないと XML の tc と gridCol が
+    // 食い違う（レビュー 2026-09-24）
+    const deck = splitDeck(
+      "## A\n\n| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n| 4 |\n",
+    );
+    expect(deck.slides[0].blocks[0]).toEqual({
+      kind: "table",
+      rows: [
+        [[{ text: "a" }], [{ text: "b" }]],
+        [[{ text: "1" }], [{ text: "2" }]],
+        [[{ text: "4" }], []],
+      ],
+    });
+  });
+
+  test("test_見出しの色_span_はスライドの題に生で載せない（21-3）", () => {
+    const deck = splitDeck(
+      '# <span style="color: #e53935">赤</span>い題\n\n## <span style="color: red">青</span>い節\n',
+    );
+    expect(deck.title).toBe("赤い題");
+    expect(deck.slides[0].title).toBe("青い節");
+  });
+
   test("front matter は見ない（アプリの管理情報）", () => {
     const deck = splitDeck("---\npinned: true\n---\n# 題\n\n## A\n");
     expect(deck.title).toBe("題");

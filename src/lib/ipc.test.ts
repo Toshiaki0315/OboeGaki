@@ -165,6 +165,12 @@ describe("imageSource", () => {
     expect(invoked).not.toHaveBeenCalled();
   });
 
+  test("test_壊れた_%_の参照は投げずに_null（書き出しを止めない。21-3）", async () => {
+    // decodeURIComponent が同期で URIError を投げ、Promise を返さなかった
+    await expect(imageSource("/v", "a%zz.png")).resolves.toBeNull();
+    expect(invoked).not.toHaveBeenCalled();
+  });
+
   test("test_同じ参照は 1 回だけ読む（装飾の作り直しごとに往復しない）", async () => {
     invoked.mockResolvedValue("data:image/png;base64,QUJD");
     const first = await imageSource("/v", "attachments/x.png");

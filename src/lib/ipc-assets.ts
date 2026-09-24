@@ -44,7 +44,13 @@ const imageCache = new Map<string, Promise<string | null>>();
 
 export function imageSource(root: string, url: string): Promise<string | null> {
   if (/^(https?:|data:)/i.test(url)) return Promise.resolve(null); // 遠隔は描かない
-  const cleaned = decodeURIComponent(url.replace(/^file:\/\//, ""));
+  let cleaned: string;
+  try {
+    cleaned = decodeURIComponent(url.replace(/^file:\/\//, ""));
+  } catch {
+    // `a%zz.png` のような壊れた参照。同期で投げると書き出しごと止まる（21-3）
+    return Promise.resolve(null);
+  }
   const key = `${root}\n${cleaned}`;
   let entry = imageCache.get(key);
   if (!entry) {

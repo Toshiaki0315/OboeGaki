@@ -348,20 +348,33 @@ function tableRows(text: string, table: SyntaxNode): Run[][][] {
   ) {
     if (row.name !== "TableHeader" && row.name !== "TableRow") continue;
     const cells = row.getChildren("TableCell");
+    const width = rows[0]?.length;
     rows.push(
-      cellRanges(text, row.from, row.to).map((range) => {
-        const cell = cells.find(
-          (found) => found.from >= range.from && found.to <= range.to,
-        );
-        if (!cell) return [];
-        return runsOf(text, cell).map((run) => ({
-          ...run,
-          text: run.text.replace(/\\\|/g, "|"),
-        }));
-      }),
+      squareTo(
+        width,
+        cellRanges(text, row.from, row.to).map((range) => {
+          const cell = cells.find(
+            (found) => found.from >= range.from && found.to <= range.to,
+          );
+          if (!cell) return [];
+          return runsOf(text, cell).map((run) => ({
+            ...run,
+            text: run.text.replace(/\\\|/g, "|"),
+          }));
+        }),
+      ),
     );
   }
   return rows;
+}
+
+/// 列数を見出しの行に揃える（GFM: 多い分は切り、足りない分は空のセル）。
+/// pptxgenjs は列の数を 1 行目から数えるので、揃えないと tc と gridCol の数が
+/// 食い違う XML になる（レビュー 2026-09-24 / 21-3）
+function squareTo(width: number | undefined, cells: Run[][]): Run[][] {
+  if (width === undefined) return cells;
+  if (cells.length > width) return cells.slice(0, width);
+  return [...cells, ...Array.from({ length: width - cells.length }, () => [])];
 }
 
 /// 行の中のセルの範囲（先頭・末尾の縦棒の外は数えない。`\|` は区切りでない）
@@ -431,11 +444,14 @@ function tidy(runs: Run[]): Run[] {
 /// 記号を外した本文（題名・発表者ノート用。装飾は持たない）。
 function plain(text: string, node: SyntaxNode): string {
   const drops: [number, number][] = [];
+  // HTMLTag: 見出しの色 span は本文側では色になるが、題では生の `<span …>` が
+  // 載っていた（レビュー 2026-09-24 / 21-3）。題は装飾を持たないので落とす
   const skip = new Set([
     "BulletList",
     "OrderedList",
     "FencedCode",
     "CodeBlock",
+    "HTMLTag",
   ]);
   node.cursor().iterate((child) => {
     if (child.from === node.from && child.to === node.to) return true;

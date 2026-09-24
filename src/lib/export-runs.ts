@@ -102,11 +102,14 @@ export function inlinePieces(inline: Token): InlinePiece[] {
         });
         break;
       }
-      case "footnote_ref":
-        text(
-          `[${(child.meta?.label as string | undefined) ?? child.meta?.id ?? "*"}]`,
-        );
+      case "footnote_ref": {
+        // 脚注側（docx-blocks の footnote_open）と同じ決め方: label が無い行内脚注
+        // `^[…]` は id（0 始まり）+ 1。以前は本文だけ [0] になっていた（21-3）
+        const label = child.meta?.label as string | undefined;
+        const id = child.meta?.id as number | undefined;
+        text(`[${label ?? (id === undefined ? "*" : id + 1)}]`);
         break;
+      }
       default:
         if (child.content) text(child.content);
     }

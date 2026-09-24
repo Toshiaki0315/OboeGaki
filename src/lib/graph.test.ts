@@ -85,6 +85,18 @@ describe("graphToMermaid", () => {
     expect(text).not.toContain('"b"c"'); // 引用符がそのまま入らない
   });
 
+  test("test_題名の正規化の違い（NFD・空白）でも辺が消えない（21-3）", () => {
+    // 点の重複排除は NFC + 空白畳み込みで行うのに、Mermaid の id は生の小文字で
+    // 引いていた。Finder 由来の NFD の題名を指す辺だけ黙って消えた
+    const nfd = "プロジェクト".normalize("NFD");
+    const graph = buildGraph("a", [{ from: "a", to: nfd, relation: "" }], {
+      depth: 1,
+      known: ["プロジェクト"],
+    });
+    const text = graphToMermaid(graph, ["a"]);
+    expect(text).toMatch(/n0 --> n1|n1 --> n0/);
+  });
+
   test("起点は目立たせる", () => {
     const graph = buildGraph("会議メモ", links, { depth: 1 });
     expect(graphToMermaid(graph, ["会議メモ"])).toContain("classDef start");

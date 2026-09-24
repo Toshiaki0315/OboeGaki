@@ -44,15 +44,13 @@ export function buildGraph(
   // links.target は Rust 側で NFC + 空白畳み込み済み。known（一覧の題名 =
   // ファイル名）は NFD で来ることがあるので、同じ形に寄せて突き合わせる
   //（レビュー 2026-09-04）
-  const key = (title: string) =>
-    title.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
-  const known = new Set((options.known ?? []).map(key));
+  const known = new Set((options.known ?? []).map(titleKey));
   const seen = new Map<string, GraphNode>();
   const droppedTitles = new Set<string>();
   const edges: Link[] = [];
 
   const add = (title: string, level: number): boolean => {
-    const found = key(title);
+    const found = titleKey(title);
     if (seen.has(found)) return true;
     if (seen.size >= limit) {
       // 同じ題名を二重に数えない（「N 件を省いています」を過大にしない）
@@ -77,10 +75,12 @@ export function buildGraph(
       // **両向きに辿る**（指している先も、指してくる元も繋がりの一部）
       for (const link of links) {
         const touches =
-          key(link.from) === key(title) || key(link.to) === key(title);
+          titleKey(link.from) === titleKey(title) ||
+          titleKey(link.to) === titleKey(title);
         if (!touches) continue;
-        const other = key(link.from) === key(title) ? link.to : link.from;
-        if (!seen.has(key(other))) {
+        const other =
+          titleKey(link.from) === titleKey(title) ? link.to : link.from;
+        if (!seen.has(titleKey(other))) {
           if (add(other, level)) next.push(other);
         }
         if (!edges.some((kept) => sameEdge(kept, link))) edges.push(link);
@@ -90,7 +90,7 @@ export function buildGraph(
   }
   // 落とした点に繋がる線は出さない（行き先の無い矢印を描かない）
   const kept = edges.filter(
-    (edge) => seen.has(key(edge.from)) && seen.has(key(edge.to)),
+    (edge) => seen.has(titleKey(edge.from)) && seen.has(titleKey(edge.to)),
   );
   return {
     nodes: [...seen.values()],
@@ -107,15 +107,24 @@ function sameEdge(one: Link, other: Link): boolean {
   );
 }
 
+/// 題名の突き合わせ鍵。links.target は Rust 側で NFC + 空白畳み込み済み。
+/// known（一覧の題名 = ファイル名）は NFD で来ることがあるので、同じ形に寄せて
+/// 突き合わせる（レビュー 2026-09-04）。点の重複排除と辺の絞り込み、Mermaid の
+/// id 引きが**同じ鍵**を使う — 別々だと NFD の題名を指す辺だけ黙って消える
+/// （レビュー 2026-09-24 / 21-3）
+function titleKey(title: string): string {
+  return title.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 /// 図を Mermaid の文にする。配置は Mermaid に任せる。
 export function graphToMermaid(graph: Graph, starts: string[]): string {
   const ids = new Map<string, string>();
   graph.nodes.forEach((node, index) =>
-    ids.set(node.title.toLowerCase(), `n${index}`),
+    ids.set(titleKey(node.title), `n${index}`),
   );
   const lines = ["graph LR"];
   for (const node of graph.nodes) {
-    const id = ids.get(node.title.toLowerCase());
+    const id = ids.get(titleKey(node.title));
     // まだ無いノートは中抜き（`([…])`）で描く
     lines.push(
       node.exists
@@ -124,8 +133,8 @@ export function graphToMermaid(graph: Graph, starts: string[]): string {
     );
   }
   for (const edge of graph.edges) {
-    const from = ids.get(edge.from.toLowerCase());
-    const to = ids.get(edge.to.toLowerCase());
+    const from = ids.get(titleKey(edge.from));
+    const to = ids.get(titleKey(edge.to));
     if (!from || !to) continue;
     lines.push(
       edge.relation
