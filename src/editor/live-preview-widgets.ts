@@ -63,20 +63,18 @@ export class SummaryWidget extends SimpleWidget {
   }
 }
 
+/// `[ ]` / `[x]` の印（3 文字）
+const TASK_MARK_RE = /\[[ xX]\]/;
+
 export class CheckboxWidget extends WidgetType {
-  constructor(
-    readonly checked: boolean,
-    readonly markerFrom: number,
-    readonly markerTo: number,
-  ) {
+  constructor(readonly checked: boolean) {
     super();
   }
+  /// 等価は印の状態だけ。位置を含めると、上で 1 字打つだけで可視の
+  /// チェックボックス全部が作り直された（レビュー 2026-09-24 / 21-3）。
+  /// 印の位置は押されたときに DOM から求める
   eq(other: CheckboxWidget): boolean {
-    return (
-      other.checked === this.checked &&
-      other.markerFrom === this.markerFrom &&
-      other.markerTo === this.markerTo
-    );
+    return other.checked === this.checked;
   }
   toDOM(view: EditorView): HTMLElement {
     const box = document.createElement("input");
@@ -88,12 +86,13 @@ export class CheckboxWidget extends WidgetType {
     // リビールで widget ごと消えて click が成立しない（実機で発覚）
     box.onmousedown = (event) => {
       event.preventDefault();
+      const at = view.posAtDOM(box);
+      const line = view.state.doc.lineAt(at);
+      const offset = line.text.slice(at - line.from).search(TASK_MARK_RE);
+      if (offset < 0) return;
+      const from = at + offset;
       view.dispatch({
-        changes: {
-          from: this.markerFrom,
-          to: this.markerTo,
-          insert: this.checked ? "[ ]" : "[x]",
-        },
+        changes: { from, to: from + 3, insert: this.checked ? "[ ]" : "[x]" },
       });
     };
     return box;

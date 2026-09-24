@@ -132,6 +132,91 @@ function revealKeyOf(
     .join(",");
 }
 
+/// 1 つの表ゾーンの装飾を今の状態で作り直す（差分更新用）。ゾーンの位置に
+/// Table ノードが無ければ空（編集で表でなくなった）。見つかった Table の範囲も返す
+function tableZoneDecorations(
+  state: EditorState,
+  zone: { from: number; to: number },
+): { ranges: Range<Decoration>[]; bounds: { from: number; to: number } } {
+  if (state.field(sourceModeField, false)) return { ranges: [], bounds: zone };
+  let node = syntaxTree(state).resolveInner(
+    Math.min(zone.from, state.doc.length),
+    1,
+  );
+  while (node.parent && node.name !== "Table") node = node.parent;
+  if (node.name !== "Table") return { ranges: [], bounds: zone };
+  const bounds = { from: node.from, to: node.to };
+  if (touchesBlockZone(state, node.from, node.to))
+    return { ranges: [], bounds };
+  return {
+    ranges: [
+      Decoration.replace({
+        widget: new TableWidget(tableData(state, node.node)),
+        block: true,
+      }).range(node.from, node.to),
+    ],
+    bounds,
+  };
+}
+
+/// 触った表だけ差し替える（blockWidgetField の refreshZones と同じ作法）。
+/// 以前は表の中で 1 字打つたびに文書中の**全表**を作り直していて、表が多い
+/// 文書で打鍵 p95 が 16ms に最も近づく経路だった（レビュー 2026-09-24 / 21-3）
+function refreshTableZones(
+  state: EditorState,
+  set: DecorationSet,
+  meta: TableMeta,
+  indices: number[],
+): DecorationSet {
+  const zones = [...meta.zones];
+  for (const index of indices) {
+    const zone = zones[index];
+    if (!zone) continue;
+    const { ranges, bounds } = tableZoneDecorations(state, zone);
+    set = set.update({
+      filterFrom: Math.min(zone.from, bounds.from),
+      filterTo: Math.max(zone.to, bounds.to),
+      filter: () => false,
+      add: ranges,
+      sort: true,
+    });
+    zones[index] = bounds;
+  }
+  const next = { ...meta, zones, revealKey: revealKeyOf(state, zones) };
+  tableMeta.set(set, next);
+  return set;
+}
+
+/// この変更が既にあるゾーンの中だけで済んでいるか（行の構造を変えない =
+/// 改行を足しも消しもしない）。そうなら触ったゾーンの添字を返し、外に
+/// 触れる・行が増減する変更なら null（ブロックの生成・分割・破壊があり得る）
+function zonesTouchedInside(
+  zones: { from: number; to: number }[],
+  tr: NearTr,
+): number[] | null {
+  const touched = new Set<number>();
+  let outside = false;
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    if (outside) return;
+    const index = zones.findIndex(
+      (zone) => zone.from <= fromA && toA <= zone.to,
+    );
+    if (index < 0 || inserted.toString().includes("\n")) {
+      outside = true;
+      return;
+    }
+    if (
+      tr.startState.doc.lineAt(fromA).number !==
+      tr.startState.doc.lineAt(toA).number
+    ) {
+      outside = true;
+      return;
+    }
+    touched.add(index);
+  });
+  return outside ? null : [...touched];
+}
+
 function computeTableSet(state: EditorState): DecorationSet {
   const set = RangeSet.of(tableDecorations(state), true);
   const zones = tableZones(state);
@@ -593,12 +678,23 @@ export const blockWidgetField = StateField.define<DecorationSet>({
       );
       const revealKey = revealKeyOf(tr.state, zones);
       const mapped = value.map(tr.changes);
+      // キャレットが外にあるままブロックの**中**が書き換わる経路（すべて置換・
+      // 色付け・replaceRange）では記号が近くに無く、widget が古いまま残った
+      // （レビュー 2026-09-24 / 21-3）。触れたゾーンも差し替える
+      const indices = new Set<number>();
+      meta.zones.forEach((zone, index) => {
+        if (tr.changes.touchesRange(zone.from, zone.to)) indices.add(index);
+      });
       if (revealKey !== meta.revealKey) {
+        for (const index of changedZones(meta.revealKey, revealKey))
+          indices.add(index);
+      }
+      if (indices.size > 0) {
         return refreshZones(
           tr.state,
           mapped,
           { zones, notes, details, revealKey, parsedTo },
-          changedZones(meta.revealKey, revealKey),
+          [...indices],
         );
       }
       blockWidgetMeta.set(mapped, {
@@ -644,25 +740,48 @@ export const tableField = StateField.define<DecorationSet>({
     const parsed = syntaxTree(tr.state).length;
 
     if (tr.docChanged) {
-      if (editNearTables(tr)) return computeTableSet(tr.state);
       const parsedTo = tr.changes.mapPos(meta.parsedTo, 1);
       if (parsed > parsedTo) return computeTableSet(tr.state);
-      // 表に関わらない編集: 位置だけ写像して使い回す
+      // 既にある表の中だけの編集（行の増減なし）なら、その表だけ差し替える。
+      // `|` が表の外に現れた・行が増減した編集は表の生成・分割かもしれないので
+      // 全部数え直す
+      const inside = zonesTouchedInside(meta.zones, tr);
+      if (inside === null && editNearTables(tr))
+        return computeTableSet(tr.state);
       const zones = meta.zones.map((zone) => ({
         from: tr.changes.mapPos(zone.from, 1),
         to: tr.changes.mapPos(zone.to, -1),
       }));
       const revealKey = revealKeyOf(tr.state, zones);
-      if (revealKey !== meta.revealKey) return computeTableSet(tr.state);
       const mapped = value.map(tr.changes);
-      tableMeta.set(mapped, { zones, revealKey, parsedTo });
-      return mapped;
+      const indices = new Set(inside ?? []);
+      if (revealKey !== meta.revealKey) {
+        for (const index of changedZones(meta.revealKey, revealKey))
+          indices.add(index);
+      }
+      if (indices.size === 0) {
+        tableMeta.set(mapped, { zones, revealKey, parsedTo });
+        return mapped;
+      }
+      return refreshTableZones(
+        tr.state,
+        mapped,
+        { zones, revealKey, parsedTo },
+        [...indices],
+      );
     }
     if (parsed > meta.parsedTo) return computeTableSet(tr.state); // 解析が進んだ
     if (!tr.selection) return value;
-    // カーソル移動のみ: リビール状態が変わったときだけ再計算
+    // カーソル移動のみ: リビール状態が変わった表だけ差し替える
     const revealKey = revealKeyOf(tr.state, meta.zones);
-    if (revealKey !== meta.revealKey) return computeTableSet(tr.state);
+    if (revealKey !== meta.revealKey) {
+      return refreshTableZones(
+        tr.state,
+        value,
+        { ...meta, revealKey },
+        changedZones(meta.revealKey, revealKey),
+      );
+    }
     return value;
   },
   provide: (field) => EditorView.decorations.from(field),

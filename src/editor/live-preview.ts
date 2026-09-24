@@ -301,8 +301,15 @@ export function previewDecorations(
           // 引用の中のフェンスの継続行 `> `（Table と同じ理由）
           hideQuoteMarks(state, node.node, out);
           // Mermaid の図は blockWidgetField が作る（行をまたぐ装飾は
-          // plugin 由来では効かない）。ここでは背景とフェンス隠しだけ
-          if (mermaidCode(state, node.node) !== null) return false;
+          // plugin 由来では効かない）。ただし blockWidgetField が見るのは
+          // トップレベルだけなので、引用やリストの中の図はコードの帯で見せる
+          // （以前は帯も図も無い生テキストだった。レビュー 2026-09-24 / 21-3）
+          if (
+            mermaidCode(state, node.node) !== null &&
+            node.node.parent?.name === "Document"
+          ) {
+            return false;
+          }
           // ` ```python:aaa.py ` のファイル名は画面にも出す（ADR-0008）
           const info = node.node.getChild("CodeInfo");
           const fileName = info
@@ -414,7 +421,7 @@ export function previewDecorations(
                 .includes("x");
               out.push(
                 Decoration.replace({
-                  widget: new CheckboxWidget(checked, marker.from, marker.to),
+                  widget: new CheckboxWidget(checked),
                 }).range(marker.from, withTrailingSpace(state, marker.to)),
               );
             }
@@ -428,7 +435,7 @@ export function previewDecorations(
               .includes("x");
             out.push(
               Decoration.replace({
-                widget: new CheckboxWidget(checked, marker.from, marker.to),
+                widget: new CheckboxWidget(checked),
               }).range(node.from, withTrailingSpace(state, marker.to)),
             );
           } else {

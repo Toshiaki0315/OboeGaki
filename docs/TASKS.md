@@ -1208,9 +1208,12 @@ c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマ
             `tasks::complete_matching` で突き合わせ、ずれていれば断る（ipc・TaskSection・
             App も text を渡す）／`vault_open` は Busy を 40ms × 3 回まで試し直す（MCP の
             `app_running` がロックを取って離す一瞬と重なる）。テスト 4 本
-      - [ ] エディタ: キャレット外でブロック内部が置換されたときのゾーン更新
-            （`touchesRange`）／`tableField` を触った表だけ差し替える／`CheckboxWidget.eq`
-            から位置を外す／引用・リスト内の ```mermaid が生で出る
+      - [x] エディタ（2026-09-24。fix）: `blockWidgetField` はキャレット外でブロックの中が
+            書き換わったゾーン（`touchesRange`）も差し替える／`tableField` は表の中だけの
+            編集（行の増減なし）なら触った表だけ `refreshTableZones` で差し替え、カーソル
+            移動もリビールが変わった表だけ（以前は全表を作り直していた）／
+            `CheckboxWidget` の等価は印の状態だけにし、押されたときに DOM から位置を
+            求める／引用・リストの中の ```mermaid はコードの帯で見せる。テスト 6 本
       - [ ] lib: PowerPoint の不揃いな表（列数を 1 行目に揃える）／見出しの色 span が
             スライド題に生で載る／`imageSource` の不正 `%` で同期例外／行内脚注の番号ずれ
             ／`pptx.ts` の数値リテラル（GR-01）をテストで見張る／`graph.ts` の id を

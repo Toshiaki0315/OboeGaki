@@ -9,7 +9,7 @@ import {
   RangeSet,
   type Range,
 } from "@codemirror/state";
-import type { Decoration } from "@codemirror/view";
+import type { Decoration, DecorationSet } from "@codemirror/view";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { FORMAT_COMMANDS } from "./format-commands";
 import {
@@ -28,6 +28,7 @@ import {
   wysiwygField,
   type TableData,
 } from "./live-preview";
+import { CheckboxWidget } from "./live-preview-widgets";
 import { LANG } from "./test-utils";
 
 type Deco = {
@@ -686,6 +687,107 @@ describe("Mermaid 図（ADR-0021）", () => {
   test("他の言語のフェンスは図にしない", () => {
     const code = "```js\nlet a = 1;\n```\n";
     expect(blocksOf(code, 0).some((d) => d.kind === "mermaid")).toBe(false);
+  });
+});
+
+describe("ゾーン単位の差し替え（レビュー 2026-09-24 / 21-3）", () => {
+  function widgetsOf(set: DecorationSet): unknown[] {
+    const out: unknown[] = [];
+    for (let cursor = set.iter(); cursor.value; cursor.next()) {
+      out.push((cursor.value.spec as { widget?: unknown }).widget);
+    }
+    return out;
+  }
+
+  test("表の中の 1 字の編集は_その表だけ作り直し_ほかの表の widget はそのまま", () => {
+    const doc =
+      "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n本文\n\n| C | D |\n| --- | --- |\n| 3 | 4 |\n\n末尾";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, tableField],
+    });
+    const before = widgetsOf(state.field(tableField));
+    expect(before).toHaveLength(2);
+    // キャレットは末尾のまま、1 つ目の表のセルを書き換える（置換や色付けの経路）
+    const at = doc.indexOf("1");
+    const edited = state.update({
+      changes: { from: at, to: at + 1, insert: "9" },
+    }).state;
+    const after = widgetsOf(edited.field(tableField));
+    expect(after).toHaveLength(2);
+    expect(after[0]).not.toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    const data = (after[0] as { data: TableData }).data;
+    expect(data.rows[0][0]).toEqual([{ text: "9", kinds: [] }]);
+  });
+
+  test("行が増える編集は表の分割かもしれないので数え直す（表が 2 つになる）", () => {
+    const doc = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n\n末尾";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, tableField],
+    });
+    expect(state.field(tableField).size).toBe(1);
+    const at = doc.indexOf("| 3");
+    const split = state.update({
+      changes: { from: at, insert: "\n段落\n\n| E | F |\n| --- | --- |\n" },
+    }).state;
+    expect(split.field(tableField).size).toBe(2);
+  });
+
+  test("キャレットが外のまま数式ブロックの中身が置き換わると_widget も新しくなる", () => {
+    const doc = "$$\na\n+\nb\n$$\n\n続き";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+    const plus = doc.indexOf("+");
+    const edited = state.update({
+      changes: { from: plus, to: plus + 1, insert: "-" },
+    }).state;
+    const [widget] = widgetsOf(edited.field(blockWidgetField)) as {
+      mathml: string;
+    }[];
+    expect(widget.mathml).not.toContain("<mo>+</mo>");
+    expect(widget.mathml).toMatch(/<mo>[-−]<\/mo>/);
+  });
+
+  test("キャレットが外のまま図のコードが置き換わると_widget のコードも新しくなる", () => {
+    const doc = "```mermaid\ngraph TD\nA-->B\nB-->C\nC-->D\n```\n\n続き";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+    const at = doc.indexOf("B-->C");
+    const edited = state.update({
+      changes: { from: at, to: at + 5, insert: "B-->X" },
+    }).state;
+    const [widget] = widgetsOf(edited.field(blockWidgetField)) as {
+      code: string;
+    }[];
+    expect(widget.code).toContain("B-->X");
+  });
+
+  test("チェックボックスの等価は印の状態だけ（上で 1 字打っても作り直さない）", () => {
+    expect(new CheckboxWidget(false).eq(new CheckboxWidget(false))).toBe(true);
+    expect(new CheckboxWidget(true).eq(new CheckboxWidget(false))).toBe(false);
+  });
+
+  test("引用の中の mermaid はコードの帯で見せる（生テキストにしない）", () => {
+    const doc = "> ```mermaid\n> graph TD\n> A-->B\n> ```\n";
+    const decos = decorationsOf(doc, doc.length);
+    expect(decos.some((d) => d.kind.includes("cm-codeblock-line"))).toBe(true);
+    // トップレベルの図は blockWidgetField が描くので、帯は掛けない
+    const top = "```mermaid\ngraph TD\nA-->B\n```\n";
+    expect(
+      decorationsOf(top, top.length).some((d) =>
+        d.kind.includes("cm-codeblock-line"),
+      ),
+    ).toBe(false);
   });
 });
 
