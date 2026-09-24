@@ -33,6 +33,19 @@ describe("Enter の入力補助", () => {
     expect(press(continueMarkup, "- ｜")).toBe("｜");
   });
 
+  test("引用の中のリストは_引用の頭ごと継続する（21-4）", () => {
+    // 以前は `> ` だけ継続して `- ` が落ちた
+    expect(press(continueMarkup, "> - 項目｜")).toBe("> - 項目\n> - ｜");
+    expect(press(continueMarkup, "> 1. 一｜")).toBe("> 1. 一\n> 2. ｜");
+    // 空の項目は引用を残してリストだけ外す
+    expect(press(continueMarkup, "> - ｜")).toBe("> ｜");
+  });
+
+  test("タブで字下げしたリストも_空の項目の解除と_Shift+Tab_が効く（21-4）", () => {
+    expect(press(continueMarkup, "\t- ｜")).toBe("- ｜");
+    expect(press(indentListLess, "\t- a｜")).toBe("- a｜");
+  });
+
   test("空の引用は改行せずマーカーを外す", () => {
     expect(press(continueMarkup, "> ｜")).toBe("｜");
   });

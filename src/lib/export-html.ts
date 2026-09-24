@@ -99,8 +99,12 @@ const highlightRule: InlineRule = (state, silent) => {
   if (!silent) {
     const open = state.push("mark_open", "mark", 1);
     open.markup = "::";
-    const text = state.push("text", "", 0);
-    text.content = inner;
+    // 中身もふつうの Markdown として組む（エディタは中を解析する。以前は素の
+    // 字として `**` が残った = 21-4）。入れ子の解析には別の配列を渡す
+    // （colorSpanRule と同じ理由）
+    const nested: typeof state.tokens = [];
+    state.md.inline.parse(inner, state.md, state.env, nested);
+    state.tokens.push(...nested);
     const closeToken = state.push("mark_close", "mark", -1);
     closeToken.markup = "::";
   }

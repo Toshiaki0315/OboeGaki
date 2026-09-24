@@ -66,6 +66,11 @@ describe("renderHtml", () => {
     expect(html).toContain("<mark>目立つ</mark>");
   });
 
+  test("ハイライトの中の装飾も組む（エディタと同じ見え方。21-4）", () => {
+    const html = renderHtml("::**太い**印::\n", "t");
+    expect(html).toContain("<mark><strong>太い</strong>印</mark>");
+  });
+
   test("識別子の :: はハイライトにしない（書き出しの実機回帰）", () => {
     // エディタ側と同じ ASCII 単語ガード。std::vector::size の vector が
     // <mark> になっていた（2026-09-04 の書き出し確認で発覚）

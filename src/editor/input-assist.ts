@@ -27,16 +27,32 @@ const LEADING_SPACE_RE = /^[ \t]+/;
 type MarkerKind = "task" | "ordered" | "bullet" | "quote";
 type Marker = { kind: MarkerKind; length: number };
 
+/// 行頭の引用の頭（`> ` の繰り返し）。無ければ空
+function quoteHead(line: string): string {
+  let head = "";
+  let rest = line;
+  for (;;) {
+    const found = QUOTE_RE.exec(rest);
+    if (!found) return head;
+    head += found[0];
+    rest = rest.slice(found[0].length);
+  }
+}
+
 /// 行頭のマーカーを判定する。順番が大事: タスクは箇条書きより先に見る。
+/// 引用の中のリスト（`> - a`）はリストとして扱い、`length` は引用の頭込み
+/// （以前は引用としてしか見えず、Enter で `- ` が落ちた。21-4）
 function markerOf(line: string): Marker | null {
-  const task = TASK_RE.exec(line);
-  if (task) return { kind: "task", length: task[0].length };
-  const ordered = ORDERED_RE.exec(line);
-  if (ordered) return { kind: "ordered", length: ordered[0].length };
-  const bullet = BULLET_RE.exec(line);
-  if (bullet) return { kind: "bullet", length: bullet[0].length };
-  const quote = QUOTE_RE.exec(line);
-  if (quote) return { kind: "quote", length: quote[0].length };
+  const head = quoteHead(line);
+  const rest = line.slice(head.length);
+  const task = TASK_RE.exec(rest);
+  if (task) return { kind: "task", length: head.length + task[0].length };
+  const ordered = ORDERED_RE.exec(rest);
+  if (ordered)
+    return { kind: "ordered", length: head.length + ordered[0].length };
+  const bullet = BULLET_RE.exec(rest);
+  if (bullet) return { kind: "bullet", length: head.length + bullet[0].length };
+  if (head) return { kind: "quote", length: head.length };
   return null;
 }
 
@@ -69,8 +85,18 @@ function isFenceBody(
   return line.number <= last.number;
 }
 
-/// 継続時に次の行へ引き継ぐ接頭辞。
-function continuation(line: string, marker: Marker): string {
+/// 継続時に次の行へ引き継ぐ接頭辞。引用の中のリストは引用の頭を付け戻す
+function continuation(whole: string, marker: Marker): string {
+  const head = marker.kind === "quote" ? "" : quoteHead(whole);
+  const line = whole.slice(head.length);
+  const bare: Marker = {
+    kind: marker.kind,
+    length: marker.length - head.length,
+  };
+  return head + continuationOf(line, bare);
+}
+
+function continuationOf(line: string, marker: Marker): string {
   switch (marker.kind) {
     case "task": {
       const task = TASK_RE.exec(line);
@@ -89,13 +115,24 @@ function continuation(line: string, marker: Marker): string {
   }
 }
 
+/// 字下げ 1 段ぶん（タブ 1 つ、または空白 2 つ）を外した行。字下げが無ければ null。
+/// タブで字下げしたリストでも解除と Shift+Tab が効くように（21-4）
+function dropIndentUnit(line: string): string | null {
+  if (line.startsWith("\t")) return line.slice(1);
+  if (line.startsWith(INDENT)) return line.slice(INDENT.length);
+  return null;
+}
+
 /// 空の項目を 1 段浅くする（§5.5-2 の 2 段階解除）。
 function outdent(line: string, marker: Marker): string {
   if (marker.kind === "quote") {
     const stripped = line.replace(QUOTE_RE, "");
     return stripped.trim() ? stripped : stripped.trimEnd();
   }
-  return line.startsWith(INDENT) ? line.slice(INDENT.length) : "";
+  // 引用の中のリスト: リストの印だけ外して引用の頭は残す
+  const head = quoteHead(line);
+  if (head) return head.trimEnd() ? head : head.trimEnd() + " ";
+  return dropIndentUnit(line) ?? "";
 }
 
 /// Enter: リスト・引用のマーカー継続、空項目の段階的解除、コードの字下げ継承。
@@ -226,7 +263,7 @@ function indentList(forward: boolean): StateCommand {
     const marker = markerOf(line.text);
     // 引用は対象外（リスト行だけ。それ以外は通常のタブ挿入に任せる）
     if (!marker || marker.kind === "quote") return false;
-    if (!forward && !line.text.startsWith(INDENT)) return false;
+    if (!forward && dropIndentUnit(line.text) === null) return false;
 
     // 字下げを変えたあとの字面で、リスト全体の番号を振り直す（ADR-0066）。
     // 1 つの取り消しで戻るよう、字下げと番号の書き換えは同じ transaction に載せる
@@ -236,7 +273,7 @@ function indentList(forward: boolean): StateCommand {
     const at = line.number - start;
     before[at] = forward
       ? INDENT + before[at]
-      : before[at].slice(INDENT.length);
+      : (dropIndentUnit(before[at]) ?? before[at]);
     const after = renumberList(before);
 
     const changes: { from: number; to: number; insert: string }[] = [];
@@ -259,7 +296,8 @@ function indentList(forward: boolean): StateCommand {
               ? { from: current.from, to: current.from, insert: INDENT }
               : {
                   from: current.from,
-                  to: current.from + INDENT.length,
+                  // 外した字下げ 1 段の長さ（タブなら 1、空白なら 2）
+                  to: current.from + (current.text.length - next.length),
                   insert: "",
                 },
           );
