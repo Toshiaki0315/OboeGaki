@@ -132,31 +132,51 @@ function revealKeyOf(
     .join(",");
 }
 
-/// 1 つの表ゾーンの装飾を今の状態で作り直す（差分更新用）。ゾーンの位置に
-/// Table ノードが無ければ空（編集で表でなくなった）。見つかった Table の範囲も返す
+/// ゾーンの範囲に掛かるトップレベルの Table（0〜n 個）。1 点で resolve すると、
+/// 表の先頭の `|` を消して始点がずれたときや、ゾーンの中で表が 2 つに割れた
+/// ときに見失う（再レビュー 2026-09-25 / 21-5）。全再計算と同じくトップレベルだけ
+function tablesWithin(
+  state: EditorState,
+  from: number,
+  to: number,
+): SyntaxNode[] {
+  const found: SyntaxNode[] = [];
+  syntaxTree(state).iterate({
+    from: Math.min(from, state.doc.length),
+    to: Math.min(to, state.doc.length),
+    enter: (node) => {
+      if (node.name === "Table") {
+        if (node.node.parent?.name === "Document") found.push(node.node);
+        return false;
+      }
+      return node.node.parent === null || node.name === "Document"
+        ? undefined
+        : false;
+    },
+  });
+  return found;
+}
+
+/// 1 つの表ゾーンの装飾を今の状態で作り直す（差分更新用）。ゾーンの範囲にある
+/// 表を全部拾い、その範囲（新しいゾーン）も返す。表が無ければ空
 function tableZoneDecorations(
   state: EditorState,
   zone: { from: number; to: number },
-): { ranges: Range<Decoration>[]; bounds: { from: number; to: number } } {
-  if (state.field(sourceModeField, false)) return { ranges: [], bounds: zone };
-  let node = syntaxTree(state).resolveInner(
-    Math.min(zone.from, state.doc.length),
-    1,
-  );
-  while (node.parent && node.name !== "Table") node = node.parent;
-  if (node.name !== "Table") return { ranges: [], bounds: zone };
-  const bounds = { from: node.from, to: node.to };
-  if (touchesBlockZone(state, node.from, node.to))
-    return { ranges: [], bounds };
-  return {
-    ranges: [
+): { ranges: Range<Decoration>[]; bounds: { from: number; to: number }[] } {
+  if (state.field(sourceModeField, false)) return { ranges: [], bounds: [] };
+  const ranges: Range<Decoration>[] = [];
+  const bounds: { from: number; to: number }[] = [];
+  for (const node of tablesWithin(state, zone.from, zone.to)) {
+    bounds.push({ from: node.from, to: node.to });
+    if (touchesBlockZone(state, node.from, node.to)) continue;
+    ranges.push(
       Decoration.replace({
-        widget: new TableWidget(tableData(state, node.node)),
+        widget: new TableWidget(tableData(state, node)),
         block: true,
       }).range(node.from, node.to),
-    ],
-    bounds,
-  };
+    );
+  }
+  return { ranges, bounds };
 }
 
 /// 触った表だけ差し替える（blockWidgetField の refreshZones と同じ作法）。
@@ -169,18 +189,21 @@ function refreshTableZones(
   indices: number[],
 ): DecorationSet {
   const zones = [...meta.zones];
-  for (const index of indices) {
+  // ゾーンは 0〜n 個に置き換わるので、後ろから処理して添字をずらさない
+  for (const index of [...new Set(indices)].sort((a, b) => b - a)) {
     const zone = zones[index];
     if (!zone) continue;
     const { ranges, bounds } = tableZoneDecorations(state, zone);
+    const from = Math.min(zone.from, ...bounds.map((b) => b.from));
+    const to = Math.max(zone.to, ...bounds.map((b) => b.to));
     set = set.update({
-      filterFrom: Math.min(zone.from, bounds.from),
-      filterTo: Math.max(zone.to, bounds.to),
+      filterFrom: from,
+      filterTo: to,
       filter: () => false,
       add: ranges,
       sort: true,
     });
-    zones[index] = bounds;
+    zones.splice(index, 1, ...bounds);
   }
   const next = { ...meta, zones, revealKey: revealKeyOf(state, zones) };
   tableMeta.set(set, next);
@@ -284,7 +307,7 @@ function editNearMarker(
 
 type NearTr = Parameters<typeof editNearMarker>[1];
 
-const editNearTables = (tr: NearTr) => editNearMarker(/\|/, tr);
+const editNearTables = (tr: NearTr) => editNearMarker(/\||\$\$|```|~~~/, tr);
 // 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる
 const editNearBlockWidgets = (tr: NearTr) =>
   editNearMarker(/\$\$|```|~~~|:::|<\/?details>/, tr);
@@ -405,6 +428,17 @@ function detailsZoneDecorations(
 }
 
 /// 1 つの数式ブロックの装飾（触れていなければ絵に置き換える）。
+/// 閉じの無いブロック（書きかけ）は絵にしない — 生のまま見せる。
+/// パーサは「文書末まで」を返すので、閉じの判定はここが持つ
+function mathBlockClosed(
+  state: EditorState,
+  from: number,
+  to: number,
+): boolean {
+  const rows = state.sliceDoc(from, to).split("\n");
+  return rows.length >= 2 && /^(?:>\s*)*\$\$\s*$/.test(rows[rows.length - 1]);
+}
+
 function mathZoneDecorations(
   state: EditorState,
   from: number,
@@ -416,10 +450,7 @@ function mathZoneDecorations(
   if (touchesBlockZone(state, from, to)) return;
   const source = state.sliceDoc(from, to);
   const rows = source.split("\n");
-  // 閉じの無いブロック（書きかけ）は絵にしない — 生のまま見せる。
-  // パーサは「文書末まで」を返すので、閉じの判定はここが持つ
-  const closed =
-    rows.length >= 2 && /^(?:>\s*)*\$\$\s*$/.test(rows[rows.length - 1]);
+  const closed = mathBlockClosed(state, from, to);
   const latex = closed ? rows.slice(1, -1).join("\n").trim() : "";
   const mathml = latex ? renderMath(latex, true) : null;
   if (!mathml) return;
@@ -545,7 +576,12 @@ function blockWidgetZones(
   syntaxTree(state).iterate({
     enter: (node) => {
       if (node.name === "MathBlock") {
-        zones.push({ from: node.from, to: node.to });
+        // 閉じの無い式（書きかけ）は文書末まで伸びる。ゾーンにすると下の
+        // :::note などを包み込み、差し替えのたびにその装飾を消してしまう
+        // （再レビュー 2026-09-25 / 21-5）。mathZoneDecorations と同じ判定
+        if (mathBlockClosed(state, node.from, node.to)) {
+          zones.push({ from: node.from, to: node.to });
+        }
         return false;
       }
       if (node.name === "FencedCode") {
@@ -659,7 +695,10 @@ export const blockWidgetField = StateField.define<DecorationSet>({
   update(value, tr) {
     const modeChanged = revealModeSwitched(tr);
     const themeChanged = tr.effects.some((e) => e.is(setDiagramTheme));
-    if (modeChanged || themeChanged) return computeBlockWidgetSet(tr.state);
+    // 言語設定の差し替え（indentedCode）は木ごと変わる（21-5）
+    if (modeChanged || themeChanged || tr.reconfigured) {
+      return computeBlockWidgetSet(tr.state);
+    }
     const meta = blockWidgetMeta.get(value);
     if (!meta) return computeBlockWidgetSet(tr.state);
 
@@ -728,7 +767,7 @@ export const tableField = StateField.define<DecorationSet>({
   create: computeTableSet,
   update(value, tr) {
     const modeChanged = revealModeSwitched(tr);
-    if (modeChanged) return computeTableSet(tr.state);
+    if (modeChanged || tr.reconfigured) return computeTableSet(tr.state);
     const meta = tableMeta.get(value);
     if (!meta) return computeTableSet(tr.state);
 

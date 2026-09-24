@@ -74,6 +74,7 @@ const guard = EditorState.transactionFilter.of((tr) => {
           changes: kept,
           selection: EditorSelection.cursor(patched),
           userEvent: tr.annotation(Transaction.userEvent),
+          scrollIntoView: true,
         },
       ];
     }

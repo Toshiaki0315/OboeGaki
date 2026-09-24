@@ -132,7 +132,7 @@ function outdent(line: string, marker: Marker): string {
   }
   // 引用の中のリスト: リストの印だけ外して引用の頭は残す
   const head = quoteHead(line);
-  if (head) return head.trimEnd() ? head : head.trimEnd() + " ";
+  if (head) return head;
   return dropIndentUnit(line) ?? "";
 }
 
@@ -165,8 +165,21 @@ export const continueMarkup: StateCommand = ({ state, dispatch }) => {
   const marker = markerOf(line.text);
   if (!marker) return false;
   if (column < marker.length) {
-    // マーカーの内側にキャレットがある。ここで継承すると壊れた行ができる
-    return false;
+    // マーカーの内側にキャレットがある。ここで継承すると壊れた行ができる。
+    // ただし引用の頭の直後（`> ｜- a`）は引用だけ継続する — 以前は quote と
+    // 見ていたので `> ` が継続していた（21-5）
+    const head = quoteHead(line.text);
+    if (marker.kind === "quote" || !head || column < head.length) return false;
+    const insert = `\n${head}`;
+    dispatch(
+      state.update({
+        changes: { from: range.head, insert },
+        selection: { anchor: range.head + insert.length },
+        userEvent: "input",
+        scrollIntoView: true,
+      }),
+    );
+    return true;
   }
 
   if (!line.text.slice(marker.length).trim()) {
@@ -257,6 +270,9 @@ function indentList(forward: boolean): StateCommand {
     const marker = markerOf(line.text);
     // 引用は対象外（リスト行だけ。それ以外は通常のタブ挿入に任せる）
     if (!marker || marker.kind === "quote") return false;
+    // 引用の中のリスト（`> - a`）は `>` の前に空白を足すことになるので、通常の
+    // タブ挿入に譲る（引用の入れ子にはならない。再レビュー 2026-09-25 / 21-5）
+    if (quoteHead(line.text)) return false;
     if (!forward && dropIndentUnit(line.text) === null) return false;
 
     // 字下げを変えたあとの字面で、リスト全体の番号を振り直す（ADR-0066）。

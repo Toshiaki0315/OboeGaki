@@ -46,6 +46,11 @@ describe("Enter の入力補助", () => {
     expect(press(indentListLess, "\t- a｜")).toBe("- a｜");
   });
 
+  test("引用の中のリストで_Tab_は通常の挿入に譲り_引用の頭の直後の_Enter_は引用を継続する（21-5）", () => {
+    expect(press(indentListMore, "> - a｜")).toBeNull();
+    expect(press(continueMarkup, "> ｜- a")).toBe("> \n> ｜- a");
+  });
+
   test("空の引用は改行せずマーカーを外す", () => {
     expect(press(continueMarkup, "> ｜")).toBe("｜");
   });

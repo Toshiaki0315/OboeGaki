@@ -791,6 +791,131 @@ describe("ゾーン単位の差し替え（レビュー 2026-09-24 / 21-3）", (
   });
 });
 
+describe("差分更新は作り直しと同じ答えを出す（再レビュー 2026-09-25 / 21-5）", () => {
+  type Shape = { from: number; to: number; widget: string }[];
+  function shapeOf(set: DecorationSet): Shape {
+    const out: Shape = [];
+    for (let cursor = set.iter(); cursor.value; cursor.next()) {
+      const spec = cursor.value.spec as {
+        widget?: { data?: unknown; mathml?: string; code?: string };
+        class?: string;
+      };
+      out.push({
+        from: cursor.from,
+        to: cursor.to,
+        widget: JSON.stringify(
+          spec.widget?.data ??
+            spec.widget?.mathml ??
+            spec.widget?.code ??
+            spec.class,
+        ),
+      });
+    }
+    return out;
+  }
+  function rebuilt(doc: string, anchor: number, field: typeof tableField) {
+    return shapeOf(
+      EditorState.create({
+        doc,
+        selection: { anchor },
+        extensions: [LANG, sourceModeField, field],
+      }).field(field),
+    );
+  }
+  /// 決め打ちの乱数（毎回同じ列。落ちたら doc と操作の列を印字する）
+  function rng(seed: number) {
+    let x = seed;
+    return () => {
+      x = (x * 1103515245 + 12345) & 0x7fffffff;
+      return x / 0x7fffffff;
+    };
+  }
+
+  test("表の先頭の縦棒を消す_見出し行を消す_引用の頭を足す", () => {
+    const doc = "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n本文";
+    for (const change of [
+      { from: 0, to: 1, insert: "" },
+      { from: 0, to: 9, insert: "" },
+      { from: 0, to: 0, insert: "> " },
+    ]) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, tableField],
+      });
+      const next = state.update({ changes: change }).state;
+      expect(shapeOf(next.field(tableField))).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, tableField),
+      );
+    }
+  });
+
+  test("閉じの無い数式が下の囲みを包んでも_中で打つと囲みの装飾が消えない", () => {
+    const doc = "$$\n:::note\n中\n:::\n$\nx+y\n\n続き";
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+    const at = doc.indexOf("x+y") + 1;
+    const next = state.update({ changes: { from: at, insert: "z" } }).state;
+    expect(shapeOf(next.field(blockWidgetField))).toEqual(
+      rebuilt(next.doc.toString(), next.selection.main.head, blockWidgetField),
+    );
+  });
+
+  test("乱数の編集_300_手で表と数式の差分更新が作り直しと一致する", () => {
+    const random = rng(20260925);
+    const parts = [
+      "# 題\n",
+      "| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+      "本文の段落。\n",
+      "$$\nx+y\n$$\n",
+      "| c | d |\n| --- | --- |\n| 3 | 4 |\n| 5 | 6 |\n",
+      ":::note\n囲み\n:::\n",
+      "```mermaid\ngraph TD\nA-->B\n```\n",
+      "> 引用\n",
+    ];
+    let state = EditorState.create({
+      doc: parts.join("\n"),
+      selection: { anchor: 0 },
+      extensions: [LANG, sourceModeField, tableField, blockWidgetField],
+    });
+    const pieces = ["|", "\n", "$$", "a", " ", "-", ":", "`", "$"];
+    const log: string[] = [];
+    for (let step = 0; step < 300; step++) {
+      const length = state.doc.length;
+      const at = Math.floor(random() * (length + 1));
+      const kind = random();
+      const change =
+        kind < 0.4 && at < length
+          ? {
+              from: at,
+              to: Math.min(length, at + 1 + Math.floor(random() * 3)),
+              insert: "",
+            }
+          : { from: at, insert: pieces[Math.floor(random() * pieces.length)] };
+      const caret = Math.floor(random() * (length + 1));
+      log.push(JSON.stringify({ change, caret }));
+      // 編集とカーソル移動を別の transaction にする（両方の経路を通す）
+      state = state.update({ changes: change }).state;
+      state = state.update({
+        selection: { anchor: Math.min(caret, state.doc.length) },
+      }).state;
+      const doc = state.doc.toString();
+      const head = state.selection.main.head;
+      expect(
+        shapeOf(state.field(tableField)),
+        `表 step ${step}\n${log.slice(-3).join("\n")}\n${doc}`,
+      ).toEqual(rebuilt(doc, head, tableField));
+      expect(
+        shapeOf(state.field(blockWidgetField)),
+        `ブロック step ${step}\n${log.slice(-3).join("\n")}\n${doc}`,
+      ).toEqual(rebuilt(doc, head, blockWidgetField));
+    }
+  });
+});
+
 describe("長いノートの下のほうにある表（実機で発覚 2026-09-04）", () => {
   // 開いた時点では文書の途中までしか解析されていない。スクロールで解析が
   // 進んだことは docChanged にも selection にも出ないので、それを見ないと
