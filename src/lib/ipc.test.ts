@@ -340,9 +340,9 @@ describe("包みのコマンド名と引数（表）", () => {
   ][] = [
     [
       "taskComplete",
-      () => taskComplete("/v", "a.md", 3),
+      () => taskComplete("/v", "a.md", 3, "買い物"),
       "task_complete",
-      { root: "/v", path: "a.md", line: 3 },
+      { root: "/v", path: "a.md", line: 3, text: "買い物" },
     ],
     [
       "openVaultRoot",

@@ -151,6 +151,30 @@ fn key_of(relative: &Path) -> String {
     crate::vault::nfc_string(&relative.to_string_lossy())
 }
 
+/// 絶対パスを vault からの相対に。`guarded` は canonicalize 済みの実体
+/// （`/var` ↔ `/private/var`、シンボリックリンクの下）を返すので、生の root で
+/// 外れたら両方を実体に解いてもう一度。それでも外れるものは vault の外なので
+/// Err にする — 以前は無音で何もせず、索引の更新が丸ごと素通りしていた
+/// （レビュー 2026-09-24 / 21-3。history_key と同じ理由）
+fn relative_key(root: &Path, absolute: &Path) -> rusqlite::Result<String> {
+    if let Ok(relative) = absolute.strip_prefix(root) {
+        return Ok(key_of(relative));
+    }
+    let real_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let real = absolute.canonicalize().unwrap_or_else(|_| {
+        match (absolute.parent(), absolute.file_name()) {
+            (Some(parent), Some(name)) => parent
+                .canonicalize()
+                .map(|p| p.join(name))
+                .unwrap_or_else(|_| absolute.to_path_buf()),
+            _ => absolute.to_path_buf(),
+        }
+    });
+    real.strip_prefix(&real_root)
+        .map(key_of)
+        .map_err(|_| rusqlite::Error::InvalidPath(absolute.to_path_buf()))
+}
+
 fn mtime_ns(meta: &fs::Metadata) -> i64 {
     use std::os::unix::fs::MetadataExt;
     meta.mtime() * 1_000_000_000 + meta.mtime_nsec()
@@ -159,11 +183,8 @@ fn mtime_ns(meta: &fs::Metadata) -> i64 {
 /// 1 ファイルを索引に入れる（sync と upsert の共通部）。
 /// 読めないファイルは黙って飛ばす。
 fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqlite::Result<()> {
-    let Ok(relative) = absolute.strip_prefix(root) else {
-        return Ok(());
-    };
     // キーは NFC（vault::nfc_under の説明）。監視イベントは NFD で来ることがある
-    let relative = key_of(relative);
+    let relative = relative_key(root, absolute)?;
     // **本文は decode_text で読む**（7-6）。UTF-8 でない `.md`（ポメラや
     // Windows で書いたもの）が索引から漏れると、一覧にも検索にも出ない
     let (Ok(meta), Ok(bytes)) = (fs::metadata(absolute), fs::read(absolute)) else {
@@ -410,10 +431,7 @@ impl IndexDb {
 
     /// 1 ファイルを索引から外す（ゴミ箱移動・改名の旧パス・外部削除）。
     pub fn remove(&mut self, vault: &Vault, absolute: &Path) -> rusqlite::Result<()> {
-        let Ok(relative) = absolute.strip_prefix(vault.root()) else {
-            return Ok(());
-        };
-        let relative = key_of(relative);
+        let relative = relative_key(vault.root(), absolute)?;
         let tx = self.conn.transaction()?;
         purge_rows(&tx, &relative)?;
         tx.commit()
@@ -1420,5 +1438,30 @@ mod tests {
         let db = synced(&vault);
         assert_eq!(db.search("").unwrap(), vec![]);
         assert_eq!(db.search("   ").unwrap(), vec![]);
+    }
+
+    /// `guarded` は canonicalize 済みの実体パス（TempDir は /var → /private/var）を
+    /// 返す。生の root で strip_prefix すると外れ、以前は**無音で何もしなかった**
+    /// （レビュー 2026-09-24 / 21-3。history_key は 2026-09-17 に同じ理由で直っていた）
+    #[test]
+    fn test_upsert_と_remove_は実体パスでも相対に解ける() {
+        let (root, vault) = temp_vault();
+        let path = note(root.path(), "a.md", "# a\n本文\n");
+        let real = path.canonicalize().unwrap();
+        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        db.upsert(&vault, &real).unwrap();
+        let listed: Vec<String> = db
+            .list_notes()
+            .unwrap()
+            .into_iter()
+            .map(|n| n.path)
+            .collect();
+        assert_eq!(listed, vec!["a.md".to_string()]);
+        db.remove(&vault, &real).unwrap();
+        assert!(db.list_notes().unwrap().is_empty());
+        // vault の外は黙って通さない
+        let outside = TempDir::new().unwrap();
+        let stray = note(outside.path(), "x.md", "# x\n");
+        assert!(db.upsert(&vault, &stray).is_err());
     }
 }

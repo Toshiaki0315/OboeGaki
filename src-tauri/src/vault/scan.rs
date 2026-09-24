@@ -101,6 +101,19 @@ impl Vault {
         }
     }
 
+    /// まだ無い場所（これから作る・動かす先）の封じ込め。実在する最も近い親を
+    /// 実体に解いて、それが vault の中かを見る
+    pub(super) fn inside_or_unborn(&self, entry: &Path) -> bool {
+        let mut probe = entry;
+        while !probe.exists() {
+            match probe.parent() {
+                Some(parent) => probe = parent,
+                None => return false,
+            }
+        }
+        self.inside(probe)
+    }
+
     // ------------------------------------------------------------ フォルダ（ADR-0024）
     /// vault の中のフォルダ（vault からの相対・名前順）。
     ///
@@ -218,6 +231,11 @@ impl Vault {
                 format!("同じ名前のフォルダがあります: {cleaned}"),
             ));
         }
+        // 親も**実体**で確かめる。字句検査だけだと、vault の中にある外向きの
+        // シンボリックリンクの下に作れてしまう（レビュー 2026-09-24 / 21-3）
+        if !self.inside_or_unborn(&target) {
+            return Err(invalid(&format!("保管フォルダの外には作れない: {cleaned}")));
+        }
         fs::create_dir_all(&target)?;
         Ok(target)
     }
@@ -312,6 +330,12 @@ impl Vault {
                 io::ErrorKind::AlreadyExists,
                 format!("行き先に同じ名前のフォルダがあります: {moved}"),
             ));
+        }
+        // 行き先も**実体**で確かめる（move_note と同じ）。外向きのシンボリック
+        // リンクへ動かすと、フォルダごと vault の外へ出て索引からも消えていた
+        // （レビュー 2026-09-24 / 21-3）
+        if !self.inside_or_unborn(&target) {
+            return Err(invalid(&format!("保管フォルダの外へは移せない: {moved}")));
         }
         fs::rename(&source, &target)?;
         Ok(moved)
@@ -597,5 +621,28 @@ mod tests {
         vault.delete_folder("仕事").unwrap();
 
         assert!(!root.path().join("仕事").exists());
+    }
+
+    /// 行き先も実体で確かめる（move_note と同じ。レビュー 2026-09-24 / 21-3）。
+    /// vault の中にある外向きのシンボリックリンクへ動かすと、フォルダごと外へ出ていた
+    #[test]
+    fn test_move_folder_シンボリックリンク越しに外へは移せない() {
+        let (root, vault) = temp_vault();
+        let outside = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("仕事")).unwrap();
+        blank_note(root.path(), "仕事/a.md");
+        symlink(outside.path(), root.path().join("linkdir")).unwrap();
+        assert!(vault.move_folder("仕事", "linkdir").is_err());
+        assert!(root.path().join("仕事/a.md").is_file());
+        assert!(!outside.path().join("仕事").exists());
+    }
+
+    #[test]
+    fn test_create_folder_シンボリックリンク越しに外へは作らない() {
+        let (root, vault) = temp_vault();
+        let outside = TempDir::new().unwrap();
+        symlink(outside.path(), root.path().join("linkdir")).unwrap();
+        assert!(vault.create_folder("linkdir/新しい").is_err());
+        assert!(!outside.path().join("新しい").exists());
     }
 }

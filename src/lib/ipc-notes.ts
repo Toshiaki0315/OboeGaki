@@ -64,12 +64,15 @@ export type TaskRow = {
 };
 
 /// 開いていないノートのやることを完了にする（開いているノートはエディタで書く）
+/// `text` は一覧に出ていた文。Rust 側が行の文と突き合わせ、ずれていれば断る
+/// （一覧の行番号は索引の写しなので、上に行が挟まると別のやることを指す。21-3）
 export async function taskComplete(
   root: string,
   path: string,
   line: number,
+  text: string,
 ): Promise<void> {
-  await invoke("task_complete", { root, path, line });
+  await invoke("task_complete", { root, path, line, text });
 }
 
 /// レイアウト作成・監視開始・背景の索引同期を起動する。

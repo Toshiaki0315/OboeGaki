@@ -11,8 +11,8 @@ export type TaskSectionProps = {
   onToggle: () => void;
   /// 文を押した: そのノートのその行へ（path は相対、line は 0 始まり）
   onOpen: (path: string, line: number) => void;
-  /// 箱を押した: 完了にする
-  onComplete: (path: string, line: number) => void;
+  /// 箱を押した: 完了にする（text は一覧に出ていた文。Rust が突き合わせる）
+  onComplete: (path: string, line: number, text: string) => void;
 };
 
 /// 期限は短く（今年なら月/日）。表の幅を取らない
@@ -44,7 +44,7 @@ export function TaskSection({
             <input
               type="checkbox"
               aria-label={`${task.text} を完了にする`}
-              onChange={() => onComplete(task.path, task.line)}
+              onChange={() => onComplete(task.path, task.line, task.text)}
             />
             <button
               className="task-text"

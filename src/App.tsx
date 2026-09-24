@@ -928,7 +928,7 @@ function App() {
 
   /// やること一覧の箱を押した: 完了にする。開いているノートならエディタで
   /// 書く（自動保存が走る）。閉じているノートは Rust が書き、索引を更新する
-  async function completeTask(relative: string, line: number) {
+  async function completeTask(relative: string, line: number, text: string) {
     if (!vaultRoot) return;
     const path = `${vaultRoot}/${relative}`;
     if (path === currentPath && editorRef.current) {
@@ -940,7 +940,7 @@ function App() {
       return;
     }
     try {
-      await taskComplete(vaultRoot, path, line);
+      await taskComplete(vaultRoot, path, line, text);
       await refresh();
     } catch (error) {
       setStatus(failureText("完了に", error));
@@ -1880,7 +1880,9 @@ function App() {
                   open={sideOpen === "tasks"}
                   onToggle={() => toggleSide("tasks")}
                   onOpen={(path, line) => void openTask(path, line)}
-                  onComplete={(path, line) => void completeTask(path, line)}
+                  onComplete={(path, line, text) =>
+                    void completeTask(path, line, text)
+                  }
                 />
               )}
             </aside>

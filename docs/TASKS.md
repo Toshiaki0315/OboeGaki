@@ -1201,10 +1201,13 @@ c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマ
       - [x] front matter だけで末尾改行の無い文書: 閉じ `---` の直後への入力は改行を
             補ってから本文へ（以前は `---あ` になり YAML が丸ごと本文化した）
 - [ ] **21-3. 中（同じ型のものをまとめて）**
-      - [ ] Rust: `move_folder` / `create_folder` の実体（シンボリックリンク）検査／
-            `index_one` の `strip_prefix` 失敗を無音で通さない（`guarded` の実体パスと
-            生 root の食い違い）／`.mcp-ignore` を `save_atomic` で／`task_complete` は
-            行の本文も突き合わせる／MCP `app_running` がロックを取って GUI を誤って断る
+      - [x] Rust（2026-09-24。fix）: `move_folder` / `create_folder` は行き先の実在する
+            親を実体に解いて封じ込め（`inside_or_unborn`）／索引の `upsert` / `remove` は
+            `relative_key` で実体パスも相対に解き、解けなければ Err（以前は無音で素通り）
+            ／`.mcp-ignore` は `save_atomic`／`task_complete` は一覧の文も受けて
+            `tasks::complete_matching` で突き合わせ、ずれていれば断る（ipc・TaskSection・
+            App も text を渡す）／`vault_open` は Busy を 40ms × 3 回まで試し直す（MCP の
+            `app_running` がロックを取って離す一瞬と重なる）。テスト 4 本
       - [ ] エディタ: キャレット外でブロック内部が置換されたときのゾーン更新
             （`touchesRange`）／`tableField` を触った表だけ差し替える／`CheckboxWidget.eq`
             から位置を外す／引用・リスト内の ```mermaid が生で出る

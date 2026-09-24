@@ -45,7 +45,11 @@ describe("TaskSection", () => {
     fireEvent.click(
       screen.getByRole("checkbox", { name: "近い @2026-10-01 を完了にする" }),
     );
-    expect(props.onComplete).toHaveBeenCalledWith("仕事/b.md", 0);
+    expect(props.onComplete).toHaveBeenCalledWith(
+      "仕事/b.md",
+      0,
+      "近い @2026-10-01",
+    );
     expect(props.onOpen).toHaveBeenCalledTimes(1);
   });
 

@@ -30,14 +30,17 @@ pub fn task_complete(
     root: String,
     path: String,
     line: usize,
+    text: String,
 ) -> CmdResult<()> {
     let note = guarded(&root, &path)?;
-    let text = crate::vault::read_note(&note)?;
-    let rewritten = crate::tasks::set_task_done(&text, line, true)
-        .ok_or_else(|| "その行はやることではありません".to_string())?;
+    let current = crate::vault::read_note(&note)?;
+    // 一覧の行番号は索引の写し。文も突き合わせ、ずれていれば触らない
+    let rewritten = crate::tasks::complete_matching(&current, line, &text).ok_or_else(|| {
+        "やることの行がずれています。一覧を更新してからもう一度お試しください".to_string()
+    })?;
     let vault = Vault::new(&root);
     state.suppressor.mark(&note);
-    vault.write_with_version(&note, &text, &rewritten)?;
+    vault.write_with_version(&note, &current, &rewritten)?;
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
     {

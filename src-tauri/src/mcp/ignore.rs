@@ -37,7 +37,9 @@ pub fn ensure_ignore_file(root: &Path) -> std::io::Result<()> {
     if path.exists() {
         return Ok(());
     }
-    std::fs::write(path, DEFAULT_IGNORE)
+    // 途中で落ちて空のファイルが残ると、隠していた場所が全部見える（fail-open）。
+    // 本文と同じくアトミックに書く（レビュー 2026-09-24 / 21-3）
+    crate::autosave::save_atomic(&path, DEFAULT_IGNORE)
 }
 
 /// 画面に渡す「見せない場所」。**最初から見せない場所も一緒に渡す** —
@@ -84,7 +86,7 @@ pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<
     }
     let mut text = lines.join("\n");
     text.push('\n');
-    std::fs::write(path, text)
+    crate::autosave::save_atomic(&path, &text)
 }
 
 /// GUI から来た道を `.mcp-ignore` に書く形（保管フォルダからの相対）に直す。

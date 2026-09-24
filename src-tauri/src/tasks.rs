@@ -127,6 +127,19 @@ fn due_of(body: &str) -> Option<String> {
 }
 
 /// その行の印だけを書き換えた本文。行が無い・印が無ければ None
+/// 一覧（索引の写し）から来た行番号で完了にする。**文も突き合わせる** — 上に
+/// 行が挟まると同じ番号が別のやることを指す（レビュー 2026-09-24 / 21-3）。
+/// その行がやることでない・文が違えば None（呼び手は一覧の更新を促す）
+pub fn complete_matching(text: &str, line: usize, expected: &str) -> Option<String> {
+    let found = extract_tasks(text)
+        .into_iter()
+        .find(|item| item.line == line)?;
+    if found.text != expected {
+        return None;
+    }
+    set_task_done(text, line, true)
+}
+
 pub fn set_task_done(text: &str, line: usize, done: bool) -> Option<String> {
     let mut out = String::with_capacity(text.len());
     let mut changed = false;
@@ -254,5 +267,20 @@ mod tests {
         assert_eq!(set_task_done("- [X] a\n", 0, false).unwrap(), "- [ ] a\n");
         assert!(set_task_done(text, 5, true).is_none());
         assert!(set_task_done("ただの行\n", 0, true).is_none());
+    }
+
+    /// 一覧の行番号は索引の写しで、上に行が挟まると別のやることを指す
+    /// （レビュー 2026-09-24 / 21-3）。文も突き合わせて、違えば触らない
+    #[test]
+    fn test_complete_matching_文が違えば触らない() {
+        let text = "# 題\n\n- [ ] 買い物\n- [ ] 掃除\n";
+        assert_eq!(
+            complete_matching(text, 2, "買い物"),
+            Some("# 題\n\n- [x] 買い物\n- [ ] 掃除\n".to_string())
+        );
+        // 上に 1 行挟まって、一覧の行番号 2 が別のやることになった
+        let shifted = "# 題\n追加\n\n- [ ] 買い物\n- [ ] 掃除\n";
+        assert_eq!(complete_matching(shifted, 2, "買い物"), None);
+        assert!(complete_matching(shifted, 3, "買い物").is_some());
     }
 }

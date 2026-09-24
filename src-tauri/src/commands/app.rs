@@ -33,7 +33,18 @@ pub async fn vault_open(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *held = None;
-        match crate::vault_lock::acquire(&vault.managed_dir()) {
+        // MCP サーバの app_running はロックを取ってすぐ手放すので、その一瞬と
+        // 重なると Busy に見える。別のウィンドウの Busy は続くので、少し待って
+        // 数回だけ試し直す（レビュー 2026-09-24 / 21-3）
+        let mut outcome = crate::vault_lock::acquire(&vault.managed_dir());
+        for _ in 0..3 {
+            if !matches!(outcome, crate::vault_lock::LockOutcome::Busy) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            outcome = crate::vault_lock::acquire(&vault.managed_dir());
+        }
+        match outcome {
             crate::vault_lock::LockOutcome::Acquired(lock) => *held = Some(lock),
             crate::vault_lock::LockOutcome::Busy => {
                 // 頭の印はフロントが「開けない」と区別するためのもの
