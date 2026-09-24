@@ -54,11 +54,29 @@ const guard = EditorState.transactionFilter.of((tr) => {
   const isEdit = tr.isUserEvent("input") || tr.isUserEvent("delete");
   if (isEdit && tr.docChanged) {
     let touches = false;
+    // 閉じ `---` の行に改行が無い（front matter だけの文書）と bodyStart は
+    // 文書末 = 閉じ区切りの直後で、そこへの入力は `---a` と閉じ行に食い込む
+    // （YAML が丸ごと本文化する。レビュー 2026-09-24 / 21-2）。改行を先に
+    // 補ってから通す
+    const bareClose = range.bodyStart === range.to;
+    let patched: number | null = null;
     const kept: { from: number; to: number; insert: string }[] = [];
     tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
       if (fromA < range.bodyStart) touches = true;
-      else kept.push({ from: fromA, to: toA, insert: inserted.toString() });
+      else if (bareClose && fromA === range.to && toA === range.to) {
+        kept.push({ from: fromA, to: toA, insert: `\n${inserted}` });
+        patched = fromA + 1 + inserted.length;
+      } else kept.push({ from: fromA, to: toA, insert: inserted.toString() });
     });
+    if (patched !== null) {
+      return [
+        {
+          changes: kept,
+          selection: EditorSelection.cursor(patched),
+          userEvent: tr.annotation(Transaction.userEvent),
+        },
+      ];
+    }
     if (touches) {
       // front matter に食い込む変更**だけ**を落とす。「すべて置換」は
       // 1 transaction に複数の変更を積むので、全体を破棄すると本文側の

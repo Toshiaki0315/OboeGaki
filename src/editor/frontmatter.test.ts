@@ -118,6 +118,25 @@ describe("隠蔽と編集ガード", () => {
     expect(next.doc.toString()).toBe(`${FM}あ# 本文\n`);
   });
 
+  test("test_閉じ区切りに改行が無い文書では_改行を補ってから本文へ（21-2）", () => {
+    // `---\ntitle: x\n---`（Rust の block_len はこの形を受ける）。閉じ `---` の
+    // 直後に打つと `---a` になり、front matter が丸ごと本文に化けていた
+    const bare = "---\ntitle: x\n---";
+    const state = EditorState.create({
+      doc: bare,
+      selection: { anchor: bare.length },
+      extensions: [frontMatterHide],
+    });
+    const next = state.update({
+      changes: { from: bare.length, insert: "あ" },
+      selection: EditorSelection.cursor(bare.length + 1),
+      userEvent: "input.type",
+    }).state;
+    expect(next.doc.toString()).toBe(`${bare}\nあ`);
+    expect(next.field(frontMatterField)?.bodyStart).toBe(bare.length + 1);
+    expect(next.selection.main.head).toBe(bare.length + 2);
+  });
+
   test("test_プログラムからの全置換は通る", () => {
     // 外部リロード・履歴の書き戻しは userEvent を持たない
     const state = stateOf(DOC);

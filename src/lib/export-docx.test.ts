@@ -90,6 +90,52 @@ describe("棚卸しレビュー 2026-09-17（Word 書き出し）", () => {
     expect(xml).toMatch(/<wp:extent cx="952500"/); // 100px = 952500 EMU
   });
 
+  test("test_JPEG_の写真も絵として載る（PNG 以外が黙って消えていた。21-2）", async () => {
+    // SOI + APP0 + SOF0（高さ 2・幅 3）+ EOI だけの最小の JPEG
+    const jpeg = `data:image/jpeg;base64,${btoa(
+      String.fromCharCode(
+        0xff,
+        0xd8,
+        0xff,
+        0xe0,
+        0,
+        4,
+        0x4a,
+        0x46,
+        0xff,
+        0xc0,
+        0,
+        17,
+        8,
+        0,
+        2,
+        0,
+        3,
+        3,
+        1,
+        0x22,
+        0,
+        2,
+        0x11,
+        1,
+        3,
+        0x11,
+        1,
+        0xff,
+        0xd9,
+      ),
+    )}`;
+    const xml = await documentXml("![写真](p.jpg)\n", async () => jpeg);
+    expect(xml).toContain("<w:drawing>");
+    expect(xml).toMatch(/<wp:extent cx="28575" cy="19050"/); // 3px × 2px
+    // Word に渡せない種類（WebP）は飛ばす（呼び手が PNG にしてから渡す約束）
+    const webp = await documentXml(
+      "![w](w.webp)\n",
+      async () => "data:image/webp;base64,UklGRg==",
+    );
+    expect(webp).not.toContain("<w:drawing>");
+  });
+
   test("test_コードのファイル名を出す（ADR-0008: 画面にも書き出しにも）", async () => {
     const xml = await documentXml("```js:index.js\nconst x = 1;\n```\n");
     expect(xml).toContain("index.js");

@@ -3,6 +3,8 @@
 // 画面でも SVG → 描画なので、同じ経路）。大きさの読み取りと root への
 // 幅・高さの付け方は純関数にして、描く部分だけを DOM に頼る。
 
+import { docxImageType } from "./image-bytes";
+
 const DEFAULT_SIZE = { width: 800, height: 600 };
 
 /// 図の大きさ（px）。Mermaid の出力は width が "100%" のことがあるので、
@@ -117,4 +119,43 @@ export async function rasterizeIfSvg(
   const svg = svgFromDataUrl(url);
   if (svg === null) return url;
   return (await svgToPng(svg)) ?? url;
+}
+
+/// Word に渡せない種類（WebP / AVIF など）の data URL を PNG に描き直す。
+/// 渡せる種類（PNG / JPEG / GIF / BMP）と SVG 以外の絵はここで canvas を通す。
+/// 描けなければ元のまま返す（docx 側が種類を見て飛ばす）
+export async function rasterizeForDocx(
+  url: string | null,
+): Promise<string | null> {
+  if (url === null) return null;
+  const svg = svgFromDataUrl(url);
+  if (svg !== null) return (await svgToPng(svg)) ?? url;
+  const mime = /^data:([^;,]+)/i.exec(url)?.[1] ?? "";
+  if (docxImageType(mime) !== null) return url;
+  return (await bitmapToPng(url)) ?? url;
+}
+
+function bitmapToPng(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth || 1;
+          canvas.height = image.naturalHeight || 1;
+          const context = canvas.getContext("2d");
+          if (!context) return resolve(null);
+          context.drawImage(image, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } catch {
+          resolve(null);
+        }
+      };
+      image.onerror = () => resolve(null);
+      image.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
 }

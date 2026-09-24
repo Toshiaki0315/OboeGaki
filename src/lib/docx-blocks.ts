@@ -7,6 +7,12 @@
 
 import { splitFenceInfo } from "../markdown/fence-info";
 import type { markdownTokens } from "./export-html";
+import {
+  decodeDataUrl,
+  docxImageType,
+  imageDimensions,
+  type DocxImageType,
+} from "./image-bytes";
 import { inlinePieces } from "./export-runs";
 
 /// markdown-it のトークン（export-html と同じ型を使う。@types の方と attrs の形が違う）
@@ -25,37 +31,30 @@ export function numbersReference(start: number): string {
 }
 
 /// PNG の大きさ（IHDR）。読めなければ 1 × 1 扱い
-function pngSize(bytes: Uint8Array): { width: number; height: number } {
-  if (bytes.length < 24) return { width: 1, height: 1 };
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return { width: view.getUint32(16), height: view.getUint32(20) };
-}
-
-function dataUrlBytes(dataUrl: string): Uint8Array | null {
-  const comma = dataUrl.indexOf(",");
-  if (!/^data:image\/png;base64,/i.test(dataUrl) || comma < 0) return null;
-  try {
-    const binary = atob(dataUrl.slice(comma + 1));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  } catch {
-    return null;
-  }
-}
-
-/// 画像の中身と大きさ（本文幅に収める）。読めなければ null
+/// 画像の中身と大きさ（本文幅に収める）。Word に渡せる種類（PNG / JPEG / GIF /
+/// BMP）でなければ null — WebP や SVG は呼び手（useExport）が PNG にしてから渡す
 async function imageBytes(
   url: string,
   resolveImage: (url: string) => Promise<string | null>,
-): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+): Promise<{
+  data: Uint8Array;
+  type: DocxImageType;
+  width: number;
+  height: number;
+} | null> {
   const dataUrl = await resolveImage(url);
-  const bytes = dataUrl ? dataUrlBytes(dataUrl) : null;
-  if (!bytes) return null;
-  const { width, height } = pngSize(bytes);
+  const decoded = dataUrl ? decodeDataUrl(dataUrl) : null;
+  if (!decoded) return null;
+  const type = docxImageType(decoded.mime);
+  if (!type) return null;
+  const { width, height } = imageDimensions(type, decoded.bytes) ?? {
+    width: 1,
+    height: 1,
+  };
   const scale = width > MAX_IMAGE_WIDTH ? MAX_IMAGE_WIDTH / width : 1;
   return {
-    data: bytes,
+    data: decoded.bytes,
+    type,
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   };
@@ -113,7 +112,7 @@ export class DocxEmitter {
     };
   }
 
-  /// 画像（PNG の data URL → ImageRun）。`![a|100](…)` の大きさ（6-8）。幅だけなら
+  /// 画像（data URL → ImageRun）。`![a|100](…)` の大きさ（6-8）。幅だけなら
   /// 形なりに縮める（HTML と同じ）
   async imageRun(
     url: string,
@@ -129,7 +128,7 @@ export class DocxEmitter {
         ? Math.max(1, Math.round((found.height * size.width) / found.width))
         : found.height);
     return new this.ctx.mods.ImageRun({
-      type: "png",
+      type: found.type,
       data: found.data,
       transformation: { width, height },
     });

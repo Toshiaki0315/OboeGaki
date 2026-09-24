@@ -1980,9 +1980,15 @@ function App() {
                   // 見出しに合わせた改名（3-30）でパスが変わると、開いたときの
                   // 本文で初期化され、打った内容が消える（実機 2026-09-10）。
                   // 打った内容はエディタだけが持つ（T2）
-                  key={editorSession}
+                  // `indentedCode` はパーサ構成なので、変えたときも作り直す
+                  key={`${editorSession}:${settings.indentedCode}`}
                   ref={editorRef}
                   initialDoc={doc}
+                  // 環境設定の 3 つ。7-4 で参照ペインにだけ渡していて、本文には
+                  // 届いていなかった（レビュー 2026-09-24 / 21-2）
+                  tabWidth={settings.tabWidth}
+                  lineNumbers={settings.lineNumbers}
+                  indentedCode={settings.indentedCode}
                   onDocChanged={handleDocChanged}
                   resolveImage={(url) => imageSource(vaultRoot, url)}
                   onActivate={(action) => void handleActivate(action)}

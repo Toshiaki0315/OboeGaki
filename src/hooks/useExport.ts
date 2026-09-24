@@ -26,6 +26,7 @@ import {
 } from "../lib/export-code";
 import { MERMAID_IMAGE_PREFIX, codeBlocksOf } from "../lib/slides";
 import {
+  rasterizeForDocx,
   rasterizeIfSvg,
   svgFromDataUrl,
   svgNaturalSize,
@@ -203,7 +204,9 @@ export function useExport(input: ExportInput) {
     try {
       const data = await buildDocx(text, {
         title,
-        resolveImage: (url) => imageSource(vaultRoot, url).then(rasterizeIfSvg),
+        // Word は PNG / JPEG / GIF / BMP しか受けない。SVG と WebP は PNG に（21-2）
+        resolveImage: (url) =>
+          imageSource(vaultRoot, url).then(rasterizeForDocx),
         diagrams: await drawDiagramPngs(text),
         embeds: await latest.current.resolveEmbeds(text),
         bodyFont: settings.bodyFont,

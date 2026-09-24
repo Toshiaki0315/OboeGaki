@@ -56,6 +56,16 @@ describe("Enter（行を足す）", () => {
 });
 
 describe("Tab（次のセルへ・最後なら行を足す）", () => {
+  test("test_セル末尾の空白に居ても_そのセルとして次へ（列を足さない。21-2）", () => {
+    // 整形後の表は `a |` の前に必ず空白があり、クリックで置いたキャレットが踏む
+    expect(press(tableNextCell, "| a ｜| b |\n| --- | --- |\n")).toBe(
+      "| a | b｜ |\n| --- | --- |\n",
+    );
+    expect(press(tablePrevCell, "| a | b ｜|\n| --- | --- |\n")).toBe(
+      "| a｜ | b |\n| --- | --- |\n",
+    );
+  });
+
   test("test_次のセルの末尾へ", () => {
     expect(
       press(tableNextCell, "| a | b |\n| --- | --- |\n| 1｜ | 22 |\n"),

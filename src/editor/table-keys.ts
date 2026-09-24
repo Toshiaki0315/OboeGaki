@@ -21,7 +21,11 @@ import { syntaxTree } from "@codemirror/language";
 import { isDelimiterRow, rowPrefix } from "./table-format";
 
 /// セルの中身の範囲（両端の空白は除く。空なら `| ` の直後で from === to）
-type Cell = { from: number; to: number };
+/// セルの中身（前後の空白を除いた範囲）と、そのセルの終わりの縦棒の位置
+/// （`bound`。無ければ行末）。キャレットの帰属は `bound` で決める — 中身の
+/// 終端 `to` で決めると、`| a ｜| b |` のようにセル末尾の空白に居るとき隣の
+/// セルと誤判定して列を足していた（レビュー 2026-09-24 / 21-2）
+type Cell = { from: number; to: number; bound: number };
 
 type TableRows = {
   /// 表の行（見出し・区切り・本体。文書の行番号）
@@ -79,7 +83,11 @@ export function cellsOf(line: Line): Cell[] {
       // 空のセルは `| ` の直後に立つ
       from = to = rawFrom + Math.min(1, segment.length);
     }
-    cells.push({ from: line.from + from, to: line.from + to });
+    cells.push({
+      from: line.from + from,
+      to: line.from + to,
+      bound: line.from + rawTo,
+    });
   }
   return cells;
 }
@@ -175,7 +183,7 @@ export const tableNextCell: StateCommand = ({ state, dispatch }) => {
   const line = state.doc.lineAt(head);
   const cells = cellsOf(line);
   if (cells.length === 0) return false;
-  const index = cells.findIndex((cell) => head <= cell.to);
+  const index = cells.findIndex((cell) => head <= cell.bound);
   const current = index < 0 ? cells.length - 1 : index;
   if (current + 1 < cells.length) {
     dispatch(
@@ -214,7 +222,7 @@ export const tablePrevCell: StateCommand = ({ state, dispatch }) => {
   const line = state.doc.lineAt(head);
   const cells = cellsOf(line);
   if (cells.length === 0) return false;
-  const index = cells.findIndex((cell) => head <= cell.to);
+  const index = cells.findIndex((cell) => head <= cell.bound);
   const current = index < 0 ? cells.length - 1 : index;
   if (current > 0) {
     dispatch(
