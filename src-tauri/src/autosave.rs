@@ -44,8 +44,12 @@ pub fn save_bytes_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     // 一時ファイルは 0600 で作られ、rename で元を置き換えるので、何もしないと
     // 保存のたびに元の権限（共有フォルダの 0644 など）が失われる。元が在れば
     // その権限を写す（レビュー 2026-09-24 / 21-4）
+    // 写せないボリューム（SMB / exFAT・他人の持ち物）では諦める。保存を止める
+    // 理由にはしない（レビュー 2026-09-25 / 21-5）
     if let Ok(meta) = fs::metadata(path) {
-        temporary.as_file().set_permissions(meta.permissions())?;
+        if let Err(error) = temporary.as_file().set_permissions(meta.permissions()) {
+            eprintln!("元の権限を写せなかった（このまま保存する）: {error}");
+        }
     }
     // fsync してから rename する。これで電源断でも「古いまま」か「新しい」の
     // どちらかにしかならない
@@ -54,10 +58,31 @@ pub fn save_bytes_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// クラッシュで残った一時ファイル（`.名前.xxxx.tmp`）を掃く。ドット始まりなので
+/// tempfile が付ける乱数部の長さ（`Builder::rand_bytes` の既定）
+const RANDOM_LEN: usize = 6;
+
+/// `save_atomic` が作る一時ファイルの名前か（`.元の名前.xxxxxx.tmp`）。ユーザの
+/// `.memo.tmp` のような自分のファイルを消さないため、形に厳密に合わせる
+fn is_temporary_name(name: &str) -> bool {
+    let Some(stem) = name
+        .strip_prefix('.')
+        .and_then(|s| s.strip_suffix(TEMP_SUFFIX))
+    else {
+        return false;
+    };
+    let Some((original, random)) = stem.rsplit_once('.') else {
+        return false;
+    };
+    !original.is_empty()
+        && random.len() == RANDOM_LEN
+        && random.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// クラッシュで残った一時ファイル（`.名前.xxxxxx.tmp`）を掃く。ドット始まりなので
 /// scan にも Finder にも出ず、掃かない限り溜まる一方だった（レビュー 2026-09-24）。
 /// 1 時間より新しいものは書いている最中かもしれないので残す。消した数を返す。
-/// シンボリックリンクは辿らない
+/// シンボリックリンクは辿らず、隠しフォルダは管理フォルダ（履歴の置き場）以外
+/// 潜らない（`.git` や同期クライアントの中を触らない。21-5）
 pub fn sweep_temporaries(root: &Path) -> usize {
     let mut removed = 0;
     let Ok(entries) = fs::read_dir(root) else {
@@ -70,13 +95,15 @@ pub fn sweep_temporaries(root: &Path) -> usize {
         if meta.file_type().is_symlink() {
             continue;
         }
-        if meta.is_dir() {
-            removed += sweep_temporaries(&path);
-            continue;
-        }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !(name.starts_with('.') && name.ends_with(TEMP_SUFFIX)) {
+        if meta.is_dir() {
+            if !name.starts_with('.') || name == crate::vault::MANAGED_DIR {
+                removed += sweep_temporaries(&path);
+            }
+            continue;
+        }
+        if !is_temporary_name(&name) {
             continue;
         }
         let stale = meta
@@ -167,22 +194,37 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let sub = dir.path().join("仕事");
         fs::create_dir_all(&sub).unwrap();
-        let stale = sub.join(".a.md.abcd.tmp");
-        let fresh = dir.path().join(".b.md.efgh.tmp");
+        let stale = sub.join(".a.md.abcdef.tmp");
+        let fresh = dir.path().join(".b.md.efghij.tmp");
         let note = dir.path().join("c.md");
-        for path in [&stale, &fresh, &note] {
+        // ユーザ自身の隠しファイルと、隠しフォルダ（.git など）の中は触らない
+        let mine = dir.path().join(".memo.tmp");
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        let in_git = dir.path().join(".git/.x.md.abcdef.tmp");
+        // 管理フォルダ（履歴の置き場）の中は掃く
+        fs::create_dir_all(dir.path().join(crate::vault::MANAGED_DIR)).unwrap();
+        let in_managed = dir
+            .path()
+            .join(crate::vault::MANAGED_DIR)
+            .join(".v.md.abcdef.tmp");
+        for path in [&stale, &fresh, &note, &mine, &in_git, &in_managed] {
             fs::write(path, "x").unwrap();
         }
         let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
-        fs::File::options()
-            .write(true)
-            .open(&stale)
-            .unwrap()
-            .set_modified(old)
-            .unwrap();
-        assert_eq!(sweep_temporaries(dir.path()), 1);
+        for path in [&stale, &mine, &in_git, &in_managed] {
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        }
+        assert_eq!(sweep_temporaries(dir.path()), 2);
         assert!(!stale.exists());
+        assert!(!in_managed.exists());
         assert!(fresh.exists());
         assert!(note.exists());
+        assert!(mine.exists());
+        assert!(in_git.exists());
     }
 }

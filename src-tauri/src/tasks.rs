@@ -134,8 +134,8 @@ pub fn complete_matching(text: &str, line: usize, expected: &str) -> Option<Stri
     let found = extract_tasks(text)
         .into_iter()
         .find(|item| item.line == line)?;
-    if found.text != expected {
-        return None;
+    if found.text != expected || found.done {
+        return None; // 文が違う、または既に完了（無意味な版と mtime 更新を作らない）
     }
     set_task_done(text, line, true)
 }
@@ -281,6 +281,8 @@ mod tests {
         // 上に 1 行挟まって、一覧の行番号 2 が別のやることになった
         let shifted = "# 題\n追加\n\n- [ ] 買い物\n- [ ] 掃除\n";
         assert_eq!(complete_matching(shifted, 2, "買い物"), None);
+        // 既に完了している行は触らない（21-5）
+        assert_eq!(complete_matching("- [x] 済み\n", 0, "済み"), None);
         assert!(complete_matching(shifted, 3, "買い物").is_some());
     }
 }

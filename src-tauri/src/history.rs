@@ -82,7 +82,13 @@ pub fn keep(
             }
         }
     }
-    let mut stamp = now;
+    // 起点は最新の版より後ろに置く。秒を進めた版は「未来」の刻印になるので、
+    // 同じ秒に古い版と同じ中身が来たとき、`now` から探すと古いファイルで
+    // 止まって上書きしていた（レビュー 2026-09-25 / 21-5）
+    let mut stamp = match versions_in(root, &folder).into_iter().next() {
+        Some(latest) if latest.saved_at >= now => latest.saved_at + Duration::seconds(1),
+        _ => now,
+    };
     let mut target = root
         .join(&folder)
         .join(format!("{}.md", stamp.format(STAMP_FORMAT)));
@@ -507,5 +513,25 @@ mod tests {
         // 同じ中身が同じ秒に来たときは 1 つのまま
         let again = keep(dir.path(), "path:a.md", "B\n", now, true, 0).unwrap();
         assert!(again.is_none());
+    }
+
+    /// 秒を進めた版のあとに、古い版と同じ中身が同じ秒に来ても古い版を潰さない
+    #[test]
+    fn test_keep_未来の刻印がある間も古い版を上書きしない() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let now = at(2026, 9, 25, 10, 0);
+        let first = keep(dir.path(), "path:a.md", "A\n", now, true, 0)
+            .unwrap()
+            .unwrap();
+        keep(dir.path(), "path:a.md", "B\n", now, true, 0)
+            .unwrap()
+            .unwrap();
+        // A に戻す（同じ秒）。最新は B なので中身は違う → 3 つ目として残る
+        let third = keep(dir.path(), "path:a.md", "A\n", now, true, 0)
+            .unwrap()
+            .unwrap();
+        assert_ne!(third, first);
+        assert_eq!(fs::read_to_string(&first).unwrap(), "A\n");
+        assert_eq!(versions(dir.path(), "path:a.md").len(), 3);
     }
 }

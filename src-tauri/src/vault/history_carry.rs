@@ -67,22 +67,27 @@ impl Vault {
         before: &str,
         after: &str,
     ) -> std::io::Result<()> {
-        let store = crate::history::store_root(&self.managed_dir());
-        crate::history::keep(
-            &store,
-            &self.history_key(path),
-            before,
-            chrono::Local::now().naive_local(),
-            true,
-            0,
-        )
-        .map_err(|error| {
+        self.keep_version(path, before).map_err(|error| {
             std::io::Error::new(
                 error.kind(),
                 format!("版を残せなかったので書きませんでした: {error}"),
             )
         })?;
         crate::autosave::save_atomic(path, after)
+    }
+
+    /// 今の本文を版として残す（書き換えの前・動かす前に呼ぶ）。間引かない
+    pub fn keep_version(&self, path: &Path, text: &str) -> std::io::Result<()> {
+        let store = crate::history::store_root(&self.managed_dir());
+        crate::history::keep(
+            &store,
+            &self.history_key(path),
+            text,
+            chrono::Local::now().naive_local(),
+            true,
+            0,
+        )
+        .map(|_| ())
     }
 
     /// 履歴の置き場を新しいパスへ付け替える。**失敗しても進める** —

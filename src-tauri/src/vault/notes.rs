@@ -175,17 +175,27 @@ impl Vault {
             return Ok(path.to_path_buf()); // 同じ名前。動かす意味が無い
         }
         let target = unique_path(&folder, &stem, &suffix, Some(path));
+        // 「名前を変更」は本文の見出しも書き換える（ADR-0005）。見出しには打った
+        // 通りのタイトルが入る（ファイル名側だけ sanitize）。
+        // **版を残すのは動かす前・旧鍵で。** 動かした後に残せず失敗すると、
+        // ファイルだけ新しい名前へ移った半端な状態が残り、呼び手は旧パスのまま
+        // 次の自動保存を書いてノートが二重になる（レビュー 2026-09-25 / 21-5）。
+        // 残した版は carry_history が新しい鍵へ連れて行く
+        let text = read_note(path)?;
+        let rewritten = with_title(&text, title);
+        if rewritten != text {
+            self.keep_version(path, &text).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("版を残せなかったので改名を止めました: {error}"),
+                )
+            })?;
+        }
         fs::rename(path, &target)?;
         // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042）
         self.carry_history(path, &target);
-        // 「名前を変更」は本文の見出しも書き換える（ADR-0005）。
-        // 見出しには打った通りのタイトルが入る（ファイル名側だけ sanitize）
-        if let Ok(text) = read_note(&target) {
-            let rewritten = with_title(&text, title);
-            if rewritten != text {
-                // 見出しの差し替え前の姿も版に残す（21-1）
-                self.write_with_version(&target, &text, &rewritten)?;
-            }
+        if rewritten != text {
+            crate::autosave::save_atomic(&target, &rewritten)?;
         }
         Ok(target)
     }
@@ -474,9 +484,8 @@ mod tests {
         let note = crate::test_support::note(root.path(), "a.md", "# 旧\n\n本文\n");
         let _locked = crate::test_support::lock_history(&vault);
         assert!(vault.rename(&note, "新").is_err());
-        // ファイルは動いていても、本文の見出しは元のまま
-        let moved = root.path().join("新.md");
-        let text = std::fs::read_to_string(if moved.exists() { &moved } else { &note }).unwrap();
-        assert!(text.starts_with("# 旧\n"), "{text}");
+        // 何も動いていない（動かした後に失敗すると旧パスと新パスの 2 つになる。21-5）
+        assert!(!root.path().join("新.md").exists());
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "# 旧\n\n本文\n");
     }
 }

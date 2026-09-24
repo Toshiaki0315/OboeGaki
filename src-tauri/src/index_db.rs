@@ -1463,6 +1463,9 @@ mod tests {
         // vault の外は黙って通さない
         let outside = TempDir::new().unwrap();
         let stray = note(outside.path(), "x.md", "# x\n");
-        assert!(db.upsert(&vault, &stray).is_err());
+        assert!(matches!(
+            db.upsert(&vault, &stray),
+            Err(rusqlite::Error::InvalidPath(_))
+        ));
     }
 }
