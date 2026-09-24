@@ -13,6 +13,7 @@ import { CaptureWindow } from "./CaptureWindow";
 
 export function CaptureRoot() {
   const [status, setStatus] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const root = (() => {
     try {
       return localStorage.getItem(VAULT_KEY);
@@ -32,10 +33,18 @@ export function CaptureRoot() {
   return (
     <>
       <CaptureWindow
+        disabled={sending}
         onSubmit={(text) => {
+          // 書き込みが遅いとき（iCloud 上の vault など）に ⌘+Enter を 2 回押すと
+          // 同じ文が 2 回足された（レビュー 2026-09-24 / 21-3）。送っている間は受けない
+          if (sending) return;
+          setSending(true);
           appendDaily(root, text)
             .then(() => closeSelf())
-            .catch((error) => setStatus(`書けませんでした: ${String(error)}`));
+            .catch((error) => {
+              setSending(false);
+              setStatus(`書けませんでした: ${String(error)}`);
+            });
         }}
         onCancel={(text) => {
           if (!text.trim()) {

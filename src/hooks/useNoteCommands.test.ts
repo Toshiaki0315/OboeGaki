@@ -82,6 +82,27 @@ beforeEach(() => {
 });
 
 describe("useNoteCommands", () => {
+  test("test_続けて別のノートを開いたら_遅れて解決した前のノートは捨てる（21-3）", async () => {
+    let resolveA: (text: string) => void = () => {};
+    mocked.readNote.mockImplementation((_root, path) =>
+      path.endsWith("a.md")
+        ? new Promise<string>((resolve) => (resolveA = resolve))
+        : Promise.resolve("# B\n"),
+    );
+    const given = input();
+    const { result } = renderHook(() => useNoteCommands(given));
+    const first = result.current.openNote("/v/a.md");
+    await act(() => result.current.openNote("/v/b.md"));
+    expect(result.current.doc).toBe("# B\n");
+    await act(async () => {
+      resolveA("# A\n");
+      await first;
+    });
+    expect(result.current.doc).toBe("# B\n");
+    expect(given.selectNote).toHaveBeenCalledTimes(1);
+    expect(given.selectNote).toHaveBeenCalledWith("/v/b.md");
+  });
+
   test("test_開くと本文を持ち_選択と記憶と同期に知らせ_後始末を呼ぶ", async () => {
     const given = input();
     const { result } = renderHook(() => useNoteCommands(given));

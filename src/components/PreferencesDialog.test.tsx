@@ -87,6 +87,25 @@ describe("PreferencesDialog", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
+  test("test_キャンセルは_PowerPoint_の設定も戻し_Esc_もキャンセル（21-3）", () => {
+    const { props, view } = setup();
+    view.rerender(
+      <PreferencesDialog
+        {...props}
+        pptxSettings={{
+          ...DEFAULT_PPTX_SETTINGS,
+          page: { ...DEFAULT_PPTX_SETTINGS.page, unit: "cm" },
+        }}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(props.onChangePptxSettings).toHaveBeenCalledWith(
+      DEFAULT_PPTX_SETTINGS,
+    );
+    expect(props.onChangeSettings).toHaveBeenCalledWith(DEFAULT_SETTINGS);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
   test("test_OK は閉じるだけ", () => {
     const { props } = setup();
     fireEvent.click(screen.getByRole("button", { name: "OK" }));

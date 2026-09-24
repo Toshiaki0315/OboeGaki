@@ -69,6 +69,18 @@ export function useSearch({
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
   const [folderNotes, setFolderNotes] = useState<NoteEntry[]>([]);
 
+  // 保管フォルダを替えたら、前の vault の結果と絞り込みは捨てる。残すと前の
+  // vault の相対パスを新しい root に繋いで「開けませんでした」になる
+  // （レビュー 2026-09-24 / 21-3）
+  useEffect(() => {
+    setQueryState("");
+    setHits([]);
+    setTagFilter(null);
+    setTagNotes([]);
+    setFolderFilter(null);
+    setFolderNotes([]);
+  }, [vaultRoot]);
+
   // 一覧の並び順（C-3 相当）。選び直したら覚える
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     try {

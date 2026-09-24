@@ -73,6 +73,9 @@ export function useNoteCommands(input: NoteCommandsInput) {
   // Enter とフォーカス外しの両方から呼ばれるので、二重発火を弾く
   // （1 回目の改名で旧パスが消え、2 回目が「見つからない」で落ちる）
   const renaming = useRef(false);
+  // 開く操作の世代。A を押した直後に B を押すと、遅れて解決した A が勝って
+  // A が開いた状態で止まっていた（レビュー 2026-09-24 / 21-3）
+  const opening = useRef(0);
   const status = (text: string) => latest.current.onStatus(text);
 
   async function openNote(given: string, cursor: number | null = null) {
@@ -81,15 +84,18 @@ export function useNoteCommands(input: NoteCommandsInput) {
     // 字面を索引・監視イベントと揃える（ADR-0050）。前回のノートの記憶などに
     // NFD が残っていても、開いたあとは NFC で持つ
     const path = nfcUnder(vaultRoot, given);
+    const mine = ++opening.current;
     await sync.flush(); // 前のノートの未保存分を書き切ってから切り替える
     let text: string;
     try {
       text = await readNote(vaultRoot, path);
     } catch (error) {
+      if (mine !== opening.current) return;
       // 一覧と実体がずれている（外で消された等）。無反応に見せない
       status(`開けませんでした: ${String(error)}`);
       return;
     }
+    if (mine !== opening.current) return; // 後から別のノートが開かれた
     selectNote(path);
     saveLastNote(storage, vaultRoot, path); // 次回の起動で開き直す
     setInitialCursor(cursor);

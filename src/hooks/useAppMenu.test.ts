@@ -52,6 +52,29 @@ describe("useAppMenu", () => {
     expect(mocked.setMenuChecks).toHaveBeenCalledTimes(2);
   });
 
+  test("test_allow_が断った動作はメニューバーからは動かず_run_からは動く（21-3）", () => {
+    const daily = vi.fn();
+    const save = vi.fn();
+    const { result, rerender } = renderHook(
+      (props: { open: boolean }) =>
+        useAppMenu({
+          checks: CHECKS,
+          actions: { "daily-note": daily, save },
+          allow: (id) => !props.open || id === "save",
+        }),
+      { initialProps: { open: true } },
+    );
+    pressed!("daily-note");
+    pressed!("save");
+    expect(daily).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1);
+    result.current.run("daily-note"); // 画面の中からは通る
+    expect(daily).toHaveBeenCalledTimes(1);
+    rerender({ open: false });
+    pressed!("daily-note");
+    expect(daily).toHaveBeenCalledTimes(2);
+  });
+
   test("test_押されたら最新の動作を呼ぶ_知らない_id_は無視", () => {
     const first = vi.fn();
     const second = vi.fn();

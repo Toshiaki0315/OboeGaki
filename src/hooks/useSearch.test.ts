@@ -57,6 +57,22 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("useSearch", () => {
+  test("test_保管フォルダを替えたら検索と絞り込みを捨てる（21-3）", async () => {
+    mocked.notesWithTag.mockResolvedValue([note("t.md")]);
+    const { result, rerender } = renderHook(
+      (props: SearchInput) => useSearch(props),
+      { initialProps: input() },
+    );
+    act(() => result.current.setQuery("予算"));
+    act(() => result.current.filterByTag("旅"));
+    await waitFor(() => expect(result.current.tagFilter).toBe("旅"));
+    rerender(input({ vaultRoot: "/w" }));
+    await waitFor(() => expect(result.current.query).toBe(""));
+    expect(result.current.hits).toEqual([]);
+    expect(result.current.tagFilter).toBeNull();
+    expect(result.current.folderFilter).toBeNull();
+  });
+
   test("test_打って 200ms 置いてから探す_結果が並ぶ", async () => {
     vi.useFakeTimers();
     mocked.searchNotes.mockResolvedValue({

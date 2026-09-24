@@ -308,8 +308,14 @@ function App() {
     deleteForever: handleDeleteForever,
     emptyTrash: handleEmptyTrash,
   } = noteCommands;
-  const handlePlaceManual = () => noteCommands.place("manual");
-  const handlePlaceMcpManual = () => noteCommands.place("mcp");
+  const handlePlaceManual = () =>
+    runWithStatus(setStatus, "手引きを置く", () =>
+      noteCommands.place("manual"),
+    );
+  const handlePlaceMcpManual = () =>
+    runWithStatus(setStatus, "MCP の手引きを置く", () =>
+      noteCommands.place("mcp"),
+    );
   /// 雛形の窓を閉じてから作る
   async function handleCreateFromTemplate(template: string) {
     closeDialog();
@@ -353,6 +359,10 @@ function App() {
   const draggingNotes = useRef<string[]>([]);
   // 一覧の複数選択。開いているノートとは別の集合（lib/note-selection）
   const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
+  // 保管フォルダを替えたら前の vault の選択は捨てる（検索・絞り込みは useSearch が捨てる）
+  useEffect(() => {
+    setSelectedNotes(new Set());
+  }, [vaultRoot]);
   // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
   const [reference, setReference] = useState<{
     path: string;
@@ -1319,9 +1329,11 @@ function App() {
       await openNote(target.path);
       return;
     }
-    const created = await createNote(root, action.payload);
-    await refresh();
-    await openNote(created);
+    await runWithStatus(setStatus, "ノートの作成", async () => {
+      const created = await createNote(root, action.payload);
+      await refresh();
+      await openNote(created);
+    });
   }
 
   function handleDocChanged(getText: () => string) {
@@ -1363,6 +1375,12 @@ function App() {
   // ネイティブのメニューバーとの配線（19-4 で hooks/useAppMenu に）。印は状態が
   // 変わるたびに全部まとめて送り、押されたら最新の動作を呼ぶ
   const appMenu = useAppMenu({
+    // 窓が開いている間はナビゲーション系を通さない（窓の対象が入れ替わる・
+    // 打ちかけの名前が消える）。保存と、クイックオープンを閉じる Cmd+O だけ通す
+    allow: (id) =>
+      dialog === null ||
+      id === "save" ||
+      (id === "quick-open" && dialog.kind === "quickOpen"),
     checks: {
       "toggle-trees": settings.treesVisible,
       "toggle-notes": settings.notesVisible,
@@ -1408,7 +1426,7 @@ function App() {
       "import-pdf": () => void handleImport("pdf"),
       "import-pptx": () => void handleImport("pptx"),
       "import-image": () => void handleImport("image"),
-      print: () => void handlePrint(),
+      print: () => void runWithStatus(setStatus, "印刷", () => handlePrint()),
       history: () => void openHistory(),
       trash: () => void handleTrash(),
       "quick-open": () => {
@@ -1449,7 +1467,10 @@ function App() {
       "format-ordered": () => editorRef.current?.applyFormat("ordered"),
       "format-quote": () => editorRef.current?.applyFormat("quote"),
       extract: () => void handleExtract(),
-      "link-graph": () => void showLinkGraph(DEFAULT_DEPTH),
+      "link-graph": () =>
+        void runWithStatus(setStatus, "リンクの図", () =>
+          showLinkGraph(DEFAULT_DEPTH),
+        ),
       "insert-table": () => {
         if (currentPathRef.current) openTableDialog();
       },
@@ -2279,7 +2300,11 @@ function App() {
               svg={dialog.svg}
               dropped={dialog.dropped}
               depth={dialog.depth}
-              onDepth={(depth) => void showLinkGraph(depth)}
+              onDepth={(depth) =>
+                void runWithStatus(setStatus, "リンクの図", () =>
+                  showLinkGraph(depth),
+                )
+              }
               onClose={closeDialog}
             />
           )}

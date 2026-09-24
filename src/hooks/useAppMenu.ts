@@ -15,12 +15,19 @@ export type MenuActions = Record<string, () => void>;
 export function useAppMenu({
   checks,
   actions,
+  allow,
 }: {
   checks: MenuChecks;
   actions: MenuActions;
+  /// メニューバーから押されたとき、今この動作を通してよいか。窓（ダイアログ）が
+  /// 開いている間にナビゲーション系が裏で動くと、窓の対象が入れ替わったり
+  /// 打ちかけの名前が消える（レビュー 2026-09-24 / 21-3）。省くと全部通す。
+  /// 画面の中からの `run` はこの判定を通らない（呼び手が状況を知っている）
+  allow?: (id: string) => boolean;
 }) {
   const latestActions = useLatest(actions);
   const latestChecks = useLatest(checks);
+  const latestAllow = useLatest(allow);
   // 印の中身が変わったときだけ送る（オブジェクトは毎描画で新しくなるので字で比べる）
   const signature = MENU_CHECK_IDS.map((id) => (checks[id] ? "1" : "0")).join(
     "",
@@ -32,8 +39,12 @@ export function useAppMenu({
   }, [signature, latestChecks]);
 
   useEffect(
-    () => subscribeMenu((id) => latestActions.current[id]?.()),
-    [latestActions],
+    () =>
+      subscribeMenu((id) => {
+        if (latestAllow.current && !latestAllow.current(id)) return;
+        latestActions.current[id]?.();
+      }),
+    [latestActions, latestAllow],
   );
 
   /// 画面の中から同じ動作を呼ぶ（歯車のメニュー）

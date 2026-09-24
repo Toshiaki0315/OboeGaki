@@ -74,6 +74,8 @@ export function PreferencesDialog(props: PreferencesProps) {
     onChangeFontSize,
     onReset,
     onClose,
+    pptxSettings,
+    onChangePptxSettings,
     historyUsage,
     installedModels,
   } = props;
@@ -84,7 +86,9 @@ export function PreferencesDialog(props: PreferencesProps) {
   const [models, setModels] = useState<string[]>([]);
   // キャンセルで戻すためのスナップショット（開いた瞬間の設定と文字サイズ）。
   // ダイアログは開いている間だけ mount されるので、初回描画 = 開いた瞬間
-  const snapshot = useRef({ settings, fontSize });
+  // PowerPoint の設定も含める — 以前は含めず、キャンセルしても残っていた
+  // （レビュー 2026-09-24 / 21-3）
+  const snapshot = useRef({ settings, fontSize, pptxSettings });
 
   useEffect(() => {
     let alive = true;
@@ -102,6 +106,7 @@ export function PreferencesDialog(props: PreferencesProps) {
   function cancel() {
     onChangeSettings(snapshot.current.settings);
     onChangeFontSize(snapshot.current.fontSize);
+    onChangePptxSettings(snapshot.current.pptxSettings);
     onClose();
   }
 
@@ -114,7 +119,11 @@ export function PreferencesDialog(props: PreferencesProps) {
   ];
 
   return (
-    <Dialog title="環境設定" className="preferences" onClose={onClose}>
+    <Dialog
+      title="環境設定"
+      className="preferences" // Esc と背景は「キャンセル」（OK は右下のボタンだけ。21-3）
+      onClose={cancel}
+    >
       <div className="pref-tabs" role="tablist" aria-label="設定のページ">
         {tabs.map((entry) => (
           <button
@@ -148,8 +157,8 @@ export function PreferencesDialog(props: PreferencesProps) {
           settings={settings}
           onChangeSettings={onChangeSettings}
           onChooseSlideTemplate={props.onChooseSlideTemplate}
-          pptxSettings={props.pptxSettings}
-          onChangePptxSettings={props.onChangePptxSettings}
+          pptxSettings={pptxSettings}
+          onChangePptxSettings={onChangePptxSettings}
           onResetPptxSettings={props.onResetPptxSettings}
           noteText={props.noteText}
         />

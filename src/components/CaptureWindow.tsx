@@ -5,10 +5,13 @@
 import { useEffect, useRef, useState } from "react";
 
 export function CaptureWindow({
+  disabled = false,
   onSubmit,
   onCancel,
 }: {
   onSubmit: (text: string) => void;
+  /// 送っている間（二重に送らない）
+  disabled?: boolean;
   /// Esc。書いていたものを渡す（親が「捨てるか」を聞く）
   onCancel: (text: string) => void;
 }) {
@@ -20,6 +23,7 @@ export function CaptureWindow({
   return (
     <div className="capture-window">
       <textarea
+        disabled={disabled}
         ref={box}
         aria-label="書き取り"
         className="capture-text"

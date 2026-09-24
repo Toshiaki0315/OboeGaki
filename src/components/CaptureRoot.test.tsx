@@ -45,6 +45,22 @@ describe("CaptureRoot", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  test("test_送っている間に_2_回押しても_1_回しか足さない（21-3）", async () => {
+    storage.set(VAULT_KEY, "/v");
+    let finish: (path: string) => void = () => {};
+    mocked.appendDaily.mockImplementation(
+      () => new Promise<string>((resolve) => (finish = resolve)),
+    );
+    render(<CaptureRoot />);
+    fireEvent.change(box(), { target: { value: "思いつき" } });
+    fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+    fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+    expect(mocked.appendDaily).toHaveBeenCalledTimes(1);
+    expect(box()).toHaveProperty("disabled", true);
+    finish("/v/2026-09-24.md");
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  });
+
   test("test_送ると今日のノートへ足して閉じる", async () => {
     storage.set(VAULT_KEY, "/v");
     render(<CaptureRoot />);
