@@ -28,7 +28,12 @@ import {
 import { attachmentEvents, type SaveAttachment } from "./attachments";
 import { csvDropEvents } from "./csv-drop";
 import { selectionDrawing } from "./selection";
-import { embedExtensions, embedResolver, type EmbedResolver } from "./embed";
+import {
+  embedExtensions,
+  embedResolver,
+  type EmbedResolver,
+  NO_EMBED,
+} from "./embed";
 import { codeHighlight, resolveCodeLanguage } from "./code-blocks";
 import { frontMatterHide } from "./frontmatter";
 import { headingFolding } from "./folding";
@@ -74,6 +79,8 @@ export function highlightsFor(sourceMode: boolean): Extension {
 
 export type CoreOptions = {
   indentedCode?: boolean;
+  /// `markdownConfig(indentedCode)` を Compartment で包んだもの（省けば素のまま）
+  language?: Extension;
   /// `#` と `[[` の補完の候補（Zustand の一覧。props で渡すとタグが増える
   /// たびにエディタが作り直される）
   tagSource: () => readonly string[];
@@ -127,7 +134,9 @@ export function coreExtensions(options: CoreOptions): Extension[] {
       "replace all": "すべて置換",
       close: "閉じる",
     }),
-    markdownConfig(options.indentedCode),
+    // Editor は `indentedCode` の切り替えを Compartment で追いかけるので、
+    // 包んだ言語設定を渡してくる（作り直すと打った内容が消える = T2。21-4）
+    options.language ?? markdownConfig(options.indentedCode),
     csvDropEvents(), // CSV を落としたら表にする（要望 2026-09-06）
     livePreview,
     options.highlights,
@@ -144,7 +153,7 @@ export function coreExtensions(options: CoreOptions): Extension[] {
       livePreview,
       highlightsFor(false),
       imageResolver.of(options.resolveImage),
-      embedResolver.of(NO_EMBED_RESOLVER),
+      embedResolver.of(NO_EMBED), // 埋め込みの中の埋め込みは解決しない（深さ 1）
       EditorView.lineWrapping,
     ]),
     activationClicks,
@@ -157,12 +166,6 @@ export function coreExtensions(options: CoreOptions): Extension[] {
   ];
 }
 
-/// 埋め込みの中の埋め込みは解決しない（深さ 1）
-const NO_EMBED_RESOLVER: EmbedResolver = {
-  resolve: async () => null,
-  open: () => {},
-};
-
 /// ベンチや試験で使う「何もしない」差し替え
 export const NOOP_CORE: Omit<
   CoreOptions,
@@ -171,7 +174,7 @@ export const NOOP_CORE: Omit<
   tagSource: () => [],
   noteSource: () => [],
   resolveImage: async () => null,
-  resolveEmbed: NO_EMBED_RESOLVER,
+  resolveEmbed: NO_EMBED,
   onActivate: () => {},
   onCodeCopied: () => {},
   saveAttachment: async () => null,

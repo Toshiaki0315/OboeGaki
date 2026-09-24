@@ -29,10 +29,8 @@ describe("App の配線", () => {
     }
   });
 
-  test("test_本文のエディタは開いた回数と字下げコードの設定で作り直す", () => {
+  test("test_本文のエディタは開いた回数だけで作り直す（設定の変化は Compartment が追う）", () => {
     const body = editorBlocks().find((b) => !b.includes("readOnly")) ?? "";
-    expect(body).toMatch(
-      /key=\{`\$\{editorSession\}:\$\{settings\.indentedCode\}`\}/,
-    );
+    expect(body).toContain("key={editorSession}");
   });
 });

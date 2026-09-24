@@ -64,6 +64,7 @@ import {
   pushLineClass,
   tableField,
 } from "./live-preview-zones";
+import { indentWidth } from "../markdown/indent";
 
 // 19-2 で 5 つに分けた。外からの import 先はこのファイルのまま
 export * from "./live-preview-reveal";
@@ -84,13 +85,6 @@ const MARK_NODES = new Set([
   "URL",
   "WikiLinkMark",
 ]);
-
-/// 先頭の空白の幅（ch）。タブは 4 字ぶんとして数える
-function leadWidthCh(lead: string): number {
-  let width = 0;
-  for (const char of lead) width += char === "\t" ? 4 : 1;
-  return width;
-}
 
 /// 開きの `<span style="…">` から、対になる `</span>` を同じ親の中で探す。
 /// 受けない style なら null（素のまま）。入れ子は深さで数える
@@ -387,7 +381,7 @@ export function previewDecorations(
           // カーソルが乗って原文が見えている間も外さない — 行が跳ねる
           const line = state.doc.lineAt(node.from);
           const lead = state.sliceDoc(line.from, node.from);
-          const indent = /^\s*$/.test(lead) ? leadWidthCh(lead) : 0;
+          const indent = /^\s*$/.test(lead) ? indentWidth(lead) : 0;
           const markerText = state.sliceDoc(node.from, node.to);
           const markWidth =
             kind === "OrderedList"

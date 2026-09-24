@@ -15,7 +15,7 @@ import {
 import { EditorView, lineNumbers as lineNumbersGutter } from "@codemirror/view";
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import { FORMAT_COMMANDS, type FormatKind } from "./format-commands";
-import { coreExtensions, highlightsFor } from "./extensions";
+import { coreExtensions, highlightsFor, markdownConfig } from "./extensions";
 import {
   focusModeField,
   setFocusMode,
@@ -198,6 +198,9 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   const highlights = useRef(new Compartment());
   // 行番号は設定で入り切りするので、作り直さずに差し替えられる形で持つ
   const gutters = useRef(new Compartment());
+  // 4 字下げをコードにするか（ADR-0033）。パーサ構成だが、作り直さずに差し替える
+  // （作り直すと打った内容が消える = T2。21-4）
+  const language = useRef(new Compartment());
   const tagSource = useRef(knownTags);
   tagSource.current = knownTags;
   const noteSource = useRef(knownNotes);
@@ -404,6 +407,14 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   }, [lineNumbers]);
 
   useEffect(() => {
+    const current = view.current;
+    if (!current) return;
+    current.dispatch({
+      effects: language.current.reconfigure(markdownConfig(indentedCode)),
+    });
+  }, [indentedCode]);
+
+  useEffect(() => {
     if (!host.current) return;
     view.current = new EditorView({
       parent: host.current,
@@ -431,6 +442,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           // 本番とベンチで**同じ**一式（extensions.ts）。差し替えたいものだけ渡す
           ...coreExtensions({
             indentedCode,
+            language: language.current.of(markdownConfig(indentedCode)),
             tagSource: () => tagSource.current?.() ?? [],
             noteSource: () => noteSource.current?.() ?? [],
             highlights: highlights.current.of(
@@ -501,9 +513,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       view.current = null;
     };
     // **mount / unmount だけ。** props の変化は各 Compartment の effect が
-    // 追いかける（T2: 文書を React state にミラーしない）
+    // 追いかける（T2: 文書を React state にミラーしない）。作り直すのは呼び手が
+    // key を変えたときだけ — `initialDoc` に依存させると、改名で本文を読み直す
+    // たびに EditorView が作り直されて Undo とキャレットが消えた（21-4）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialDoc]);
+  }, []);
 
   return (
     <div ref={host} className="editor-host" onContextMenu={onContextMenu} />

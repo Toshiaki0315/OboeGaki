@@ -11,7 +11,7 @@ import { treeOf } from "./parse-tree";
 
 import { detailsSection } from "./details-container";
 
-const HEADING_RE = /^ATXHeading(\d)$/;
+import { HEADING_NODE_RE as HEADING_RE } from "./outline";
 
 /// 見出し行が畳む範囲（見出しの行末から、同じか浅い次の見出しの手前まで）。
 /// 見出しでない・中身が無いときは null。

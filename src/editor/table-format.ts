@@ -14,6 +14,7 @@ import { Transaction } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import type { Replacement } from "./format-commands";
+import { tableAlign } from "../markdown/table-align";
 
 const ESCAPED_PIPE = "\\|";
 const PREFIX_RE = /^(?:[ \t]*>[ \t]?)*[ \t]*/;
@@ -84,15 +85,6 @@ function isDelimiter(line: string): boolean {
   );
 }
 
-function alignmentOf(cell: string): Alignment {
-  const left = cell.startsWith(":");
-  const right = cell.endsWith(":");
-  if (left && right) return "center";
-  if (right) return "right";
-  if (left) return "left";
-  return "none";
-}
-
 /// 表のソースを整える（区切りと列数だけ。**桁は揃えない**）。表でなければ null。
 export function formatTable(lines: readonly string[]): string[] | null {
   if (lines.length < 2) return null;
@@ -101,7 +93,9 @@ export function formatTable(lines: readonly string[]): string[] | null {
 
   const rows = lines.map(splitRow);
   const columns = Math.max(...rows.map((row) => row.cells.length));
-  const alignments = rows[delimiterIndex].cells.map(alignmentOf);
+  const alignments = rows[delimiterIndex].cells.map(
+    (cell): Alignment => tableAlign(cell) ?? "none",
+  );
   while (alignments.length < columns) alignments.push("none");
 
   return rows.map((row, index) => {

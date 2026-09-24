@@ -2003,8 +2003,7 @@ function App() {
                   // 見出しに合わせた改名（3-30）でパスが変わると、開いたときの
                   // 本文で初期化され、打った内容が消える（実機 2026-09-10）。
                   // 打った内容はエディタだけが持つ（T2）
-                  // `indentedCode` はパーサ構成なので、変えたときも作り直す
-                  key={`${editorSession}:${settings.indentedCode}`}
+                  key={editorSession}
                   ref={editorRef}
                   initialDoc={doc}
                   // 環境設定の 3 つ。7-4 で参照ペインにだけ渡していて、本文には

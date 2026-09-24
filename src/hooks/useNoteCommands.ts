@@ -192,7 +192,9 @@ export function useNoteCommands(input: NoteCommandsInput) {
       const text = await readNote(vaultRoot, renamed);
       selectNote(renamed);
       saveLastNote(storage, vaultRoot, renamed);
-      setDoc(text); // Rust が本文の見出しも書き換えている（ADR-0005）
+      // Rust が本文の見出しも書き換えている（ADR-0005）。開いている EditorView の
+      // 本文を差し替える（setDoc で作り直すと Undo とキャレットが消える = 21-4）
+      sync.adopt(text);
       sync.markOpened({ path: renamed, text });
       headingRef.current = firstHeading(text);
       status(renameStatusText(outcome));

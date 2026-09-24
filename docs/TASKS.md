@@ -1230,7 +1230,7 @@ c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマ
             ボタンだけ）／書き取り窓は送っている間 textarea を止めて二重に送らない／
             `showLinkGraph`・手引きを置く・印刷・`[[新規]]` からの作成を `runWithStatus`
             で包む／`openNote` に世代ガード（後から開いた方が勝つ）。テスト 6 本
-- [ ] **21-4. 低（控え。順に潰す）**
+- [x] **21-4. 低（控え。順に潰した）**
       - [x] 2026-09-25（fix）: 右クリックメニューを Esc で閉じる（変換中は無視）／
             アシスタントの答えはノートを替えたら消す／CSS に無いクラス名 4 つを外す／
             `resetPreferences` に行番号・書き取りの鍵・アシスタント・手渡しの確認を足す／
@@ -1249,7 +1249,20 @@ c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマ
             `TEMP_SUFFIX` を private に／`note_write` の間隔のコメントを実装に合わせた。
             テスト 3 本。**据え置き**: `HistoryEntry` の GUI / MCP 二重定義 — MCP は版の
             場所を出さない（時刻で名指す）設計なので、形が違うのは意図
-      - 残り: 引用内リストの Enter で `- ` が落ちる／タブ字下げのリストで
+      - [x] 2026-09-25（fix、エディタの作り直し・二重化）: `Editor` の mount は key だけに
+            （`[initialDoc]` 依存だと改名で本文を読み直すたびに EditorView が作り直され
+            Undo とキャレットが消えた）。改名は `sync.adopt` で本文を差し替える。
+            `indentedCode` は Compartment で差し替える（21-2 で key に含めていたが、
+            設定を変えると打った内容ごと作り直される危うさがあった）／同じ小関数の
+            二重化: `markdown/indent.indentWidth`（入力補助とプレビュー）・
+            `markdown/table-align.tableAlign`（表 widget と整形）・`NO_EMBED`（embed と
+            extensions）・`HEADING_NODE_RE`（outline と folding）。引用の頭の正規表現 3 種は
+            用途が違う（継続・書式・表の頭）ので残す。テスト 4 本
+      - 残り（据え置き）: `pptx.ts` の数値リテラル（設計の判断が要る）／`HistoryEntry` の
+        GUI と MCP の形（意図した違い）／`autosave` の xattr（権限は写した。Finder タグは
+        未実測）
+- [x] **21-4 は 2026-09-25 に締めた**（上の 5 コミット）
+引用内リストの Enter で `- ` が落ちる／タブ字下げのリストで
       補助が崩れる／右クリックメニューが Esc で閉じない／改名で EditorView が作り直され
       Undo が消える（`[initialDoc]` 依存）／アシスタントの答えがノートを替えても残る／
       `::**b**::` の中を書き出しが解析しない／CSS に無いクラス 4 つ（history-diff・

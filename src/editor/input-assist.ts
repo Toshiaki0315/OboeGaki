@@ -21,6 +21,7 @@ import {
   BULLET_TASK_RE as TASK_RE,
   ORDERED_PARTS_RE as ORDERED_RE,
 } from "../markdown/syntax";
+import { indentWidth } from "../markdown/indent";
 const QUOTE_RE = /^[ \t]*>[ \t]?/;
 const LEADING_SPACE_RE = /^[ \t]+/;
 
@@ -193,13 +194,6 @@ export const continueMarkup: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
-
-/// 空白の幅（タブは 4 として数える。深さの比較にだけ使う）
-function indentWidth(lead: string): number {
-  let width = 0;
-  for (const ch of lead) width += ch === "\t" ? 4 : 1;
-  return width;
-}
 
 /// 番号付きの番号を振り直す（ADR-0066。要望 2026-09-17）。
 /// `lines` は空行で切れるまでの 1 つのリスト（字下げを変えたあとの字面）。

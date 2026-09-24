@@ -82,6 +82,24 @@ beforeEach(() => {
 });
 
 describe("useNoteCommands", () => {
+  test("test_改名は開いている本文を差し替え_エディタは作り直さない（21-4）", async () => {
+    mocked.renameNote.mockResolvedValue({
+      path: "/v/新.md",
+      rewritten: 0,
+      failed: [],
+    });
+    mocked.readNote.mockResolvedValue("# 新\n本文\n");
+    const given = input({ currentPath: "/v/旧.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.rename("新"));
+    expect(given.sync.adopt).toHaveBeenCalledWith("# 新\n本文\n");
+    expect(given.sync.markOpened).toHaveBeenCalledWith({
+      path: "/v/新.md",
+      text: "# 新\n本文\n",
+    });
+    expect(result.current.editorSession).toBe(0);
+  });
+
   test("test_続けて別のノートを開いたら_遅れて解決した前のノートは捨てる（21-3）", async () => {
     let resolveA: (text: string) => void = () => {};
     mocked.readNote.mockImplementation((_root, path) =>

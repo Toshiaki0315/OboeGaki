@@ -7,7 +7,8 @@ import type { SyntaxNode } from "@lezer/common";
 /// 表 widget に渡すデータ（ADR-0035）。抽出は純関数で行いテストする。
 /// セルは「記号を落とした断片の並び」（ADR-0031 の Fragment 相当）。
 /// 入れ子は種類の集合（kinds）で持つ。
-export type TableAlign = "left" | "center" | "right" | null;
+import { tableAlign, type TableAlign } from "../markdown/table-align";
+export type { TableAlign };
 export type CellSegment = { text: string; kinds: string[] };
 export type TableData = {
   header: CellSegment[][];
@@ -85,17 +86,6 @@ function cellSegments(state: EditorState, cell: SyntaxNode): CellSegment[] {
   return out.filter((segment) => segment.text.length > 0);
 }
 
-/// 区切りセル（`:---:` など）から text-align を読む。
-function alignOf(delimiter: string): TableAlign {
-  const cell = delimiter.trim();
-  const left = cell.startsWith(":");
-  const right = cell.endsWith(":");
-  if (left && right) return "center";
-  if (right) return "right";
-  if (left) return "left";
-  return null;
-}
-
 /// Table ノードからセルの中身を取り出す（EditorState だけで動く）。
 export function tableData(state: EditorState, table: SyntaxNode): TableData {
   // **セルは区切りの位置で数える。** Lezer の Table は中身の無いセルに
@@ -140,7 +130,7 @@ export function tableData(state: EditorState, table: SyntaxNode): TableData {
         .sliceDoc(delimiter.from, delimiter.to)
         .replace(/^\||\|$/g, "")
         .split("|")
-        .map(alignOf)
+        .map(tableAlign)
     : [];
   return {
     header: header ? cellsOf(header) : [],

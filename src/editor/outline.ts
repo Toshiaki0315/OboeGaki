@@ -10,7 +10,8 @@ export type OutlineItem = {
   from: number;
 };
 
-const HEADING_RE = /^ATXHeading(\d)$/;
+/// Lezer の見出しノード（`ATXHeading1`〜`6`）。折りたたみ（folding）も同じ字で見る
+export const HEADING_NODE_RE = /^ATXHeading(\d)$/;
 
 export function outlineOf(state: EditorState): OutlineItem[] {
   const items: OutlineItem[] = [];
@@ -20,7 +21,7 @@ export function outlineOf(state: EditorState): OutlineItem[] {
   const tree = treeOf(state);
   tree.iterate({
     enter: (node) => {
-      const heading = HEADING_RE.exec(node.name);
+      const heading = HEADING_NODE_RE.exec(node.name);
       if (!heading) {
         // 見出しはトップレベル（引用の中は対象外でよい）。中まで潜らない
         return node.node.parent === null || node.name === "Document"
