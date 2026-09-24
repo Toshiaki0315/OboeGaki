@@ -25,7 +25,11 @@ import {
 } from "../lib/ipc";
 import type { NoteEntry } from "../lib/note-order";
 import { nfcUnder, noteLabel, noteStem } from "../lib/note-path";
-import { firstHeading, sanitizeStem } from "../lib/note-title";
+import {
+  firstHeading,
+  firstHeadingLine,
+  sanitizeStem,
+} from "../lib/note-title";
 import { renameStatusText } from "../lib/rename-status";
 import { failureText } from "../lib/run-command";
 import { trashLabel } from "../lib/trash-label";
@@ -37,6 +41,8 @@ export type NoteSyncPort = {
   dropPending: () => void;
   adopt: (text: string) => void;
   renamed: (from: string, to: string) => void;
+  /// 開いている本文の一部を差し替える（編集として扱う = 自動保存が走る）
+  replaceRange: (from: number, to: number, insert: string) => void;
 };
 
 export type NoteCommandsInput = {
@@ -184,18 +190,36 @@ export function useNoteCommands(input: NoteCommandsInput) {
     const trimmed = title.trim();
     if (!trimmed || trimmed === noteStem(currentPath)) return;
     renaming.current = true;
+    // 改名も「開く」と同じ世代に乗せる。改名の往復中に一覧で別のノートを
+    // 押したら、後から解決した改名側が選択と本文を上書きしない（21-5）
+    const mine = ++opening.current;
+    const flushed = latest.current.editorText();
     await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const outcome = await renameNote(vaultRoot, currentPath, trimmed);
       const renamed = outcome.path;
       await refreshLists();
       const text = await readNote(vaultRoot, renamed);
+      if (mine !== opening.current) return; // その間に別のノートが開かれた
       selectNote(renamed);
       saveLastNote(storage, vaultRoot, renamed);
       // Rust が本文の見出しも書き換えている（ADR-0005）。開いている EditorView の
-      // 本文を差し替える（setDoc で作り直すと Undo とキャレットが消える = 21-4）
-      sync.adopt(text);
+      // 本文を差し替える（setDoc で作り直すと Undo とキャレットが消える = 21-4）。
+      // **往復の間に打った字があれば全文は差し替えない** — 見出しの行だけを編集
+      // として差し替え、打った字は自動保存に乗せる（21-5）
+      const live = latest.current.editorText();
+      const typedMeanwhile =
+        live !== undefined && flushed !== undefined && live !== flushed;
       sync.markOpened({ path: renamed, text });
+      if (typedMeanwhile) {
+        const span = firstHeadingLine(live);
+        const heading = firstHeadingLine(text);
+        if (span && heading && span.line !== heading.line) {
+          sync.replaceRange(span.from, span.to, heading.line);
+        }
+      } else {
+        sync.adopt(text);
+      }
       headingRef.current = firstHeading(text);
       status(renameStatusText(outcome));
     } catch (error) {

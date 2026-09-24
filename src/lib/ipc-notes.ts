@@ -291,6 +291,8 @@ export type RelatedNote = {
   title: string;
   /// 出た理由（そのまま画面に出す）
   reasons: string[];
+  /// 根拠の重み（Rust related.rs。並び順は Rust が決める）
+  score: number;
 };
 
 export async function noteRelated(

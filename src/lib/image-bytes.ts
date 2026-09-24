@@ -63,6 +63,13 @@ export function imageDimensions(
       // BITMAPFILEHEADER 14 バイトの後、DIB ヘッダの 4〜11 バイト目が幅・高さ
       // （little endian、符号付き。高さは上下逆さの印で負になることがある）
       if (bytes.length < 26) return null;
+      // 古い BITMAPCOREHEADER（DIB ヘッダが 12 バイト）は幅・高さが 16 bit（21-5）
+      if (view.getUint32(14, true) === 12) {
+        return {
+          width: view.getUint16(18, true),
+          height: view.getUint16(20, true),
+        };
+      }
       return {
         width: Math.abs(view.getInt32(18, true)),
         height: Math.abs(view.getInt32(22, true)),

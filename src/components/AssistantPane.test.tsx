@@ -112,7 +112,12 @@ describe("AssistantPane", () => {
     const props = setup({
       relatedShown: true,
       related: [
-        { path: "b.md", title: "計画", reasons: ["同じタグ", "リンク"] },
+        {
+          path: "b.md",
+          title: "計画",
+          reasons: ["同じタグ", "リンク"],
+          score: 2,
+        },
       ],
     });
     expect(screen.getByText("同じタグ / リンク")).toBeTruthy();

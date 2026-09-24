@@ -121,8 +121,16 @@ export function PreferencesDialog(props: PreferencesProps) {
   return (
     <Dialog
       title="環境設定"
-      className="preferences" // Esc と背景は「キャンセル」（OK は右下のボタンだけ。21-3）
-      onClose={cancel}
+      className="preferences"
+      // 背景を押したら閉じる（**保持**。設定は触った瞬間に反映されるので、確認して
+      // 外を押した人の変更を戻さない）。Esc だけキャンセル（21-5 で決めた）
+      onClose={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          cancel();
+        }
+      }}
     >
       <div className="pref-tabs" role="tablist" aria-label="設定のページ">
         {tabs.map((entry) => (

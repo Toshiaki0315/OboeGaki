@@ -95,6 +95,8 @@ describe("graphToMermaid", () => {
     });
     const text = graphToMermaid(graph, ["a"]);
     expect(text).toMatch(/n0 --> n1|n1 --> n0/);
+    // 起点も同じ鍵で引く（NFD の起点が目立たなかった。21-5）
+    expect(graphToMermaid(graph, [nfd])).toMatch(/class n\d+ start/);
   });
 
   test("起点は目立たせる", () => {

@@ -33,4 +33,10 @@ describe("App の配線", () => {
     const body = editorBlocks().find((b) => !b.includes("readOnly")) ?? "";
     expect(body).toContain("key={editorSession}");
   });
+
+  test("test_参照ペインも開いた回数で作り直す（パスだと開き直しで本文が凍る。21-5）", () => {
+    const side = editorBlocks().find((b) => b.includes("readOnly")) ?? "";
+    expect(side).toContain("key={referenceSession}");
+    expect(side).not.toContain("key={reference.path}");
+  });
 });

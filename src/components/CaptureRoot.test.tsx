@@ -61,6 +61,19 @@ describe("CaptureRoot", () => {
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   });
 
+  test("test_足せたのに閉じられないときは再送を受けない（21-5）", async () => {
+    storage.set(VAULT_KEY, "/v");
+    close.mockRejectedValue(new Error("window"));
+    render(<CaptureRoot />);
+    fireEvent.change(box(), { target: { value: "思いつき" } });
+    fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+    await waitFor(() =>
+      expect(screen.getByText(/閉じられませんでした/)).toBeTruthy(),
+    );
+    fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+    expect(mocked.appendDaily).toHaveBeenCalledTimes(1);
+  });
+
   test("test_送ると今日のノートへ足して閉じる", async () => {
     storage.set(VAULT_KEY, "/v");
     render(<CaptureRoot />);

@@ -87,6 +87,22 @@ describe("PreferencesDialog", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
+  test("test_背景を押すと閉じるだけで戻さない（21-5）", () => {
+    const { props, view } = setup();
+    view.rerender(
+      <PreferencesDialog
+        {...props}
+        settings={{ ...DEFAULT_SETTINGS, theme: "dark" }}
+      />,
+    );
+    fireEvent.mouseDown(
+      screen.getByRole("dialog").parentElement as HTMLElement,
+    );
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onChangeSettings).not.toHaveBeenCalled();
+    expect(props.onChangePptxSettings).not.toHaveBeenCalled();
+  });
+
   test("test_キャンセルは_PowerPoint_の設定も戻し_Esc_もキャンセル（21-3）", () => {
     const { props, view } = setup();
     view.rerender(

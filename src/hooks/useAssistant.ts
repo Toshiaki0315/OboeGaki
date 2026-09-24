@@ -3,6 +3,7 @@
 // lib/ipc で、ここは判断と状態だけを持つ。**本文は手（noteText）で受け取り、
 // EditorView は持たない**（T2）。
 
+import { useLatest } from "./useLatest";
 import { useEffect, useRef, useState } from "react";
 import {
   appendChunk,
@@ -60,6 +61,9 @@ export function useAssistant({
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [answer, setAnswer] = useState("");
   const [thinking, setThinking] = useState(false);
+  const thinkingRef = useLatest(thinking);
+  // ノートを替えて止めた生成の続きが届いても捨てる印（次の生成で下ろす）
+  const stale = useRef(false);
   // 関連するノート（L-3）。**モデルは通さない**ので、Ollama が無くても出る
   const [related, setRelated] = useState<RelatedNote[]>([]);
   const [relatedShown, setRelatedShown] = useState(false);
@@ -93,7 +97,14 @@ export function useAssistant({
     setRelatedShown(false);
     setSources((current) => (current.length === 0 ? current : []));
     setAnswer((current) => (current === "" ? current : ""));
-  }, [currentPath]);
+    // 走っている生成も止める。止めないと前のノートの答えの続きが流れ込む
+    // （再レビュー 2026-09-25 / 21-5）
+    if (thinkingRef.current) {
+      void llmStop();
+      setThinking(false);
+      stale.current = true; // 止めたあとに届く続きは捨てる
+    }
+  }, [currentPath, thinkingRef]);
 
   // 開いたときだけ動いているか確かめる（**押してから断らない**）
   useEffect(() => {
@@ -115,7 +126,10 @@ export function useAssistant({
   useEffect(
     () =>
       subscribeLlm({
-        onChunk: (piece) => setAnswer((current) => appendChunk(current, piece)),
+        onChunk: (piece) => {
+          if (stale.current) return; // ノートを替えて止めた生成の続き
+          setAnswer((current) => appendChunk(current, piece));
+        },
         onDone: () => setThinking(false),
         onFailed: (reason) => {
           setThinking(false);
@@ -190,6 +204,7 @@ export function useAssistant({
     const packed = packSources(
       picked.map((hit, index) => ({ title: hit.title, body: bodies[index] })),
     );
+    stale.current = false;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task: "question",
@@ -211,6 +226,7 @@ export function useAssistant({
     await flushEdits(); // 打ちかけを書き切ってから読ませる
     const text = noteText();
     clear();
+    stale.current = false;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task,

@@ -39,12 +39,18 @@ export function CaptureRoot() {
           // 同じ文が 2 回足された（レビュー 2026-09-24 / 21-3）。送っている間は受けない
           if (sending) return;
           setSending(true);
-          appendDaily(root, text)
-            .then(() => closeSelf())
-            .catch((error) => {
+          appendDaily(root, text).then(
+            () =>
+              // 足せたのに窓が閉じられないときは、再送を受けない（もう一度
+              // 送ると二重に足す。21-5）
+              closeSelf().catch((error) =>
+                setStatus(`閉じられませんでした: ${String(error)}`),
+              ),
+            (error) => {
               setSending(false);
               setStatus(`書けませんでした: ${String(error)}`);
-            });
+            },
+          );
         }}
         onCancel={(text) => {
           if (!text.trim()) {

@@ -92,6 +92,11 @@ describe("useAssistant", () => {
     expect(result.current.answer).toBe("要点");
     rerender(input({ currentPath: "/v/別.md" }));
     expect(result.current.answer).toBe("");
+    // 生成も止め、あとから届いた続きは捨てる（21-5）
+    expect(mocked.llmStop).toHaveBeenCalled();
+    expect(result.current.thinking).toBe(false);
+    act(() => handlers?.onChunk("の続き"));
+    expect(result.current.answer).toBe("");
   });
 
   test("test_失敗は読める言葉にして答えの場所に出す", async () => {
@@ -186,7 +191,7 @@ describe("useAssistant", () => {
 
   test("test_関連は索引から引き_別のノートへ移ると畳む（L-3）", async () => {
     mocked.noteRelated.mockResolvedValue([
-      { path: "計画.md", title: "計画", reasons: ["同じタグ"] },
+      { path: "計画.md", title: "計画", reasons: ["同じタグ"], score: 1 },
     ]);
     const { result, rerender } = renderHook(
       (given: AssistantInput) => useAssistant(given),

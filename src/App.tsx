@@ -284,7 +284,12 @@ function App() {
     savedAt,
     selectNote,
     refreshLists: refresh,
-    sync,
+    // 改名で見出しの行だけ差し替える口（21-5）。編集として扱われ自動保存が走る
+    sync: {
+      ...sync,
+      replaceRange: (from, to, insert) =>
+        editorRef.current?.replaceRange(from, to, insert),
+    },
     onStatus: setStatus,
     onOpened: () => discardPrintBody(), // 前のノートの印刷用の組みを捨てる（ADR-0038）
     editorText: () => editorRef.current?.getText(),
@@ -364,6 +369,9 @@ function App() {
     setSelectedNotes(new Set());
   }, [vaultRoot]);
   // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
+  // 横に開いた回数。Editor の作り直しは key だけなので、同じノートを開き直しても
+  // 本文が新しくなるよう数える（再レビュー 2026-09-25 / 21-5）
+  const [referenceSession, setReferenceSession] = useState(0);
   const [reference, setReference] = useState<{
     path: string;
     title: string;
@@ -1142,6 +1150,7 @@ function App() {
     try {
       const text = await readNote(vaultRoot, path);
       setReference({ path, title: noteStem(path), text });
+      setReferenceSession((session) => session + 1);
       setRightPane("reference");
     } catch (error) {
       setStatus(`横に開けませんでした: ${String(error)}`);
@@ -1377,10 +1386,21 @@ function App() {
   const appMenu = useAppMenu({
     // 窓が開いている間はナビゲーション系を通さない（窓の対象が入れ替わる・
     // 打ちかけの名前が消える）。保存と、クイックオープンを閉じる Cmd+O だけ通す
-    allow: (id) =>
-      dialog === null ||
-      id === "save" ||
-      (id === "quick-open" && dialog.kind === "quickOpen"),
+    allow: (id) => {
+      // 同期の 3 択（復元・外部削除・競合）も窓（再レビュー 2026-09-25 / 21-5）
+      const blocked =
+        dialog !== null ||
+        sync.recovery > 0 ||
+        sync.deleted !== null ||
+        sync.conflict !== null;
+      if (!blocked || id === "save") return true;
+      // パレット（クイックオープン・見出し・雛形）の間の Cmd+O は切り替えに使う
+      const palette =
+        dialog?.kind === "quickOpen" ||
+        dialog?.kind === "headings" ||
+        dialog?.kind === "templates";
+      return id === "quick-open" && palette;
+    },
     checks: {
       "toggle-trees": settings.treesVisible,
       "toggle-notes": settings.notesVisible,
@@ -2397,7 +2417,7 @@ function App() {
               {/* **本文と同じエディタを読み取り専用で使う**（別の描き方を
                 用意すると、帯や折りたたみが 2 系統になる） */}
               <Editor
-                key={reference.path}
+                key={referenceSession}
                 readOnly
                 initialDoc={reference.text}
                 resolveImage={(url) => imageSource(vaultRoot, url)}

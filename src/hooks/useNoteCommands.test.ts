@@ -53,6 +53,7 @@ function port(): NoteSyncPort {
     dropPending: vi.fn(),
     adopt: vi.fn(),
     renamed: vi.fn(),
+    replaceRange: vi.fn(),
   };
 }
 
@@ -98,6 +99,51 @@ describe("useNoteCommands", () => {
       text: "# 新\n本文\n",
     });
     expect(result.current.editorSession).toBe(0);
+  });
+
+  test("test_改名の往復の間に打った字は消さず_見出しの行だけ差し替える（21-5）", async () => {
+    mocked.renameNote.mockResolvedValue({
+      path: "/v/新.md",
+      rewritten: 0,
+      failed: [],
+    });
+    mocked.readNote.mockResolvedValue("# 新\n本文\n");
+    const editorText = vi
+      .fn<() => string | undefined>()
+      .mockReturnValueOnce("# 旧\n本文\n")
+      .mockReturnValue("# 旧\n本文\n打った\n");
+    const given = input({ currentPath: "/v/旧.md", editorText });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.rename("新"));
+    expect(given.sync.adopt).not.toHaveBeenCalled();
+    expect(given.sync.replaceRange).toHaveBeenCalledWith(0, 3, "# 新");
+    expect(given.sync.markOpened).toHaveBeenCalledWith({
+      path: "/v/新.md",
+      text: "# 新\n本文\n",
+    });
+  });
+
+  test("test_改名の往復中に別のノートを開いたら_改名側は選択と本文を触らない（21-5）", async () => {
+    let finishRename: (outcome: {
+      path: string;
+      rewritten: number;
+      failed: string[];
+    }) => void = () => {};
+    mocked.renameNote.mockImplementation(
+      () => new Promise((resolve) => (finishRename = resolve)),
+    );
+    mocked.readNote.mockResolvedValue("# B\n");
+    const given = input({ currentPath: "/v/旧.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    const renaming = result.current.rename("新");
+    await act(() => result.current.openNote("/v/b.md"));
+    await act(async () => {
+      finishRename({ path: "/v/新.md", rewritten: 0, failed: [] });
+      await renaming;
+    });
+    expect(given.selectNote).toHaveBeenCalledTimes(1);
+    expect(given.selectNote).toHaveBeenCalledWith("/v/b.md");
+    expect(given.sync.adopt).not.toHaveBeenCalled();
   });
 
   test("test_続けて別のノートを開いたら_遅れて解決した前のノートは捨てる（21-3）", async () => {

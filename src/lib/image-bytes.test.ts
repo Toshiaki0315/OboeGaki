@@ -90,5 +90,11 @@ describe("image-bytes", () => {
     new DataView(bmp.buffer).setInt32(18, 3, true);
     new DataView(bmp.buffer).setInt32(22, -2, true); // 上下逆さの印
     expect(imageDimensions("bmp", bmp)).toEqual({ width: 3, height: 2 });
+    // 古い BITMAPCOREHEADER（12 バイト）は 16 bit の幅・高さ
+    const core = new Uint8Array(26);
+    new DataView(core.buffer).setUint32(14, 12, true);
+    new DataView(core.buffer).setUint16(18, 5, true);
+    new DataView(core.buffer).setUint16(20, 4, true);
+    expect(imageDimensions("bmp", core)).toEqual({ width: 5, height: 4 });
   });
 });

@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useLatest } from "../hooks/useLatest";
 import { menuPosition } from "../lib/context-menu";
 
 /// 右クリックのメニュー（枠と置き場所）。
@@ -31,15 +32,16 @@ export function ContextMenu({
   );
   // Esc で閉じる（Dialog と同じ約束。以前はマウスで外を押すまで閉じなかった。21-4）。
   // メニューは focus を持たないので window で拾う。変換中の Esc は IME の取り消し
+  const latestClose = useLatest(onClose);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing) return;
       event.preventDefault();
-      onClose();
+      latestClose.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [latestClose]);
 
   useLayoutEffect(() => {
     const box = list.current?.getBoundingClientRect();

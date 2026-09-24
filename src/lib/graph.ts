@@ -145,7 +145,7 @@ export function graphToMermaid(graph: Graph, starts: string[]): string {
   // 起点は目立たせる（どこから見ている図か分かるように）
   lines.push("  classDef start stroke-width:3px");
   const startIds = starts
-    .map((title) => ids.get(title.toLowerCase()))
+    .map((title) => ids.get(titleKey(title)))
     .filter((id): id is string => Boolean(id));
   if (startIds.length > 0) {
     lines.push(`  class ${startIds.join(",")} start`);
