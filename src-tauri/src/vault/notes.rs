@@ -182,7 +182,8 @@ impl Vault {
         if let Ok(text) = read_note(&target) {
             let rewritten = with_title(&text, title);
             if rewritten != text {
-                crate::autosave::save_atomic(&target, &rewritten)?;
+                // 見出しの差し替え前の姿も版に残す（21-1）
+                self.write_with_version(&target, &text, &rewritten)?;
             }
         }
         Ok(target)
@@ -398,7 +399,9 @@ mod tests {
         assert_eq!(vault.rename(&path, "a").unwrap(), path);
         let renamed = vault.rename(&path, "b").unwrap();
         assert_eq!(renamed, root.path().join("b.markdown"));
-        assert_eq!(crate::history::versions(&store, "path:b.markdown").len(), 1);
+        // 連れて行った 1 版 + 見出しを書き換える前の姿（21-1）で 2 版
+        let carried = crate::history::versions(&store, "path:b.markdown");
+        assert_eq!(carried.len(), 2);
         assert!(crate::history::versions(&store, "path:a.markdown").is_empty());
     }
 
@@ -461,5 +464,18 @@ mod tests {
         assert!(vault
             .move_note(&root.path().join("会議-2.md"), "attachments")
             .is_err());
+    }
+
+    /// 改名の見出し書き換えも版を残してから。残せなければ見出しは触らない（21-1）
+    #[test]
+    fn test_rename_版を残せなければ見出しを書き換えない() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let note = crate::test_support::note(root.path(), "a.md", "# 旧\n\n本文\n");
+        let _locked = crate::test_support::lock_history(&vault);
+        assert!(vault.rename(&note, "新").is_err());
+        // ファイルは動いていても、本文の見出しは元のまま
+        let moved = root.path().join("新.md");
+        let text = std::fs::read_to_string(if moved.exists() { &moved } else { &note }).unwrap();
+        assert!(text.starts_with("# 旧\n"), "{text}");
     }
 }

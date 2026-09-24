@@ -82,13 +82,27 @@ pub fn keep(
             }
         }
     }
-    let target = root
+    let mut stamp = now;
+    let mut target = root
         .join(&folder)
-        .join(format!("{}.md", now.format(STAMP_FORMAT)));
+        .join(format!("{}.md", stamp.format(STAMP_FORMAT)));
+    // 同じ秒に中身の違う版が来たら、前の版を潰さず**秒を進める**（rekey と
+    // 同じ逃げ方。枝番は STAMP_FORMAT で読めず一覧から消える）。以前は「同じ秒
+    // なら上書きでよい」としていたが、MCP の差し替えを 1 秒以内に 2 回呼ぶと
+    // 開いていないノートの唯一の旧本文が消えた（レビュー 2026-09-24。T7）
+    while target.exists()
+        && fs::read_to_string(&target)
+            .map(|kept| kept != text)
+            .unwrap_or(true)
+    {
+        stamp += Duration::seconds(1);
+        target = root
+            .join(&folder)
+            .join(format!("{}.md", stamp.format(STAMP_FORMAT)));
+    }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
-    // 同じ秒に 2 回来たら上書きでよい（中身は同じか、直後の打ち直し）。
     // 履歴は唯一「作り直せない」資産（T7）なので、本文と同じく
     // アトミックに書く — 途中で落ちて切り詰められた版が正常な顔で
     // 並ぶと、それを選んだときノートまで壊れる（レビュー 2026-09-04）
@@ -470,5 +484,28 @@ mod tests {
     fn test_prune_置き場が無ければ何もしない() {
         let dir = TempDir::new().unwrap();
         assert!(prune(&dir.path().join("無い"), at(2026, 9, 4, 0, 0)).is_empty());
+    }
+
+    /// 同じ秒に中身の違う版が 2 回来ても、前の版を潰さない（レビュー 2026-09-24。
+    /// MCP の replace_note を 1 秒以内に 2 回呼ぶと、開いていないノートの唯一の
+    /// 旧本文が消えていた = T7）
+    #[test]
+    fn test_keep_同じ秒に中身の違う版が来ても前の版を潰さない() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let now = at(2026, 9, 24, 10, 0);
+        let first = keep(dir.path(), "path:a.md", "A\n", now, true, 0)
+            .unwrap()
+            .unwrap();
+        let second = keep(dir.path(), "path:a.md", "B\n", now, true, 0)
+            .unwrap()
+            .unwrap();
+        assert_ne!(first, second);
+        assert_eq!(fs::read_to_string(&first).unwrap(), "A\n");
+        assert_eq!(fs::read_to_string(&second).unwrap(), "B\n");
+        // 一覧にも両方出る（秒を進めた名前は STAMP_FORMAT で読める）
+        assert_eq!(versions(dir.path(), "path:a.md").len(), 2);
+        // 同じ中身が同じ秒に来たときは 1 つのまま
+        let again = keep(dir.path(), "path:a.md", "B\n", now, true, 0).unwrap();
+        assert!(again.is_none());
     }
 }

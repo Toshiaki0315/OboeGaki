@@ -55,6 +55,36 @@ impl Vault {
         history_key(&self.root, path)
     }
 
+    /// 版を残してから書く。**残せなければ書かない** — 開いていないノートの
+    /// 旧本文は履歴にしか無い（T7）ので、残せないまま書くと黙って消える。
+    /// 「読んで書き戻す」箇所（やることの完了・ピン・追記・改名の見出し・
+    /// 一括書き換え・MCP の差し替え・版の復元）は全部ここを通す（21-1。
+    /// 以前は 3 か所が eprintln だけで書き進め、5 か所は版を残していなかった）。
+    /// 直前の版と同じ中身なら `keep` が黙って飛ばすので二重にはならない
+    pub fn write_with_version(
+        &self,
+        path: &Path,
+        before: &str,
+        after: &str,
+    ) -> std::io::Result<()> {
+        let store = crate::history::store_root(&self.managed_dir());
+        crate::history::keep(
+            &store,
+            &self.history_key(path),
+            before,
+            chrono::Local::now().naive_local(),
+            true,
+            0,
+        )
+        .map_err(|error| {
+            std::io::Error::new(
+                error.kind(),
+                format!("版を残せなかったので書きませんでした: {error}"),
+            )
+        })?;
+        crate::autosave::save_atomic(path, after)
+    }
+
     /// 履歴の置き場を新しいパスへ付け替える。**失敗しても進める** —
     /// 版を連れて行けないことより、動かせないことの方が困る。
     /// **履歴を動かす道はここ 1 本**（改名・移動・ゴミ箱・戻す・フォルダ）
@@ -107,5 +137,29 @@ mod tests {
             "path:仕事/新しい.md"
         );
         assert_eq!(vault.history_key(&nfd), want);
+    }
+
+    /// 「読んで書き戻す」箇所は全部これを通す（21-1）。版を残してから書く
+    #[test]
+    fn test_write_with_version_版を残してから書く() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let note = crate::test_support::note(root.path(), "a.md", "旧\n");
+        vault.write_with_version(&note, "旧\n", "新\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "新\n");
+        let store = crate::history::store_root(&vault.managed_dir());
+        let versions = crate::history::versions(&store, &vault.history_key(&note));
+        assert_eq!(versions.len(), 1);
+        assert_eq!(std::fs::read_to_string(&versions[0].path).unwrap(), "旧\n");
+    }
+
+    /// 版を残せなければ**書かない**（T7: 開いていないノートの旧本文は履歴にしか無い）
+    #[test]
+    fn test_write_with_version_版を残せなければ書かない() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let note = crate::test_support::note(root.path(), "a.md", "旧\n");
+        let _locked = crate::test_support::lock_history(&vault);
+        let error = vault.write_with_version(&note, "旧\n", "新\n").unwrap_err();
+        assert!(error.to_string().contains("版を残せなかった"), "{error}");
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "旧\n");
     }
 }

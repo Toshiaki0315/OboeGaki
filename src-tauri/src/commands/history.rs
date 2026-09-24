@@ -22,31 +22,26 @@ pub(super) fn history_root(root: &str) -> std::path::PathBuf {
 /// 返り値は書き戻したあとの本文。Tauri を知らないので headless で試せる（T3）
 pub fn restore_version(root: &str, note: &Path, version: &Path) -> CmdResult<String> {
     let version = version_in_history(root, note, version)?;
-    let store = history_root(root);
-    let key = history_key(root, note);
-    let now = chrono::Local::now().naive_local();
+    // 版も Shift_JIS のことがある（読みは全部 read_note を通す。19-3）
+    let text = crate::vault::read_note(&version)?;
     // **今の内容を版に残せたことが、書き戻す前提。** 残せないまま書き戻すと
     // 今の本文はどこにも無くなる — それこそ「取り消せない操作」になる
-    // （レビュー 2026-09-23。以前は eprintln だけで書き戻していた）。
+    // （レビュー 2026-09-23。以前は eprintln だけで書き戻していた。道は
+    // Vault::write_with_version の 1 本 = 21-1）。
     // ノートが無いときだけは残すものが無いので、そのまま戻してよい
     match crate::vault::read_note(note) {
-        Ok(current) => {
-            if let Err(error) = history::keep(&store, &key, &current, now, true, 0) {
-                return Err(CmdError(format!(
-                    "今の内容を版に残せなかったので、戻すのを止めました: {error}"
-                )));
-            }
+        Ok(current) => Vault::new(root)
+            .write_with_version(note, &current, &text)
+            .map_err(|error| CmdError(format!("戻すのを止めました: {error}")))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            autosave::save_atomic(note, &text)?;
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
             return Err(CmdError(format!(
                 "今の内容を読めなかったので、戻すのを止めました: {error}"
             )));
         }
     }
-    // 版も Shift_JIS のことがある（読みは全部 read_note を通す。19-3）
-    let text = crate::vault::read_note(&version)?;
-    autosave::save_atomic(note, &text)?;
     Ok(text)
 }
 

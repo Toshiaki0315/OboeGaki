@@ -2,7 +2,6 @@
 // Tauri commands の薄い層（T3）。分け方は commands/mod.rs を見る
 
 use super::{guarded, CmdError, CmdResult, WatchState};
-use crate::autosave;
 use crate::index_db::IndexDb;
 use crate::vault::Vault;
 
@@ -36,9 +35,9 @@ pub fn task_complete(
     let text = crate::vault::read_note(&note)?;
     let rewritten = crate::tasks::set_task_done(&text, line, true)
         .ok_or_else(|| "その行はやることではありません".to_string())?;
-    state.suppressor.mark(&note);
-    autosave::save_atomic(&note, &rewritten)?;
     let vault = Vault::new(&root);
+    state.suppressor.mark(&note);
+    vault.write_with_version(&note, &text, &rewritten)?;
     if let Err(error) =
         IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
     {

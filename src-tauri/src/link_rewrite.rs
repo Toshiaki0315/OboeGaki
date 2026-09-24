@@ -45,13 +45,8 @@ pub fn rewrite_all(
             continue;
         };
         if let Some(db) = db.as_deref_mut() {
-            if let Err(error) = keep_version(vault, &absolute, &text) {
-                outcome.failed.push(format!(
-                    "{relative}: 版を残せなかったので書き換えませんでした（{error}）"
-                ));
-                continue;
-            }
-            if let Err(error) = crate::autosave::save_atomic(&absolute, &rewritten) {
+            // 版を残せなければ書かない（Vault::write_with_version。21-1）
+            if let Err(error) = vault.write_with_version(&absolute, &text, &rewritten) {
                 outcome.failed.push(format!("{relative}: {error}"));
                 continue;
             }
@@ -64,24 +59,6 @@ pub fn rewrite_all(
         outcome.paths.push(absolute);
     }
     outcome
-}
-
-/// 書き換える前の本文を版に残す（ADR-0055: 置換は元に戻せない操作なので、
-/// 版で受け止める。T7: 履歴は作り直せない）。開いていないノートを書き換える
-/// と、ここで残さない限り旧本文はどこにも残らない。**残せなかったら書かない** —
-/// 呼び手はそのノートを失敗に数えて飛ばす（レビュー 2026-09-23。以前は
-/// eprintln だけで書き進めていて、.app では誰にも見えなかった）
-fn keep_version(vault: &Vault, absolute: &std::path::Path, text: &str) -> std::io::Result<()> {
-    let store = crate::history::store_root(&vault.managed_dir());
-    crate::history::keep(
-        &store,
-        &vault.history_key(absolute),
-        text,
-        chrono::Local::now().naive_local(),
-        true,
-        0,
-    )
-    .map(|_| ())
 }
 
 /// `old` を指しているノートの `[[old]]` を `new` に書き換える。
@@ -110,14 +87,7 @@ pub fn rewrite_links_to(vault: &Vault, db: &mut IndexDb, old: &str, new: &str) -
         let Some(rewritten) = crate::wikilink::rewrite_wikilinks(&text, old, new) else {
             continue;
         };
-        if let Err(error) = keep_version(vault, &absolute, &text) {
-            outcome.failed.push(format!(
-                "{}: 版を残せなかったので書き換えませんでした（{error}）",
-                referrer.path
-            ));
-            continue;
-        }
-        if let Err(error) = crate::autosave::save_atomic(&absolute, &rewritten) {
+        if let Err(error) = vault.write_with_version(&absolute, &text, &rewritten) {
             outcome.failed.push(format!("{}: {error}", referrer.path));
             continue;
         }

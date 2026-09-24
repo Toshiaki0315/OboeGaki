@@ -1175,6 +1175,54 @@ Rust / ipc の大きいファイル」。挙動を変えるのは Dialog の Esc
       既に出ていた。見本が方言と違っていただけなので、Word の golden の見本を `::印::`
       に直して `<w:highlight>` が出ることを golden が見るようにした
 
+## 第 21 群 — 全体レビューの指摘（2026-09-24。Rust / エディタ / lib / UI の 4 観点）
+
+c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマンド・8 イベント）は
+両側で一致、HTML 書き出しの逃がしは堅く、T1〜T7 は守られている。直すのは下の順。
+
+- [x] **21-1. 版を残せなければ書かない、を 1 本に**（2026-09-24。fix）
+      - [x] `history::keep` の同秒上書き: 中身の違う版が同じ秒に来たら**秒を進める**
+            （rekey と同じ）。MCP の差し替えを 1 秒以内に 2 回呼ぶと旧本文が消えていた
+      - [x] `Vault::write_with_version(path, before, after)` を置き、「読んで書き戻す」
+            8 か所を全部通す: やることの完了・ピン・日次の追記・改名の見出し・MCP の
+            追記と差し替え・一括書き換え（置換・タグ改名・リンク書き換え）・版の復元。
+            うち 5 か所はこれまで版を残していなかった。テスト 6 本（`lock_history`）
+- [ ] **21-2. 高の残り**
+      - [ ] Word 書き出しで PNG 以外の画像（JPEG / GIF / WebP）が黙って消える
+            （`docx-blocks.dataUrlBytes`）
+      - [ ] 環境設定の「タブ幅・行番号・字下げコード」が本文エディタに届いていない
+            （App.tsx。参照ペインにだけ渡している。7-4 の 2026-09-06 から）。App の配線
+            テストを 1 本足す
+      - [ ] 表の Tab がセル末尾の空白でセルの帰属を誤り、列を足してしまう（table-keys）
+      - [ ] front matter だけで末尾改行の無い文書で、閉じ `---` の直後への入力が
+            ガードを素通りする（frontmatter.ts / markdown/front-matter.ts）
+- [ ] **21-3. 中（同じ型のものをまとめて）**
+      - [ ] Rust: `move_folder` / `create_folder` の実体（シンボリックリンク）検査／
+            `index_one` の `strip_prefix` 失敗を無音で通さない（`guarded` の実体パスと
+            生 root の食い違い）／`.mcp-ignore` を `save_atomic` で／`task_complete` は
+            行の本文も突き合わせる／MCP `app_running` がロックを取って GUI を誤って断る
+      - [ ] エディタ: キャレット外でブロック内部が置換されたときのゾーン更新
+            （`touchesRange`）／`tableField` を触った表だけ差し替える／`CheckboxWidget.eq`
+            から位置を外す／引用・リスト内の ```mermaid が生で出る
+      - [ ] lib: PowerPoint の不揃いな表（列数を 1 行目に揃える）／見出しの色 span が
+            スライド題に生で載る／`imageSource` の不正 `%` で同期例外／行内脚注の番号ずれ
+            ／`pptx.ts` の数値リテラル（GR-01）をテストで見張る／`graph.ts` の id を
+            `key()` で引く
+      - [ ] UI: vault を替えたら検索・絞り込み・選択を捨てる／ダイアログ中はメニューの
+            ショートカットを通さない／環境設定のキャンセルが PowerPoint 設定を戻さず
+            Esc が OK 扱い／書き取り窓の ⌘+Enter 連打で二重追記／`showLinkGraph` など
+            4 か所に catch が無い／`openNote` に世代ガード
+- [ ] **21-4. 低（控え）**: 引用内リストの Enter で `- ` が落ちる／タブ字下げのリストで
+      補助が崩れる／右クリックメニューが Esc で閉じない／改名で EditorView が作り直され
+      Undo が消える（`[initialDoc]` 依存）／アシスタントの答えがノートを替えても残る／
+      `::**b**::` の中を書き出しが解析しない／CSS に無いクラス 4 つ（history-diff・
+      saved-search-name・task-note・task-due）／`RelatedNote` `HistoryEntry` の GUI と MCP
+      二重定義／同じ小関数の二重化 5 組（leadWidthCh≡indentWidth など）／テストにしか
+      使われていない pub 4 つ／`autosave` が権限・xattr を落とす（未実測）／`.tmp` の
+      掃除が無い／`resetPreferences` が 4 項目を戻さない／HistoryDialog の「60 分」決め
+      打ち／`note_write` の force 常に false とコメントの食い違い／コメントと実装のずれ
+      数か所（`vault-changed` の kind・menu-checks の数・ipc の説明の付け違い）
+
 ## 待ち — 外部要因でブロック中
 
 - [ ] **署名・公証**（TASKS 0-C）Apple Developer アカウント待ち

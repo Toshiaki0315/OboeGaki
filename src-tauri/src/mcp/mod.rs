@@ -384,7 +384,7 @@ impl McpVault {
                 out
             }
             None => {
-                let mut out = current;
+                let mut out = current.clone();
                 if !out.is_empty() && !out.ends_with('\n') {
                     out.push('\n');
                 }
@@ -393,7 +393,10 @@ impl McpVault {
                 out
             }
         };
-        crate::autosave::save_atomic(&absolute, &updated).map_err(|e| e.to_string())?;
+        // 追記も差し替えと同じく、版を残せなければ書かない（21-1）
+        self.vault
+            .write_with_version(&absolute, &current, &updated)
+            .map_err(|e| format!("{cleaned}: {e}"))?;
         Ok(Written { path: cleaned })
     }
 
@@ -438,29 +441,14 @@ impl McpVault {
         // **差し替える前の姿は必ず残す**（ADR-0023 / T7）。アプリが動いていても
         // 頼らない — watcher は外部変更で版を残さないので、開いていないノート
         // を差し替えると旧本文がどこにも無くなる（レビュー 2026-09-14）。
-        // 直前の版と同じ中身なら `keep` が黙って飛ばすので二重にはならない。
-        // **残せなかったら差し替えない** — 以前は eprintln だけで書き進めて
-        // いた。AI には isError で返り、人に見える（レビュー 2026-09-23）
-        {
-            let whole = read_note(&absolute).map_err(|e| e.to_string())?;
-            let store = crate::history::store_root(&self.vault.managed_dir());
-            crate::history::keep(
-                &store,
-                &self.vault.history_key(&absolute),
-                &whole,
-                chrono::Local::now().naive_local(),
-                true,
-                0,
-            )
-            .map_err(|error| {
-                format!(
-                    "差し替える前の版を残せなかったので、書きませんでした: {cleaned}（{error}）"
-                )
-            })?;
-        }
+        // **残せなかったら差し替えない**（レビュー 2026-09-23）。AI には isError
+        // で返り、人に見える。道は Vault::write_with_version の 1 本（21-1）
+        let whole = read_note(&absolute).map_err(|e| e.to_string())?;
         let mut text = text.to_string();
         crate::vault::ensure_trailing_newline(&mut text);
-        crate::autosave::save_atomic(&absolute, &text).map_err(|e| e.to_string())?;
+        self.vault
+            .write_with_version(&absolute, &whole, &text)
+            .map_err(|e| format!("{cleaned}: {e}"))?;
         Ok(Written { path: cleaned })
     }
 
@@ -1030,5 +1018,16 @@ mod tests {
         assert!(read.text.chars().count() <= MAX_TEXT_CHARS + 100);
         assert!(read.truncated);
         assert!(read.text.ends_with(TRUNCATED_MARK));
+    }
+
+    /// 追記も差し替えと同じく、版を残せなければ書かない（21-1）
+    #[test]
+    fn test_append_to_note_版を残せなければ足さず_断る() {
+        let (root, vault) = temp_vault();
+        note(root.path(), "設計.md", "# 設計\n\n本文\n");
+        let mcp = McpVault::open(root.path()).unwrap();
+        let _locked = crate::test_support::lock_history(&vault);
+        assert!(mcp.append_to_note("設計.md", "追記", None).is_err());
+        assert_eq!(mcp.read_note("設計.md").unwrap().text, "# 設計\n\n本文\n");
     }
 }

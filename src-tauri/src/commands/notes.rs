@@ -360,9 +360,9 @@ pub fn note_pin(
     let text = crate::vault::read_note(&path)?;
     let updated = crate::front_matter::with_pinned(&text, pinned);
     if updated != text {
-        state.suppressor.mark(&path);
-        autosave::save_atomic(&path, &updated)?;
         let vault = Vault::new(&root);
+        state.suppressor.mark(&path);
+        vault.write_with_version(&path, &text, &updated)?;
         if let Err(error) =
             IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
         {

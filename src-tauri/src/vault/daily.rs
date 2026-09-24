@@ -43,13 +43,15 @@ impl Vault {
             return Err(invalid("書くものが空"));
         }
         let path = self.daily_note(now)?.path;
-        let mut current = read_note(&path)?;
+        let before = read_note(&path)?;
+        let mut current = before.clone();
         if !current.is_empty() && !current.ends_with('\n') {
             current.push('\n');
         }
         current.push_str(text.trim_end_matches('\n'));
         current.push('\n');
-        crate::autosave::save_atomic(&path, &current)?;
+        // 追記も「読んで書き戻す」。版を残せなければ足さない（21-1）
+        self.write_with_version(&path, &before, &current)?;
         Ok(path)
     }
 }
@@ -117,5 +119,18 @@ mod tests {
         let made = vault.daily_note(&at(2026, 9, 3, 14, 5)).unwrap();
 
         assert_eq!(fs::read_to_string(&made.path).unwrap(), "# 2026-09-03\n\n");
+    }
+
+    /// 追記も「読んで書き戻す」なので版を残す。残せなければ足さない（21-1）
+    #[test]
+    fn test_append_to_daily_版を残せなければ足さない() {
+        let (root, vault) = temp_vault();
+        let now = at(2026, 9, 24, 9, 0);
+        let path = vault.daily_note(&now).unwrap().path;
+        let before = fs::read_to_string(&path).unwrap();
+        let _locked = crate::test_support::lock_history(&vault);
+        assert!(vault.append_to_daily(&now, "追記").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+        let _ = root;
     }
 }
