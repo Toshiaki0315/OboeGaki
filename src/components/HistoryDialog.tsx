@@ -17,8 +17,11 @@ export function HistoryDialog({
   readVersion,
   onRestore,
   onClose,
+  historyMinutes,
 }: {
   entries: HistoryEntry[];
+  /// 版を残す間隔（分。0 は「なし」）。空のときの案内に使う（21-4）
+  historyMinutes?: number;
   /// 今の本文（開いた時点で書き切ったもの）
   currentText: string;
   /// 版の本文を読む（読むだけ。書き戻しは onRestore）
@@ -90,12 +93,14 @@ export function HistoryDialog({
         ))}
         {entries.length === 0 && (
           <li className="no-hits">
-            まだ版がありません（保存から 60 分間隔で残ります）
+            {historyMinutes === 0
+              ? "まだ版がありません（環境設定で履歴を「なし」にしています）"
+              : `まだ版がありません（保存から ${historyMinutes ?? 60} 分間隔で残ります）`}
           </li>
         )}
       </ul>
       {chosen && (
-        <section className="history-diff" aria-label="差分">
+        <section aria-label="差分">
           <div className="history-compare">
             <button
               aria-pressed={compare === "current"}

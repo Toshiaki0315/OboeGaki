@@ -1,7 +1,13 @@
 // 右クリックのメニューの枠と枝。置き場所の計算は lib/context-menu に任せ、
 // ここは測って置き直す取り回しだけを持つ。中身（項目）は呼び出し側が並べる。
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { menuPosition } from "../lib/context-menu";
 
 /// 右クリックのメニュー（枠と置き場所）。
@@ -23,6 +29,18 @@ export function ContextMenu({
   const [placed, setPlaced] = useState<{ left: number; top: number } | null>(
     null,
   );
+  // Esc で閉じる（Dialog と同じ約束。以前はマウスで外を押すまで閉じなかった。21-4）。
+  // メニューは focus を持たないので window で拾う。変換中の Esc は IME の取り消し
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   useLayoutEffect(() => {
     const box = list.current?.getBoundingClientRect();
     if (!box) return;

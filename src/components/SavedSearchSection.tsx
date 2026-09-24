@@ -28,7 +28,7 @@ export function SavedSearchSection({
               title={entry.query}
               onClick={() => onRun(entry.query)}
             >
-              <span className="saved-search-name">{entry.name}</span>
+              <span>{entry.name}</span>
             </button>
             <button
               className="saved-search-remove"

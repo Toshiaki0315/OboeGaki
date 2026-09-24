@@ -2,7 +2,11 @@
 
 /// 保管フォルダからの相対パス（拡張子なし）。フォルダ込みで表示する。
 export function noteLabel(root: string, path: string): string {
-  const relative = path.startsWith(root) ? path.slice(root.length + 1) : path;
+  // `${root}/` で見る（nfcUnder と同じ規則。`root` だけだと末尾に `/` がある root で
+  // 1 文字ずれ、`/vault2/…` も `/vault` の下に見えた。21-4）
+  const relative = path.startsWith(`${root}/`)
+    ? path.slice(root.length + 1)
+    : path;
   return relative.replace(/\.(md|markdown)$/i, "");
 }
 

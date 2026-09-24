@@ -44,6 +44,32 @@ describe("HistoryDialog", () => {
   test("test_版が無ければ案内を出す", () => {
     setup([]);
     expect(screen.getByText(/まだ版がありません/)).toBeTruthy();
+  });
+
+  test("test_空のときの案内は設定の間隔を言う_なしなら理由を言う（21-4）", () => {
+    const { unmount } = render(
+      <HistoryDialog
+        entries={[]}
+        currentText=""
+        readVersion={async () => ""}
+        onRestore={vi.fn()}
+        onClose={vi.fn()}
+        historyMinutes={15}
+      />,
+    );
+    expect(screen.getByText(/15 分間隔/)).toBeTruthy();
+    unmount();
+    render(
+      <HistoryDialog
+        entries={[]}
+        currentText=""
+        readVersion={async () => ""}
+        onRestore={vi.fn()}
+        onClose={vi.fn()}
+        historyMinutes={0}
+      />,
+    );
+    expect(screen.getByText(/「なし」/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "戻す" })).toBeNull();
   });
 

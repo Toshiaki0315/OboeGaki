@@ -87,10 +87,12 @@ export function useAssistant({
     };
   }, [open, vaultRoot, currentPath, notes, relatedShown]);
 
-  // 別のノートに移ったら畳む（前のノートの関連が残っていると読み違える）
+  // 別のノートに移ったら畳む（前のノートの関連や答えが残っていると読み違える。
+  // 答えも同じ理由で消す = 21-4）
   useEffect(() => {
     setRelatedShown(false);
     setSources((current) => (current.length === 0 ? current : []));
+    setAnswer((current) => (current === "" ? current : ""));
   }, [currentPath]);
 
   // 開いたときだけ動いているか確かめる（**押してから断らない**）

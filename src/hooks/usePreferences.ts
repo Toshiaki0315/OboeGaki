@@ -69,6 +69,11 @@ export function usePreferences(storage: Storage = localStorage) {
       llmTimeoutMinutes: DEFAULT_SETTINGS.llmTimeoutMinutes,
       llmKeepAlive: DEFAULT_SETTINGS.llmKeepAlive,
       ocrEngine: DEFAULT_SETTINGS.ocrEngine,
+      // 一般・アシスタントのタブに出ているのに戻していなかった 4 つ（21-4）
+      lineNumbers: DEFAULT_SETTINGS.lineNumbers,
+      captureShortcut: DEFAULT_SETTINGS.captureShortcut,
+      assistantEnabled: DEFAULT_SETTINGS.assistantEnabled,
+      confirmHandoff: DEFAULT_SETTINGS.confirmHandoff,
     });
     changeFontSize(DEFAULT_FONT_PX);
   }

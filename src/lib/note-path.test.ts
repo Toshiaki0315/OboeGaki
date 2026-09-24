@@ -12,6 +12,11 @@ describe("noteStem", () => {
 });
 
 describe("noteLabel", () => {
+  test("test_root_の直下だけを相対にする（root に似た別の場所は触らない。21-4）", () => {
+    expect(noteLabel("/vault", "/vault2/a.md")).toBe("/vault2/a");
+    expect(noteLabel("/vault", "/vault/日記/a.md")).toBe("日記/a");
+  });
+
   test("test_保管フォルダからの相対で_フォルダは残す", () => {
     expect(noteLabel("/v", "/v/仕事/会議.md")).toBe("仕事/会議");
   });

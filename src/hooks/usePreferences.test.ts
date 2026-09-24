@@ -47,6 +47,32 @@ describe("usePreferences", () => {
     expect(result.current.fontSize).toBe(DEFAULT_FONT_PX);
   });
 
+  test("test_既定に戻すと行番号_書き取りの鍵_アシスタント_手渡しの確認も戻る（21-4）", () => {
+    const storage = fakeStorage();
+    const { result } = renderHook(() => usePreferences(storage));
+    act(() =>
+      result.current.changeSettings({
+        lineNumbers: true,
+        captureShortcut: "Alt+Space",
+        assistantEnabled: false,
+        confirmHandoff: false,
+      }),
+    );
+    act(() => result.current.resetPreferences());
+    expect(result.current.settings.lineNumbers).toBe(
+      DEFAULT_SETTINGS.lineNumbers,
+    );
+    expect(result.current.settings.captureShortcut).toBe(
+      DEFAULT_SETTINGS.captureShortcut,
+    );
+    expect(result.current.settings.assistantEnabled).toBe(
+      DEFAULT_SETTINGS.assistantEnabled,
+    );
+    expect(result.current.settings.confirmHandoff).toBe(
+      DEFAULT_SETTINGS.confirmHandoff,
+    );
+  });
+
   test("test_PowerPoint_の設定は別の鍵で覚え_既定に戻せる", () => {
     const storage = fakeStorage();
     const { result } = renderHook(() => usePreferences(storage));

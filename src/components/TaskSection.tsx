@@ -53,10 +53,8 @@ export function TaskSection({
             >
               <span className="task-body">{task.text}</span>
               <span className="task-meta">
-                <span className="task-note">{noteStem(task.path)}</span>
-                {task.due && (
-                  <span className="task-due">{shortDue(task.due)}</span>
-                )}
+                <span>{noteStem(task.path)}</span>
+                {task.due && <span>{shortDue(task.due)}</span>}
               </span>
             </button>
           </li>

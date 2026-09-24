@@ -20,6 +20,21 @@ describe("ContextMenu", () => {
     expect(menu.style.left).not.toBe("");
   });
 
+  test("test_Esc_で閉じる_変換中の_Esc_では閉じない（21-4）", () => {
+    const onClose = vi.fn();
+    render(
+      <ContextMenu at={{ x: 0, y: 0 }} onClose={onClose}>
+        <li>
+          <button>a</button>
+        </li>
+      </ContextMenu>,
+    );
+    fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   test("test_外側を押す_右クリックで閉じ_中を押しても閉じない", () => {
     const onClose = vi.fn();
     render(

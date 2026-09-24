@@ -54,7 +54,6 @@ export async function historyList(
   return invoke<HistoryEntry[]>("history_list", { root, path });
 }
 
-/// 版を書き戻す。返り値は書き戻したあとの本文。
 /// 版の本文を読む（差分表示。書き戻さない = ADR-0054）
 export async function historyRead(
   root: string,
@@ -64,6 +63,7 @@ export async function historyRead(
   return invoke<string>("history_read", { root, path, version });
 }
 
+/// 版を書き戻す。返り値は書き戻したあとの本文。
 export async function historyRestore(
   root: string,
   path: string,

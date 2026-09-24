@@ -215,7 +215,6 @@ export async function createFolder(
   return invoke<string>("folder_create", { root, folder });
 }
 
-/// フォルダの名前を変える。新しい相対パスが返る。
 /// フォルダを別のフォルダの中へ移す（空文字は直下）。移した先の相対パス
 export async function moveFolder(
   root: string,
@@ -225,6 +224,7 @@ export async function moveFolder(
   return invoke<string>("folder_move", { root, folder, into });
 }
 
+/// フォルダの名前を変える。新しい相対パスが返る。
 export async function renameFolder(
   root: string,
   folder: string,

@@ -82,6 +82,18 @@ describe("useAssistant", () => {
     expect(result.current.thinking).toBe(false);
   });
 
+  test("test_ノートを替えたら前の答えは消す（21-4）", async () => {
+    const { result, rerender } = renderHook(
+      (props: AssistantInput) => useAssistant(props),
+      { initialProps: input() },
+    );
+    await act(() => result.current.ask("summary"));
+    act(() => handlers?.onChunk("要点"));
+    expect(result.current.answer).toBe("要点");
+    rerender(input({ currentPath: "/v/別.md" }));
+    expect(result.current.answer).toBe("");
+  });
+
   test("test_失敗は読める言葉にして答えの場所に出す", async () => {
     const given = input();
     const { result } = renderHook(() => useAssistant(given));

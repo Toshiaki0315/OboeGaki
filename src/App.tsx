@@ -2351,6 +2351,7 @@ function App() {
               }
               onRestore={(entry) => void restoreVersion(entry)}
               onClose={closeDialog}
+              historyMinutes={settings.historyMinutes}
             />
           )}
           {assistantOpen && (

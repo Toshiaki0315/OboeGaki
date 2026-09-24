@@ -54,7 +54,7 @@ export async function syncIndex(root: string, full: boolean): Promise<boolean> {
   return invoke<boolean>("index_sync", { root, full });
 }
 
-/// 保管フォルダの外部変更（watcher）。`kind` は "modified" / "removed" など
+/// 保管フォルダの外部変更（watcher）。`kind` は "changed" / "removed"（Rust watcher.rs）
 export type VaultChange = { path: string; kind: string };
 
 /// 外部変更を受ける。返り値で購読を外す
