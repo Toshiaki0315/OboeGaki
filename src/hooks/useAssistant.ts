@@ -228,10 +228,13 @@ export function useAssistant({
   /// （答えは横に出すだけ）。
   async function ask(task: string) {
     if (!vaultRoot || !currentPath) return;
+    // 頼まれたノートは flush を待つ**前**に控える。待つ間に替わっていたら旧ノートの
+    // 本文を新ノートの答えとして出さない（21-8）
+    const askedOn = currentPath;
     await flushEdits(); // 打ちかけを書き切ってから読ませる
+    if (currentPathRef.current !== askedOn) return;
     const text = noteText();
     clear();
-    const askedOn = currentPathRef.current;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task,

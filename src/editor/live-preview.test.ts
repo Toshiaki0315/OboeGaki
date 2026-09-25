@@ -903,6 +903,48 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("HTML_の塊の開閉は記号でなく木で見る_型_4_の閉じと型_6_の空行（21-8）", () => {
+    const head = "<!X\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n本文";
+    const cases: {
+      doc: string;
+      change: { from: number; to?: number; insert: string };
+    }[] = [
+      // 型 4: `<!X` の下の本文に `>` を打つと $$ が解放される
+      {
+        doc: `${head}\n\n$$\nx+y\n$$\n`,
+        change: { from: head.length, insert: ">" },
+      },
+      // 型 4: `>` を消すと再び飲まれる
+      {
+        doc: `${head}>\n\n$$\nx+y\n$$\n`,
+        change: { from: head.length, to: head.length + 1, insert: "" },
+      },
+      // 型 6: `<div>` と表の間に見出しが 1 行ある（記号の ±1 行に `|` が無い）
+      {
+        doc: "y\n# h\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 0, to: 1, insert: "<div>" },
+      },
+      // 型 6: 空行で閉じると表が現れる
+      {
+        doc: "<div>\nfoo\nbar\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: "<div>\nfoo".length, insert: "\n" },
+      },
+    ];
+    for (const { doc, change } of cases) {
+      for (const field of [tableField, blockWidgetField]) {
+        const state = EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: [LANG, sourceModeField, field],
+        });
+        const next = state.update({ changes: change }).state;
+        expect(shapeOf(next.field(field)), doc).toEqual(
+          rebuilt(next.doc.toString(), next.selection.main.head, field),
+        );
+      }
+    }
+  });
+
   test("表の行頭に飲み込む記号を打って消す_狙い撃ちの乱数（21-7）", () => {
     // 300 手の乱数は表が序盤に壊れて新しい分岐に届かない。表の行頭に限って
     // 開きと閉じを打ち、毎手で作り直しと突き合わせる

@@ -310,6 +310,49 @@ function editNearMarker(
 
 type NearTr = Parameters<typeof editNearMarker>[1];
 
+/// 変更の位置が、旧文書か新文書で **HTML の塊**（HTMLBlock・コメント・処理命令）に
+/// 触れているか。型 4（`<!X…`）は行に `>` が 1 つあれば閉じ、型 6/7（`<div>` など）
+/// は空行まで飲むので、記号の正規表現では拾い切れない（bare `>` を記号にすると
+/// 引用行で毎打鍵が全再計算になる）。木で見れば O(log n) で済む（21-8）
+const HTML_BLOCKS = new Set([
+  "HTMLBlock",
+  "CommentBlock",
+  "ProcessingInstructionBlock",
+]);
+function touchesHtmlBlock(state: EditorState, pos: number): boolean {
+  const at = Math.min(pos, state.doc.length);
+  for (const side of [-1, 1] as const) {
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, side);
+    for (; node; node = node.parent) {
+      if (HTML_BLOCKS.has(node.name)) return true;
+    }
+  }
+  return false;
+}
+function editTouchesHtmlBlock(tr: {
+  startState: EditorState;
+  state: EditorState;
+  changes: {
+    iterChangedRanges: (
+      f: (fromA: number, toA: number, fromB: number, toB: number) => void,
+    ) => void;
+  };
+}): boolean {
+  let touched = false;
+  tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    if (touched) return;
+    if (
+      touchesHtmlBlock(tr.startState, fromA) ||
+      touchesHtmlBlock(tr.startState, toA) ||
+      touchesHtmlBlock(tr.state, fromB) ||
+      touchesHtmlBlock(tr.state, toB)
+    ) {
+      touched = true;
+    }
+  });
+  return touched;
+}
+
 /// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・
 /// `<pre>` など。CommonMark の HTML ブロック型 3〜5 = `<?…?>`・`<!X…>`・
 /// `<![CDATA[…]]>` も空行を越えて閉じまで飲む。21-7）。離れた場所の表・数式・図がこれに飲まれると木から消えるので、
@@ -722,7 +765,9 @@ export const blockWidgetField = StateField.define<DecorationSet>({
 
     const parsed = syntaxTree(tr.state).length;
     if (tr.docChanged) {
-      if (editNearBlockWidgets(tr)) return computeBlockWidgetSet(tr.state);
+      if (editNearBlockWidgets(tr) || editTouchesHtmlBlock(tr)) {
+        return computeBlockWidgetSet(tr.state);
+      }
       const parsedTo = tr.changes.mapPos(meta.parsedTo, 1);
       if (parsed > parsedTo) return computeBlockWidgetSet(tr.state);
       const zones = meta.zones.map((zone) => ({
@@ -802,6 +847,7 @@ export const tableField = StateField.define<DecorationSet>({
       // 既にある表の中だけの編集（行の増減なし）なら、その表だけ差し替える。
       // `|` が表の外に現れた・行が増減した編集は表の生成・分割かもしれないので
       // 全部数え直す
+      if (editTouchesHtmlBlock(tr)) return computeTableSet(tr.state);
       const inside = zonesTouchedInside(meta.zones, tr);
       if (inside === null && editNearTables(tr))
         return computeTableSet(tr.state);

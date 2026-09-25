@@ -92,10 +92,17 @@ pub fn with_title(text: &str, title: &str) -> String {
             // pinned や id が本文に化ける（再レビュー 2026-09-25 / 21-7。以前は
             // 文書の最先頭に足していた）
             let (front, rest) = crate::front_matter::split(text);
-            if rest.trim().is_empty() {
-                format!("{front}# {cleaned}\n")
+            // 閉じ区切りに改行が無い文書（`---\nid: 1\n---`）では front が改行無しで
+            // 終わる。そのまま繋ぐと `---# 題` になり閉じ区切りが消える（21-8）
+            let glue = if !front.is_empty() && !front.ends_with('\n') {
+                "\n"
             } else {
-                format!("{front}# {cleaned}\n\n{rest}")
+                ""
+            };
+            if rest.trim().is_empty() {
+                format!("{front}{glue}# {cleaned}\n")
+            } else {
+                format!("{front}{glue}# {cleaned}\n\n{rest}")
             }
         }
     }
@@ -221,6 +228,12 @@ mod tests {
             with_title("---\nid: 1\n---\n", "新"),
             "---\nid: 1\n---\n# 新\n"
         );
+        // 閉じ区切りに改行が無くても `---# 新` にしない（21-8）
+        assert_eq!(
+            with_title("---\nid: 1\n---", "新"),
+            "---\nid: 1\n---\n# 新\n"
+        );
+        assert!(crate::front_matter::block_len(&with_title("---\nid: 1\n---", "新")).is_some());
         // front matter の無いノートは今までどおり先頭
         assert_eq!(with_title("本文\n", "新"), "# 新\n\n本文\n");
     }

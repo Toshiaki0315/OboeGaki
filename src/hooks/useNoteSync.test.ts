@@ -515,3 +515,30 @@ describe("useNoteSync: 改名中の保留（21-7）", () => {
     );
   });
 });
+
+describe("useNoteSync: 改名と退避・予約の捨て方（21-8）", () => {
+  test("test_改名したら旧パスの退避を捨てる（幽霊ノートを生やさない）", async () => {
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    // 改名の往復中（保留中）に打つと、保存は走らず退避だけが旧パスで残る
+    const release = result.current.holdSaves();
+    act(() => result.current.noteChanged(() => "v0"));
+    await tick(100);
+    expect(mocked.stashNote).toHaveBeenCalledWith("/v", "/v/a.md", "v0");
+    expect(mocked.discardStash).not.toHaveBeenCalled();
+    act(() => result.current.renamed("/v/a.md", "/v/b.md"));
+    expect(mocked.discardStash).toHaveBeenCalledWith("/v", "/v/a.md");
+    release();
+  });
+
+  test("test_保留中に予約を捨てたら_解除しても蘇らない", async () => {
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    const release = result.current.holdSaves();
+    act(() => result.current.noteChanged(() => "打った"));
+    act(() => result.current.cancel());
+    release();
+    await tick(2000);
+    expect(mocked.writeNote).not.toHaveBeenCalled();
+  });
+});

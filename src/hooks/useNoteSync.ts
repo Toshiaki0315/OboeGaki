@@ -145,11 +145,12 @@ export function useNoteSync({
       autosave.schedule(async () => {
         // Promise を返す（= flush が完了を待てる）。失敗はここで受け止める
         await pendingSave.current?.().catch((error) => {
-          if (currentPathRef.current === path) {
+          // 書き先は箱で追う（改名で付け替わる。退避も同じパスで）
+          if (currentPathRef.current === target.path) {
             onStatusRef.current(`保存に失敗: ${String(error)}`);
           }
           // 保存できないまま落ちても書いたものを失わない（H-1）
-          void keepStash(root, path, getText());
+          void keepStash(root, target.path, getText());
         });
       });
     if (held.current) {
@@ -185,10 +186,16 @@ export function useNoteSync({
     await autosave.flush();
   };
   /// 予約を破棄する（聞く前・戻す前）
-  const cancel = () => autosave.cancel();
+  /// 予約を捨てる。保留中に貯めた予約も一緒に捨てる — 残すと解除で蘇り、
+  /// 競合の問いに答える前に自分の版で外部の変更を潰す（21-8）
+  function discardScheduled() {
+    autosave.cancel();
+    pendingSchedule.current = null;
+  }
+  const cancel = () => discardScheduled();
   /// 予約も未保存の印も捨てる（開いているノートを捨てるとき）
   function dropPending() {
-    autosave.cancel();
+    discardScheduled();
     pendingSave.current = null;
   }
   /// 開いているノートのパスが変わった（見出しに合わせた改名。本文は同じ）。
@@ -199,6 +206,10 @@ export function useNoteSync({
     if (pendingTarget.current?.path === from) pendingTarget.current.path = to;
     if (known.current?.path === from)
       known.current = { ...known.current, path: to };
+    // 旧パスの退避は捨てる。残すと次回の起動で「未保存が 1 件」と聞かれ、
+    // 復元すると旧名の幽霊ノートが生える（21-8）
+    const root = vaultRootRef.current;
+    if (root) dropStash(root, from);
   }
   /// ノートを開いた直後: 未編集で、保存時刻はまだ無い
   function markOpened(opened?: { path: string; text: string }) {
@@ -208,7 +219,7 @@ export function useNoteSync({
   }
   /// 予約を捨てて本文を差し替える（版の復元・外部の採用・ピン留め）
   function adopt(text: string) {
-    autosave.cancel();
+    discardScheduled();
     pendingSave.current = null;
     dirty.current = false;
     const path = currentPathRef.current;
@@ -246,7 +257,7 @@ export function useNoteSync({
       if (!gone) return;
       // **自動保存を止める。** 止めないと、聞いている間に予約が起きて
       // 消えたファイルを黙って作り直してしまう
-      autosave.cancel();
+      discardScheduled();
       // 聞いている間は保存できない状態。書いたものは退避しておく（H-1）
       void keepStash(root, change.path, readTextRef.current());
       setDeleted(change.path);
@@ -268,7 +279,7 @@ export function useNoteSync({
     // ダイアログで聞く（ネイティブの ask は 2 択しかできない）。
     // **予約は先に破棄する** — 残したまま聞くと、答える前に自動保存が
     // 発火して自分の版で外部の変更を潰す（レビュー 2026-09-04）
-    autosave.cancel();
+    discardScheduled();
     setConflict({ path: change.path, externalText: text });
     // 競合の解決を待つ間は保存できない。**その間も保険は要る**（H-1）
     void keepStash(root, change.path, readTextRef.current());

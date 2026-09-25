@@ -105,6 +105,26 @@ describe("useAssistant", () => {
     expect(result.current.answer).not.toContain("前のノートの続き");
   });
 
+  test("test_打ちかけを書き切る間にノートを替えたら_旧ノートを読ませない（21-8）", async () => {
+    let finishFlush: () => void = () => {};
+    const given = input({
+      flushEdits: vi.fn(
+        () => new Promise<void>((resolve) => (finishFlush = resolve)),
+      ),
+    });
+    const { result, rerender } = renderHook(
+      (props: AssistantInput) => useAssistant(props),
+      { initialProps: given },
+    );
+    const asking = result.current.ask("summary");
+    rerender(input({ ...given, currentPath: "/v/別.md" }));
+    await act(async () => {
+      finishFlush();
+      await asking;
+    });
+    expect(mocked.llmGenerate).not.toHaveBeenCalled();
+  });
+
   test("test_頼んでいる往復の間にノートを替えたら_遅れて始まっても続きを受けない（21-7）", async () => {
     let start: (ok: boolean) => void = () => {};
     mocked.llmGenerate.mockImplementation(
