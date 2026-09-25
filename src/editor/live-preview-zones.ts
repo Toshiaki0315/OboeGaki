@@ -811,6 +811,9 @@ function mapContainer<
 
 /// リビール状態が**変わったゾーンだけ**を filter + add で差し替える。
 /// 全再計算（全行走査 + 全ゾーン組み直し）も、全ゾーンの入れ替えも避ける
+/// 入れ子のゾーンをまとめて差し替える上限。超えたら全部数え直す
+const MAX_CLUSTER = 32;
+
 function refreshZones(
   state: EditorState,
   current: DecorationSet,
@@ -837,6 +840,10 @@ function refreshZones(
         to = Math.max(to, zone.to);
         grew = true;
       });
+      // まとまりが大きいときは全部数え直す方が速い（まとめる処理は 1 周で 1 つずつ
+      // 増えると二乗になる。note と details を交差させて 1000 組並べた文書で
+      // キャレットの移動が p95 20ms になっていた。21-13）
+      if (cluster.size > MAX_CLUSTER) return computeBlockWidgetSet(state);
     }
     const add: Range<Decoration>[] = [];
     // 作り直しと同じ順（ゾーンは囲み → 折りたたみ → 数式・図の順に並んでいる）で

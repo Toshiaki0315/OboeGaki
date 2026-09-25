@@ -92,6 +92,24 @@ export function useNoteCommands(input: NoteCommandsInput) {
   // 保存が追従を起動するので、追従は進んだ後の世代を控えて門をすり抜け、B の
   // 本文が A' に保存されて A の中身が消えた
   const shown = useRef<string | null>(null);
+  // 改名の記録（旧 → 新と、何番目の改名か）。ノートを開く読み込みの間に同じ
+  // ノートが改名されると、応答の順しだいで旧パスを表示したまま書き、旧ファイルが
+  // 蘇る。開き終えるときに、開き始めた後の改名で動いていれば新しいパスで開く（21-13）
+  const renameCount = useRef(0);
+  const movedTo = useRef(new Map<string, { to: string; at: number }>());
+  function noteMoved(from: string, to: string) {
+    renameCount.current += 1;
+    movedTo.current.set(from, { to, at: renameCount.current });
+  }
+  function followMoves(path: string, since: number): string {
+    let current = path;
+    for (let hops = 0; hops < 8; hops++) {
+      const moved = movedTo.current.get(current);
+      if (!moved || moved.at <= since) break;
+      current = moved.to;
+    }
+    return current;
+  }
   const status = (text: string) => latest.current.onStatus(text);
 
   async function openNote(given: string, cursor: number | null = null) {
@@ -99,12 +117,13 @@ export function useNoteCommands(input: NoteCommandsInput) {
     if (!vaultRoot) return;
     // 字面を索引・監視イベントと揃える（ADR-0050）。前回のノートの記憶などに
     // NFD が残っていても、開いたあとは NFC で持つ
-    const path = nfcUnder(vaultRoot, given);
+    const requested = nfcUnder(vaultRoot, given);
     const mine = ++opening.current;
+    const renamesAtStart = renameCount.current;
     await sync.flush(); // 前のノートの未保存分を書き切ってから切り替える
     let text: string;
     try {
-      text = await readNote(vaultRoot, path);
+      text = await readNote(vaultRoot, requested);
     } catch (error) {
       if (mine !== opening.current) return;
       // 一覧と実体がずれている（外で消された等）。無反応に見せない
@@ -112,6 +131,8 @@ export function useNoteCommands(input: NoteCommandsInput) {
       return;
     }
     if (mine !== opening.current) return; // 後から別のノートが開かれた
+    // 読み込みの間に改名されていたら、動いた先のパスで開く（本文は同じもの）
+    const path = followMoves(requested, renamesAtStart);
     shown.current = path;
     selectNote(path);
     saveLastNote(storage, vaultRoot, path); // 次回の起動で開き直す
@@ -217,6 +238,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
       // **ファイルが動いた直後に予約の書き先と今のパスを付け替える**（見出しの
       // 追従と同じ手順）。往復中に打った字の自動保存が、消したはずの旧パスへ
       // 書いて旧ファイルを蘇らせていた（再レビュー 2026-09-25 / 21-6）
+      noteMoved(currentPath, renamed);
       sync.renamed(currentPath, renamed);
       release();
       await refreshLists();
@@ -287,6 +309,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
       status(renameStatusText(outcome));
       // 本文はそのまま（エディタを作り直さない = キャレットが飛ばない）。
       // 予約の書き先と今のパスだけ付け替える
+      noteMoved(currentPath, renamed);
       sync.renamed(currentPath, renamed);
       // 往復の間に別のノートが表示されていたら、選択を戻さない。戻すとエディタは
       // 別のノートの本文のまま選択だけ A' になり、次の打鍵でその本文が A' に

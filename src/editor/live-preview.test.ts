@@ -1150,6 +1150,36 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("入れ子のゾーンが上限を超えたら全部数え直しても_作り直しと同じ答え（21-13）", () => {
+    // 1 つの `<details>` の中に `:::note` を 40 個。外側に触れるとまとまりが上限を超える
+    const notes = Array.from(
+      { length: 40 },
+      (_, i) => `:::note\n中身${i}\n:::\n`,
+    ).join("\n");
+    const doc = `<details>\n\n${notes}\n末尾\n\n</details>\n`;
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+    const at = doc.indexOf("末尾") + 1;
+    const next = state.update({ changes: { from: at, insert: "z" } }).state;
+    expect(shapeOf(next.field(blockWidgetField))).toEqual(
+      rebuilt(next.doc.toString(), next.selection.main.head, blockWidgetField),
+    );
+    // キャレットを中へ入れて出す（差し替えの経路）でも同じ
+    const inside = next.update({
+      selection: { anchor: doc.indexOf("中身20") },
+    }).state;
+    expect(shapeOf(inside.field(blockWidgetField))).toEqual(
+      rebuilt(
+        inside.doc.toString(),
+        inside.selection.main.head,
+        blockWidgetField,
+      ),
+    );
+  });
+
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
     // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
     const widgetsOf = (set: DecorationSet): unknown[] => {
