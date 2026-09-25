@@ -562,3 +562,46 @@ describe("useNoteSync: 動いていない改名（21-9）", () => {
     release();
   });
 });
+
+describe("useNoteSync: 退避の取りこぼし（21-10）", () => {
+  test("test_退避を書いている間に改名されたら_書き終えた旧パスの退避も捨てる", async () => {
+    let finish: () => void = () => {};
+    mocked.stashNote.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    const release = result.current.holdSaves();
+    act(() => result.current.noteChanged(() => "v0"));
+    // 退避はまだ書き終わっていない
+    act(() => result.current.renamed("/v/a.md", "/v/b.md"));
+    expect(mocked.discardStash).toHaveBeenCalledWith("/v", "/v/a.md");
+    await act(async () => {
+      finish();
+    });
+    // 書き終えたあと、もう一度捨てに行く（ディスクに残さない）
+    expect(
+      mocked.discardStash.mock.calls.filter(([, path]) => path === "/v/a.md")
+        .length,
+    ).toBe(2);
+    release();
+  });
+
+  test("test_エディタが別のノートを表示していたら_今の本文で再退避しない", async () => {
+    const { result, rerender } = renderHook(
+      (props: NoteSyncInput) => useNoteSync(props),
+      { initialProps: input() },
+    );
+    // a.md で打って退避が残る（見出し追従の改名は保存を止めない）
+    act(() => result.current.noteChanged(() => "a の本文"));
+    await tick(100);
+    expect(mocked.stashNote).toHaveBeenCalledWith("/v", "/v/a.md", "a の本文");
+    mocked.stashNote.mockClear();
+    // 改名の往復中に別のノート（b.md）が開かれた。エディタは b を表示している
+    rerender(input({ currentPath: "/v/b.md", readText: () => "b の本文" }));
+    act(() => result.current.renamed("/v/a.md", "/v/a2.md"));
+    // a の退避は捨てるが、b の本文を a2 の名前で退避しない
+    expect(mocked.discardStash).toHaveBeenCalledWith("/v", "/v/a.md");
+    expect(mocked.stashNote).not.toHaveBeenCalled();
+  });
+});

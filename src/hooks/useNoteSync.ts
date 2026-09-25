@@ -91,11 +91,16 @@ export function useNoteSync({
   const lastStash = useRef(0);
 
   async function keepStash(root: string, path: string, text: string) {
+    // **投げた時点で**覚える。書き終えてから覚えると、書いている間に改名・保存が
+    // 走ったとき捨て損ね、次回の起動で幽霊ノートになる（21-10）
+    stashed.current.add(path);
     try {
       await stashNote(root, path, text);
-      stashed.current.add(path);
+      // 書いている間に改名や保存で捨てられていたら、書き終えた退避も捨てる
+      if (!stashed.current.has(path)) void discardStash(root, path);
     } catch (error) {
-      // 退避に失敗しても編集は続けられる。ここで止めない
+      // 退避に失敗しても編集は続けられる。ここで止めない。集合からは外さない
+      // （前に書けた退避が残っているかもしれない。捨てに行くのは無害）
       console.warn("未保存内容の退避に失敗した", error);
     }
   }
@@ -205,7 +210,9 @@ export function useNoteSync({
     // 同じ名前に落ちた改名（sanitize 後に同名）では何も動いていない。退避を
     // 捨ててはいけない（21-9）
     if (from === to) return;
-    if (currentPathRef.current === from) currentPathRef.current = to;
+    // エディタが `from` を表示しているか（再退避の本文に今のエディタを使ってよいか）
+    const showing = currentPathRef.current === from;
+    if (showing) currentPathRef.current = to;
     if (pendingTarget.current?.path === from) pendingTarget.current.path = to;
     if (known.current?.path === from)
       known.current = { ...known.current, path: to };
@@ -213,10 +220,15 @@ export function useNoteSync({
     // 復元すると旧名の幽霊ノートが生える（21-8）。まだ保存していない字が
     // あれば**新パスで退避し直す** — 捨てるだけだと、保存が終わるまでの間に
     // 落ちたとき打った字がどこにも残らない（21-9）
+    // 再退避はエディタが `from` を表示しているときだけ — 見出し追従の改名は保存を
+    // 止めないので、往復中に別のノートを開いていると、その本文を `to` の名前で
+    // 退避してしまう（21-10）
     const root = vaultRootRef.current;
     if (root && stashed.current.delete(from)) {
       void discardStash(root, from);
-      if (dirty.current) void keepStash(root, to, readTextRef.current());
+      if (showing && dirty.current) {
+        void keepStash(root, to, readTextRef.current());
+      }
     }
   }
   /// ノートを開いた直後: 未編集で、保存時刻はまだ無い

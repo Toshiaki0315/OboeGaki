@@ -361,9 +361,33 @@ function editTouchesHtmlBlock(tr: {
   };
   tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
     if (changed) return;
-    changed = differs(fromA, fromB) || (toA !== fromA && differs(toA, toB));
+    // 末尾側は、旧か新のどちらかで幅があるときに見る。純粋な挿入（fromA === toA）
+    // でも新文書の toB は先へ進んでいて、挿入の**後ろ側**に塊が生まれうる
+    // （`foo<div>` の `<div>` の前で Enter・`x\n\n<div>` の貼り付け。21-9 で
+    // toA だけ見て取りこぼした = 21-10）
+    changed =
+      differs(fromA, fromB) ||
+      ((toA !== fromA || toB !== fromB) && differs(toA, toB)) ||
+      nextLineIsTagOnly(tr.startState, toA) ||
+      nextLineIsTagOnly(tr.state, toB);
   });
   return changed;
+}
+
+/// タグだけの行（`<x-y>` `</div>` など = HTML ブロック型 7 の開き）。型 7 は段落を
+/// 割り込めないので、**上の行**が段落かどうかで塊になったりならなかったりする。
+/// 変更の位置には塊が見えないまま次の行の塊が生まれ・消えるので、変更の次の行が
+/// これなら数え直す（再レビュー 2026-09-25 / 21-10。21-9 以前から在った穴）
+const TAG_ONLY_LINE_RE =
+  /^ {0,3}<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>\s*$/;
+function nextLineIsTagOnly(state: EditorState, pos: number): boolean {
+  // 塊の中の打鍵なら、次の行は同じ塊の一部（`<div>` の中で `</div>` の上を打つ等）。
+  // 塊の伸び縮みは範囲の比較が見るので、ここは塊の**外**だけ（毎打鍵の全再計算を
+  // 増やさない）
+  if (htmlBlockAt(state, pos)) return false;
+  const line = state.doc.lineAt(Math.min(pos, state.doc.length));
+  if (line.number >= state.doc.lines) return false;
+  return TAG_ONLY_LINE_RE.test(state.doc.line(line.number + 1).text);
 }
 
 /// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・

@@ -945,6 +945,63 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("挿入の後ろ側で_HTML_の塊が生まれても数え直す_Enter_と貼り付け（21-10）", () => {
+    const table = "\n# h\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nx+y\n$$\n";
+    const cases: { doc: string; change: { from: number; insert: string } }[] = [
+      // `<div>` の直前で Enter → `<div>` が塊として始まり、下の表と数式を飲む
+      { doc: `foo<div>${table}`, change: { from: 3, insert: "\n" } },
+      // 段落の途中へ `x\n\n<div>` を貼り付ける
+      { doc: `foo bar${table}`, change: { from: 3, insert: "x\n\n<div>" } },
+    ];
+    for (const { doc, change } of cases) {
+      for (const field of [tableField, blockWidgetField]) {
+        const state = EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: [LANG, sourceModeField, field],
+        });
+        const next = state.update({ changes: change }).state;
+        expect(shapeOf(next.field(field)), JSON.stringify(change)).toEqual(
+          rebuilt(next.doc.toString(), next.selection.main.head, field),
+        );
+      }
+    }
+  });
+
+  test("タグだけの行（型_7）は上の行しだいで塊になる_次の行も見る（21-10）", () => {
+    const cases: {
+      doc: string;
+      change: { from: number; to?: number; insert: string };
+    }[] = [
+      // 空行に字を打つ → `<x-y>` は段落を割り込めず塊でなくなる（表が現れる）
+      {
+        doc: "foo\n\n<x-y>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 4, insert: "x" },
+      },
+      // 段落の字を消して空行にする → `<x-y>` が塊として始まり表を飲む
+      {
+        doc: "f\n<x-y>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 0, to: 1, insert: "" },
+      },
+      // 段落の行頭に `# ` を打って見出しにする → 同じく塊が始まる
+      {
+        doc: "f\n<x-y>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 0, insert: "# " },
+      },
+    ];
+    for (const { doc, change } of cases) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, tableField],
+      });
+      const next = state.update({ changes: change }).state;
+      expect(shapeOf(next.field(tableField)), JSON.stringify(change)).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, tableField),
+      );
+    }
+  });
+
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
     // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
     const widgetsOf = (set: DecorationSet): unknown[] => {
