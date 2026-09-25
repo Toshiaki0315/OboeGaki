@@ -48,6 +48,7 @@ import {
   deleteFolder,
   deleteForever,
   discardStash,
+  moveStash,
   duplicateNote,
   emptyTrash,
   fetchLists,
@@ -553,6 +554,12 @@ describe("包みのコマンド名と引数（表）", () => {
       () => discardStash("/v", "/v/a.md"),
       "recovery_discard",
       { root: "/v", path: "/v/a.md" },
+    ],
+    [
+      "moveStash",
+      () => moveStash("/v", "/v/a.md", "/v/b.md"),
+      "recovery_move",
+      { root: "/v", from: "/v/a.md", to: "/v/b.md" },
     ],
     [
       "pendingRecovery",

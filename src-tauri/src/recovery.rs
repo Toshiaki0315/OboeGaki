@@ -71,6 +71,21 @@ pub fn discard(dir: &Path, note_path: &Path) {
 ///
 /// 読めない退避のせいで起動できなくなってはいけない（退避を諦めるのは
 /// 我慢できるが、起動しないのは我慢できない）。
+/// ノートが改名・移動されたので、退避を新しいパスの鍵へ付け替える。退避が無ければ
+/// 何もしない（false）。表示していないノートの改名で、退避を捨てるしかなかった
+/// （保存の失敗と改名が重なると、書いたものが退避ごと消えた。21-15）
+pub fn relocate(dir: &Path, from: &Path, to: &Path) -> io::Result<bool> {
+    let key = key(from);
+    let text = match fs::read_to_string(dir.join(format!("{key}.{STASH_SUFFIX}"))) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    stash(dir, to, &text)?;
+    discard(dir, from);
+    Ok(true)
+}
+
 pub fn pending(dir: &Path) -> Vec<Stashed> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
@@ -207,5 +222,19 @@ mod tests {
 
         assert!(pending(dir.path()).is_empty());
         assert!(dir.path().join("入れ物").is_dir()); // 手で作られた入れ物は触らない
+    }
+
+    #[test]
+    fn test_relocate_退避を新しいパスへ付け替える_無ければ何もしない() {
+        let dir = TempDir::new().unwrap();
+        let from = Path::new("/v/旧.md");
+        let to = Path::new("/v/新.md");
+        assert!(!relocate(dir.path(), from, to).unwrap());
+        stash(dir.path(), from, "書きかけ").unwrap();
+        assert!(relocate(dir.path(), from, to).unwrap());
+        let found = pending(dir.path());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].source, "/v/新.md");
+        assert_eq!(found[0].text, "書きかけ");
     }
 }

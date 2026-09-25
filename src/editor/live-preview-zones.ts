@@ -445,8 +445,19 @@ function nextLineIsTagOnly(state: EditorState, pos: number): boolean {
   if (htmlBlockAt(state, pos)) return false;
   const line = state.doc.lineAt(Math.min(pos, state.doc.length));
   if (line.number >= state.doc.lines) return false;
-  return isType7Line(state.doc.line(line.number + 1).text);
+  let next = line.number + 1;
+  // setext 見出しの下線（`===` / `---`）を挟むと、2 行上の編集で下線が段落の続きに
+  // 変わり、その下のタグ行が段落を割り込めなくなる（`a\n===\n<x-y>` の `a` を消す等）。
+  // 下線ならもう 1 行先も見る（21-15）
+  if (
+    SETEXT_UNDERLINE_RE.test(state.doc.line(next).text) &&
+    next < state.doc.lines
+  ) {
+    next += 1;
+  }
+  return isType7Line(state.doc.line(next).text);
 }
+const SETEXT_UNDERLINE_RE = /^ {0,3}(?:=+|-+)[ \t]*$/;
 
 /// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・
 /// `<pre>` など。CommonMark の HTML ブロック型 3〜5 = `<?…?>`・`<!X…>`・

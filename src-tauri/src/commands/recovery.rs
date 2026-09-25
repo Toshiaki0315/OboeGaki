@@ -30,6 +30,21 @@ pub fn recovery_stash(
         .map_err(CmdError::from)
 }
 
+/// ノートが改名・移動されたので退避を新しいパスへ付け替える（21-15）
+#[tauri::command]
+pub fn recovery_move(
+    app: tauri::AppHandle,
+    root: String,
+    from: String,
+    to: String,
+) -> CmdResult<()> {
+    let from = guarded(&root, &from)?;
+    let to = guarded(&root, &to)?;
+    crate::recovery::relocate(&recovery_dir(&app, &root)?, &from, &to)
+        .map(|_| ())
+        .map_err(CmdError::from)
+}
+
 /// 保存できたので退避を捨てる。
 #[tauri::command]
 pub fn recovery_discard(app: tauri::AppHandle, root: String, path: String) -> CmdResult<()> {

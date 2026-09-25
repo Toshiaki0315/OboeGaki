@@ -17,6 +17,7 @@ import {
   stashNote,
   subscribeVaultChanged,
   writeNote,
+  moveStash,
 } from "../lib/ipc";
 
 const AUTOSAVE_DELAY_MS = 800; // spec §7.4
@@ -225,9 +226,19 @@ export function useNoteSync({
     // 退避してしまう（21-10）
     const root = vaultRootRef.current;
     if (root && stashed.current.delete(from)) {
-      void discardStash(root, from);
       if (showing && dirty.current) {
+        void discardStash(root, from);
         void keepStash(root, to, readTextRef.current());
+      } else if (showing) {
+        void discardStash(root, from); // 保存済み。退避は要らない
+      } else {
+        // 表示していないノート: エディタの本文は別のノートのものなので使えない。
+        // 退避の中身ごと新しいパスへ付け替える（捨てると、保存の失敗と改名が
+        // 重なったとき書いたものが消える。21-15）
+        stashed.current.add(to);
+        void moveStash(root, from, to).catch((error) =>
+          console.warn("退避の付け替えに失敗した", error),
+        );
       }
     }
   }

@@ -123,6 +123,7 @@ pub fn run() {
             commands::index_sync,
             commands::recovery_stash,
             commands::recovery_discard,
+            commands::recovery_move,
             commands::recovery_pending,
             commands::recovery_restore,
             commands::recovery_clear,

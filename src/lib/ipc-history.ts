@@ -23,6 +23,15 @@ export async function discardStash(root: string, path: string): Promise<void> {
   await invoke("recovery_discard", { root, path });
 }
 
+/// ノートが改名・移動されたので退避を新しいパスへ付け替える（21-15）
+export async function moveStash(
+  root: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  await invoke("recovery_move", { root, from, to });
+}
+
 export async function pendingRecovery(root: string): Promise<Stashed[]> {
   return invoke<Stashed[]>("recovery_pending", { root });
 }

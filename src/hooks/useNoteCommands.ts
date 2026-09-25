@@ -125,18 +125,33 @@ export function useNoteCommands(input: NoteCommandsInput) {
     const mine = ++opening.current;
     const renamesAtStart = renameCount.current;
     await sync.flush(); // 前のノートの未保存分を書き切ってから切り替える
-    let text: string;
+    let text: string | null = null;
+    let failure: unknown = null;
     try {
       text = await readNote(vaultRoot, requested);
     } catch (error) {
-      if (mine !== opening.current) return;
-      // 一覧と実体がずれている（外で消された等）。無反応に見せない
-      status(`開けませんでした: ${String(error)}`);
-      return;
+      failure = error;
     }
     if (mine !== opening.current) return; // 後から別のノートが開かれた
-    // 読み込みの間に改名されていたら、動いた先のパスで開く（本文は同じもの）
+    // 読み込みの間に改名されていたら、**動いた先で読み直して**開く。読んだ本文と
+    // 開くパスを必ず揃える — 改名が読み込みより先に済むと旧パスが読めず「開け
+    // ませんでした」と出ていた。別々のノートの改名が重なると、読んだ本文と行き先が
+    // 別のノートになりえた（21-15）
     const path = followMoves(requested, renamesAtStart);
+    if (path !== requested) {
+      try {
+        text = await readNote(vaultRoot, path);
+        failure = null;
+      } catch (error) {
+        failure = error;
+      }
+      if (mine !== opening.current) return;
+    }
+    if (text === null) {
+      // 一覧と実体がずれている（外で消された等）。無反応に見せない
+      status(`開けませんでした: ${String(failure)}`);
+      return;
+    }
     shown.current = path;
     selectNote(path);
     saveLastNote(storage, vaultRoot, path); // 次回の起動で開き直す
@@ -480,6 +495,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
     await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
       const moved = await moveNote(vaultRoot, path, folder);
+      noteMoved(path, moved); // 走っている開き直しが動いた先で開けるように
       await refreshLists();
       await openNote(moved);
       status(folder ? `「${folder}」へ移しました` : "直下へ移しました");

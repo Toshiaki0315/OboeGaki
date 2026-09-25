@@ -11,6 +11,7 @@ vi.mock("../lib/ipc", () => ({
   noteExists: vi.fn(),
   stashNote: vi.fn(),
   discardStash: vi.fn(),
+  moveStash: vi.fn(),
   pendingRecovery: vi.fn(),
   restoreRecovery: vi.fn(),
   clearRecovery: vi.fn(),
@@ -59,6 +60,7 @@ beforeEach(() => {
   mocked.writeNote.mockResolvedValue(undefined);
   mocked.stashNote.mockResolvedValue(undefined);
   mocked.discardStash.mockResolvedValue(undefined);
+  mocked.moveStash.mockResolvedValue(undefined);
   mocked.pendingRecovery.mockResolvedValue([]);
   mocked.noteExists.mockResolvedValue(true);
   mocked.readNote.mockResolvedValue("外の本文");
@@ -600,8 +602,9 @@ describe("useNoteSync: 退避の取りこぼし（21-10）", () => {
     // 改名の往復中に別のノート（b.md）が開かれた。エディタは b を表示している
     rerender(input({ currentPath: "/v/b.md", readText: () => "b の本文" }));
     act(() => result.current.renamed("/v/a.md", "/v/a2.md"));
-    // a の退避は捨てるが、b の本文を a2 の名前で退避しない
-    expect(mocked.discardStash).toHaveBeenCalledWith("/v", "/v/a.md");
+    // b の本文を a2 の名前で退避しない。a の退避は中身ごと a2 へ付け替える（21-15）
     expect(mocked.stashNote).not.toHaveBeenCalled();
+    expect(mocked.moveStash).toHaveBeenCalledWith("/v", "/v/a.md", "/v/a2.md");
+    expect(mocked.discardStash).not.toHaveBeenCalled();
   });
 });

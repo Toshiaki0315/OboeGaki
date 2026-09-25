@@ -179,8 +179,10 @@ describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
       () => new Promise((resolve) => (finishRename = resolve)),
     );
     let finishRead: (text: string) => void = () => {};
-    mocked.readNote.mockImplementation(
-      () => new Promise<string>((resolve) => (finishRead = resolve)),
+    mocked.readNote.mockImplementation((_root, path) =>
+      path === "/v/新.md"
+        ? Promise.resolve("# 新\n本文\n") // 動いた先での読み直し（21-15）
+        : new Promise<string>((resolve) => (finishRead = resolve)),
     );
     // 見出し追従が改名を始める
     await act(async () => {
@@ -224,7 +226,10 @@ describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
     // 開き直しの読み込みを止めておく
     let finishRead: (text: string) => void = () => {};
     mocked.readNote.mockImplementation(
-      () => new Promise<string>((resolve) => (finishRead = resolve)),
+      (_root, path) =>
+        path === "/v/A.md"
+          ? new Promise<string>((resolve) => (finishRead = resolve))
+          : Promise.resolve("# B\n本文\n"), // 動いた先での読み直し（21-15）
     );
     let reopening: Promise<void> = Promise.resolve();
     act(() => {
@@ -260,6 +265,55 @@ describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
     expect(base.sync.markOpened).toHaveBeenLastCalledWith({
       path: "/v/B.md",
       text: "# B\n本文\n",
+    });
+  });
+
+  test("test_改名が読み込みより先に済んで旧パスが読めなくても_動いた先で開く（21-15）", async () => {
+    mocked.readNote.mockResolvedValue("# 旧\n本文\n");
+    const base = input({
+      currentPath: "/v/旧.md",
+      editorText: () => "# 新\n本文\n",
+    });
+    const { result, rerender } = renderHook(
+      (props: NoteCommandsInput) => useNoteCommands(props),
+      { initialProps: base },
+    );
+    await act(() => result.current.openNote("/v/旧.md"));
+    let finishRename: (outcome: {
+      path: string;
+      rewritten: number;
+      failed: string[];
+    }) => void = () => {};
+    mocked.renameNote.mockImplementation(
+      () => new Promise((resolve) => (finishRename = resolve)),
+    );
+    let failRead: (error: Error) => void = () => {};
+    mocked.readNote.mockImplementation((_root, path) =>
+      path === "/v/旧.md"
+        ? new Promise<string>((_resolve, reject) => (failRead = reject))
+        : Promise.resolve("# 新\n本文\n"),
+    );
+    await act(async () => {
+      rerender({ ...base, savedAt: 1 });
+    });
+    await vi.waitFor(() => expect(mocked.renameNote).toHaveBeenCalled());
+    let reopening: Promise<void> = Promise.resolve();
+    act(() => {
+      reopening = result.current.openNote("/v/旧.md");
+    });
+    await act(async () => {
+      finishRename({ path: "/v/新.md", rewritten: 0, failed: [] });
+    });
+    await act(async () => {
+      failRead(new Error("見つからない"));
+      await reopening;
+    });
+    expect(base.onStatus).not.toHaveBeenCalledWith(
+      expect.stringContaining("開けませんでした"),
+    );
+    expect(base.sync.markOpened).toHaveBeenLastCalledWith({
+      path: "/v/新.md",
+      text: "# 新\n本文\n",
     });
   });
 

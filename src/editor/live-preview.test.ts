@@ -1209,6 +1209,26 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     );
   });
 
+  test("setext_の下線を挟んだ_2_行上の編集でも_型_7_の塊の変化を数え直す（21-15）", () => {
+    const doc = "a\n===\n<x-y>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+    const changes: { from: number; to?: number; insert: string }[] = [
+      { from: 0, to: 1, insert: "" }, // 見出しの字を消す → 下線が段落になる
+      { from: 0, insert: "# " }, // ATX 見出しにする → 下線は段落
+      { from: 0, insert: "    " }, // 字下げでコードにする
+    ];
+    for (const change of changes) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, tableField],
+      });
+      const next = state.update({ changes: change }).state;
+      expect(shapeOf(next.field(tableField)), JSON.stringify(change)).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, tableField),
+      );
+    }
+  });
+
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
     // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
     const widgetsOf = (set: DecorationSet): unknown[] => {
