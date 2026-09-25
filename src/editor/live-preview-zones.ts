@@ -319,16 +319,25 @@ const HTML_BLOCKS = new Set([
   "CommentBlock",
   "ProcessingInstructionBlock",
 ]);
-function touchesHtmlBlock(state: EditorState, pos: number): boolean {
+/// その位置を包む HTML の塊の範囲。無ければ null（前後どちら側の字でも見る）
+function htmlBlockAt(
+  state: EditorState,
+  pos: number,
+): { from: number; to: number } | null {
   const at = Math.min(pos, state.doc.length);
   for (const side of [-1, 1] as const) {
     let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, side);
     for (; node; node = node.parent) {
-      if (HTML_BLOCKS.has(node.name)) return true;
+      if (HTML_BLOCKS.has(node.name)) return { from: node.from, to: node.to };
     }
   }
-  return false;
+  return null;
 }
+
+/// 変更で HTML の塊の**範囲が変わったか**。塊が生まれた・消えた・伸び縮みした
+/// （型 4 の `>`・型 6 の空行で閉じる等）ときだけ真。塊の中の普通の打鍵は範囲が
+/// 写像どおりなので偽 — 以前は「触れたか」で見ていて、`<div>` の中で打つたびに
+/// 表と数式を全部数え直していた（p95 +2ms。再レビュー 2026-09-25 / 21-9）
 function editTouchesHtmlBlock(tr: {
   startState: EditorState;
   state: EditorState;
@@ -336,21 +345,25 @@ function editTouchesHtmlBlock(tr: {
     iterChangedRanges: (
       f: (fromA: number, toA: number, fromB: number, toB: number) => void,
     ) => void;
+    mapPos: (pos: number, assoc?: number) => number;
   };
 }): boolean {
-  let touched = false;
+  let changed = false;
+  const differs = (oldPos: number, newPos: number) => {
+    const before = htmlBlockAt(tr.startState, oldPos);
+    const after = htmlBlockAt(tr.state, newPos);
+    if (!before && !after) return false;
+    if (!before || !after) return true;
+    return (
+      tr.changes.mapPos(before.from, -1) !== after.from ||
+      tr.changes.mapPos(before.to, 1) !== after.to
+    );
+  };
   tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
-    if (touched) return;
-    if (
-      touchesHtmlBlock(tr.startState, fromA) ||
-      touchesHtmlBlock(tr.startState, toA) ||
-      touchesHtmlBlock(tr.state, fromB) ||
-      touchesHtmlBlock(tr.state, toB)
-    ) {
-      touched = true;
-    }
+    if (changed) return;
+    changed = differs(fromA, fromB) || (toA !== fromA && differs(toA, toB));
   });
-  return touched;
+  return changed;
 }
 
 /// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・

@@ -202,14 +202,22 @@ export function useNoteSync({
   /// 予約の書き先・既知の本文・今のパスを新しい方へ付け替える。props の
   /// 更新を待たない — 直後の打鍵が旧パスを掴む
   function renamed(from: string, to: string) {
+    // 同じ名前に落ちた改名（sanitize 後に同名）では何も動いていない。退避を
+    // 捨ててはいけない（21-9）
+    if (from === to) return;
     if (currentPathRef.current === from) currentPathRef.current = to;
     if (pendingTarget.current?.path === from) pendingTarget.current.path = to;
     if (known.current?.path === from)
       known.current = { ...known.current, path: to };
     // 旧パスの退避は捨てる。残すと次回の起動で「未保存が 1 件」と聞かれ、
-    // 復元すると旧名の幽霊ノートが生える（21-8）
+    // 復元すると旧名の幽霊ノートが生える（21-8）。まだ保存していない字が
+    // あれば**新パスで退避し直す** — 捨てるだけだと、保存が終わるまでの間に
+    // 落ちたとき打った字がどこにも残らない（21-9）
     const root = vaultRootRef.current;
-    if (root) dropStash(root, from);
+    if (root && stashed.current.delete(from)) {
+      void discardStash(root, from);
+      if (dirty.current) void keepStash(root, to, readTextRef.current());
+    }
   }
   /// ノートを開いた直後: 未編集で、保存時刻はまだ無い
   function markOpened(opened?: { path: string; text: string }) {

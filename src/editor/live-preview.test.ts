@@ -945,6 +945,37 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
+    // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
+    const widgetsOf = (set: DecorationSet): unknown[] => {
+      const out: unknown[] = [];
+      for (let cursor = set.iter(); cursor.value; cursor.next()) {
+        const widget = (cursor.value.spec as { widget?: unknown }).widget;
+        if (widget) out.push(widget);
+      }
+      return out;
+    };
+    const doc =
+      "<div>\nabc\n</div>\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nx+y\n$$\n\n続き";
+    for (const field of [tableField, blockWidgetField]) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, field],
+      });
+      const before = widgetsOf(state.field(field));
+      expect(before.length).toBeGreaterThan(0);
+      const at = doc.indexOf("abc") + 1;
+      const next = state.update({ changes: { from: at, insert: "z" } }).state;
+      const after = widgetsOf(next.field(field));
+      expect(after).toEqual(before); // 同じ widget の実体のまま
+      expect(after[0]).toBe(before[0]);
+      expect(shapeOf(next.field(field))).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, field),
+      );
+    }
+  });
+
   test("表の行頭に飲み込む記号を打って消す_狙い撃ちの乱数（21-7）", () => {
     // 300 手の乱数は表が序盤に壊れて新しい分岐に届かない。表の行頭に限って
     // 開きと閉じを打ち、毎手で作り直しと突き合わせる

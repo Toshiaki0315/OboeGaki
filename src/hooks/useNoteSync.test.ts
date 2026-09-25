@@ -528,6 +528,12 @@ describe("useNoteSync: 改名と退避・予約の捨て方（21-8）", () => {
     expect(mocked.discardStash).not.toHaveBeenCalled();
     act(() => result.current.renamed("/v/a.md", "/v/b.md"));
     expect(mocked.discardStash).toHaveBeenCalledWith("/v", "/v/a.md");
+    // 保存がまだなので、新パスで退避し直す（落ちても打った字が残る。21-9）
+    expect(mocked.stashNote).toHaveBeenLastCalledWith(
+      "/v",
+      "/v/b.md",
+      "いまの本文",
+    );
     release();
   });
 
@@ -540,5 +546,19 @@ describe("useNoteSync: 改名と退避・予約の捨て方（21-8）", () => {
     release();
     await tick(2000);
     expect(mocked.writeNote).not.toHaveBeenCalled();
+  });
+});
+
+describe("useNoteSync: 動いていない改名（21-9）", () => {
+  test("test_同じ名前に落ちた改名では退避を捨てない", async () => {
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    const release = result.current.holdSaves();
+    act(() => result.current.noteChanged(() => "v0"));
+    await tick(100);
+    expect(mocked.stashNote).toHaveBeenCalledWith("/v", "/v/a.md", "v0");
+    act(() => result.current.renamed("/v/a.md", "/v/a.md"));
+    expect(mocked.discardStash).not.toHaveBeenCalled();
+    release();
   });
 });
