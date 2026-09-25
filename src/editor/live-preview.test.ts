@@ -1002,6 +1002,52 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("型_7_は下線入りの名前と_引用符の中の_>_も受ける（lezer と同じ判定。21-11）", () => {
+    for (const tag of ["<x_y>", '<a title="x>y">']) {
+      const doc = `# h\n${tag}\n| a | b |\n| --- | --- |\n| 1 | 2 |\n`;
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, tableField],
+      });
+      // 見出しを段落にする → タグ行は段落を割り込めず、塊でなくなる（表が現れる）
+      const next = state.update({
+        changes: { from: 0, to: 2, insert: "" },
+      }).state;
+      expect(shapeOf(next.field(tableField)), tag).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, tableField),
+      );
+    }
+  });
+
+  test("型_6_の閉じタグの直上の段落を打っても_外の表と数式は作り直さない（21-11）", () => {
+    const widgetsOf = (set: DecorationSet): unknown[] => {
+      const out: unknown[] = [];
+      for (let cursor = set.iter(); cursor.value; cursor.next()) {
+        const widget = (cursor.value.spec as { widget?: unknown }).widget;
+        if (widget) out.push(widget);
+      }
+      return out;
+    };
+    const doc =
+      "<div>\n\n段落\n</div>\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nx+y\n$$\n";
+    for (const field of [tableField, blockWidgetField]) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, field],
+      });
+      const before = widgetsOf(state.field(field));
+      expect(before.length).toBeGreaterThan(0);
+      const at = doc.indexOf("段落") + 2;
+      const next = state.update({ changes: { from: at, insert: "z" } }).state;
+      expect(widgetsOf(next.field(field))[0]).toBe(before[0]);
+      expect(shapeOf(next.field(field))).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, field),
+      );
+    }
+  });
+
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
     // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
     const widgetsOf = (set: DecorationSet): unknown[] => {

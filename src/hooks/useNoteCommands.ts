@@ -269,6 +269,11 @@ export function useNoteCommands(input: NoteCommandsInput) {
     if (heading === null || sanitizeStem(previous ?? stem) !== stem) return;
     if (sanitizeStem(heading) === stem) return;
     renaming.current = true;
+    // 開く操作の世代を控える（進めはしない — 進めると走っている openNote を
+    // 捨ててしまう）。往復の間に別のノートが開かれていたら、選択を戻さない。
+    // 戻すとエディタは別のノートの本文のまま選択だけ A' になり、次の打鍵で
+    // その本文が A' に保存されて A の中身が上書きされる（再レビュー 2026-09-25 / 21-11）
+    const generation = opening.current;
     try {
       const outcome = await renameNote(vaultRoot, currentPath, heading);
       const renamed = outcome.path;
@@ -277,6 +282,10 @@ export function useNoteCommands(input: NoteCommandsInput) {
       // 本文はそのまま（エディタを作り直さない = キャレットが飛ばない）。
       // 予約の書き先と今のパスだけ付け替える
       sync.renamed(currentPath, renamed);
+      if (opening.current !== generation) {
+        await refreshLists(); // 動いたことだけ一覧に映す
+        return;
+      }
       selectNote(renamed);
       saveLastNote(storage, vaultRoot, renamed);
       await refreshLists();

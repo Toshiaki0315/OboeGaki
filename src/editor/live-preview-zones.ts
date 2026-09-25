@@ -378,8 +378,19 @@ function editTouchesHtmlBlock(tr: {
 /// 割り込めないので、**上の行**が段落かどうかで塊になったりならなかったりする。
 /// 変更の位置には塊が見えないまま次の行の塊が生まれ・消えるので、変更の次の行が
 /// これなら数え直す（再レビュー 2026-09-25 / 21-10。21-9 以前から在った穴）
-const TAG_ONLY_LINE_RE =
-  /^ {0,3}<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>\s*$/;
+// lezer（@lezer/markdown の HTMLBlockStyle）と同じ判定。型 7 はタグだけの行で、
+// かつ型 1（script / pre / style）・型 6（div・details・p など）のどれでもない
+// もの。型 1・6 は段落を割り込めるので上の行に左右されない — 数えると `</div>` の
+// 直上の段落を打つたびに全部数え直していた（p95 0.6ms → 2.4ms。21-11）
+const TYPE7_RE =
+  /^\s*(?:<\/[a-z][\w-]*\s*>|<[a-z][\w-]*(\s+[a-z:_][\w-.]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*>)\s*$/i;
+const TYPE1_RE = /^<(?:script|pre|style)(?:\s|>|$)/i;
+const TYPE6_RE =
+  /^\s*<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i;
+function isType7Line(text: string): boolean {
+  const rest = text.replace(/^ {0,3}/, "");
+  return TYPE7_RE.test(rest) && !TYPE1_RE.test(rest) && !TYPE6_RE.test(rest);
+}
 function nextLineIsTagOnly(state: EditorState, pos: number): boolean {
   // 塊の中の打鍵なら、次の行は同じ塊の一部（`<div>` の中で `</div>` の上を打つ等）。
   // 塊の伸び縮みは範囲の比較が見るので、ここは塊の**外**だけ（毎打鍵の全再計算を
@@ -387,7 +398,7 @@ function nextLineIsTagOnly(state: EditorState, pos: number): boolean {
   if (htmlBlockAt(state, pos)) return false;
   const line = state.doc.lineAt(Math.min(pos, state.doc.length));
   if (line.number >= state.doc.lines) return false;
-  return TAG_ONLY_LINE_RE.test(state.doc.line(line.number + 1).text);
+  return isType7Line(state.doc.line(line.number + 1).text);
 }
 
 /// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・

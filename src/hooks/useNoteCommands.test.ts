@@ -83,6 +83,65 @@ beforeEach(() => {
   mocked.readNote.mockResolvedValue("# 題\n本文\n");
 });
 
+describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
+  test("test_保存のあと見出しが変わっていたら改名し_選択と予約の書き先を付け替える", async () => {
+    mocked.renameNote.mockResolvedValue({
+      path: "/v/新.md",
+      rewritten: 0,
+      failed: [],
+    });
+    const base = input({
+      currentPath: "/v/旧.md",
+      editorText: () => "# 新\n本文\n",
+    });
+    const { rerender } = renderHook(
+      (props: NoteCommandsInput) => useNoteCommands(props),
+      { initialProps: base },
+    );
+    await act(async () => {
+      rerender({ ...base, savedAt: 1 });
+    });
+    await vi.waitFor(() =>
+      expect(base.selectNote).toHaveBeenCalledWith("/v/新.md"),
+    );
+    expect(base.sync.renamed).toHaveBeenCalledWith("/v/旧.md", "/v/新.md");
+  });
+
+  test("test_改名の往復中に別のノートを開いたら_選択を戻さない", async () => {
+    let finish: (outcome: {
+      path: string;
+      rewritten: number;
+      failed: string[];
+    }) => void = () => {};
+    mocked.renameNote.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    mocked.readNote.mockResolvedValue("# B\n");
+    const base = input({
+      currentPath: "/v/旧.md",
+      editorText: () => "# 新\n本文\n",
+    });
+    const { result, rerender } = renderHook(
+      (props: NoteCommandsInput) => useNoteCommands(props),
+      { initialProps: base },
+    );
+    await act(async () => {
+      rerender({ ...base, savedAt: 1 });
+    });
+    await vi.waitFor(() => expect(mocked.renameNote).toHaveBeenCalled());
+    // 往復の間に B を開き終える
+    await act(() => result.current.openNote("/v/b.md"));
+    expect(base.selectNote).toHaveBeenLastCalledWith("/v/b.md");
+    await act(async () => {
+      finish({ path: "/v/新.md", rewritten: 0, failed: [] });
+    });
+    // 予約の書き先は付け替えるが、選択は B のまま（A' に戻さない）
+    expect(base.sync.renamed).toHaveBeenCalledWith("/v/旧.md", "/v/新.md");
+    expect(base.selectNote).not.toHaveBeenCalledWith("/v/新.md");
+    expect(base.selectNote).toHaveBeenLastCalledWith("/v/b.md");
+  });
+});
+
 describe("useNoteCommands", () => {
   test("test_改名は開いている本文を差し替え_エディタは作り直さない（21-4）", async () => {
     mocked.renameNote.mockResolvedValue({
