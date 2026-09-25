@@ -97,6 +97,12 @@ describe("useAssistant", () => {
     expect(result.current.thinking).toBe(false);
     act(() => handlers?.onChunk("の続き"));
     expect(result.current.answer).toBe("");
+    // 新しいノートで頼んでも、まだ前の生成が止まり切っていない（started=false）
+    // 間は続きを受けない（21-6）
+    mocked.llmGenerate.mockResolvedValue(false);
+    await act(() => result.current.ask("summary"));
+    act(() => handlers?.onChunk("前のノートの続き"));
+    expect(result.current.answer).not.toContain("前のノートの続き");
   });
 
   test("test_失敗は読める言葉にして答えの場所に出す", async () => {

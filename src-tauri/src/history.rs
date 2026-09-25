@@ -71,7 +71,8 @@ pub fn keep(
         return Ok(None);
     }
     let folder = folder_name(key);
-    if let Some(latest) = versions_in(root, &folder).into_iter().next() {
+    let latest = versions_in(root, &folder).into_iter().next();
+    if let Some(latest) = &latest {
         // 時刻の判定が先。ファイル名だけで済み、中身を読まずに大半を弾ける
         if !force && now - latest.saved_at < Duration::minutes(interval_minutes) {
             return Ok(None);
@@ -84,8 +85,10 @@ pub fn keep(
     }
     // 起点は最新の版より後ろに置く。秒を進めた版は「未来」の刻印になるので、
     // 同じ秒に古い版と同じ中身が来たとき、`now` から探すと古いファイルで
-    // 止まって上書きしていた（レビュー 2026-09-25 / 21-5）
-    let mut stamp = match versions_in(root, &folder).into_iter().next() {
+    // 止まって上書きしていた（レビュー 2026-09-25 / 21-5）。
+    // 注意: 時計が戻ったとき（時差移動など）は、追いつくまで刻印が実時刻より
+    // 先になり、一覧の時刻が実際とずれる。並びと T7（潰さない）を優先した
+    let mut stamp = match &latest {
         Some(latest) if latest.saved_at >= now => latest.saved_at + Duration::seconds(1),
         _ => now,
     };

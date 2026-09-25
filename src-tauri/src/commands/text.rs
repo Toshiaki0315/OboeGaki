@@ -34,10 +34,17 @@ pub fn task_complete(
 ) -> CmdResult<()> {
     let note = guarded(&root, &path)?;
     let current = crate::vault::read_note(&note)?;
-    // 一覧の行番号は索引の写し。文も突き合わせ、ずれていれば触らない
-    let rewritten = crate::tasks::complete_matching(&current, line, &text).ok_or_else(|| {
-        "やることの行がずれています。一覧を更新してからもう一度お試しください".to_string()
-    })?;
+    // 一覧の行番号は索引の写し。文も突き合わせ、ずれていれば触らない。
+    // 既に完了しているなら何も書かずに成功（別の窓や MCP で済んでいた）
+    let rewritten = match crate::tasks::complete_matching(&current, line, &text) {
+        crate::tasks::Completion::Rewritten(rewritten) => rewritten,
+        crate::tasks::Completion::AlreadyDone => return Ok(()),
+        crate::tasks::Completion::Mismatch => {
+            return Err(
+                "やることの行がずれています。一覧を更新してからもう一度お試しください".into(),
+            )
+        }
+    };
     let vault = Vault::new(&root);
     state.suppressor.mark(&note);
     vault.write_with_version(&note, &current, &rewritten)?;

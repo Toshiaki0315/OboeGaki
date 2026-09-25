@@ -127,17 +127,38 @@ fn due_of(body: &str) -> Option<String> {
 }
 
 /// その行の印だけを書き換えた本文。行が無い・印が無ければ None
+/// `complete_matching` の答え
+#[derive(Debug, PartialEq)]
+pub enum Completion {
+    /// 完了にした本文
+    Rewritten(String),
+    /// 既に完了している（別の窓や MCP で済んでいた。何も書かない）
+    AlreadyDone,
+    /// その行がやることでない・文が違う（一覧がずれている）
+    Mismatch,
+}
+
 /// 一覧（索引の写し）から来た行番号で完了にする。**文も突き合わせる** — 上に
 /// 行が挟まると同じ番号が別のやることを指す（レビュー 2026-09-24 / 21-3）。
-/// その行がやることでない・文が違えば None（呼び手は一覧の更新を促す）
-pub fn complete_matching(text: &str, line: usize, expected: &str) -> Option<String> {
-    let found = extract_tasks(text)
+/// 完了済みと「ずれ」は分けて返す — 完了済みを「ずれています」と叱っていた
+/// （再レビュー 2026-09-25 / 21-6）
+pub fn complete_matching(text: &str, line: usize, expected: &str) -> Completion {
+    let Some(found) = extract_tasks(text)
         .into_iter()
-        .find(|item| item.line == line)?;
-    if found.text != expected || found.done {
-        return None; // 文が違う、または既に完了（無意味な版と mtime 更新を作らない）
+        .find(|item| item.line == line)
+    else {
+        return Completion::Mismatch;
+    };
+    if found.text != expected {
+        return Completion::Mismatch;
     }
-    set_task_done(text, line, true)
+    if found.done {
+        return Completion::AlreadyDone;
+    }
+    match set_task_done(text, line, true) {
+        Some(rewritten) => Completion::Rewritten(rewritten),
+        None => Completion::Mismatch,
+    }
 }
 
 pub fn set_task_done(text: &str, line: usize, done: bool) -> Option<String> {
@@ -276,13 +297,22 @@ mod tests {
         let text = "# 題\n\n- [ ] 買い物\n- [ ] 掃除\n";
         assert_eq!(
             complete_matching(text, 2, "買い物"),
-            Some("# 題\n\n- [x] 買い物\n- [ ] 掃除\n".to_string())
+            Completion::Rewritten("# 題\n\n- [x] 買い物\n- [ ] 掃除\n".to_string())
         );
         // 上に 1 行挟まって、一覧の行番号 2 が別のやることになった
         let shifted = "# 題\n追加\n\n- [ ] 買い物\n- [ ] 掃除\n";
-        assert_eq!(complete_matching(shifted, 2, "買い物"), None);
-        // 既に完了している行は触らない（21-5）
-        assert_eq!(complete_matching("- [x] 済み\n", 0, "済み"), None);
-        assert!(complete_matching(shifted, 3, "買い物").is_some());
+        assert_eq!(
+            complete_matching(shifted, 2, "買い物"),
+            Completion::Mismatch
+        );
+        // 既に完了している行は「ずれ」ではない（21-6）
+        assert_eq!(
+            complete_matching("- [x] 済み\n", 0, "済み"),
+            Completion::AlreadyDone
+        );
+        assert!(matches!(
+            complete_matching(shifted, 3, "買い物"),
+            Completion::Rewritten(_)
+        ));
     }
 }

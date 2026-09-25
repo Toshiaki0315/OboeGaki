@@ -49,6 +49,8 @@ describe("Enter の入力補助", () => {
   test("引用の中のリストで_Tab_は通常の挿入に譲り_引用の頭の直後の_Enter_は引用を継続する（21-5）", () => {
     expect(press(indentListMore, "> - a｜")).toBeNull();
     expect(press(continueMarkup, "> ｜- a")).toBe("> \n> ｜- a");
+    // リストの印の内側でも引用の行として振る舞う（引用の外へ落とさない）
+    expect(press(continueMarkup, "> -｜ a")).toBe("> -\n> ｜ a");
   });
 
   test("空の引用は改行せずマーカーを外す", () => {

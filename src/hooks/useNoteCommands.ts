@@ -24,6 +24,7 @@ import {
   trashNote,
 } from "../lib/ipc";
 import type { NoteEntry } from "../lib/note-order";
+import { frontMatterRange } from "../markdown/front-matter";
 import { nfcUnder, noteLabel, noteStem } from "../lib/note-path";
 import {
   firstHeading,
@@ -198,6 +199,10 @@ export function useNoteCommands(input: NoteCommandsInput) {
     try {
       const outcome = await renameNote(vaultRoot, currentPath, trimmed);
       const renamed = outcome.path;
+      // **ファイルが動いた直後に予約の書き先と今のパスを付け替える**（見出しの
+      // 追従と同じ手順）。往復中に打った字の自動保存が、消したはずの旧パスへ
+      // 書いて旧ファイルを蘇らせていた（再レビュー 2026-09-25 / 21-6）
+      sync.renamed(currentPath, renamed);
       await refreshLists();
       const text = await readNote(vaultRoot, renamed);
       if (mine !== opening.current) return; // その間に別のノートが開かれた
@@ -216,6 +221,11 @@ export function useNoteCommands(input: NoteCommandsInput) {
         const heading = firstHeadingLine(text);
         if (span && heading && span.line !== heading.line) {
           sync.replaceRange(span.from, span.to, heading.line);
+        } else if (!span && heading) {
+          // 見出しの無いノート: Rust は先頭に `# 題\n\n` を足している。同じものを
+          // 本文の先頭（front matter の後ろ）に差し込む（21-6）
+          const at = frontMatterRange(live)?.bodyStart ?? 0;
+          sync.replaceRange(at, at, `${heading.line}\n\n`);
         }
       } else {
         sync.adopt(text);

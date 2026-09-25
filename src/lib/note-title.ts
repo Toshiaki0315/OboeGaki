@@ -6,8 +6,6 @@
 
 import { proseLines } from "../markdown/prose-lines";
 
-/// 最初の H1 の文字。front matter とコードフェンスの中は見ない。
-/// `##` 以下は「一番上の見出し」ではないので数えない。無ければ null
 /// 最初の `# ` の行そのものと位置（改名で見出しだけ差し替えるため。21-5）
 export function firstHeadingLine(
   text: string,
@@ -20,6 +18,8 @@ export function firstHeadingLine(
   return null;
 }
 
+/// 最初の H1 の文字。front matter とコードフェンスの中は見ない。
+/// `##` 以下は「一番上の見出し」ではないので数えない。無ければ null
 export function firstHeading(text: string): string | null {
   for (const { line } of proseLines(text)) {
     const found = /^# +(\S.*)$/.exec(line);

@@ -850,6 +850,39 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("表の中で打った字がフェンスを開いて下の表を飲んでも数え直す（21-6）", () => {
+    const doc =
+      "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n| c | d |\n| --- | --- |\n| 3 | 4 |\n";
+    let state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, tableField],
+    });
+    const at = doc.indexOf("| 1");
+    for (let n = 0; n < 3; n++) {
+      state = state.update({ changes: { from: at + n, insert: "`" } }).state;
+    }
+    expect(shapeOf(state.field(tableField))).toEqual(
+      rebuilt(state.doc.toString(), state.selection.main.head, tableField),
+    );
+  });
+
+  test("離れた場所の_HTML_コメントが表と数式を飲んでも数え直す（21-6）", () => {
+    const doc =
+      "x\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nx+y\n$$\n\n続き";
+    for (const field of [tableField, blockWidgetField]) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, field],
+      });
+      const next = state.update({ changes: { from: 0, insert: "<!--" } }).state;
+      expect(shapeOf(next.field(field))).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, field),
+      );
+    }
+  });
+
   test("閉じの無い数式が下の囲みを包んでも_中で打つと囲みの装飾が消えない", () => {
     const doc = "$$\n:::note\n中\n:::\n$\nx+y\n\n続き";
     const state = EditorState.create({
@@ -881,7 +914,23 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
       selection: { anchor: 0 },
       extensions: [LANG, sourceModeField, tableField, blockWidgetField],
     });
-    const pieces = ["|", "\n", "$$", "a", " ", "-", ":", "`", "$"];
+    const pieces = [
+      "|",
+      "\n",
+      "$$",
+      "a",
+      " ",
+      "-",
+      ":",
+      "`",
+      "$",
+      "```",
+      "<!--",
+      "-->",
+      "<pre>",
+      "# ",
+      "> ",
+    ];
     const log: string[] = [];
     for (let step = 0; step < 300; step++) {
       const length = state.doc.length;

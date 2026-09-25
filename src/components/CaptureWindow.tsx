@@ -23,7 +23,9 @@ export function CaptureWindow({
   return (
     <div className="capture-window">
       <textarea
-        disabled={disabled}
+        // disabled だと鍵が届かず、閉じられなかったときに Esc も効かない。
+        // 送っている間は読むだけにして Esc（閉じる）は通す（21-6）
+        readOnly={disabled}
         ref={box}
         aria-label="書き取り"
         className="capture-text"

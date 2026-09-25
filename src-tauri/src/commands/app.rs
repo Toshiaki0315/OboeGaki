@@ -107,7 +107,7 @@ pub async fn vault_open(
                 eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
             }
             history::prune(&history_root(&root), chrono::Local::now().naive_local());
-            // クラッシュで残った一時ファイル（.名前.xxxx.tmp）も掃く（21-4）
+            // クラッシュで残った一時ファイル（.名前.xxxxxx.tmp）も掃く（21-4）
             let swept = crate::autosave::sweep_temporaries(vault.root());
             if swept > 0 {
                 eprintln!("一時ファイルの残骸を {swept} 個掃いた");

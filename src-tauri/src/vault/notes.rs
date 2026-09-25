@@ -195,7 +195,18 @@ impl Vault {
         // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042）
         self.carry_history(path, &target);
         if rewritten != text {
-            crate::autosave::save_atomic(&target, &rewritten)?;
+            if let Err(error) = crate::autosave::save_atomic(&target, &rewritten) {
+                // 見出しを書けなかったら**元の名前に戻す**。動いたまま Err を返すと、
+                // 呼び手は旧パスのまま次の自動保存を書いてノートが二重になる
+                // （再レビュー 2026-09-25 / 21-6）。版は旧鍵で残してあるので安全
+                if fs::rename(&target, path).is_ok() {
+                    self.carry_history(&target, path);
+                }
+                return Err(io::Error::new(
+                    error.kind(),
+                    format!("見出しを書き換えられなかったので改名を戻しました: {error}"),
+                ));
+            }
         }
         Ok(target)
     }

@@ -56,7 +56,7 @@ describe("CaptureRoot", () => {
     fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
     fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
     expect(mocked.appendDaily).toHaveBeenCalledTimes(1);
-    expect(box()).toHaveProperty("disabled", true);
+    expect(box()).toHaveProperty("readOnly", true);
     finish("/v/2026-09-24.md");
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   });

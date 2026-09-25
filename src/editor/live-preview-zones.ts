@@ -163,7 +163,10 @@ function tableZoneDecorations(
   state: EditorState,
   zone: { from: number; to: number },
 ): { ranges: Range<Decoration>[]; bounds: { from: number; to: number }[] } {
-  if (state.field(sourceModeField, false)) return { ranges: [], bounds: [] };
+  // ソースモードでは描かないがゾーンは据え置く（捨てると以後の打鍵が毎回
+  // 全再計算に落ちる。21-6）
+  if (state.field(sourceModeField, false))
+    return { ranges: [], bounds: [zone] };
   const ranges: Range<Decoration>[] = [];
   const bounds: { from: number; to: number }[] = [];
   for (const node of tablesWithin(state, zone.from, zone.to)) {
@@ -307,10 +310,23 @@ function editNearMarker(
 
 type NearTr = Parameters<typeof editNearMarker>[1];
 
-const editNearTables = (tr: NearTr) => editNearMarker(/\||\$\$|```|~~~/, tr);
+/// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・
+/// `<pre>` など）。離れた場所の表・数式・図がこれに飲まれると木から消えるので、
+/// 近くの編集は全部数え直す（再レビュー 2026-09-25 / 21-6。以前は `|` と `$$` と
+/// フェンスだけで、`<!--` や `<pre>` を見ていなかった）
+const SWALLOWING_RE = /```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b/i;
+const editOpensBlock = (tr: NearTr) => editNearMarker(SWALLOWING_RE, tr);
+const editNearTables = (tr: NearTr) =>
+  editNearMarker(
+    /\||\$\$|```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b/i,
+    tr,
+  );
 // 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる
 const editNearBlockWidgets = (tr: NearTr) =>
-  editNearMarker(/\$\$|```|~~~|:::|<\/?details>/, tr);
+  editNearMarker(
+    /\$\$|```|~~~|:::|<\/?details>|<!--|-->|<\/?(?:pre|script|style|textarea)\b/i,
+    tr,
+  );
 
 /// ```mermaid のフェンスなら中身。違えば null。
 export function mermaidCode(
@@ -786,6 +802,10 @@ export const tableField = StateField.define<DecorationSet>({
       // 全部数え直す
       const inside = zonesTouchedInside(meta.zones, tr);
       if (inside === null && editNearTables(tr))
+        return computeTableSet(tr.state);
+      // 表の中で打った字がフェンスや HTML ブロックを開くと、その下の**別の表**が
+      // 飲まれる。触ったゾーンの範囲しか見ない差し替えでは拾えないので数え直す
+      if (inside !== null && editOpensBlock(tr))
         return computeTableSet(tr.state);
       const zones = meta.zones.map((zone) => ({
         from: tr.changes.mapPos(zone.from, 1),

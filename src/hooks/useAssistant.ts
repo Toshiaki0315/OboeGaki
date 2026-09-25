@@ -204,7 +204,6 @@ export function useAssistant({
     const packed = packSources(
       picked.map((hit, index) => ({ title: hit.title, body: bodies[index] })),
     );
-    stale.current = false;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task: "question",
@@ -216,7 +215,11 @@ export function useAssistant({
     if (!started) {
       setThinking(false);
       setAnswer("いま考えています。終わるまでお待ちください。");
+      return;
     }
+    // 始まってから印を下ろす。止めかけの前の生成がまだ走っていて started=false の
+    // ときに下ろすと、その続きが新しい答え欄に流れ込む（21-6）
+    stale.current = false;
   }
 
   /// ノートを読ませる（要約・レビュー）。**本文は書き換えない**
@@ -226,7 +229,6 @@ export function useAssistant({
     await flushEdits(); // 打ちかけを書き切ってから読ませる
     const text = noteText();
     clear();
-    stale.current = false;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task,
@@ -238,6 +240,7 @@ export function useAssistant({
       setAnswer("いま考えています。終わるまでお待ちください。");
       return;
     }
+    stale.current = false; // 始まってから下ろす（上と同じ理由）
     // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）。
     // **先に届いた断りや答えを上書きしない**（loadingNotice が判断する）—
     // モデル名の間違いの 404 は、この確認より速く返ることがある

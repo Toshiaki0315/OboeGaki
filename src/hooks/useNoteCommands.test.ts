@@ -121,6 +121,31 @@ describe("useNoteCommands", () => {
       path: "/v/新.md",
       text: "# 新\n本文\n",
     });
+    // 予約の書き先はファイルが動いた直後に付け替える（旧パスが蘇らない。21-6）
+    expect(given.sync.renamed).toHaveBeenCalledWith("/v/旧.md", "/v/新.md");
+    const order = (given.sync.renamed as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    const replaced = (given.sync.replaceRange as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    expect(order).toBeLessThan(replaced);
+  });
+
+  test("test_見出しの無いノートを改名したら_Rust が足した見出しを先頭に差し込む（21-6）", async () => {
+    mocked.renameNote.mockResolvedValue({
+      path: "/v/新.md",
+      rewritten: 0,
+      failed: [],
+    });
+    mocked.readNote.mockResolvedValue("# 新\n\n本文\n");
+    const editorText = vi
+      .fn<() => string | undefined>()
+      .mockReturnValueOnce("---\nid: 1\n---\n本文\n")
+      .mockReturnValue("---\nid: 1\n---\n本文\n打った\n");
+    const given = input({ currentPath: "/v/無題.md", editorText });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.rename("新"));
+    expect(given.sync.adopt).not.toHaveBeenCalled();
+    expect(given.sync.replaceRange).toHaveBeenCalledWith(14, 14, "# 新\n\n");
   });
 
   test("test_改名の往復中に別のノートを開いたら_改名側は選択と本文を触らない（21-5）", async () => {

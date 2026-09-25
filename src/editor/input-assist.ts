@@ -166,8 +166,8 @@ export const continueMarkup: StateCommand = ({ state, dispatch }) => {
   if (!marker) return false;
   if (column < marker.length) {
     // マーカーの内側にキャレットがある。ここで継承すると壊れた行ができる。
-    // ただし引用の頭の直後（`> ｜- a`）は引用だけ継続する — 以前は quote と
-    // 見ていたので `> ` が継続していた（21-5）
+    // ただし引用の頭より後ろ（`> ｜- a` や `> -｜ a`）は引用の行として振る舞い、
+    // 引用だけ継続する — 以前は quote と見ていたので `> ` が継続していた（21-5）
     const head = quoteHead(line.text);
     if (marker.kind === "quote" || !head || column < head.length) return false;
     const insert = `\n${head}`;
