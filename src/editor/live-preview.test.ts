@@ -1180,6 +1180,35 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     );
   });
 
+  test("リビール状態が一度に大量に変わっても_作り直しと同じ答え（21-14）", () => {
+    // 囲みと数式を 40 組。全選択すると全部のゾーンのリビール状態が変わる
+    const doc = Array.from(
+      { length: 40 },
+      (_, i) => `:::note\n中身${i}\n:::\n\n$$\nx_${i}\n$$\n`,
+    ).join("\n");
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+    const all = state.update({
+      selection: { anchor: 0, head: doc.length },
+    }).state;
+    expect(shapeOf(all.field(blockWidgetField))).toEqual(
+      shapeOf(
+        EditorState.create({
+          doc,
+          selection: { anchor: 0, head: doc.length },
+          extensions: [LANG, sourceModeField, blockWidgetField],
+        }).field(blockWidgetField),
+      ),
+    );
+    const back = all.update({ selection: { anchor: doc.length } }).state;
+    expect(shapeOf(back.field(blockWidgetField))).toEqual(
+      rebuilt(back.doc.toString(), back.selection.main.head, blockWidgetField),
+    );
+  });
+
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
     // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
     const widgetsOf = (set: DecorationSet): unknown[] => {

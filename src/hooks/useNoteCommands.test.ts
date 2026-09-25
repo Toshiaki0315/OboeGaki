@@ -209,6 +209,60 @@ describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
     });
   });
 
+  test("test_開き直しの間に改名が輪になっても_最新の位置で開く（21-14）", async () => {
+    mocked.readNote.mockResolvedValue("# A\n本文\n");
+    const heading = { current: "# B\n本文\n" };
+    const base = input({
+      currentPath: "/v/A.md",
+      editorText: () => heading.current,
+    });
+    const { result, rerender } = renderHook(
+      (props: NoteCommandsInput) => useNoteCommands(props),
+      { initialProps: base },
+    );
+    await act(() => result.current.openNote("/v/A.md"));
+    // 開き直しの読み込みを止めておく
+    let finishRead: (text: string) => void = () => {};
+    mocked.readNote.mockImplementation(
+      () => new Promise<string>((resolve) => (finishRead = resolve)),
+    );
+    let reopening: Promise<void> = Promise.resolve();
+    act(() => {
+      reopening = result.current.openNote("/v/A.md");
+    });
+    // その間に見出し追従が A→B→C→B と 3 回改名する
+    const hops: [string, string, string][] = [
+      ["/v/A.md", "/v/B.md", "# C\n本文\n"],
+      ["/v/B.md", "/v/C.md", "# B\n本文\n"],
+      ["/v/C.md", "/v/B.md", "# B\n本文\n"],
+    ];
+    let saved = 1;
+    for (const [from, to, next] of hops) {
+      mocked.renameNote.mockResolvedValueOnce({
+        path: to,
+        rewritten: 0,
+        failed: [],
+      });
+      const calls = mocked.renameNote.mock.calls.length;
+      await act(async () => {
+        rerender({ ...base, currentPath: from, savedAt: saved++ });
+      });
+      await vi.waitFor(() =>
+        expect(mocked.renameNote.mock.calls.length).toBe(calls + 1),
+      );
+      heading.current = next;
+    }
+    await act(async () => {
+      finishRead("# B\n本文\n");
+      await reopening;
+    });
+    // 実物は B にある（C ではない）
+    expect(base.sync.markOpened).toHaveBeenLastCalledWith({
+      path: "/v/B.md",
+      text: "# B\n本文\n",
+    });
+  });
+
   test("test_改名の往復中に別のノートを開いたら_選択を戻さない", async () => {
     let finish: (outcome: {
       path: string;

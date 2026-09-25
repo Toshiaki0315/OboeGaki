@@ -102,13 +102,17 @@ export function useNoteCommands(input: NoteCommandsInput) {
     movedTo.current.set(from, { to, at: renameCount.current });
   }
   function followMoves(path: string, since: number): string {
+    // 1 歩ごとに**前の歩より新しい**改名だけをたどる。記録の古さを見ずにたどると、
+    // A→B→C→B のように輪になったとき、たどった回数の偶奇で行き先が決まっていた
+    // （21-14）。新しさが増える向きにしか進まないので、輪があっても最新の位置で止まる
     let current = path;
-    for (let hops = 0; hops < 8; hops++) {
+    let last = since;
+    for (;;) {
       const moved = movedTo.current.get(current);
-      if (!moved || moved.at <= since) break;
+      if (!moved || moved.at <= last) return current;
       current = moved.to;
+      last = moved.at;
     }
-    return current;
   }
   const status = (text: string) => latest.current.onStatus(text);
 

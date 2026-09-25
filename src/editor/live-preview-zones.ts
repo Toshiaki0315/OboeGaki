@@ -820,6 +820,10 @@ function refreshZones(
   meta: BlockWidgetMeta,
   changed: number[],
 ): DecorationSet {
+  // リビール状態が一度に大量に変わる（全選択して戻す等）なら全部数え直す方が速い。
+  // 変わったゾーンごとに全ゾーンをなめるので「変わった数 × 全ゾーン数」になる
+  // （囲みと数式を 1000 組並べた文書で 38ms。全部数え直せば 4.6ms。21-14）
+  if (changed.length > MAX_CLUSTER) return computeBlockWidgetSet(state);
   let set = current;
   const done = new Set<number>();
   for (const index of changed) {
