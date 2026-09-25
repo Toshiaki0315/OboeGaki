@@ -311,20 +311,22 @@ function editNearMarker(
 type NearTr = Parameters<typeof editNearMarker>[1];
 
 /// 行から先を**末まで飲み込む**ブロックの開閉（フェンス・HTML コメント・
-/// `<pre>` など）。離れた場所の表・数式・図がこれに飲まれると木から消えるので、
+/// `<pre>` など。CommonMark の HTML ブロック型 3〜5 = `<?…?>`・`<!X…>`・
+/// `<![CDATA[…]]>` も空行を越えて閉じまで飲む。21-7）。離れた場所の表・数式・図がこれに飲まれると木から消えるので、
 /// 近くの編集は全部数え直す（再レビュー 2026-09-25 / 21-6。以前は `|` と `$$` と
 /// フェンスだけで、`<!--` や `<pre>` を見ていなかった）
-const SWALLOWING_RE = /```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b/i;
+const SWALLOWING_RE =
+  /```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b|<\?|\?>|<![A-Za-z]|<!\[CDATA\[|\]\]>/i;
 const editOpensBlock = (tr: NearTr) => editNearMarker(SWALLOWING_RE, tr);
 const editNearTables = (tr: NearTr) =>
   editNearMarker(
-    /\||\$\$|```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b/i,
+    /\||\$\$|```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b|<\?|\?>|<![A-Za-z]|<!\[CDATA\[|\]\]>/i,
     tr,
   );
 // 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる
 const editNearBlockWidgets = (tr: NearTr) =>
   editNearMarker(
-    /\$\$|```|~~~|:::|<\/?details>|<!--|-->|<\/?(?:pre|script|style|textarea)\b/i,
+    /\$\$|```|~~~|:::|<\/?details>|<!--|-->|<\/?(?:pre|script|style|textarea)\b|<\?|\?>|<![A-Za-z]|<!\[CDATA\[|\]\]>/i,
     tr,
   );
 

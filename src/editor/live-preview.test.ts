@@ -883,6 +883,74 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("HTML_ブロック型_3〜5（処理命令・宣言・CDATA）が表と数式を飲んでも数え直す（21-7）", () => {
+    const doc =
+      "y\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nx+y\n$$\n\n続き";
+    for (const opener of ["<?", "<!X", "<![CDATA["]) {
+      for (const field of [tableField, blockWidgetField]) {
+        const state = EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: [LANG, sourceModeField, field],
+        });
+        const next = state.update({
+          changes: { from: 0, to: 1, insert: opener },
+        }).state;
+        expect(shapeOf(next.field(field)), opener).toEqual(
+          rebuilt(next.doc.toString(), next.selection.main.head, field),
+        );
+      }
+    }
+  });
+
+  test("表の行頭に飲み込む記号を打って消す_狙い撃ちの乱数（21-7）", () => {
+    // 300 手の乱数は表が序盤に壊れて新しい分岐に届かない。表の行頭に限って
+    // 開きと閉じを打ち、毎手で作り直しと突き合わせる
+    const random = rng(20260926);
+    const openers = ["```", "~~~", "<!--", "<?", "<pre>", "<![CDATA["];
+    const base =
+      "| a | b |\n| --- | --- |\n| 1 | 2 |\n\n本文\n\n| c | d |\n| --- | --- |\n| 3 | 4 |\n\n$$\nx+y\n$$\n";
+    let state = EditorState.create({
+      doc: base,
+      selection: { anchor: base.length },
+      extensions: [LANG, sourceModeField, tableField, blockWidgetField],
+    });
+    for (let step = 0; step < 60; step++) {
+      const lines = state.doc.toString().split("\n");
+      const starts: number[] = [];
+      let offset = 0;
+      for (const line of lines) {
+        if (line.startsWith("|")) starts.push(offset);
+        offset += line.length + 1;
+      }
+      if (starts.length === 0) break;
+      const at = starts[Math.floor(random() * starts.length)];
+      const opener = openers[Math.floor(random() * openers.length)];
+      const check = (label: string) => {
+        const doc = state.doc.toString();
+        const head = state.selection.main.head;
+        expect(
+          shapeOf(state.field(tableField)),
+          `${label} 表 step ${step}\n${doc}`,
+        ).toEqual(rebuilt(doc, head, tableField));
+        expect(
+          shapeOf(state.field(blockWidgetField)),
+          `${label} ブロック step ${step}\n${doc}`,
+        ).toEqual(rebuilt(doc, head, blockWidgetField));
+      };
+      for (let n = 0; n < opener.length; n++) {
+        state = state.update({
+          changes: { from: at + n, insert: opener[n] },
+        }).state;
+        check(`打つ ${opener}`);
+      }
+      state = state.update({
+        changes: { from: at, to: at + opener.length, insert: "" },
+      }).state;
+      check(`消す ${opener}`);
+    }
+  });
+
   test("閉じの無い数式が下の囲みを包んでも_中で打つと囲みの装飾が消えない", () => {
     const doc = "$$\n:::note\n中\n:::\n$\nx+y\n\n続き";
     const state = EditorState.create({

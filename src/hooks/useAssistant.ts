@@ -62,6 +62,7 @@ export function useAssistant({
   const [answer, setAnswer] = useState("");
   const [thinking, setThinking] = useState(false);
   const thinkingRef = useLatest(thinking);
+  const currentPathRef = useLatest(currentPath);
   // ノートを替えて止めた生成の続きが届いても捨てる印（次の生成で下ろす）
   const stale = useRef(false);
   // 関連するノート（L-3）。**モデルは通さない**ので、Ollama が無くても出る
@@ -204,6 +205,7 @@ export function useAssistant({
     const packed = packSources(
       picked.map((hit, index) => ({ title: hit.title, body: bodies[index] })),
     );
+    const askedOn = currentPathRef.current;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task: "question",
@@ -217,9 +219,9 @@ export function useAssistant({
       setAnswer("いま考えています。終わるまでお待ちください。");
       return;
     }
-    // 始まってから印を下ろす。止めかけの前の生成がまだ走っていて started=false の
-    // ときに下ろすと、その続きが新しい答え欄に流れ込む（21-6）
-    stale.current = false;
+    // 始まってから、**同じノートを開いているときだけ**印を下ろす。往復の間に
+    // ノートを替えていたら止めた側なので、遅れて届く続きは捨てたまま（21-7）
+    if (currentPathRef.current === askedOn) stale.current = false;
   }
 
   /// ノートを読ませる（要約・レビュー）。**本文は書き換えない**
@@ -229,6 +231,7 @@ export function useAssistant({
     await flushEdits(); // 打ちかけを書き切ってから読ませる
     const text = noteText();
     clear();
+    const askedOn = currentPathRef.current;
     setThinking(true);
     const started = await llmGenerate(settings, {
       task,
@@ -240,7 +243,7 @@ export function useAssistant({
       setAnswer("いま考えています。終わるまでお待ちください。");
       return;
     }
-    stale.current = false; // 始まってから下ろす（上と同じ理由）
+    if (currentPathRef.current === askedOn) stale.current = false; // 上と同じ理由
     // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）。
     // **先に届いた断りや答えを上書きしない**（loadingNotice が判断する）—
     // モデル名の間違いの 404 は、この確認より速く返ることがある

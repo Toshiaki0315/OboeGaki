@@ -44,6 +44,8 @@ export type NoteSyncPort = {
   renamed: (from: string, to: string) => void;
   /// 開いている本文の一部を差し替える（編集として扱う = 自動保存が走る）
   replaceRange: (from: number, to: number, insert: string) => void;
+  /// 書き先が確定するまで自動保存の予約を止める。返り値で解除
+  holdSaves: () => () => void;
 };
 
 export type NoteCommandsInput = {
@@ -196,6 +198,9 @@ export function useNoteCommands(input: NoteCommandsInput) {
     const mine = ++opening.current;
     const flushed = latest.current.editorText();
     await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    // 往復の間に打った字の自動保存は、書き先が確定するまで止める（発火すると
+    // 消したはずの旧パスへ書いて旧ファイルが蘇る。21-7）
+    const release = sync.holdSaves();
     try {
       const outcome = await renameNote(vaultRoot, currentPath, trimmed);
       const renamed = outcome.path;
@@ -203,6 +208,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
       // 追従と同じ手順）。往復中に打った字の自動保存が、消したはずの旧パスへ
       // 書いて旧ファイルを蘇らせていた（再レビュー 2026-09-25 / 21-6）
       sync.renamed(currentPath, renamed);
+      release();
       await refreshLists();
       const text = await readNote(vaultRoot, renamed);
       if (mine !== opening.current) return; // その間に別のノートが開かれた
@@ -222,10 +228,13 @@ export function useNoteCommands(input: NoteCommandsInput) {
         if (span && heading && span.line !== heading.line) {
           sync.replaceRange(span.from, span.to, heading.line);
         } else if (!span && heading) {
-          // 見出しの無いノート: Rust は先頭に `# 題\n\n` を足している。同じものを
-          // 本文の先頭（front matter の後ろ）に差し込む（21-6）
-          const at = frontMatterRange(live)?.bodyStart ?? 0;
-          sync.replaceRange(at, at, `${heading.line}\n\n`);
+          // 見出しの無いノート: Rust は front matter の後ろに `# 題\n\n` を足して
+          // いる（21-7 で揃えた）。同じ場所に差し込む。閉じ区切りに改行が無い
+          // 文書では改行を先に補う（`---# 題` にしない）
+          const range = frontMatterRange(live);
+          const at = range?.bodyStart ?? 0;
+          const glue = range && range.bodyStart === range.to ? "\n" : "";
+          sync.replaceRange(at, at, `${glue}${heading.line}\n\n`);
         }
       } else {
         sync.adopt(text);
@@ -235,6 +244,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
     } catch (error) {
       status(failureText("改名", error));
     } finally {
+      release(); // 失敗しても予約は解く（2 度呼んでも害は無い）
       renaming.current = false;
     }
   }

@@ -201,10 +201,18 @@ impl Vault {
                 // （再レビュー 2026-09-25 / 21-6）。版は旧鍵で残してあるので安全
                 if fs::rename(&target, path).is_ok() {
                     self.carry_history(&target, path);
+                    return Err(io::Error::new(
+                        error.kind(),
+                        format!("見出しを書き換えられなかったので改名を戻しました: {error}"),
+                    ));
                 }
+                // 戻すのにも失敗した。新しい名前で残っていることを隠さない
                 return Err(io::Error::new(
                     error.kind(),
-                    format!("見出しを書き換えられなかったので改名を戻しました: {error}"),
+                    format!(
+                        "見出しを書き換えられず、元の名前にも戻せませんでした。ノートは「{}」として残っています: {error}",
+                        target.display()
+                    ),
                 ));
             }
         }

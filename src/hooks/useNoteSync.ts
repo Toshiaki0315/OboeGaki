@@ -67,6 +67,13 @@ export function useNoteSync({
   const refreshListsRef = useLatest(refreshLists);
 
   const autosave = useMemo(() => createDebouncer(AUTOSAVE_DELAY_MS), []);
+  // 改名の往復中は予約を発火させない（書き先が確定していない）。保留中の
+  // flush は解除を待ってから書く — 待たないと、その間に別のノートを開いた
+  // ときの flush が空振りして打った字が消える（再レビュー 2026-09-25 / 21-7）
+  const held = useRef<{ promise: Promise<void>; release: () => void } | null>(
+    null,
+  );
+  const pendingSchedule = useRef<(() => void) | null>(null);
   const refreshSoon = useMemo(() => createDebouncer(REFRESH_DELAY_MS), []);
   // 予約された保存。flush が完了を待てるよう Promise を返す
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
@@ -134,20 +141,49 @@ export function useNoteSync({
       lastStash.current = now;
       void keepStash(root, path, getText());
     }
-    autosave.schedule(async () => {
-      // Promise を返す（= flush が完了を待てる）。失敗はここで受け止める
-      await pendingSave.current?.().catch((error) => {
-        if (currentPathRef.current === path) {
-          onStatusRef.current(`保存に失敗: ${String(error)}`);
-        }
-        // 保存できないまま落ちても書いたものを失わない（H-1）
-        void keepStash(root, path, getText());
+    const schedule = () =>
+      autosave.schedule(async () => {
+        // Promise を返す（= flush が完了を待てる）。失敗はここで受け止める
+        await pendingSave.current?.().catch((error) => {
+          if (currentPathRef.current === path) {
+            onStatusRef.current(`保存に失敗: ${String(error)}`);
+          }
+          // 保存できないまま落ちても書いたものを失わない（H-1）
+          void keepStash(root, path, getText());
+        });
       });
-    });
+    if (held.current) {
+      pendingSchedule.current = schedule; // 解除したときに予約する
+      return;
+    }
+    schedule();
   }
 
-  /// 予約を今すぐ書き切る（切り替え・書き出し・読ませる前）
-  const flush = () => autosave.flush();
+  /// 改名の往復中など、書き先が確定するまで予約を止める。返り値で解除する
+  function holdSaves(): () => void {
+    if (held.current) return () => {};
+    let release: () => void = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    held.current = { promise, release };
+    return () => {
+      if (!held.current) return;
+      const { release: done } = held.current;
+      held.current = null;
+      const schedule = pendingSchedule.current;
+      pendingSchedule.current = null;
+      schedule?.();
+      done();
+    };
+  }
+
+  /// 予約を今すぐ書き切る（切り替え・書き出し・読ませる前）。保留中なら
+  /// 解除を待ってから
+  const flush = async () => {
+    if (held.current) await held.current.promise;
+    await autosave.flush();
+  };
   /// 予約を破棄する（聞く前・戻す前）
   const cancel = () => autosave.cancel();
   /// 予約も未保存の印も捨てる（開いているノートを捨てるとき）
@@ -369,6 +405,7 @@ export function useNoteSync({
     savedAt,
     noteChanged,
     flush,
+    holdSaves,
     cancel,
     dropPending,
     markOpened,

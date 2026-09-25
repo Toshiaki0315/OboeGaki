@@ -54,6 +54,7 @@ function port(): NoteSyncPort {
     adopt: vi.fn(),
     renamed: vi.fn(),
     replaceRange: vi.fn(),
+    holdSaves: vi.fn(() => vi.fn()),
   };
 }
 
@@ -136,7 +137,8 @@ describe("useNoteCommands", () => {
       rewritten: 0,
       failed: [],
     });
-    mocked.readNote.mockResolvedValue("# 新\n\n本文\n");
+    // Rust の実出力の形（front matter の後ろに見出し。21-7）
+    mocked.readNote.mockResolvedValue("---\nid: 1\n---\n# 新\n\n本文\n");
     const editorText = vi
       .fn<() => string | undefined>()
       .mockReturnValueOnce("---\nid: 1\n---\n本文\n")
@@ -145,6 +147,34 @@ describe("useNoteCommands", () => {
     const { result } = renderHook(() => useNoteCommands(given));
     await act(() => result.current.rename("新"));
     expect(given.sync.adopt).not.toHaveBeenCalled();
+    expect(given.sync.replaceRange).toHaveBeenCalledWith(14, 14, "# 新\n\n");
+    // 改名中は予約を止め、書き先を付け替えてから解く
+    expect(given.sync.holdSaves).toHaveBeenCalledTimes(1);
+    const release = (given.sync.holdSaves as ReturnType<typeof vi.fn>).mock
+      .results[0].value as ReturnType<typeof vi.fn>;
+    expect(release).toHaveBeenCalled();
+    expect(release.mock.invocationCallOrder[0]).toBeGreaterThan(
+      (given.sync.renamed as ReturnType<typeof vi.fn>).mock
+        .invocationCallOrder[0],
+    );
+  });
+
+  test("test_閉じ区切りで終わる_front_matter_だけのノートでも_本文の先頭に見出しを差し込む（21-7）", async () => {
+    mocked.renameNote.mockResolvedValue({
+      path: "/v/新.md",
+      rewritten: 0,
+      failed: [],
+    });
+    mocked.readNote.mockResolvedValue("---\nid: 1\n---\n# 新\n");
+    // 閉じ区切りの直後に打つと front matter のガードが改行を補う（21-2）ので、
+    // エディタの本文はこの形になる
+    const editorText = vi
+      .fn<() => string | undefined>()
+      .mockReturnValueOnce("---\nid: 1\n---")
+      .mockReturnValue("---\nid: 1\n---\nx");
+    const given = input({ currentPath: "/v/無題.md", editorText });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.rename("新"));
     expect(given.sync.replaceRange).toHaveBeenCalledWith(14, 14, "# 新\n\n");
   });
 

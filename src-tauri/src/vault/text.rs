@@ -88,10 +88,14 @@ pub fn with_title(text: &str, title: &str) -> String {
             replaced.join("\n")
         }
         None => {
-            if text.trim().is_empty() {
-                format!("# {cleaned}\n")
+            // **front matter の後ろに**足す。先頭に足すと 1 行目が `---` でなくなり、
+            // pinned や id が本文に化ける（再レビュー 2026-09-25 / 21-7。以前は
+            // 文書の最先頭に足していた）
+            let (front, rest) = crate::front_matter::split(text);
+            if rest.trim().is_empty() {
+                format!("{front}# {cleaned}\n")
             } else {
-                format!("# {cleaned}\n\n{text}")
+                format!("{front}# {cleaned}\n\n{rest}")
             }
         }
     }
@@ -198,5 +202,26 @@ mod tests {
         fs::write(&path, sjis).unwrap();
         let text = read_note(&path).unwrap();
         assert!(crate::front_matter::pinned(&text));
+    }
+
+    /// 見出しの無いノートに足す見出しは front matter の**後ろ**（21-7）。
+    /// 先頭に足すと pinned / id が本文に化ける
+    #[test]
+    fn test_with_title_見出しが無ければ_front_matter_の後ろに足す() {
+        assert_eq!(
+            with_title("---\npinned: true\n---\n本文\n", "新"),
+            "---\npinned: true\n---\n# 新\n\n本文\n"
+        );
+        assert!(crate::front_matter::pinned(&with_title(
+            "---\npinned: true\n---\n本文\n",
+            "新"
+        )));
+        // front matter だけのノート
+        assert_eq!(
+            with_title("---\nid: 1\n---\n", "新"),
+            "---\nid: 1\n---\n# 新\n"
+        );
+        // front matter の無いノートは今までどおり先頭
+        assert_eq!(with_title("本文\n", "新"), "# 新\n\n本文\n");
     }
 }

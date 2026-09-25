@@ -471,3 +471,47 @@ describe("useNoteSync: 棚卸しレビュー 2026-09-17", () => {
     expect(result.current.conflict).toBeNull();
   });
 });
+
+describe("useNoteSync: 改名中の保留（21-7）", () => {
+  test("test_保留中は予約が発火せず_解除したら書き先を付け替えたパスへ書く", async () => {
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    const release = result.current.holdSaves();
+    act(() => result.current.noteChanged(() => "打った"));
+    await tick(2000);
+    expect(mocked.writeNote).not.toHaveBeenCalled();
+    act(() => result.current.renamed("/v/a.md", "/v/b.md"));
+    release();
+    await tick(800);
+    expect(mocked.writeNote).toHaveBeenCalledWith(
+      "/v",
+      "/v/b.md",
+      "打った",
+      60,
+    );
+  });
+
+  test("test_保留中の_flush_は解除を待ってから書く（打った字を消さない）", async () => {
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    const release = result.current.holdSaves();
+    act(() => result.current.noteChanged(() => "打った"));
+    let flushed = false;
+    const waiting = result.current.flush().then(() => {
+      flushed = true;
+    });
+    await tick(100);
+    expect(flushed).toBe(false);
+    expect(mocked.writeNote).not.toHaveBeenCalled();
+    release();
+    await act(async () => {
+      await waiting;
+    });
+    expect(mocked.writeNote).toHaveBeenCalledWith(
+      "/v",
+      "/v/a.md",
+      "打った",
+      60,
+    );
+  });
+});

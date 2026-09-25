@@ -105,6 +105,29 @@ describe("useAssistant", () => {
     expect(result.current.answer).not.toContain("前のノートの続き");
   });
 
+  test("test_頼んでいる往復の間にノートを替えたら_遅れて始まっても続きを受けない（21-7）", async () => {
+    let start: (ok: boolean) => void = () => {};
+    mocked.llmGenerate.mockImplementation(
+      () => new Promise<boolean>((resolve) => (start = resolve)),
+    );
+    const { result, rerender } = renderHook(
+      (props: AssistantInput) => useAssistant(props),
+      { initialProps: input() },
+    );
+    const asking = result.current.ask("summary");
+    // llmGenerate が呼ばれる（= 往復の最中）まで進めてからノートを替える
+    await act(async () => {
+      await vi.waitFor(() => expect(mocked.llmGenerate).toHaveBeenCalled());
+    });
+    rerender(input({ currentPath: "/v/別.md" }));
+    await act(async () => {
+      start(true);
+      await asking;
+    });
+    act(() => handlers?.onChunk("A の要約"));
+    expect(result.current.answer).toBe("");
+  });
+
   test("test_失敗は読める言葉にして答えの場所に出す", async () => {
     const given = input();
     const { result } = renderHook(() => useAssistant(given));

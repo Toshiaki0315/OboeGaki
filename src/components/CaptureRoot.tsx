@@ -53,8 +53,11 @@ export function CaptureRoot() {
           );
         }}
         onCancel={(text) => {
-          if (!text.trim()) {
-            void closeSelf();
+          // 送り終えて閉じられなかっただけの状態では「捨てますか」と聞かない（21-7）
+          if (!text.trim() || sending) {
+            void closeSelf().catch((error) =>
+              setStatus(`閉じられませんでした: ${String(error)}`),
+            );
             return;
           }
           confirmDialog("書いたものを捨てますか？", {
