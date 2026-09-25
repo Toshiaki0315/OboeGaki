@@ -1048,6 +1048,108 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
   });
 
+  test("行頭に空白のある型_6_の行は_上の行がリストかどうかで塊が変わる（21-12）", () => {
+    const cases: {
+      doc: string;
+      change: { from: number; to?: number; insert: string };
+    }[] = [
+      // `- ` を消す → `  </details>` がリストから外れ、塊が伸びて表を飲む
+      {
+        doc: "段落\n- 項目\n  </details>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 3, to: 5, insert: "" },
+      },
+      // `- ` を足す → 逆に塊が項目の終わりで閉じ、表が現れる
+      {
+        doc: "段落\n項目\n  </details>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 3, insert: "- " },
+      },
+      // `  <div>` の下の数式も同じ
+      {
+        doc: "段落\n- 項目\n  <div>\n$$\nx+y\n$$\n",
+        change: { from: 3, to: 5, insert: "" },
+      },
+    ];
+    for (const { doc, change } of cases) {
+      for (const field of [tableField, blockWidgetField]) {
+        const state = EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: [LANG, sourceModeField, field],
+        });
+        const next = state.update({ changes: change }).state;
+        expect(shapeOf(next.field(field)), doc).toEqual(
+          rebuilt(next.doc.toString(), next.selection.main.head, field),
+        );
+      }
+    }
+  });
+
+  test("塊の最初の行の字下げの中の編集と_表のすぐ下の空行を消す編集も数え直す（21-12）", () => {
+    const cases: {
+      doc: string;
+      change: { from: number; to?: number; insert: string };
+    }[] = [
+      // `  <an>` の字下げの中に字を打つと塊が壊れ、飲まれていた表が現れる
+      {
+        doc: "text\n\n  <an>\n<x-y/>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+        change: { from: 6, insert: "!" },
+      },
+      // 最後の行が `|` を持たない表の下の空行を消すと、表が伸びる
+      {
+        doc: "| a |\n| - |\nlast\n\npara\n<div>\n",
+        change: {
+          from: "| a |\n| - |\nlast\n".length,
+          to: "| a |\n| - |\nlast\n\n".length,
+          insert: "",
+        },
+      },
+    ];
+    for (const { doc, change } of cases) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: 0 },
+        extensions: [LANG, sourceModeField, tableField],
+      });
+      const next = state.update({
+        changes: change,
+        selection: { anchor: 0 },
+      }).state;
+      expect(shapeOf(next.field(tableField)), doc).toEqual(
+        rebuilt(next.doc.toString(), next.selection.main.head, tableField),
+      );
+    }
+  });
+
+  test("入れ子のゾーン_外側を差し替えても中の囲みの帯が消えない（21-12）", () => {
+    const cases: { doc: string; at: number }[] = [
+      // `<details>` の囲みの中の `:::note`。囲みの下のほうに打つ
+      {
+        doc: "<details>\n段落\n:::note\n中身\n:::\n\n本文\n\n</details>\n",
+        at: "<details>\n段落\n:::note\n中身\n:::\n\n本".length,
+      },
+      // 閉じた数式の中に入った `:::note`（`$$` の対がずれた形）。数式の中で打つ
+      {
+        doc: "$$\nx\n:::note\n中身\n:::\ny\n$$\n\n続き",
+        at: "$$\nx\n:::note\n中身\n:::\ny".length,
+      },
+    ];
+    for (const { doc, at } of cases) {
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, blockWidgetField],
+      });
+      const next = state.update({ changes: { from: at, insert: "z" } }).state;
+      expect(shapeOf(next.field(blockWidgetField)), doc).toEqual(
+        rebuilt(
+          next.doc.toString(),
+          next.selection.main.head,
+          blockWidgetField,
+        ),
+      );
+    }
+  });
+
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
     // 範囲が変わらない編集は写像だけで済ませる（以前は毎打鍵で全部数え直した）
     const widgetsOf = (set: DecorationSet): unknown[] => {

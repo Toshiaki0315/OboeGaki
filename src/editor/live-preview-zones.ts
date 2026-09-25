@@ -243,6 +243,40 @@ function zonesTouchedInside(
   return outside ? null : [...touched];
 }
 
+/// 変更が既にある表のすぐ上・すぐ下の行に触れているか。表の最後の行は `|` を
+/// 持たないことがある（続きの行も行として数える）ので、`|` の記号判定では
+/// 下の空行を消して表が伸びるのを拾えなかった（21-12）。ゾーンは位置順なので、
+/// 変更より前で終わる最後の表と、変更より後で始まる最初の表だけ見る
+function editBesideTable(
+  zones: { from: number; to: number }[],
+  tr: NearTr,
+): boolean {
+  const doc = tr.startState.doc;
+  let beside = false;
+  tr.changes.iterChanges((fromA, toA) => {
+    if (beside) return;
+    const fromLine = doc.lineAt(fromA).number;
+    const toLine = doc.lineAt(toA).number;
+    let before: { from: number; to: number } | null = null;
+    for (const zone of zones) {
+      if (zone.to < fromA) {
+        before = zone;
+        continue;
+      }
+      if (zone.from > toA) {
+        if (doc.lineAt(zone.from).number - 1 <= toLine) beside = true;
+        break;
+      }
+      beside = true; // 表に重なる（中だけの編集は呼び手が先に除いている）
+      break;
+    }
+    if (!beside && before && doc.lineAt(before.to).number + 1 >= fromLine) {
+      beside = true;
+    }
+  });
+  return beside;
+}
+
 function computeTableSet(state: EditorState): DecorationSet {
   const set = RangeSet.of(tableDecorations(state), true);
   const zones = tableZones(state);
@@ -325,10 +359,17 @@ function htmlBlockAt(
   pos: number,
 ): { from: number; to: number } | null {
   const at = Math.min(pos, state.doc.length);
-  for (const side of [-1, 1] as const) {
-    let node: SyntaxNode | null = syntaxTree(state).resolveInner(at, side);
-    for (; node; node = node.parent) {
-      if (HTML_BLOCKS.has(node.name)) return { from: node.from, to: node.to };
+  // その位置だけでなく、同じ行の中身の先頭と行末も見る。塊のノードは行頭の
+  // 字下げの後（`<`）から始まるので、`  <an>` の字下げの中の編集は位置だけ
+  // 見ると塊の外に見え、塊が壊れても数え直さなかった（21-12）
+  const line = state.doc.lineAt(at);
+  const lead = line.text.length - line.text.trimStart().length;
+  for (const probe of [at, line.from + lead, line.to]) {
+    for (const side of [-1, 1] as const) {
+      let node: SyntaxNode | null = syntaxTree(state).resolveInner(probe, side);
+      for (; node; node = node.parent) {
+        if (HTML_BLOCKS.has(node.name)) return { from: node.from, to: node.to };
+      }
     }
   }
   return null;
@@ -389,6 +430,12 @@ const TYPE6_RE =
   /^\s*<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i;
 function isType7Line(text: string): boolean {
   const rest = text.replace(/^ {0,3}/, "");
+  // 行頭に空白のある行は、上の行がリスト項目かどうかで所属が変わり、型 6 の塊の
+  // 終わりも変わる（`- 項目\n  </details>` の `- ` を消すと塊が伸びて下の表を飲む）。
+  // 型 1・6 を外すのは行頭に空白の無い行だけ（再レビュー 2026-09-25 / 21-12）
+  if (rest.length !== text.length) {
+    return TYPE7_RE.test(rest) || TYPE6_RE.test(rest) || TYPE1_RE.test(rest);
+  }
   return TYPE7_RE.test(rest) && !TYPE1_RE.test(rest) && !TYPE6_RE.test(rest);
 }
 function nextLineIsTagOnly(state: EditorState, pos: number): boolean {
@@ -771,13 +818,40 @@ function refreshZones(
   changed: number[],
 ): DecorationSet {
   let set = current;
+  const done = new Set<number>();
   for (const index of changed) {
-    const zone = meta.zones[index];
+    if (done.has(index)) continue;
+    // ゾーンは入れ子になりうる（`<details>` の囲みの中の `:::note`、閉じた数式の中の
+    // `:::note` など）。1 つのゾーンの範囲を消すと中のゾーンの装飾も消えるので、
+    // 重なるゾーンをまとめて消して全部足し直す（再レビュー 2026-09-25 / 21-12。
+    // 以前は外側だけ足し直し、中の囲みの帯が消えていた）
+    let from = meta.zones[index].from;
+    let to = meta.zones[index].to;
+    const cluster = new Set<number>([index]);
+    for (let grew = true; grew;) {
+      grew = false;
+      meta.zones.forEach((zone, other) => {
+        if (cluster.has(other) || zone.to < from || zone.from > to) return;
+        cluster.add(other);
+        from = Math.min(from, zone.from);
+        to = Math.max(to, zone.to);
+        grew = true;
+      });
+    }
+    const add: Range<Decoration>[] = [];
+    // 作り直しと同じ順（ゾーンは囲み → 折りたたみ → 数式・図の順に並んでいる）で
+    // 足す。同じ位置の行の装飾は足した順に並ぶ
+    for (const member of [...cluster].sort((a, b) => a - b)) {
+      done.add(member);
+      add.push(
+        ...zoneDecorations(state, meta.zones[member], meta.notes, meta.details),
+      );
+    }
     set = set.update({
-      filterFrom: zone.from,
-      filterTo: zone.to,
+      filterFrom: from,
+      filterTo: to,
       filter: () => false,
-      add: zoneDecorations(state, zone, meta.notes, meta.details),
+      add,
       sort: true,
     });
   }
@@ -897,7 +971,10 @@ export const tableField = StateField.define<DecorationSet>({
       // 全部数え直す
       if (editTouchesHtmlBlock(tr)) return computeTableSet(tr.state);
       const inside = zonesTouchedInside(meta.zones, tr);
-      if (inside === null && editNearTables(tr))
+      if (
+        inside === null &&
+        (editNearTables(tr) || editBesideTable(meta.zones, tr))
+      )
         return computeTableSet(tr.state);
       // 表の中で打った字がフェンスや HTML ブロックを開くと、その下の**別の表**が
       // 飲まれる。触ったゾーンの範囲しか見ない差し替えでは拾えないので数え直す

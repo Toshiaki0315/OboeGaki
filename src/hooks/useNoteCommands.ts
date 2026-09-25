@@ -85,6 +85,13 @@ export function useNoteCommands(input: NoteCommandsInput) {
   // 開く操作の世代。A を押した直後に B を押すと、遅れて解決した A が勝って
   // A が開いた状態で止まっていた（レビュー 2026-09-24 / 21-3）
   const opening = useRef(0);
+  // エディタが**今表示している**ノートのパス。選択を変える道（開く・改名・見出し
+  // 追従・閉じる）はここを通す。見出し追従の改名が返ったとき、表示中のノートが
+  // 改名前のノートでなければ選択を戻さない（21-12）。以前は開く操作の世代で
+  // 比べていたが、B を押した瞬間は「開く」が世代を進めてから A を保存し、その
+  // 保存が追従を起動するので、追従は進んだ後の世代を控えて門をすり抜け、B の
+  // 本文が A' に保存されて A の中身が消えた
+  const shown = useRef<string | null>(null);
   const status = (text: string) => latest.current.onStatus(text);
 
   async function openNote(given: string, cursor: number | null = null) {
@@ -105,6 +112,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
       return;
     }
     if (mine !== opening.current) return; // 後から別のノートが開かれた
+    shown.current = path;
     selectNote(path);
     saveLastNote(storage, vaultRoot, path); // 次回の起動で開き直す
     setInitialCursor(cursor);
@@ -118,6 +126,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
 
   /// 選択と文書を外す（外で消された・ゴミ箱へ移した）。次回の起動でも開かない
   function closeNote() {
+    shown.current = null;
     latest.current.selectNote(null);
     setDoc(null);
     forgetLastNote(storage);
@@ -125,6 +134,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
 
   /// 文書だけ外す（保管フォルダを変えたとき。選択はストアが外す）
   function clearDoc() {
+    shown.current = null;
     setDoc(null);
   }
 
@@ -212,6 +222,7 @@ export function useNoteCommands(input: NoteCommandsInput) {
       await refreshLists();
       const text = await readNote(vaultRoot, renamed);
       if (mine !== opening.current) return; // その間に別のノートが開かれた
+      shown.current = renamed;
       selectNote(renamed);
       saveLastNote(storage, vaultRoot, renamed);
       // Rust が本文の見出しも書き換えている（ADR-0005）。開いている EditorView の
@@ -269,11 +280,6 @@ export function useNoteCommands(input: NoteCommandsInput) {
     if (heading === null || sanitizeStem(previous ?? stem) !== stem) return;
     if (sanitizeStem(heading) === stem) return;
     renaming.current = true;
-    // 開く操作の世代を控える（進めはしない — 進めると走っている openNote を
-    // 捨ててしまう）。往復の間に別のノートが開かれていたら、選択を戻さない。
-    // 戻すとエディタは別のノートの本文のまま選択だけ A' になり、次の打鍵で
-    // その本文が A' に保存されて A の中身が上書きされる（再レビュー 2026-09-25 / 21-11）
-    const generation = opening.current;
     try {
       const outcome = await renameNote(vaultRoot, currentPath, heading);
       const renamed = outcome.path;
@@ -282,10 +288,14 @@ export function useNoteCommands(input: NoteCommandsInput) {
       // 本文はそのまま（エディタを作り直さない = キャレットが飛ばない）。
       // 予約の書き先と今のパスだけ付け替える
       sync.renamed(currentPath, renamed);
-      if (opening.current !== generation) {
+      // 往復の間に別のノートが表示されていたら、選択を戻さない。戻すとエディタは
+      // 別のノートの本文のまま選択だけ A' になり、次の打鍵でその本文が A' に
+      // 保存されて A の中身が消える（21-11 / 21-12）
+      if (shown.current !== currentPath) {
         await refreshLists(); // 動いたことだけ一覧に映す
         return;
       }
+      shown.current = renamed;
       selectNote(renamed);
       saveLastNote(storage, vaultRoot, renamed);
       await refreshLists();

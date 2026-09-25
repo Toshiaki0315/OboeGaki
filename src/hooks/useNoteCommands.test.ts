@@ -90,14 +90,16 @@ describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
       rewritten: 0,
       failed: [],
     });
+    mocked.readNote.mockResolvedValue("# 旧\n本文\n");
     const base = input({
       currentPath: "/v/旧.md",
       editorText: () => "# 新\n本文\n",
     });
-    const { rerender } = renderHook(
+    const { result, rerender } = renderHook(
       (props: NoteCommandsInput) => useNoteCommands(props),
       { initialProps: base },
     );
+    await act(() => result.current.openNote("/v/旧.md")); // 表示中にする
     await act(async () => {
       rerender({ ...base, savedAt: 1 });
     });
@@ -105,6 +107,56 @@ describe("useNoteCommands: 見出しに合わせた改名（21-11）", () => {
       expect(base.selectNote).toHaveBeenCalledWith("/v/新.md"),
     );
     expect(base.sync.renamed).toHaveBeenCalledWith("/v/旧.md", "/v/新.md");
+  });
+
+  test("test_B_を押した保存が追従を起動し_B_が先に開いても_選択を戻さない（実機の順序。21-12）", async () => {
+    let finishRename: (outcome: {
+      path: string;
+      rewritten: number;
+      failed: string[];
+    }) => void = () => {};
+    mocked.renameNote.mockImplementation(
+      () => new Promise((resolve) => (finishRename = resolve)),
+    );
+    let finishReadB: (text: string) => void = () => {};
+    mocked.readNote.mockImplementation((_root, path) =>
+      path === "/v/b.md"
+        ? new Promise<string>((resolve) => (finishReadB = resolve))
+        : Promise.resolve("# 旧\n本文\n"),
+    );
+    const base = input({
+      currentPath: "/v/旧.md",
+      editorText: () => "# 新\n本文\n",
+    });
+    const { result, rerender } = renderHook(
+      (props: NoteCommandsInput) => useNoteCommands(props),
+      { initialProps: base },
+    );
+    // まず A（旧）を開いておく
+    await act(() => result.current.openNote("/v/旧.md"));
+    (base.selectNote as ReturnType<typeof vi.fn>).mockClear();
+    // B を押す: 「開く」が世代を進め、A の未保存分を書き切る
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = result.current.openNote("/v/b.md");
+    });
+    // その保存で savedAt が進み、見出し追従が改名を始める（まだ A を表示中）
+    await act(async () => {
+      rerender({ ...base, savedAt: 1 });
+    });
+    await vi.waitFor(() => expect(mocked.renameNote).toHaveBeenCalled());
+    // B が先に開き終える
+    await act(async () => {
+      finishReadB("# B\n");
+      await opening;
+    });
+    expect(base.selectNote).toHaveBeenLastCalledWith("/v/b.md");
+    // 遅れて改名が返る
+    await act(async () => {
+      finishRename({ path: "/v/新.md", rewritten: 0, failed: [] });
+    });
+    expect(base.selectNote).not.toHaveBeenCalledWith("/v/新.md");
+    expect(base.selectNote).toHaveBeenLastCalledWith("/v/b.md");
   });
 
   test("test_改名の往復中に別のノートを開いたら_選択を戻さない", async () => {
