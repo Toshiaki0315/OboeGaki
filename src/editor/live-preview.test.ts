@@ -1517,6 +1517,136 @@ describe("囲みの見つけ方を 1 本の走査に寄せる（22-1）", () => 
   });
 });
 
+describe("段落と見出しを寄せる囲み（22-2 / ADR-0069）", () => {
+  const aligned = (doc: string, anchor = doc.length) =>
+    blocksOf(doc, anchor)
+      .filter((deco) => deco.kind.includes("cm-align-"))
+      .map((deco) => [
+        doc.slice(deco.from, doc.indexOf("\n", deco.from)),
+        deco.kind.replace("line:", ""),
+      ]);
+  const hidden = (doc: string, anchor = doc.length) =>
+    blocksOf(doc, anchor)
+      .filter((deco) => deco.kind === "hide")
+      .map((deco) => doc.slice(deco.from, deco.to));
+
+  test("test_中の段落を寄せ_囲みの行を隠す", () => {
+    const doc = "前\n\n:::center\n題\n:::\n\n:::right\n署名\n:::\n\n後";
+    expect(aligned(doc)).toEqual([
+      ["題", "cm-align-center"],
+      ["署名", "cm-align-right"],
+    ]);
+    expect(hidden(doc)).toEqual([":::center", ":::", ":::right", ":::"]);
+  });
+
+  test("test_寄せるのは段落と見出しだけ（決定 4）", () => {
+    const doc = [
+      ":::center",
+      "# 見出し",
+      "段落",
+      "![絵](a.png)",
+      "- 項目",
+      "",
+      "> 引用",
+      "",
+      "```",
+      "コード",
+      "```",
+      "",
+      "| a |",
+      "| - |",
+      "| 1 |",
+      "",
+      ":::",
+      "",
+      "後",
+    ].join("\n");
+    expect(aligned(doc).map(([text]) => text)).toEqual([
+      "# 見出し",
+      "段落",
+      "![絵](a.png)",
+    ]);
+  });
+
+  test("test_触れている間は囲みの行を見せ_寄せはそのまま", () => {
+    const doc = ":::center\n題\n:::\n\n後";
+    const inside = doc.indexOf("題");
+    expect(hidden(doc, inside)).toEqual([]);
+    expect(aligned(doc, inside)).toEqual([["題", "cm-align-center"]]);
+  });
+
+  test("test_中身だけで読む_直前の引用の続きにならない（外の編集で寄せが変わらない）", () => {
+    // 文書全体の木では `署名` が引用の続き（lazy continuation）になる。中身だけで
+    // 読めば段落（HTML 書き出しの markdown-it-container と同じ）
+    const doc = "> q\n:::right\n署名\n:::\n\n後";
+    expect(aligned(doc)).toEqual([["署名", "cm-align-right"]]);
+    // 上の引用を見出しに変えても（囲みの外の編集）、寄せは作り直したものと同じ
+    const alignedIn = (state: EditorState) => {
+      const found: number[] = [];
+      for (let c = state.field(blockWidgetField).iter(); c.value; c.next()) {
+        const spec = c.value.spec as { class?: string };
+        if (spec.class?.includes("cm-align-")) found.push(c.from);
+      }
+      return found;
+    };
+    const edited = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    }).update({ changes: { from: 0, insert: "#" } }).state;
+    expect(alignedIn(edited)).toEqual([doc.indexOf("署名") + 1]);
+  });
+
+  test("test_閉じの無い囲みは寄せない", () => {
+    expect(aligned(":::center\n題\n\n後")).toEqual([]);
+  });
+
+  test("test_打鍵とキャレットの移動のあとも作り直したものと同じ", () => {
+    const shape = (state: EditorState) => {
+      const out: string[] = [];
+      for (
+        let cursor = state.field(blockWidgetField).iter();
+        cursor.value;
+        cursor.next()
+      ) {
+        const spec = cursor.value.spec as { class?: string };
+        out.push(`${cursor.from}-${cursor.to}:${spec.class ?? "hide"}`);
+      }
+      return out;
+    };
+    const fresh = (state: EditorState) =>
+      shape(
+        EditorState.create({
+          doc: state.doc,
+          selection: state.selection,
+          extensions: [LANG, sourceModeField, blockWidgetField],
+        }),
+      );
+    const doc = "前\n\n:::center\n題\n本文\n:::\n\n後";
+    let state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, blockWidgetField],
+    });
+    // 中に入る → 本文の行頭に `- ` を打って箇条書きにする → 外へ出る
+    const steps = [
+      { selection: { anchor: doc.indexOf("本文") } },
+      {
+        changes: { from: doc.indexOf("本文"), insert: "- " },
+        selection: { anchor: doc.indexOf("本文") + 2 },
+      },
+      { selection: { anchor: doc.length + 2 } },
+    ];
+    for (const step of steps) {
+      state = state.update(step).state;
+      expect(shape(state), JSON.stringify(step)).toEqual(fresh(state));
+    }
+    expect(
+      shape(state).some((entry) => entry.includes("cm-align-center")),
+    ).toBe(true);
+  });
+});
+
 describe("`:::note` の囲み（B-3）", () => {
   const doc = "前\n\n:::note warn\n注意です。\n:::\n\n後";
 

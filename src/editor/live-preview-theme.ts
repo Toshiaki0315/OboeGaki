@@ -105,6 +105,14 @@ export const blockTheme = EditorView.baseTheme({
     paddingLeft: "10px",
     borderLeft: "3px solid color-mix(in srgb, currentColor 25%, transparent)",
   },
+  // 段落と見出しを寄せる囲み（ADR-0069 / 22-2）。行ごと寄せるので、段落の中の
+  // 画像（inline-block）も一緒に寄る
+  ".cm-align-center": {
+    textAlign: "center",
+  },
+  ".cm-align-right": {
+    textAlign: "right",
+  },
   // 数式（ADR-0036）。ディスプレイ数式は行として中央に置く
   ".cm-math-block": {
     display: "block",

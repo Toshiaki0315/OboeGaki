@@ -9,7 +9,7 @@ import {
   RangeSet,
   StateField,
 } from "@codemirror/state";
-import { syntaxTree } from "@codemirror/language";
+import { language, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { renderMath } from "./math";
 import {
@@ -556,17 +556,45 @@ function codeLineTest(state: EditorState): (index: number) => boolean {
   };
 }
 
-/// 囲み（`:::note`・`:::details`・貼り付けた `<details>`）を 1 回の走査で見つける。
-/// `:::` の囲みは markdown/containers の 1 本（入れ子を許さない。ADR-0069）
-function blockContainers(state: EditorState): {
+/// 段落と見出しを寄せる囲み（`:::center` / `:::right`。ADR-0069 / 22-2）。
+/// 位置は note / details と同じ形で持つ（編集への追従を共有する）
+export type AlignContainer = {
+  from: number;
+  to: number;
+  kind: "center" | "right";
+  open: { from: number; to: number };
+  close: { from: number; to: number };
+};
+
+type BlockContainers = {
   notes: NoteContainer[];
   details: DetailsContainer[];
-} {
+  aligns: AlignContainer[];
+};
+
+/// 囲み（`:::note`・`:::details`・`:::center`・`:::right`・貼り付けた
+/// `<details>`）を 1 回の走査で見つける。`:::` の囲みは markdown/containers の
+/// 1 本（入れ子を許さない。ADR-0069）
+function blockContainers(state: EditorState): BlockContainers {
   const isCode = codeLineTest(state);
   const colon = colonContainers(state.doc.iterLines(), isCode);
+  const aligns: AlignContainer[] = [];
+  for (const entry of colon) {
+    if (entry.kind !== "center" && entry.kind !== "right") continue;
+    const open = state.doc.line(entry.open + 1);
+    const close = state.doc.line(entry.close + 1);
+    aligns.push({
+      from: open.from,
+      to: close.to,
+      kind: entry.kind,
+      open: { from: open.from, to: open.to },
+      close: { from: close.from, to: close.to },
+    });
+  }
   return {
     notes: noteContainers(state.doc, colon),
     details: detailsContainers(state.doc, colon, isCode),
+    aligns,
   };
 }
 
@@ -632,6 +660,78 @@ function detailsZoneDecorations(
   out.push(Decoration.replace({}).range(entry.close.from, entry.close.to));
 }
 
+/// 寄せる行の種類（ADR-0069 の決定 4）。段落（画像は段落の中）と見出しだけ —
+/// リスト・コード・表・数式・引用は囲みの中にあっても寄せない
+const ALIGNABLE_RE = /^(?:Paragraph|ATXHeading[1-6]|SetextHeading[12])$/;
+
+/// 中身（囲みの行を除いた本文）の各行を寄せるか。**中身だけを解析する** —
+/// 文書全体の木で見ると、囲みの直前の引用やリストが空行なしで続くとき、中の行が
+/// その続き（lazy continuation）になり、囲みの外の編集で寄せが変わってしまう
+/// （差分更新と食い違う）。HTML 書き出しの markdown-it-container も中身を独立した
+/// ブロックとして読むので、この読み方で揃う。キャレットが動くだけのときに解析し
+/// 直さないよう、同じ中身の答えを控える（解析は 1,500 行で p95 2ms）
+const alignableCache = new Map<string, boolean[]>();
+const ALIGNABLE_CACHE_MAX = 64;
+
+function alignableLines(state: EditorState, body: string): boolean[] {
+  const cached = alignableCache.get(body);
+  if (cached) return cached;
+  const rows = body.split("\n");
+  const out = rows.map(() => false);
+  const parser = state.facet(language)?.parser;
+  if (parser) {
+    const starts: number[] = [];
+    let offset = 0;
+    for (const row of rows) {
+      starts.push(offset);
+      offset += row.length + 1;
+    }
+    // ブロックは前から順に出てくるので、行の添字も前へ進めるだけでよい
+    let cursor = 0;
+    const rowOf = (pos: number) => {
+      while (cursor + 1 < starts.length && starts[cursor + 1] <= pos) cursor++;
+      return cursor;
+    };
+    const tree = parser.parse(body);
+    for (let node = tree.topNode.firstChild; node; node = node.nextSibling) {
+      const first = rowOf(node.from);
+      const last = rowOf(Math.max(node.from, node.to - 1));
+      if (!ALIGNABLE_RE.test(node.name)) continue;
+      for (let row = first; row <= last; row++) out[row] = true;
+    }
+  }
+  if (alignableCache.size >= ALIGNABLE_CACHE_MAX) alignableCache.clear();
+  alignableCache.set(body, out);
+  return out;
+}
+
+/// 寄せの囲み 1 つぶんの装飾（22-2）。中の段落と見出しの行に `text-align` の
+/// 行の装飾を当て、囲みの行を隠す（`:::note` と同じ作法。文字は変えない = T1）。
+/// 寄せは触れている間も残し、囲みの行だけを見せる
+function alignZoneDecorations(
+  state: EditorState,
+  entry: AlignContainer,
+  out: Range<Decoration>[],
+): void {
+  const first = state.doc.lineAt(entry.open.to).number + 1;
+  const last = state.doc.lineAt(entry.close.from).number - 1;
+  if (first <= last) {
+    const from = state.doc.line(first).from;
+    const body = state.sliceDoc(from, state.doc.line(last).to);
+    alignableLines(state, body).forEach((alignable, index) => {
+      if (!alignable) return;
+      out.push(
+        Decoration.line({ class: `cm-align-${entry.kind}` }).range(
+          state.doc.line(first + index).from,
+        ),
+      );
+    });
+  }
+  if (touchesBlockZone(state, entry.from, entry.to)) return;
+  out.push(Decoration.replace({}).range(entry.open.from, entry.open.to));
+  out.push(Decoration.replace({}).range(entry.close.from, entry.close.to));
+}
+
 /// 1 つの数式ブロックの装飾（触れていなければ絵に置き換える）。
 /// 閉じの無いブロック（書きかけ）は絵にしない — 生のまま見せる。
 /// パーサは「文書末まで」を返すので、閉じの判定はここが持つ
@@ -687,10 +787,10 @@ function mermaidZoneDecorations(
 
 export function blockWidgetDecorations(
   state: EditorState,
-  found?: { notes: NoteContainer[]; details: DetailsContainer[] },
+  found?: BlockContainers,
 ): Range<Decoration>[] {
   if (state.field(sourceModeField, false)) return [];
-  const { notes, details } = found ?? blockContainers(state);
+  const { notes, details, aligns } = found ?? blockContainers(state);
   const out: Range<Decoration>[] = [];
   // `:::note` の囲み（B-3）。行の装飾なので木のノードは要らない
   for (const note of notes) {
@@ -699,6 +799,10 @@ export function blockWidgetDecorations(
   // 折りたたみ（6-2）。こちらも行の並びだけで見つける
   for (const entry of details) {
     detailsZoneDecorations(state, entry, out);
+  }
+  // 寄せ（22-2）。囲みの中の段落と見出しの行だけ
+  for (const entry of aligns) {
+    alignZoneDecorations(state, entry, out);
   }
   const theme = state.field(diagramThemeField, false) ?? "light";
   syntaxTree(state).iterate({
@@ -724,8 +828,7 @@ export function blockWidgetDecorations(
 function zoneDecorations(
   state: EditorState,
   zone: { from: number; to: number },
-  notes: NoteContainer[],
-  details: DetailsContainer[],
+  { notes, details, aligns }: BlockContainers,
 ): Range<Decoration>[] {
   const out: Range<Decoration>[] = [];
   if (state.field(sourceModeField, false)) return out;
@@ -737,6 +840,11 @@ function zoneDecorations(
   const entry = details.find((d) => d.from === zone.from && d.to === zone.to);
   if (entry) {
     detailsZoneDecorations(state, entry, out);
+    return out;
+  }
+  const align = aligns.find((a) => a.from === zone.from && a.to === zone.to);
+  if (align) {
+    alignZoneDecorations(state, align, out);
     return out;
   }
   let node = syntaxTree(state).resolveInner(
@@ -762,14 +870,16 @@ function zoneDecorations(
 /// 数式・図・囲みの「ゾーン」/// 数式・図・囲みの「ゾーン」（リビール判定と再計算の間引きに使う）。
 function blockWidgetZones(
   state: EditorState,
-  notes: NoteContainer[],
-  details: DetailsContainer[],
+  { notes, details, aligns }: BlockContainers,
 ): { from: number; to: number }[] {
   const zones: { from: number; to: number }[] = [];
   for (const note of notes) {
     zones.push({ from: note.from, to: note.to });
   }
   for (const entry of details) {
+    zones.push({ from: entry.from, to: entry.to });
+  }
+  for (const entry of aligns) {
     zones.push({ from: entry.from, to: entry.to });
   }
   syntaxTree(state).iterate({
@@ -803,6 +913,8 @@ type BlockWidgetMeta = {
   notes: NoteContainer[];
   /// 同じく折りたたみの控え（6-2）
   details: DetailsContainer[];
+  /// 同じく寄せの控え（22-2）
+  aligns: AlignContainer[];
   revealKey: string;
   /// 計算した時点で構文解析が届いていた位置。ここより先へ解析が進んだら
   /// 数え直す（オブジェクト同一性で見ると打鍵のたびに全再計算になる —
@@ -813,16 +925,12 @@ const blockWidgetMeta = new WeakMap<DecorationSet, BlockWidgetMeta>();
 
 function computeBlockWidgetSet(state: EditorState): DecorationSet {
   // 全行走査（noteContainers）は 1 回だけ。装飾とゾーンで共有する
-  const { notes, details } = blockContainers(state);
-  const set = RangeSet.of(
-    blockWidgetDecorations(state, { notes, details }),
-    true,
-  );
-  const zones = blockWidgetZones(state, notes, details);
+  const found = blockContainers(state);
+  const set = RangeSet.of(blockWidgetDecorations(state, found), true);
+  const zones = blockWidgetZones(state, found);
   blockWidgetMeta.set(set, {
     zones,
-    notes,
-    details,
+    ...found,
     revealKey: revealKeyOf(state, zones),
     parsedTo: syntaxTree(state).length,
   });
@@ -892,13 +1000,11 @@ function refreshZones(
       if (cluster.size > MAX_CLUSTER) return computeBlockWidgetSet(state);
     }
     const add: Range<Decoration>[] = [];
-    // 作り直しと同じ順（ゾーンは囲み → 折りたたみ → 数式・図の順に並んでいる）で
+    // 作り直しと同じ順（ゾーンは囲み → 折りたたみ → 寄せ → 数式・図の順に並んでいる）で
     // 足す。同じ位置の行の装飾は足した順に並ぶ
     for (const member of [...cluster].sort((a, b) => a - b)) {
       done.add(member);
-      add.push(
-        ...zoneDecorations(state, meta.zones[member], meta.notes, meta.details),
-      );
+      add.push(...zoneDecorations(state, meta.zones[member], meta));
     }
     set = set.update({
       filterFrom: from,
@@ -923,7 +1029,7 @@ function changedZones(before: string, after: string): number[] {
   return out;
 }
 
-/// 数式ブロック・図・:::note の囲み。表（tableField）と同じ間引き:
+/// 数式ブロック・図・:::note / :::details / :::center / :::right の囲み。表（tableField）と同じ間引き:
 /// ゾーンに関わらない編集は位置写像だけ、カーソル移動はリビール鍵が
 /// 変わったときだけ、解析の進みは「届いた位置が伸びたとき」だけ数え直す。
 export const blockWidgetField = StateField.define<DecorationSet>({
@@ -953,6 +1059,9 @@ export const blockWidgetField = StateField.define<DecorationSet>({
       const details = meta.details.map((entry) =>
         mapContainer(entry, tr.changes),
       );
+      const aligns = meta.aligns.map((entry) =>
+        mapContainer(entry, tr.changes),
+      );
       const revealKey = revealKeyOf(tr.state, zones);
       const mapped = value.map(tr.changes);
       // キャレットが外にあるままブロックの**中**が書き換わる経路（すべて置換・
@@ -970,7 +1079,7 @@ export const blockWidgetField = StateField.define<DecorationSet>({
         return refreshZones(
           tr.state,
           mapped,
-          { zones, notes, details, revealKey, parsedTo },
+          { zones, notes, details, aligns, revealKey, parsedTo },
           [...indices],
         );
       }
@@ -978,6 +1087,7 @@ export const blockWidgetField = StateField.define<DecorationSet>({
         zones,
         notes,
         details,
+        aligns,
         revealKey,
         parsedTo,
       });
