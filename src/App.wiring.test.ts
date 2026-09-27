@@ -39,4 +39,12 @@ describe("App の配線", () => {
     expect(side).toContain("key={referenceSession}");
     expect(side).not.toContain("key={reference.path}");
   });
+
+  test("test_開いているノートのやることの完了も文を突き合わせる（レビュー 2026-09-27）", () => {
+    const body =
+      /async function completeTask\([\s\S]*?\n {2}\}\n/.exec(source)?.[0] ?? "";
+    expect(body).toContain("completeMatching(");
+    // 行番号だけで印を書き換える道を残さない
+    expect(body).not.toContain("setTaskDone(");
+  });
 });

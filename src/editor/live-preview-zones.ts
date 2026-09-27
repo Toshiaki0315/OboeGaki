@@ -182,6 +182,10 @@ function tableZoneDecorations(
   return { ranges, bounds };
 }
 
+/// 差分で差し替えるゾーンの数の上限（表・ブロックの装飾で共通）。変わった数や
+/// 入れ子のまとまりがこれを超えたら全部数え直す
+const MAX_CLUSTER = 32;
+
 /// 触った表だけ差し替える（blockWidgetField の refreshZones と同じ作法）。
 /// 以前は表の中で 1 字打つたびに文書中の**全表**を作り直していて、表が多い
 /// 文書で打鍵 p95 が 16ms に最も近づく経路だった（レビュー 2026-09-24 / 21-3）
@@ -191,6 +195,10 @@ function refreshTableZones(
   meta: TableMeta,
   indices: number[],
 ): DecorationSet {
+  // 一度に大量に変わる（全選択して戻す等）なら全部数え直す方が速い。差し替えは
+  // 表ごとに RangeSet を組み直すので「変わった数 × 全表」になる（表 1,000 個で
+  // 19ms、全部数え直せば 5ms。ブロックの装飾の 21-14 と同じ上限。レビュー 2026-09-27）
+  if (new Set(indices).size > MAX_CLUSTER) return computeTableSet(state);
   const zones = [...meta.zones];
   // ゾーンは 0〜n 個に置き換わるので、後ろから処理して添字をずらさない
   for (const index of [...new Set(indices)].sort((a, b) => b - a)) {
@@ -822,8 +830,6 @@ function mapContainer<
 
 /// リビール状態が**変わったゾーンだけ**を filter + add で差し替える。
 /// 全再計算（全行走査 + 全ゾーン組み直し）も、全ゾーンの入れ替えも避ける
-/// 入れ子のゾーンをまとめて差し替える上限。超えたら全部数え直す
-const MAX_CLUSTER = 32;
 
 function refreshZones(
   state: EditorState,

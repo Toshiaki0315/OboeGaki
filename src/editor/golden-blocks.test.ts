@@ -7,8 +7,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { syntaxTree } from "@codemirror/language";
-import type { SyntaxNode } from "@lezer/common";
+import { language } from "@codemirror/language";
+import type { SyntaxNode, Tree } from "@lezer/common";
 import { frontMatterRange } from "../markdown/front-matter";
 import { LANG } from "./test-utils";
 
@@ -29,6 +29,7 @@ const DIVERGENT: Record<string, string> = {
 /// その行の種類（golden の語彙で）
 function blockOf(
   state: EditorState,
+  tree: Tree,
   lineNumber: number,
   frontEnd: number,
 ): string {
@@ -39,7 +40,7 @@ function blockOf(
   // 字下げした箇条書きは行頭の空白では親の段落に解決されるので、最初の字で引く
   const head = line.from + (line.text.match(/^\s*/)?.[0].length ?? 0);
   for (
-    let node: SyntaxNode | null = syntaxTree(state).resolveInner(head, 1);
+    let node: SyntaxNode | null = tree.resolveInner(head, 1);
     node && node.name !== "Document";
     node = node.parent
   ) {
@@ -82,16 +83,24 @@ describe("fixtures/golden のブロック種別と一致する", () => {
         readFileSync(`fixtures/golden/${name}.json`, "utf8"),
       );
       const state = EditorState.create({ doc: text, extensions: [LANG] });
+      // 木は**パーサで一度に**組む。状態の木（syntaxTree）は時間枠の中で読めた
+      // ところまでで、テストを並べて走らせて重いときは途中の行から先が全部
+      // 「段落」と読まれて落ちた（2026-09-27。basic の 24 行目以降。
+      // ensureSyntaxTree で追わせても最後の行が漏れた）。本番と同じ設定の
+      // パーサ（LANG の language）を使う
+      const parser = state.facet(language)?.parser;
+      if (!parser) throw new Error("LANG に言語が無い");
+      const tree = parser.parse(text);
       const frontEnd = frontMatterRange(text)?.to ?? 0;
       const mismatches = golden
         .filter(
           (g) =>
             (DIVERGENT[`${name}:${g.line}`] ?? g.block) !==
-            blockOf(state, g.line, frontEnd),
+            blockOf(state, tree, g.line, frontEnd),
         )
         .map(
           (g) =>
-            `${g.line}: ${JSON.stringify(g.text)} golden=${g.block} lezer=${blockOf(state, g.line, frontEnd)}`,
+            `${g.line}: ${JSON.stringify(g.text)} golden=${g.block} lezer=${blockOf(state, tree, g.line, frontEnd)}`,
         );
       expect(mismatches).toEqual([]);
     });

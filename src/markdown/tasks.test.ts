@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { lineStartOffset, setTaskDone, taskMarkerOf } from "./tasks";
+import {
+  completeMatching,
+  lineStartOffset,
+  setTaskDone,
+  taskMarkerOf,
+} from "./tasks";
 
 // やること一覧（ADR-0056）。開いているノートの側で使う純関数
 describe("lineStartOffset", () => {
@@ -19,6 +24,49 @@ describe("setTaskDone", () => {
       insert: "- [x] b",
     });
     expect(setTaskDone("ただの行", 0, true)).toBeNull();
+  });
+});
+
+// 一覧の行番号は索引（保存後）の写し。開いているノートは保存前の字が先に進んで
+// いることがあるので、文も突き合わせる（Rust の complete_matching と同じ答え。
+// レビュー 2026-09-27: 開いているノートの道だけ行番号しか見ていなかった）
+describe("completeMatching", () => {
+  test("test_行番号と文が合えば印を書き換える", () => {
+    expect(
+      completeMatching("# 題\n\n- [ ] 買い物\n- [ ] 掃除\n", 2, "買い物"),
+    ).toEqual({
+      kind: "edit",
+      edit: { from: 5, to: 14, insert: "- [x] 買い物" },
+    });
+  });
+
+  test("test_上に行が挟まって別のやることを指していたら触らない", () => {
+    const shifted = "# 題\n追加\n\n- [ ] 買い物\n- [ ] 掃除\n";
+    // 行 3 は「掃除」ではなく「買い物」— 一覧の「掃除」を押しても書き換えない
+    expect(completeMatching(shifted, 3, "掃除")).toEqual({ kind: "mismatch" });
+    // やることでない行
+    expect(completeMatching(shifted, 1, "買い物")).toEqual({
+      kind: "mismatch",
+    });
+    // 行が無い
+    expect(completeMatching(shifted, 99, "買い物")).toEqual({
+      kind: "mismatch",
+    });
+  });
+
+  test("test_既に完了している行は_ずれではない", () => {
+    expect(completeMatching("- [x] 済み\n", 0, "済み")).toEqual({
+      kind: "done",
+    });
+  });
+
+  test("test_文は前後の空白を落として比べる（Rust の body.trim と同じ）", () => {
+    expect(completeMatching("- [ ]   余白  \n", 0, "余白").kind).toBe("edit");
+  });
+
+  test("test_コードフェンスの中の行は_やることとして扱わない", () => {
+    const fenced = "```\n- [ ] 例\n```\n";
+    expect(completeMatching(fenced, 1, "例")).toEqual({ kind: "mismatch" });
   });
 });
 

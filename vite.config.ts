@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { resolveDevPort } from "./src/lib/dev-port";
 
@@ -14,7 +14,13 @@ export default defineConfig(async () => ({
   plugins: [react()],
 
   // テストの共通の後始末（jsdom の cleanup）。環境は各ファイルの先頭で宣言する
-  test: { setupFiles: ["src/test-setup.ts"] },
+  test: {
+    setupFiles: ["src/test-setup.ts"],
+    // Claude Code の作業フォルダ（.claude/worktrees/ に別の checkout が丸ごと
+    // 置かれる）を拾わない。拾うと別の版のテストが 1 回ぶん余計に走り、
+    // make check が赤くなった（2026-09-27。138 件がすべてその中）
+    exclude: [...configDefaults.exclude, ".claude/**"],
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -1,8 +1,9 @@
 // SVG（Mermaid の図）を PNG にする前段。大きさの読み取りと、root への
 // 明示的な幅・高さの付け方は純関数で確かめる（描くのは WebView だけ）。
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  rasterizeForDocx,
   rasterizeIfSvg,
   sizedSvg,
   svgFromDataUrl,
@@ -88,5 +89,109 @@ describe("rasterizeIfSvg", () => {
       "data:image/png;base64,AA==",
     );
     await expect(rasterizeIfSvg(null)).resolves.toBeNull();
+  });
+});
+
+describe("rasterizeForDocx", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /// canvas と Image を差し替える（node には無い。描くのは WebView だけ）。
+  /// 描いた回数と、書き出した種類を覚える
+  function fakeCanvas() {
+    const drawn: string[] = [];
+    const encoded: string[] = [];
+    class FakeImage {
+      naturalWidth = 3;
+      naturalHeight = 4;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(value: string) {
+        drawn.push(value);
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("Image", FakeImage);
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({ drawImage: () => {} }),
+        toDataURL: (type: string) => {
+          encoded.push(type);
+          return `data:${type};base64,UPRIGHT`;
+        },
+      }),
+    });
+    return { drawn, encoded };
+  }
+
+  // SOI → APP1（Exif、Orientation = 6）→ EOI
+  const rotated =
+    "data:image/jpeg;base64," +
+    btoa(
+      String.fromCharCode(
+        0xff,
+        0xd8,
+        0xff,
+        0xe1,
+        0,
+        34,
+        0x45,
+        0x78,
+        0x69,
+        0x66,
+        0,
+        0,
+        0x4d,
+        0x4d,
+        0,
+        42,
+        0,
+        0,
+        0,
+        8,
+        0,
+        1,
+        0x01,
+        0x12,
+        0,
+        3,
+        0,
+        0,
+        0,
+        1,
+        0,
+        6,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xff,
+        0xd9,
+      ),
+    );
+
+  test("test_向きの印付きの_JPEG_は正しい向きに描き直し_JPEG_のまま返す（レビュー 2026-09-27）", async () => {
+    const { drawn, encoded } = fakeCanvas();
+    await expect(rasterizeForDocx(rotated)).resolves.toBe(
+      "data:image/jpeg;base64,UPRIGHT",
+    );
+    expect(drawn).toEqual([rotated]);
+    // 写真を PNG にすると何倍にも膨らむので JPEG で書き直す
+    expect(encoded).toEqual(["image/jpeg"]);
+  });
+
+  test("test_印の無い_JPEG_と_PNG_は描き直さない", async () => {
+    const { drawn } = fakeCanvas();
+    const plain = `data:image/jpeg;base64,${btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xd9))}`;
+    await expect(rasterizeForDocx(plain)).resolves.toBe(plain);
+    await expect(rasterizeForDocx("data:image/png;base64,AA==")).resolves.toBe(
+      "data:image/png;base64,AA==",
+    );
+    expect(drawn).toEqual([]);
   });
 });

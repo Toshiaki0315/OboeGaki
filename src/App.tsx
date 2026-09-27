@@ -85,7 +85,7 @@ import {
 } from "./lib/mcp-hidden";
 import { windowTitle } from "./lib/window-title";
 import { tagRenamePlan } from "./lib/tag-rename";
-import { lineStartOffset, setTaskDone } from "./markdown/tasks";
+import { completeMatching, lineStartOffset } from "./markdown/tasks";
 import { sectionOf, splitEmbedTarget } from "./markdown/section";
 import type { EmbedResolver } from "./editor/embed";
 import { startupAction } from "./lib/startup-note";
@@ -950,11 +950,23 @@ function App() {
     if (!vaultRoot) return;
     const path = `${vaultRoot}/${relative}`;
     if (path === currentPath && editorRef.current) {
-      const edit = setTaskDone(editorRef.current.getText(), line, true);
-      if (edit) editorRef.current.replaceRange(edit.from, edit.to, edit.insert);
-      // 一覧は保存のあとの索引更新で消える。待たずに手元で消す
+      // 一覧の行番号は保存後の索引の写し。開いているノートは保存前の字が先に
+      // 進んでいることがあるので、文も突き合わせる（閉じているノートの
+      // task_complete と同じ規則。レビュー 2026-09-27）
+      const found = completeMatching(editorRef.current.getText(), line, text);
+      if (found.kind === "edit") {
+        const { from, to, insert } = found.edit;
+        editorRef.current.replaceRange(from, to, insert);
+      }
+      // 一覧は保存のあとの索引更新で消える。待たずに手元で消す。ずれていたときも
+      // 保存して索引を今の本文に揃えれば、一覧が正しい行番号で出直す
       await sync.flush();
       await refresh();
+      if (found.kind === "mismatch") {
+        setStatus(
+          "やることの行がずれていました。一覧を更新したので、もう一度お試しください",
+        );
+      }
       return;
     }
     try {

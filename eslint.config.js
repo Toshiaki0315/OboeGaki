@@ -8,7 +8,17 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/", "node_modules/", "src-tauri/", "spikes/", "fixtures/"] },
+  {
+    // .claude/ は Claude Code の作業フォルダ（別の checkout）。vitest と同じく見ない
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "src-tauri/",
+      "spikes/",
+      "fixtures/",
+      ".claude/",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
