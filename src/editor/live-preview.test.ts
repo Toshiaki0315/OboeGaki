@@ -1217,12 +1217,21 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
       { length: 40 },
       (_, i) => `| A${i} | B |\n| --- | --- |\n| 1 | 2 |\n\n段落 ${i}\n`,
     ).join("\n");
-    const state = EditorState.create({
-      doc,
-      selection: { anchor: doc.length },
-      extensions: [LANG, sourceModeField, tableField],
-    });
-    state.field(tableField);
+    // **解析を最後まで済ませた**状態で作る。作った直後の木は時間枠の中で読めた
+    // ところまでで、テストを並べて走らせて重いときは 40 個のうち 24 個で止まり、
+    // 見比べる相手の答えが揺れた。済ませたら空の transaction で数え直させる
+    //（解析が進んだら数え直す経路）
+    const settled = (anchor: number, head = anchor) => {
+      const created = EditorState.create({
+        doc,
+        selection: { anchor, head },
+        extensions: [LANG, sourceModeField, tableField],
+      });
+      ensureSyntaxTree(created, created.doc.length, 10_000);
+      return created.update({}).state;
+    };
+    const state = settled(doc.length);
+    expect(state.field(tableField).size).toBe(40);
     const updates = vi.spyOn(RangeSet.prototype, "update");
     try {
       const all = state.update({
@@ -1232,28 +1241,21 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
       expect(updates).not.toHaveBeenCalled();
       // 全選択の間は全部の表がソースに戻る（同じ選択で作り直したものと同じ）
       expect(shapeOf(all.field(tableField))).toEqual(
-        shapeOf(
-          EditorState.create({
-            doc,
-            selection: { anchor: 0, head: doc.length },
-            extensions: [LANG, sourceModeField, tableField],
-          }).field(tableField),
-        ),
+        shapeOf(settled(0, doc.length).field(tableField)),
       );
       const back = all.update({ selection: { anchor: doc.length } }).state;
       back.field(tableField);
       expect(updates).not.toHaveBeenCalled();
       expect(shapeOf(back.field(tableField))).toEqual(
-        rebuilt(back.doc.toString(), back.selection.main.head, tableField),
+        shapeOf(settled(doc.length).field(tableField)),
       );
       // 少しだけ変わるとき（キャレットが 1 つの表に入る）は今までどおり差し替え
-      const one = back.update({
-        selection: { anchor: doc.indexOf("A5") },
-      }).state;
+      const at = doc.indexOf("A5");
+      const one = back.update({ selection: { anchor: at } }).state;
       one.field(tableField);
       expect(updates).toHaveBeenCalled();
       expect(shapeOf(one.field(tableField))).toEqual(
-        rebuilt(one.doc.toString(), one.selection.main.head, tableField),
+        shapeOf(settled(at).field(tableField)),
       );
     } finally {
       updates.mockRestore();
