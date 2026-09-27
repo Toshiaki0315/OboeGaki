@@ -113,3 +113,65 @@ function jpegDimensions(
   }
   return null;
 }
+
+/// JPEG の向きの印（EXIF の Orientation。1〜8）。無い・読めなければ 1（そのまま）。
+/// 縦に撮った写真は画素を横倒しのまま置いて「回して見せる」印を付けることが
+/// 多い。画面（WebKit）は印に従うが、Word は印を読まずに画素のまま置くので
+/// 横倒しになる（レビュー 2026-09-27）
+export function jpegOrientation(bytes: Uint8Array): number {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return 1;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) return 1;
+    const marker = bytes[offset + 1];
+    if (marker === 0xff) {
+      offset++; // 詰め物の 0xFF
+      continue;
+    }
+    if (marker === 0xd9 || marker === 0xda) return 1; // 絵の本体より先に無かった
+    const length = view.getUint16(offset + 2);
+    if (length < 2 || offset + 2 + length > bytes.length) return 1;
+    if (marker === 0xe1) {
+      const found = exifOrientation(view, offset + 4, length - 2);
+      if (found !== null) return found;
+    }
+    offset += 2 + length;
+  }
+  return 1;
+}
+
+/// APP1 の中身（`Exif\0\0` + TIFF）から IFD0 の Orientation を探す
+function exifOrientation(
+  view: DataView,
+  start: number,
+  length: number,
+): number | null {
+  const end = start + length;
+  const header = [0x45, 0x78, 0x69, 0x66, 0, 0]; // "Exif\0\0"
+  if (length < header.length + 8) return null;
+  if (header.some((byte, i) => view.getUint8(start + i) !== byte)) return null;
+  const tiff = start + header.length;
+  const order = view.getUint16(tiff);
+  if (order !== 0x4d4d && order !== 0x4949) return null;
+  const little = order === 0x4949;
+  const ifd = tiff + view.getUint32(tiff + 4, little);
+  if (ifd + 2 > end) return null;
+  const count = view.getUint16(ifd, little);
+  for (let i = 0; i < count; i++) {
+    const entry = ifd + 2 + i * 12;
+    if (entry + 12 > end) return null;
+    if (view.getUint16(entry, little) !== 0x0112) continue;
+    const value = view.getUint16(entry + 8, little);
+    return value >= 1 && value <= 8 ? value : null;
+  }
+  return null;
+}
+
+/// Word に渡す前に**画素を正しい向きに描き直す**必要があるか（向きの印が
+/// 1 以外の JPEG の data URL）。描き直しは呼び手（svg-png の rasterizeForDocx）
+export function needsUpright(dataUrl: string): boolean {
+  const decoded = decodeDataUrl(dataUrl);
+  if (!decoded || docxImageType(decoded.mime) !== "jpg") return false;
+  return jpegOrientation(decoded.bytes) !== 1;
+}

@@ -3,7 +3,7 @@
 // 画面でも SVG → 描画なので、同じ経路）。大きさの読み取りと root への
 // 幅・高さの付け方は純関数にして、描く部分だけを DOM に頼る。
 
-import { docxImageType } from "./image-bytes";
+import { docxImageType, needsUpright } from "./image-bytes";
 
 const DEFAULT_SIZE = { width: 800, height: 600 };
 
@@ -123,19 +123,29 @@ export async function rasterizeIfSvg(
 
 /// Word に渡せない種類（WebP / AVIF など）の data URL を PNG に描き直す。
 /// 渡せる種類（PNG / JPEG / GIF / BMP）と SVG 以外の絵はここで canvas を通す。
-/// 描けなければ元のまま返す（docx 側が種類を見て飛ばす）
+/// 描けなければ元のまま返す（docx 側が種類を見て飛ばす）。
+/// 向きの印（EXIF の Orientation）付きの JPEG も描き直す。Word は印を読まずに
+/// 画素のまま置くので、縦に撮った写真が横倒しになる。WebKit の canvas は印に
+/// 従って描く（`<img>` の既定 image-orientation: from-image）ので、描き直した
+/// 画素は画面と同じ向きになる。写真は PNG にすると膨らむので JPEG のまま
+/// （レビュー 2026-09-27）
 export async function rasterizeForDocx(
   url: string | null,
 ): Promise<string | null> {
   if (url === null) return null;
   const svg = svgFromDataUrl(url);
   if (svg !== null) return (await svgToPng(svg)) ?? url;
+  if (needsUpright(url)) return (await redraw(url, "image/jpeg")) ?? url;
   const mime = /^data:([^;,]+)/i.exec(url)?.[1] ?? "";
   if (docxImageType(mime) !== null) return url;
-  return (await bitmapToPng(url)) ?? url;
+  return (await redraw(url, "image/png")) ?? url;
 }
 
-function bitmapToPng(url: string): Promise<string | null> {
+/// 絵を canvas に描いて、指定の種類の data URL にする。描けなければ null
+function redraw(
+  url: string,
+  type: "image/png" | "image/jpeg",
+): Promise<string | null> {
   return new Promise((resolve) => {
     try {
       const image = new Image();
@@ -147,7 +157,7 @@ function bitmapToPng(url: string): Promise<string | null> {
           const context = canvas.getContext("2d");
           if (!context) return resolve(null);
           context.drawImage(image, 0, 0);
-          resolve(canvas.toDataURL("image/png"));
+          resolve(canvas.toDataURL(type, 0.92));
         } catch {
           resolve(null);
         }

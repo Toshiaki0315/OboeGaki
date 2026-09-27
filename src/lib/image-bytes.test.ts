@@ -1,8 +1,15 @@
 // data URL の画像の種類と大きさ（Word 書き出し。21-2）。ヘッダだけの
 // 最小のバイト列で、PNG / JPEG / GIF / BMP の読み取りと、渡せない種類の判定を見る
 
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { decodeDataUrl, docxImageType, imageDimensions } from "./image-bytes";
+import {
+  decodeDataUrl,
+  docxImageType,
+  imageDimensions,
+  jpegOrientation,
+  needsUpright,
+} from "./image-bytes";
 
 const b64 = (bytes: number[]) => btoa(String.fromCharCode(...bytes));
 
@@ -97,4 +104,87 @@ describe("image-bytes", () => {
     new DataView(core.buffer).setUint16(20, 4, true);
     expect(imageDimensions("bmp", core)).toEqual({ width: 5, height: 4 });
   });
+
+  // 縦に撮った写真は、画素を横倒しのまま置いて「90° 回して見せる」印（EXIF の
+  // Orientation）を付けることが多い。画面（WebKit）は印に従うが、Word は印を
+  // 読まずに画素のまま置くので横倒しになる（レビュー 2026-09-27）
+  test("test_JPEG_の向きの印を_EXIF_から読む（大きい端・小さい端の両方）", () => {
+    expect(jpegOrientation(jpegWithOrientation(6, "MM"))).toBe(6);
+    expect(jpegOrientation(jpegWithOrientation(8, "II"))).toBe(8);
+    expect(jpegOrientation(jpegWithOrientation(1, "MM"))).toBe(1);
+  });
+
+  test("test_見本の写真（sips の出力）の向きの印も読める", () => {
+    const sample = (name: string) =>
+      new Uint8Array(
+        readFileSync(
+          new URL(
+            `../../fixtures/samples/読み込みの見本/${name}`,
+            import.meta.url,
+          ),
+        ),
+      );
+    expect(jpegOrientation(sample("写真-回転.jpg"))).toBe(6);
+    expect(jpegOrientation(sample("写真.jpg"))).toBe(1);
+  });
+
+  test("test_向きの印が無い・壊れている_JPEG_は_1（そのまま）", () => {
+    expect(jpegOrientation(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]))).toBe(1);
+    expect(jpegOrientation(new Uint8Array([1, 2, 3]))).toBe(1);
+    // 長さが途中で切れた APP1
+    const cut = jpegWithOrientation(6, "MM").slice(0, 20);
+    expect(jpegOrientation(cut)).toBe(1);
+    // 範囲外の値は信じない
+    expect(jpegOrientation(jpegWithOrientation(9, "MM"))).toBe(1);
+  });
+
+  test("test_描き直しが要るのは_向きの印が_1_以外の_JPEG_だけ", () => {
+    const url = (bytes: Uint8Array) =>
+      `data:image/jpeg;base64,${b64(Array.from(bytes))}`;
+    expect(needsUpright(url(jpegWithOrientation(6, "MM")))).toBe(true);
+    expect(needsUpright(url(jpegWithOrientation(1, "MM")))).toBe(false);
+    expect(needsUpright(url(new Uint8Array([0xff, 0xd8, 0xff, 0xd9])))).toBe(
+      false,
+    );
+    expect(needsUpright(`data:image/png;base64,${b64([0x89, 0x50])}`)).toBe(
+      false,
+    );
+    expect(needsUpright("https://x/a.jpg")).toBe(false);
+  });
 });
+
+/// SOI → APP1（Exif、IFD0 に Orientation 1 つ）→ EOI の最小の JPEG
+function jpegWithOrientation(value: number, order: "MM" | "II"): Uint8Array {
+  const big = order === "MM";
+  const u16 = (n: number) => (big ? [n >> 8, n & 0xff] : [n & 0xff, n >> 8]);
+  const u32 = (n: number) =>
+    big
+      ? [n >>> 24, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]
+      : [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, n >>> 24];
+  const tiff = [
+    ...(big ? [0x4d, 0x4d] : [0x49, 0x49]),
+    ...u16(42),
+    ...u32(8), // IFD0 の位置
+    ...u16(1), // 項目の数
+    ...u16(0x0112), // Orientation
+    ...u16(3), // SHORT
+    ...u32(1),
+    ...u16(value),
+    0,
+    0,
+    ...u32(0), // 次の IFD は無い
+  ];
+  const payload = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff]; // "Exif\0\0"
+  const length = payload.length + 2;
+  return new Uint8Array([
+    0xff,
+    0xd8,
+    0xff,
+    0xe1,
+    length >> 8,
+    length & 0xff,
+    ...payload,
+    0xff,
+    0xd9,
+  ]);
+}

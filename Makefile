@@ -72,6 +72,11 @@ samples:          ## 読み書きを試す見本を作り直す（fixtures/sampl
 	sips -s format jpeg -s formatOptions 85 \
 	  "fixtures/samples/読み込みの見本/写真.png" \
 	  --out "fixtures/samples/読み込みの見本/写真.jpg" >/dev/null
+	# 縦に撮った写真の形: 画素は左へ 90° 倒し、「右へ 90° 回して見せる」印（6）
+	sips -r 270 -s format jpeg -s formatOptions 85 \
+	  "fixtures/samples/読み込みの見本/写真.png" \
+	  --out "fixtures/samples/読み込みの見本/写真-回転.jpg" >/dev/null
+	node scripts/tag-orientation.mjs "fixtures/samples/読み込みの見本/写真-回転.jpg" 6
 	swift scripts/make-sample-pdf.swift \
 	  "fixtures/samples/読み込みの見本/見本.pdf" \
 	  "fixtures/samples/読み込みの見本/写真.png"
