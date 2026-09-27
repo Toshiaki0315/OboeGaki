@@ -27,7 +27,7 @@ import {
 import { MERMAID_IMAGE_PREFIX, codeBlocksOf } from "../lib/slides";
 import {
   rasterizeForDocx,
-  rasterizeIfSvg,
+  rasterizeForPptx,
   svgFromDataUrl,
   svgNaturalSize,
   svgToPng,
@@ -271,7 +271,7 @@ export function useExport(input: ExportInput) {
             ? Promise.resolve(
                 diagrams.get(url.slice(MERMAID_IMAGE_PREFIX.length)) ?? null,
               )
-            : imageSource(vaultRoot, url).then(rasterizeIfSvg),
+            : imageSource(vaultRoot, url).then(rasterizeForPptx),
         readSlideTheme(text, slideThemeFrom(pptxSettings)),
         await borrowedTheme(),
         {

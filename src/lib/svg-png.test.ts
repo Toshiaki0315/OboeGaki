@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   rasterizeForDocx,
+  rasterizeForPptx,
   rasterizeIfSvg,
   sizedSvg,
   svgFromDataUrl,
@@ -183,6 +184,20 @@ describe("rasterizeForDocx", () => {
     expect(drawn).toEqual([rotated]);
     // 写真を PNG にすると何倍にも膨らむので JPEG で書き直す
     expect(encoded).toEqual(["image/jpeg"]);
+  });
+
+  test("test_PowerPoint_でも向きの印付きの_JPEG_は描き直す（レビュー 2026-09-28）", async () => {
+    const { drawn, encoded } = fakeCanvas();
+    await expect(rasterizeForPptx(rotated)).resolves.toBe(
+      "data:image/jpeg;base64,UPRIGHT",
+    );
+    expect(drawn).toEqual([rotated]);
+    expect(encoded).toEqual(["image/jpeg"]);
+    // 印の無い絵は触らない（PowerPoint は WebP なども受けるので種類は変えない）
+    const plain = "data:image/webp;base64,AA==";
+    await expect(rasterizeForPptx(plain)).resolves.toBe(plain);
+    await expect(rasterizeForPptx(null)).resolves.toBeNull();
+    expect(drawn).toEqual([rotated]);
   });
 
   test("test_印の無い_JPEG_と_PNG_は描き直さない", async () => {

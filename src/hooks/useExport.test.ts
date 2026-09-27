@@ -22,7 +22,14 @@ vi.mock("../lib/ipc", () => ({
   ocrPdfPage: vi.fn(),
 }));
 
+// 画像の描き直しは WebView の canvas が要るので、呼ばれたかだけを見る
+vi.mock("../lib/svg-png", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/svg-png")>()),
+  rasterizeForPptx: vi.fn(async (url: string | null) => url),
+}));
+
 import * as ipc from "../lib/ipc";
+import * as svgPng from "../lib/svg-png";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 import { DEFAULT_PPTX_SETTINGS } from "../lib/pptx-settings";
 import { useExport, type ExportInput } from "./useExport";
@@ -98,5 +105,19 @@ describe("useExport", () => {
     const { result } = renderHook(() => useExport(input()));
     await act(() => result.current.handleImport("pdf"));
     expect(mocked.importRead).not.toHaveBeenCalled();
+  });
+
+  test("test_PowerPoint_の絵は_PowerPoint_向けの描き直しを通す（向きの印。レビュー 2026-09-28）", async () => {
+    mocked.readNote.mockResolvedValue("## 題\n\n![写真](写真.jpg)\n");
+    mocked.saveTo.mockResolvedValue("/out/題.pptx");
+    mocked.imageSource.mockResolvedValue("data:image/jpeg;base64,AA==");
+    mocked.exportWriteBinary.mockResolvedValue(undefined);
+    const given = input();
+    const { result } = renderHook(() => useExport(given));
+    await act(() => result.current.handleExportPptx());
+    expect(vi.mocked(svgPng.rasterizeForPptx)).toHaveBeenCalledWith(
+      "data:image/jpeg;base64,AA==",
+    );
+    expect(mocked.exportWriteBinary).toHaveBeenCalled();
   });
 });

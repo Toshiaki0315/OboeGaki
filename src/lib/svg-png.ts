@@ -141,6 +141,19 @@ export async function rasterizeForDocx(
   return (await redraw(url, "image/png")) ?? url;
 }
 
+/// PowerPoint に渡す前の描き直し。SVG は PNG に、向きの印（EXIF の
+/// Orientation）付きの JPEG は正しい向きの JPEG にする。PowerPoint も Word と
+/// 同じく印を読まずに画素のまま置くことがあり、読む版でも描き直した画素なら
+/// 同じ向きになる。大きさ（縦横比）も描き直した画素から読む（レビュー
+/// 2026-09-28）。ほかの種類は触らない
+export async function rasterizeForPptx(
+  url: string | null,
+): Promise<string | null> {
+  if (url === null) return null;
+  if (needsUpright(url)) return (await redraw(url, "image/jpeg")) ?? url;
+  return rasterizeIfSvg(url);
+}
+
 /// 絵を canvas に描いて、指定の種類の data URL にする。描けなければ null
 function redraw(
   url: string,
