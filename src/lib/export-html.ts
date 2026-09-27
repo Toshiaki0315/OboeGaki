@@ -10,6 +10,7 @@
 
 import MarkdownIt from "markdown-it";
 import container from "markdown-it-container";
+import { forMarkdownIt } from "./container-lines";
 import { renderMath } from "../editor/math";
 import { mathSpanAt } from "../markdown/math-span";
 import { bodyText } from "../markdown/front-matter";
@@ -199,7 +200,7 @@ const embedRule = (
   open.info = match[1].trim();
   open.map = [startLine, startLine + 1];
   state.md.block.parse(
-    text,
+    forMarkdownIt(text),
     state.md,
     { ...state.env, embeds: undefined },
     state.tokens,
@@ -271,6 +272,12 @@ function noteKind(info: string): string {
     : UNKNOWN_NOTE_KIND;
 }
 
+/// 寄せの箱の開きと閉じ
+function alignRender(kind: "center" | "right") {
+  return (tokens: { nesting: number }[], index: number) =>
+    tokens[index].nesting === 1 ? `<div class="align-${kind}">\n` : "</div>\n";
+}
+
 function renderer() {
   const md = new MarkdownIt("commonmark", { html: false })
     .enable(["table", "strikethrough"])
@@ -297,6 +304,16 @@ function renderer() {
               tokens[index].info.trim().slice("details".length).trim(),
             )
           : "</details>\n",
+    })
+    // `:::center` / `:::right`（ADR-0069 / 22-3）。語は付けない（画面と同じ）。
+    // 寄せるのは CSS（段落と見出しだけ）
+    .use(container, "center", {
+      validate: (params: string) => params.trim() === "center",
+      render: alignRender("center"),
+    })
+    .use(container, "right", {
+      validate: (params: string) => params.trim() === "right",
+      render: alignRender("right"),
     });
   md.inline.ruler.before("emphasis", "oboegaki_highlight", highlightRule);
   // 文字色の span（ADR-0061）。生の HTML は通さないまま、色だけ組み直す
@@ -400,6 +417,12 @@ const STYLE = `
                border-radius: 6px 6px 0 0; background: var(--code-name-bg);
                color: var(--code-name-fg); font-family: ui-monospace, Menlo, monospace; }
   .code-block pre { margin-top: 0; border-top-left-radius: 0; }
+  /* 段落と見出しを寄せる囲み（ADR-0069 / 22-3）。寄せるのは段落と見出しだけ
+     （画面と同じ）。段落の中の画像も一緒に寄る */
+  .align-center > p, .align-center > h1, .align-center > h2, .align-center > h3,
+  .align-center > h4, .align-center > h5, .align-center > h6 { text-align: center; }
+  .align-right > p, .align-right > h1, .align-right > h2, .align-right > h3,
+  .align-right > h4, .align-right > h5, .align-right > h6 { text-align: right; }
   /* :::note の囲み（B-3）。画面と同じ組を持たせる */
   :root { --note-info: #2E9E5B; --note-warn: #B26B00; --note-alert: #C0392B;
           --note-info-bg: #E8F5E9; --note-warn-bg: #FFF8E1; --note-alert-bg: #FDECEC; }
@@ -430,7 +453,7 @@ export function collectCodeBlocks(
   markdownText: string,
 ): { info: string; code: string }[] {
   return renderer()
-    .parse(markdownText, {})
+    .parse(forMarkdownIt(markdownText), {})
     .filter((token) => token.type === "fence" && token.info.trim())
     .map((token) => ({ info: token.info.trim(), code: token.content }));
 }
@@ -448,7 +471,7 @@ export function markdownTokens(
   embeds?: Map<string, string>,
 ): ReturnType<Md["parse"]> {
   const md = renderer();
-  return md.parse(bodyText(markdownText), { embeds });
+  return md.parse(forMarkdownIt(bodyText(markdownText)), { embeds });
 }
 
 /// 本文だけを HTML にする（印刷 = ADR-0038 が使う）。
@@ -493,7 +516,7 @@ export function renderBody(
       ? `<div class="code-block"><div class="code-name">${escapeHtml(fileName)}</div>${body}</div>\n`
       : body;
   };
-  return md.render(bodyText(markdownText), { embeds });
+  return md.render(forMarkdownIt(bodyText(markdownText)), { embeds });
 }
 
 /// 完結した HTML 文書を返す。

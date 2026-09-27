@@ -997,6 +997,13 @@ body.resizing {
     background: #63636b;
     color: #fff;
   }
+  /* 段落と見出しを寄せる囲み（ADR-0069 / 22-3）。書き出しの HTML と同じ規則 */
+  .print-root .align-center > :is(p, h1, h2, h3, h4, h5, h6) {
+    text-align: center;
+  }
+  .print-root .align-right > :is(p, h1, h2, h3, h4, h5, h6) {
+    text-align: right;
+  }
   .print-root .code-block pre {
     margin-top: 0;
     border-top-left-radius: 0;

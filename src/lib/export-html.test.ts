@@ -2,7 +2,13 @@
 
 import { describe, expect, test } from "vitest";
 import { NOTE_ICONS } from "../editor/note-container";
-import { codeKey, collectCodeBlocks, renderHtml } from "./export-html";
+import {
+  codeKey,
+  collectCodeBlocks,
+  markdownTokens,
+  renderBody,
+  renderHtml,
+} from "./export-html";
 
 describe("renderHtml", () => {
   test("test_三重の強調と色つきの字が同じ段落にあっても落ちない", () => {
@@ -315,5 +321,70 @@ describe("埋め込みの展開", () => {
     expect(html).toContain("![[無い]]");
     expect(html).toContain("中身 ![[内]]");
     expect(html).not.toContain("深い");
+  });
+});
+
+describe("段落と見出しを寄せる囲み（22-3 / ADR-0069）", () => {
+  test("test_center_と_right_は寄せの箱になる", () => {
+    expect(renderBody(":::center\n題\n:::\n")).toBe(
+      '<div class="align-center">\n<p>題</p>\n</div>\n',
+    );
+    expect(renderBody(":::right\n署名\n:::\n")).toBe(
+      '<div class="align-right">\n<p>署名</p>\n</div>\n',
+    );
+  });
+
+  test("test_寄せるのは段落と見出しだけ（CSS。画面と同じ決定 4）", () => {
+    const html = renderHtml(":::center\n題\n:::\n", "t");
+    expect(html).toContain(".align-center > p");
+    expect(html).toContain(".align-center > h1");
+    expect(html).not.toMatch(/\.align-center\s*\{[^}]*text-align/);
+  });
+
+  test("test_知らない綴りと閉じの無い開きは字のまま（画面と同じ）", () => {
+    expect(renderBody(":::centre\n題\n:::\n")).not.toContain("<div");
+    expect(renderBody(":::centre\n題\n:::\n")).toContain(":::centre");
+    const open = renderBody(":::center\n題\n");
+    expect(open).not.toContain("<div");
+    expect(open).toContain(":::center");
+  });
+
+  test("test_入れ子は組まない_開いている間の開きは字のまま（決定 3）", () => {
+    const html = renderBody(":::note\n:::center\n文\n:::\n:::\n");
+    expect(html).not.toContain("align-center");
+    expect(html).toContain(
+      '<div class="note note-info">\n<p>:::center\n文</p>\n</div>',
+    );
+    // 余った閉じは字のまま
+    expect(html).toContain("<p>:::</p>");
+  });
+
+  test("test_中のフェンスの_:::_では閉じない（画面と同じ）", () => {
+    const html = renderBody(":::note\n```\n:::\n```\n後の文\n:::\n");
+    expect(html).toBe(
+      '<div class="note note-info">\n<pre><code>:::\n</code></pre>\n<p>後の文</p>\n</div>\n',
+    );
+  });
+
+  test("test_コードの中の囲みの行は変えない", () => {
+    expect(renderBody("```\n:::center\n題\n:::\n```\n")).toBe(
+      "<pre><code>:::center\n題\n:::\n</code></pre>\n",
+    );
+  });
+
+  test("test_引用の中の_:::_は囲みにしない（行頭から始まるものだけ。画面と同じ）", () => {
+    expect(renderBody("> :::note\n> 中\n> :::\n")).not.toContain("note-info");
+  });
+
+  test("test_Word_が読むトークンも同じ（寄せの箱の開きと閉じ）", () => {
+    const types = markdownTokens(":::center\n題\n:::\n").map((t) => t.type);
+    expect(types[0]).toBe("container_center_open");
+    expect(types[types.length - 1]).toBe("container_center_close");
+  });
+
+  test("test_埋め込んだ本文の囲みも同じ規則", () => {
+    const embeds = new Map([["署名", ":::right\n野村\n:::\n"]]);
+    const html = renderBody("![[署名]]\n", undefined, undefined, embeds);
+    expect(html).toContain('<div class="align-right">\n<p>野村</p>\n</div>');
   });
 });
