@@ -68,6 +68,17 @@ describe("SLASH_COMMANDS", () => {
     expect(details?.snippet).not.toContain("<details>");
   });
 
+  test("test_寄せの囲みを入れられ_日本語でも引ける（22-6 / ADR-0069）", () => {
+    const center = SLASH_COMMANDS.find((command) => command.id === "center");
+    const right = SLASH_COMMANDS.find((command) => command.id === "right");
+    expect(center?.snippet).toBe(":::center\n${}\n:::");
+    expect(right?.snippet).toBe(":::right\n${}\n:::");
+    expect(matchSlash("中央").map((command) => command.id)).toContain("center");
+    expect(matchSlash("右").map((command) => command.id)).toContain("right");
+    // `:::left` は置かない（囲みの中の既定は常に左。決定 1）
+    expect(SLASH_COMMANDS.map((command) => command.id)).not.toContain("left");
+  });
+
   test("test_囲みは覚書の記法で入れる", () => {
     const alert = SLASH_COMMANDS.find((command) => command.id === "alert");
     expect(alert?.snippet).toContain(":::note alert");

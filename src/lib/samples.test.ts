@@ -32,6 +32,8 @@ describe("書き出しの見本", () => {
       "$$",
       ":::note info",
       ":::details",
+      ":::center",
+      ":::right",
       "> 引用です",
       "![図の説明|320]",
       // 縦に撮った写真の形（Word で横倒しにならないかを見る。レビュー 2026-09-27）
@@ -51,6 +53,8 @@ describe("書き出しの見本", () => {
     expect(html).toContain("mermaid"); // 図
     expect(html).toContain("<details"); // 畳み
     expect(html).toContain("footnote"); // 脚注
+    expect(html).toContain('class="align-center"'); // 寄せ（22-6）
+    expect(html).toContain('class="align-right"');
   });
 
   test("test_PowerPoint の割り方に乗る（見出し 2 ごとに 1 枚）", () => {
@@ -69,6 +73,14 @@ describe("書き出しの見本", () => {
     expect(
       deck.slides.some((slide) =>
         slide.blocks.some((block) => block.kind === "code"),
+      ),
+    ).toBe(true);
+    // 寄せの囲みは枚の中の段落に寄せとして乗る（22-5）
+    expect(
+      deck.slides.some((slide) =>
+        slide.blocks.some(
+          (block) => "align" in block && block.align === "right",
+        ),
       ),
     ).toBe(true);
   });

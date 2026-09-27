@@ -58,6 +58,20 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     hint: "畳んでおける囲みを入れます",
     snippet: ":::details ${呼び名}\n${}\n:::",
   },
+  // 段落と見出しを寄せる囲み（ADR-0069 / 22-6）。`:::left` は置かない —
+  // 囲みの中の既定は常に左
+  {
+    id: "center",
+    label: "中央に寄せる",
+    hint: "段落と見出しを中央に寄せる囲みを入れます",
+    snippet: ":::center\n${}\n:::",
+  },
+  {
+    id: "right",
+    label: "右に寄せる",
+    hint: "段落と見出しを右に寄せる囲みを入れます（日付・署名など）",
+    snippet: ":::right\n${}\n:::",
+  },
   {
     id: "table",
     label: "表",

@@ -114,6 +114,20 @@ mod tests {
     }
 
     #[test]
+    fn test_manual_寄せの書き方と_よそで開いたときの見え方を書いてある() {
+        // ADR-0069 / 22-6。書き方だけでなく「よそでは `:::center` の行が字のまま
+        // 見える」ことを先に言っておく（貼った先で驚かせない）
+        for piece in [
+            "### 中央・右に寄せる（`:::center` / `:::right`）",
+            ":::center\n",
+            ":::right\n",
+            "字のまま見えます",
+        ] {
+            assert!(MANUAL.contains(piece), "無い説明: {piece}");
+        }
+    }
+
+    #[test]
     fn test_place_manual_既にあるノートを消さずに置く() {
         let (_root, vault) = temp_vault();
 
