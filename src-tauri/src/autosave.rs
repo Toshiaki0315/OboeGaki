@@ -50,12 +50,42 @@ pub fn save_bytes_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
         if let Err(error) = temporary.as_file().set_permissions(meta.permissions()) {
             eprintln!("元の権限を写せなかった（このまま保存する）: {error}");
         }
+        copy_xattrs(path, temporary.path());
+    }
+    #[cfg(test)]
+    if FAIL_SAVE.with(|fail| fail.borrow().as_deref() == Some(path)) {
+        return Err(io::Error::other("テストで失敗させた保存"));
     }
     // fsync してから rename する。これで電源断でも「古いまま」か「新しい」の
     // どちらかにしかならない
     temporary.as_file().sync_all()?;
     temporary.persist(path).map_err(|error| error.error)?;
     Ok(())
+}
+
+/// 元のファイルの拡張属性（Finder のタグ・色ラベルなど）を一時ファイルへ写す。
+/// rename で元を置き換えるので、写さないと保存のたびにタグが消える（実測
+/// 2026-09-25。21-15）。写せないもの（システムが持つ `com.apple.provenance`、
+/// 属性を持てないボリューム）は黙って諦める — 保存を止める理由にはしない
+fn copy_xattrs(from: &Path, to: &Path) {
+    let Ok(names) = xattr::list(from) else {
+        return;
+    };
+    for name in names {
+        if name == "com.apple.provenance" {
+            continue; // システムが新しいファイルに自分で付ける
+        }
+        if let Ok(Some(value)) = xattr::get(from, &name) {
+            let _ = xattr::set(to, &name, &value);
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// テスト用: このパスへの保存を失敗させる（改名の巻き戻しを試す足場）
+    pub(crate) static FAIL_SAVE: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// tempfile が付ける乱数部の長さ（`Builder::rand_bytes` の既定）
@@ -226,5 +256,26 @@ mod tests {
         assert!(note.exists());
         assert!(mine.exists());
         assert!(in_git.exists());
+    }
+
+    /// Finder のタグなどの拡張属性を保つ（rename で置き換えると消えていた。21-15）
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_save_atomic_拡張属性を保つ() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        fs::write(&path, "a\n").unwrap();
+        xattr::set(&path, "com.apple.metadata:_kMDItemUserTags", b"tags").unwrap();
+        xattr::set(&path, "com.oboegaki.test", b"hello").unwrap();
+        save_atomic(&path, "b\n").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "b\n");
+        assert_eq!(
+            xattr::get(&path, "com.apple.metadata:_kMDItemUserTags").unwrap(),
+            Some(b"tags".to_vec())
+        );
+        assert_eq!(
+            xattr::get(&path, "com.oboegaki.test").unwrap(),
+            Some(b"hello".to_vec())
+        );
     }
 }

@@ -531,3 +531,25 @@ describe("表のセル（棚卸し 2026-09-17）", () => {
     );
   });
 });
+
+describe("GR-01: pptx.ts に枠の数字を直に書かない（21-15）", () => {
+  test("test_位置・大きさ・字の大きさは_slideMetrics_から取る", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(new URL("./pptx.ts", import.meta.url), "utf8")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+    // `h: 0.3` や `fontSize: 10` のような決め打ち（線の高さ 0 だけは許す）
+    const fixed = [
+      ...source.matchAll(
+        /\b(fontSize|h|w|x|y|rectRadius|margin):\s*-?\d+(\.\d+)?\b/g,
+      ),
+    ]
+      .map((m) => m[0])
+      .filter((text) => text !== "h: 0");
+    expect(fixed).toEqual([]);
+    // `left + 0.2` や `height - 0.95` のような足し引きの決め打ち
+    const offsets = [...source.matchAll(/[+-]\s*\d*\.\d+\b/g)].map((m) => m[0]);
+    expect(offsets).toEqual([]);
+  });
+});

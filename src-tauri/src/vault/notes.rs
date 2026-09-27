@@ -507,4 +507,25 @@ mod tests {
         assert!(!root.path().join("新.md").exists());
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "# 旧\n\n本文\n");
     }
+
+    /// 見出しの書き込みに失敗したら元の名前に戻す（21-6。テストの足場が無く据え
+    /// 置いていたのを 21-15 で足した）。ノートも版も元のまま
+    #[test]
+    fn test_rename_見出しを書けなければ元の名前に戻す() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let note = crate::test_support::note(root.path(), "a.md", "# 旧\n\n本文\n");
+        let target = root.path().join("新.md");
+        crate::autosave::FAIL_SAVE.with(|fail| *fail.borrow_mut() = Some(target.clone()));
+        let result = vault.rename(&note, "新");
+        crate::autosave::FAIL_SAVE.with(|fail| *fail.borrow_mut() = None);
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("改名を戻しました"), "{error}");
+        assert!(note.exists());
+        assert!(!target.exists());
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "# 旧\n\n本文\n");
+        // 動かす前に残した版は、戻したあとも元の鍵で引ける
+        let store = crate::history::store_root(&vault.managed_dir());
+        let versions = crate::history::versions(&store, &vault.history_key(&note));
+        assert_eq!(versions.len(), 1);
+    }
 }

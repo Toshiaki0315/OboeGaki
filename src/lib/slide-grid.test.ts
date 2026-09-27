@@ -99,7 +99,40 @@ describe("slideMetrics（GR-01 / GR-02 / CFG-38）", () => {
       heading: 19,
       code: 13,
       table: 13,
+      footer: 10,
+      subtitle: 20,
+      divider: 36,
+      label: 9,
+      coverTitle: 40,
+      caption: 12,
     });
+  });
+
+  it("test_既定の枠の大きさは今までの決め打ちと同じ（21-15）", () => {
+    // 16:9 の既定では出来上がりの .pptx が 1 字も変わらない
+    expect(slideMetrics(DEFAULT_PPTX_SETTINGS).sizes).toEqual({
+      footerH: 0.3,
+      dividerH: 1.4,
+      cardRadius: 0.08,
+      cardPad: 0.2,
+      cardHeadingH: 0.5,
+      cardBodyInset: 0.95,
+      captionPad: 0.1,
+      labelGap: 0.02,
+      codeMargin: 8,
+    });
+  });
+
+  it("test_縦長の用紙では扉やフッタの高さと字も用紙に追従する（GR-02。21-15）", () => {
+    const a4 = slideMetrics(withPage({ preset: "a4-portrait" }));
+    const base = slideMetrics(DEFAULT_PPTX_SETTINGS);
+    expect(a4.sizes.dividerH).toBeGreaterThan(base.sizes.dividerH);
+    expect(a4.sizes.footerH).toBeGreaterThan(base.sizes.footerH);
+    expect(a4.points.divider).toBeGreaterThan(base.points.divider);
+    expect(a4.points.footer).toBeGreaterThan(base.points.footer);
+    // 横の余白はグリッドの溝から（幅が狭いぶん狭い）
+    expect(a4.sizes.cardPad).toBe(a4.gutter);
+    expect(a4.sizes.cardPad).toBeLessThan(base.sizes.cardPad);
   });
 
   it("test_字の大小が全部に掛かる（CFG-38）", () => {

@@ -124,8 +124,8 @@ export async function buildPptx(
                   x: sheet.margin,
                   y: sheet.footerY,
                   w: sheet.width / 2,
-                  h: 0.3,
-                  fontSize: 10,
+                  h: sheet.sizes.footerH,
+                  fontSize: sheet.points.footer,
                   color: "tx2",
                 },
               },
@@ -142,9 +142,9 @@ export async function buildPptx(
             x: sheet.width - sheet.margin - sheet.gutter * 3,
             y: sheet.footerY,
             w: sheet.gutter * 3,
-            h: 0.3,
+            h: sheet.sizes.footerH,
             align: "right" as const,
-            fontSize: 10,
+            fontSize: sheet.points.footer,
             color: "tx2",
           },
         }
@@ -158,7 +158,7 @@ export async function buildPptx(
       y: sheet.coverTitleY,
       w: sheet.width - sheet.margin * 2,
       h: sheet.titleH * 1.4,
-      fontSize: Math.round(sheet.points.title * 1.33),
+      fontSize: sheet.points.coverTitle,
       bold: true,
     });
     if (deck.subtitle) {
@@ -167,7 +167,7 @@ export async function buildPptx(
         y: sheet.coverSubtitleY,
         w: sheet.width - sheet.margin * 2,
         h: sheet.titleH,
-        fontSize: 20,
+        fontSize: sheet.points.subtitle,
         color: "tx2", // テーマの副色（テンプレートに追従する）
       });
     }
@@ -181,8 +181,8 @@ export async function buildPptx(
         x: sheet.margin,
         y: sheet.height / 2 - sheet.titleH / 2,
         w: sheet.width - sheet.margin * 2,
-        h: 1.4,
-        fontSize: 36,
+        h: sheet.sizes.dividerH,
+        fontSize: sheet.points.divider,
         bold: true,
         align: "center",
         valign: "middle",
@@ -330,7 +330,7 @@ function placeCards(
       w: width,
       h: height,
       fill: { color: "bg2" },
-      rectRadius: 0.08,
+      rectRadius: sheet.sizes.cardRadius,
     });
     page.addText(
       card.heading.map((run, at) =>
@@ -346,20 +346,20 @@ function placeCards(
         ),
       ),
       {
-        x: left + 0.2,
+        x: left + sheet.sizes.cardPad,
         y: top + sheet.gutter,
-        w: width - 0.4,
-        h: 0.5,
+        w: width - sheet.sizes.cardPad * 2,
+        h: sheet.sizes.cardHeadingH,
         valign: "top",
       },
     );
     const body = flowRuns(card.blocks, theme, sheet);
     if (body.length > 0) {
       page.addText(body, {
-        x: left + 0.2,
+        x: left + sheet.sizes.cardPad,
         y: top + sheet.gutter * 3.75,
-        w: width - 0.4,
-        h: height - 0.95,
+        w: width - sheet.sizes.cardPad * 2,
+        h: height - sheet.sizes.cardBodyInset,
         valign: "top",
       });
     }
@@ -418,8 +418,8 @@ function placeBlocks(
           x: frame.x,
           y: frame.y - LABEL_H,
           w: frame.w,
-          h: LABEL_H - 0.02,
-          fontSize: 9,
+          h: LABEL_H - sheet.sizes.labelGap,
+          fontSize: sheet.points.label,
           color: "tx2",
         });
       }
@@ -450,7 +450,7 @@ function placeBlocks(
         color: "tx1",
         valign: "top",
         // 字が縁にくっつくと窮屈に見える（画面の帯と同じ考え方）
-        margin: 8,
+        margin: sheet.sizes.codeMargin,
       });
     } else if (frame.kind === "table" && frame.block.kind === "table") {
       const cells = frame.block.rows;
@@ -501,7 +501,8 @@ function placeImages(
     const box = layout.images[index];
     if (!box) return;
     // 説明を出すぶんだけ絵を縮める（重ねると字が読めない）
-    const captionH = caption && alt ? sheet.points.body / 72 + 0.1 : 0;
+    const captionH =
+      caption && alt ? sheet.points.body / 72 + sheet.sizes.captionPad : 0;
     page.addImage({
       data,
       x: box.x,
@@ -516,7 +517,7 @@ function placeImages(
       y: box.y + box.h - captionH,
       w: box.w,
       h: captionH,
-      fontSize: Math.max(8, Math.round(sheet.points.body * 0.7)),
+      fontSize: sheet.points.caption,
       color: "tx2",
       align: "center",
     });

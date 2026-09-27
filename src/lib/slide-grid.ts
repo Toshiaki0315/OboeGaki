@@ -105,6 +105,40 @@ export type SlideMetrics = {
     heading: number;
     code: number;
     table: number;
+    /// フッタの文字とページ番号
+    footer: number;
+    /// 表紙の副題
+    subtitle: number;
+    /// 扉（セクション）の題
+    divider: number;
+    /// コードの言語名の小さな札
+    label: number;
+    /// 表紙の題（本文の題の 1.33 倍）
+    coverTitle: number;
+    /// 絵の説明（本文の 0.7 倍）
+    caption: number;
+  };
+  /// 枠の大きさと余白（インチ。コードの内側の余白だけ pt）。高さは用紙の高さ
+  /// （GR-02 と同じ倍率）、横の余白はグリッドの溝幅から出す（GR-01）。**`pptx.ts`
+  /// に 0.3 や 1.4 を直に書かない** — 以前は 16:9 の値で決め打ちで、A4 縦などで
+  /// 扉やカードの高さが用紙に追従しなかった（21-15）
+  sizes: {
+    footerH: number;
+    dividerH: number;
+    /// カードの角の丸み
+    cardRadius: number;
+    /// カードの左右の内側の余白（グリッドの溝と同じ）
+    cardPad: number;
+    /// カードの見出しの高さ
+    cardHeadingH: number;
+    /// カードの本文の高さから引くぶん（見出しと上下の余白）
+    cardBodyInset: number;
+    /// 絵の説明の上下の余白
+    captionPad: number;
+    /// コードの言語名の札とコードの隙間
+    labelGap: number;
+    /// コードの枠の内側の余白（pt）
+    codeMargin: number;
   };
 };
 
@@ -115,7 +149,22 @@ const BASE_POINTS = {
   heading: 19,
   code: 13,
   table: 13,
+  footer: 10,
+  subtitle: 20,
+  divider: 36,
+  label: 9,
 } as const;
+/// 16:9 で決めた枠の大きさ（インチ。倍率を掛ける前の値。コードの余白だけ pt）
+const BASE_SIZES = {
+  footerH: 0.3,
+  dividerH: 1.4,
+  cardRadius: 0.08,
+  cardHeadingH: 0.5,
+  cardBodyInset: 0.95,
+  captionPad: 0.1,
+  labelGap: 0.02,
+} as const;
+const BASE_CODE_MARGIN_PT = 8;
 /// 題の帯の高さ（基準の用紙で 1.25in）。本文はこのぶん下がる。
 const TITLE_BAND_IN = 1.25;
 
@@ -129,12 +178,28 @@ export function slideMetrics(settings: PptxSettings): SlideMetrics {
   );
   // 用紙の高さぶん（GR-02）と、設定の大小（CFG-38）を掛けてから丸める
   const scale = typeScale(page.heightIn) * FONT_SCALES[settings.font.scale];
-  const points = Object.fromEntries(
+  const scaled = Object.fromEntries(
     Object.entries(BASE_POINTS).map(([name, value]) => [
       name,
       Math.max(8, Math.round(value * scale)),
     ]),
-  ) as SlideMetrics["points"];
+  ) as Record<keyof typeof BASE_POINTS, number>;
+  const points: SlideMetrics["points"] = {
+    ...scaled,
+    coverTitle: Math.round(scaled.title * 1.33),
+    caption: Math.max(8, Math.round(scaled.body * 0.7)),
+  };
+  const heightScale = typeScale(page.heightIn);
+  const sizes: SlideMetrics["sizes"] = {
+    ...(Object.fromEntries(
+      Object.entries(BASE_SIZES).map(([name, value]) => [
+        name,
+        value * heightScale,
+      ]),
+    ) as Record<keyof typeof BASE_SIZES, number>),
+    cardPad: grid.gutter,
+    codeMargin: Math.round(BASE_CODE_MARGIN_PT * scale),
+  };
   const band = TITLE_BAND_IN * typeScale(page.heightIn);
   const bodyTop = grid.marginTop + band;
   // フッタは下の余白の中に置く（線・字・番号が同じ高さに並ぶ）
@@ -158,5 +223,6 @@ export function slideMetrics(settings: PptxSettings): SlideMetrics {
     columns: grid.columns,
     colW: grid.colW,
     points,
+    sizes,
   };
 }
