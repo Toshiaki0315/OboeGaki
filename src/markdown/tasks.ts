@@ -41,3 +41,34 @@ export function setTaskDone(
   const insert = `${found[1]}${done ? "[x]" : "[ ]"}${tail}`;
   return { from, to, insert };
 }
+
+/// `completeMatching` の答え（Rust の `tasks::Completion` と同じ 3 つ）
+export type Completion =
+  | { kind: "edit"; edit: { from: number; to: number; insert: string } }
+  | { kind: "done" }
+  | { kind: "mismatch" };
+
+/// 一覧（索引の写し）から来た行番号で完了にする。**文も突き合わせる** —
+/// 一覧は保存後の索引から作るので、開いているノートで上に行を足した直後は
+/// 同じ番号が別のやることを指す（Rust の complete_matching と同じ規則。
+/// レビュー 2026-09-27）。コードフェンスの中の行はやることとして扱わない
+export function completeMatching(
+  text: string,
+  line: number,
+  expected: string,
+): Completion {
+  const lines = text.split("\n");
+  if (line < 0 || line >= lines.length) return { kind: "mismatch" };
+  let inFence = false;
+  for (let number = 0; number < line; number++) {
+    const trimmed = lines[number].trimStart();
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~"))
+      inFence = !inFence;
+  }
+  if (inFence) return { kind: "mismatch" };
+  const marker = taskMarkerOf(lines[line]);
+  if (!marker || marker.body.trim() !== expected) return { kind: "mismatch" };
+  if (marker.done) return { kind: "done" };
+  const edit = setTaskDone(text, line, true);
+  return edit ? { kind: "edit", edit } : { kind: "mismatch" };
+}
