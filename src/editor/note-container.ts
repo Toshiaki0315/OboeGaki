@@ -6,7 +6,7 @@
 // まま解析されるので、**強調も箇条書きも中で使える**。
 
 import type { Text } from "@codemirror/state";
-import { CONTAINER_CLOSE_RE, NOTE_OPEN_RE } from "../markdown/containers";
+import { colonContainers, type ColonContainer } from "../markdown/containers";
 
 export const NOTE_KINDS = ["info", "warn", "alert"] as const;
 /// 種類を省いた（`:::note` だけの）ときの扱い。省略は書き忘れではない。
@@ -41,49 +41,32 @@ export type NoteContainer = {
   close: { from: number; to: number };
 };
 
-// 綴りは markdown/containers が持つ（スライドと同じ規則。22-P）
-const OPEN_RE = NOTE_OPEN_RE;
-const CLOSE_RE = CONTAINER_CLOSE_RE;
-
 /// 本文の中の囲みを、出てくる順に返す。
 ///
-/// **閉じが無ければ囲みにしない**（書きかけの `:::` で以降の本文が全部
-/// 囲みになると読めない。数式ブロックと同じ判断）。入れ子は見ない。
-export function noteContainers(doc: Text): NoteContainer[] {
+/// 見つけ方は markdown/containers の `colonContainers` 1 本（22-1）。**閉じが
+/// 無ければ囲みにしない**（書きかけの `:::` で以降の本文が全部囲みになると
+/// 読めない）。入れ子は見ない — 他の `:::` の囲みが開いている間の `:::note` は
+/// 囲みにしない（ADR-0069 の決定 3）。`colon` は呼び手が 1 回の走査で作って
+/// 渡す（details・寄せと共有する。コードの行を飛ばすのも呼び手）
+export function noteContainers(
+  doc: Text,
+  colon: readonly ColonContainer[] = colonContainers(doc.iterLines()),
+): NoteContainer[] {
   const found: NoteContainer[] = [];
-  let open: { from: number; to: number; kind: string } | null = null;
-  // 順次イテレータで舐める。doc.line(n) のランダムアクセスは呼ぶたびに
-  // 木を辿って行文字列を作るので、全行走査では 1 桁遅い（実測 2026-09-04:
-  // 7,000 行で 2.9ms → 0.3ms 台）。行頭が `:` でない行は正規表現に掛けない
-  let from = 0;
-  for (const iter = doc.iterLines(); !iter.next().done;) {
-    const text = iter.value;
-    const to = from + text.length;
-    if (text.charCodeAt(0) === 58) {
-      if (open === null) {
-        const started = OPEN_RE.exec(text);
-        if (started) {
-          const kind = started[1] ?? DEFAULT_NOTE_KIND;
-          open = {
-            from,
-            to,
-            kind: (NOTE_KINDS as readonly string[]).includes(kind)
-              ? kind
-              : UNKNOWN_NOTE_KIND,
-          };
-        }
-      } else if (CLOSE_RE.test(text)) {
-        found.push({
-          from: open.from,
-          to,
-          kind: open.kind,
-          open: { from: open.from, to: open.to },
-          close: { from, to },
-        });
-        open = null;
-      }
-    }
-    from = to + 1; // 改行ぶん
+  for (const entry of colon) {
+    if (entry.kind !== "note") continue;
+    const open = doc.line(entry.open + 1);
+    const close = doc.line(entry.close + 1);
+    const kind = entry.info || DEFAULT_NOTE_KIND;
+    found.push({
+      from: open.from,
+      to: close.to,
+      kind: (NOTE_KINDS as readonly string[]).includes(kind)
+        ? kind
+        : UNKNOWN_NOTE_KIND,
+      open: { from: open.from, to: open.to },
+      close: { from: close.from, to: close.to },
+    });
   }
-  return found; // 閉じの無い開きは捨てる
+  return found;
 }

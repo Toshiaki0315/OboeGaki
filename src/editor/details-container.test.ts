@@ -90,4 +90,19 @@ describe("detailsSection", () => {
     const doc = of(":::details 詳しく\n中身\n:::\n");
     expect(detailsSection(doc, doc.line(2).from)).toBeNull();
   });
+
+  test("test_コードの中の開きと閉じは数えない（22-1）", () => {
+    const doc = of(":::details 詳しく\n```\n:::\n```\n中身\n:::\n");
+    const code = (pos: number) => {
+      const line = doc.lineAt(pos).number;
+      return line >= 2 && line <= 4;
+    };
+    expect(detailsSection(doc, 0, code)).toEqual({
+      from: doc.line(1).to,
+      to: doc.line(5).to,
+    });
+    const example = of("```\n:::details 例\n中\n:::\n```\n");
+    const all = (pos: number) => example.lineAt(pos).number <= 5;
+    expect(detailsSection(example, example.line(2).from, all)).toBeNull();
+  });
 });

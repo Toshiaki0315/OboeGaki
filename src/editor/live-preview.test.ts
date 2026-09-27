@@ -1486,6 +1486,37 @@ describe("plugin 由来の装飾は行をまたがない（実機で発覚 2026-
   });
 });
 
+describe("囲みの見つけ方を 1 本の走査に寄せる（22-1）", () => {
+  const noteLines = (doc: string) =>
+    blocksOf(doc, doc.length).filter((deco) =>
+      deco.kind.includes("cm-note-line"),
+    );
+
+  test("test_コードブロックを含む_note_も囲みにする（HTML 書き出しと同じ）", () => {
+    // 以前はフェンスと重なる囲みを丸ごと外していて、帯も区切りの隠しも出なかった
+    const doc = "前\n\n:::note warn\n```\ncode\n```\n:::\n\n後";
+    expect(noteLines(doc).length).toBeGreaterThan(0);
+  });
+
+  test("test_フェンスの中の_:::_では_note_を閉じない", () => {
+    const doc = ":::note\n```\n:::\n```\n本文\n:::\n\n後";
+    const lines = noteLines(doc);
+    // 帯は本文の行まで届く（フェンスの中の `:::` で閉じると本文に掛からない）
+    expect(lines.some((deco) => deco.from === doc.indexOf("本文"))).toBe(true);
+  });
+
+  test("test_note_の中の_details_と_center_の中の_note_は囲みにしない（入れ子を許さない）", () => {
+    const inNote = ":::note\n:::details 内\n中\n:::\n:::\n\n後";
+    expect(
+      blocksOf(inNote, inNote.length).some((deco) =>
+        deco.kind.includes("cm-details-line"),
+      ),
+    ).toBe(false);
+    const inCenter = ":::center\n:::note\n中\n:::\n:::\n\n後";
+    expect(noteLines(inCenter)).toEqual([]);
+  });
+});
+
 describe("`:::note` の囲み（B-3）", () => {
   const doc = "前\n\n:::note warn\n注意です。\n:::\n\n後";
 

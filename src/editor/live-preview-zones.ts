@@ -18,6 +18,7 @@ import {
   UNKNOWN_NOTE_KIND,
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
+import { colonContainers } from "../markdown/containers";
 import { type MermaidTheme } from "./mermaid";
 
 import {
@@ -527,17 +528,46 @@ function fencedRanges(state: EditorState): { from: number; to: number }[] {
   return out;
 }
 
-/// フェンスの中の `:::` や `<details>` はコード例であって囲みではない
-/// （レビュー 2026-09-04）。
-function outsideFences<T extends { from: number; to: number }>(
-  blocks: T[],
-  fences: { from: number; to: number }[],
-): T[] {
-  if (fences.length === 0) return blocks;
-  return blocks.filter(
-    (block) =>
-      !fences.some((fence) => block.from < fence.to && block.to > fence.from),
-  );
+/// その行（0 始まり）がフェンスの中か。行頭の `:::` や `<details>` がコード例か
+/// を見分ける（レビュー 2026-09-04）。**トップレベルのフェンスだけで足りる** —
+/// 行頭から始まる行は、リストや引用の中のコードの行にはならない。
+///
+/// 以前はフェンスと**重なる**囲みを丸ごと外していて、コードブロックを含む
+/// `:::note` が囲みにならなかった（HTML 書き出しは囲みにする。22-1）。今は
+/// コードの行だけを開きにも閉じにも数えない
+function codeLineTest(state: EditorState): (index: number) => boolean {
+  const ranges = fencedRanges(state).map((fence) => [
+    state.doc.lineAt(fence.from).number - 1,
+    state.doc.lineAt(fence.to).number - 1,
+  ]);
+  if (ranges.length === 0) return () => false;
+  return (index) => {
+    // 範囲は出てきた順（重ならない）。二分探索で index を含む範囲を探す
+    let low = 0;
+    let high = ranges.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      const [first, last] = ranges[middle];
+      if (index < first) high = middle - 1;
+      else if (index > last) low = middle + 1;
+      else return true;
+    }
+    return false;
+  };
+}
+
+/// 囲み（`:::note`・`:::details`・貼り付けた `<details>`）を 1 回の走査で見つける。
+/// `:::` の囲みは markdown/containers の 1 本（入れ子を許さない。ADR-0069）
+function blockContainers(state: EditorState): {
+  notes: NoteContainer[];
+  details: DetailsContainer[];
+} {
+  const isCode = codeLineTest(state);
+  const colon = colonContainers(state.doc.iterLines(), isCode);
+  return {
+    notes: noteContainers(state.doc, colon),
+    details: detailsContainers(state.doc, colon, isCode),
+  };
 }
 
 /// 1 つの `:::note` の装飾。帯は常に、区切りの隠しは「綴りが分かって
@@ -657,16 +687,10 @@ function mermaidZoneDecorations(
 
 export function blockWidgetDecorations(
   state: EditorState,
-  notes: NoteContainer[] = outsideFences(
-    noteContainers(state.doc),
-    fencedRanges(state),
-  ),
-  details: DetailsContainer[] = outsideFences(
-    detailsContainers(state.doc),
-    fencedRanges(state),
-  ),
+  found?: { notes: NoteContainer[]; details: DetailsContainer[] },
 ): Range<Decoration>[] {
   if (state.field(sourceModeField, false)) return [];
+  const { notes, details } = found ?? blockContainers(state);
   const out: Range<Decoration>[] = [];
   // `:::note` の囲み（B-3）。行の装飾なので木のノードは要らない
   for (const note of notes) {
@@ -789,10 +813,11 @@ const blockWidgetMeta = new WeakMap<DecorationSet, BlockWidgetMeta>();
 
 function computeBlockWidgetSet(state: EditorState): DecorationSet {
   // 全行走査（noteContainers）は 1 回だけ。装飾とゾーンで共有する
-  const fences = fencedRanges(state);
-  const notes = outsideFences(noteContainers(state.doc), fences);
-  const details = outsideFences(detailsContainers(state.doc), fences);
-  const set = RangeSet.of(blockWidgetDecorations(state, notes, details), true);
+  const { notes, details } = blockContainers(state);
+  const set = RangeSet.of(
+    blockWidgetDecorations(state, { notes, details }),
+    true,
+  );
   const zones = blockWidgetZones(state, notes, details);
   blockWidgetMeta.set(set, {
     zones,

@@ -139,6 +139,7 @@
 - 見つけ方は `src/markdown/` に置く（ADR-0067）。今の `:::note` / `:::details` の
   見つけ方は `src/editor/`（note-container / details-container）にあり、HTML 書き出しが
   そこを読んでいる。`:::center` を足すときに、同じ場所へ寄せるかを 22-1 で決める
+  （22-1 で寄せた。`:::` の囲みは `markdown/containers.colonContainers` の 1 本）
 - 「別の囲みが開いている間は囲みにしない」（3）を守るには、`:::` の囲みの開きと閉じを
   1 本の走査で見る必要がある。今は note と details が別々に走査している
 - Qiita で寄せをどう書くかは未確認。ADR-0063 の 14-0 で記法を確かめるときに、送る前に

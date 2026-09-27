@@ -58,6 +58,10 @@ describe("囲みの行はスライドに出さない（22-P）", () => {
     expect(blocksOf(":::note\n```\n:::\n```\n:::")).toEqual([["code", ":::"]]);
   });
 
+  test("test_寄せの囲みの行も出さない（22-1 で見つけ方に入った。寄せるのは 22-5）", () => {
+    expect(blocksOf(":::center\n題\n:::")).toEqual([["paragraph", "題"]]);
+  });
+
   test("test_閉じの無い開きは字のまま（画面と同じ）", () => {
     expect(blocksOf(":::note\n本文")).toEqual([["paragraph", ":::note 本文"]]);
   });

@@ -7,6 +7,7 @@
 
 import type { EditorState } from "@codemirror/state";
 import { foldGutter, foldService } from "@codemirror/language";
+import type { SyntaxNode } from "@lezer/common";
 import { treeOf } from "./parse-tree";
 
 import { detailsSection } from "./details-container";
@@ -54,10 +55,26 @@ export function headingSection(
   return { from: line.to, to: end };
 }
 
+/// その位置がフェンスやインデントのコードの中か。畳む候補の行でだけ訊くので、
+/// 木を上へ辿るだけで足りる
+function insideCode(state: EditorState, pos: number): boolean {
+  for (
+    let node: SyntaxNode | null = treeOf(state).resolveInner(pos, 1);
+    node;
+    node = node.parent
+  ) {
+    if (node.name === "FencedCode" || node.name === "CodeBlock") return true;
+  }
+  return false;
+}
+
 export const headingFolding = [
   foldService.of((state, lineStart) => headingSection(state, lineStart)),
-  // 折りたたみの囲み（6-2）。行の並びだけで決まるので木は要らない
-  foldService.of((state, lineStart) => detailsSection(state.doc, lineStart)),
+  // 折りたたみの囲み（6-2）。行の並びで決まるが、コードの中の開きと閉じは
+  // 数えない（コード例の `:::details` を畳めてしまっていた。22-1）
+  foldService.of((state, lineStart) =>
+    detailsSection(state.doc, lineStart, (pos) => insideCode(state, pos)),
+  ),
   foldGutter({
     openText: "▾",
     closedText: "▸",

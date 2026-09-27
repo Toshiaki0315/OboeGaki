@@ -2,8 +2,9 @@
 // 畳む範囲は純関数。見出しの行末から、同じか浅い見出しの手前まで。
 
 import { describe, expect, test } from "vitest";
-import { headingSection } from "./folding";
-import { stateOf } from "./test-utils";
+import { foldable } from "@codemirror/language";
+import { headingFolding, headingSection } from "./folding";
+import { LANG, stateOf } from "./test-utils";
 
 function sectionText(doc: string, lineNumber: number): string | null {
   const state = stateOf(doc);
@@ -62,5 +63,24 @@ describe("headingSection", () => {
     // 畳む範囲は前の行の行末まで（次見出しの直前の改行は畳みに含めない）
     const doc = "## 節\n```\n# コメント\n```\nあと\n## 次";
     expect(sectionText(doc, 1)).toBe("\n```\n# コメント\n```\nあと");
+  });
+});
+
+describe("折りたたみの囲み（6-2 / 22-1）", () => {
+  const foldAt = (doc: string, lineNumber: number) => {
+    const state = stateOf(doc, 0, [LANG, headingFolding]);
+    const line = state.doc.line(lineNumber);
+    return foldable(state, line.from, line.to);
+  };
+
+  test("test_コード例の_:::details_は畳めない", () => {
+    expect(foldAt("```\n:::details 例\n中\n:::\n```\n", 2)).toBeNull();
+  });
+
+  test("test_中のフェンスの_:::_では止まらず_本当の閉じの手前まで畳む", () => {
+    const doc = ":::details 詳しく\n```\n:::\n```\n中身\n:::\n";
+    const range = foldAt(doc, 1);
+    expect(range).not.toBeNull();
+    expect(doc.slice(range!.from, range!.to)).toBe("\n```\n:::\n```\n中身");
   });
 });
