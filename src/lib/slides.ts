@@ -18,6 +18,7 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
+import { colonContainers } from "../markdown/containers";
 import { splitImageAlt } from "../markdown/image-size";
 import { plainText, sameStyle, type Run } from "../markdown/runs";
 import {
@@ -88,7 +89,50 @@ const MARKS = new Set([
 /// この 1 本の規則で 1 / 2 / 3 のどれでも同じように割れる。
 export type SplitLevel = 1 | 2 | 3;
 
-export function splitDeck(text: string, splitLevel: SplitLevel = 2): Deck {
+/// `:::note` / `:::details` の開きと閉じの行を、同じ長さの空白に置き換える
+/// （22-P）。スライドの解析（Lezer）は囲みを知らず、`:::note warn 注意 :::` が
+/// 1 つの段落として字のまま PowerPoint に出ていた。空白の行は空行なので、中身は
+/// 前後と別の段落になる（HTML 書き出しの markdown-it-container と同じ切れ方）。
+/// 長さを保つので、本文の中の位置はずれない。コードの中の `:::` は囲みにしない
+function withoutContainerLines(text: string): string {
+  if (!text.startsWith(":::") && !text.includes("\n:::")) return text;
+  const lines = text.split("\n");
+  const starts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += line.length + 1;
+  }
+  const lineOf = (pos: number) => {
+    let low = 0;
+    let high = starts.length - 1;
+    while (low < high) {
+      const middle = (low + high + 1) >> 1;
+      if (starts[middle] <= pos) low = middle;
+      else high = middle - 1;
+    }
+    return low;
+  };
+  const code = new Set<number>();
+  parser.parse(text).iterate({
+    enter: (node) => {
+      if (node.name !== "FencedCode" && node.name !== "CodeBlock") return;
+      const last = lineOf(Math.max(node.from, node.to - 1));
+      for (let line = lineOf(node.from); line <= last; line++) code.add(line);
+      return false;
+    },
+  });
+  const containers = colonContainers(lines, (index) => code.has(index));
+  if (containers.length === 0) return text;
+  for (const { open, close } of containers) {
+    lines[open] = " ".repeat(lines[open].length);
+    lines[close] = " ".repeat(lines[close].length);
+  }
+  return lines.join("\n");
+}
+
+export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
+  const text = withoutContainerLines(source);
   const tree = parser.parse(text);
   const deck: Deck = { title: "", subtitle: "", slides: [] };
   const subtitle: string[] = [];

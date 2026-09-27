@@ -9,6 +9,7 @@
 // 見つけて、畳む範囲と行の装飾だけで表す。入れ子は見ない。
 
 import type { Text } from "@codemirror/state";
+import { CONTAINER_CLOSE_RE, DETAILS_OPEN_RE } from "../markdown/containers";
 
 /// 呼び名を書いていないときに見せる名前。
 export const DEFAULT_SUMMARY = "詳細";
@@ -29,9 +30,10 @@ export type DetailsContainer = {
   close: { from: number; to: number };
 };
 
-// **行頭から始まるものだけ**を見る（字下げされたものはコード例）
-const OPEN_RE = /^:::details(?:[ \t]+(.*?))?[ \t]*$/;
-const CLOSE_RE = /^:::[ \t]*$/;
+// **行頭から始まるものだけ**を見る（字下げされたものはコード例）。`:::` の
+// 綴りは markdown/containers が持つ（スライドと同じ規則。22-P）
+const OPEN_RE = DETAILS_OPEN_RE;
+const CLOSE_RE = CONTAINER_CLOSE_RE;
 const HTML_OPEN_RE = /^<details>[ \t]*(?:<summary>(.*?)<\/summary>)?[ \t]*$/;
 const HTML_CLOSE_RE = /^<\/details>[ \t]*$/;
 

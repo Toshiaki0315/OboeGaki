@@ -6,6 +6,7 @@
 // まま解析されるので、**強調も箇条書きも中で使える**。
 
 import type { Text } from "@codemirror/state";
+import { CONTAINER_CLOSE_RE, NOTE_OPEN_RE } from "../markdown/containers";
 
 export const NOTE_KINDS = ["info", "warn", "alert"] as const;
 /// 種類を省いた（`:::note` だけの）ときの扱い。省略は書き忘れではない。
@@ -40,9 +41,9 @@ export type NoteContainer = {
   close: { from: number; to: number };
 };
 
-// **行頭から始まるものだけ**を見る（字下げされた `:::` はコード例）
-const OPEN_RE = /^:::note(?:[ \t]+(\S+))?[ \t]*$/;
-const CLOSE_RE = /^:::[ \t]*$/;
+// 綴りは markdown/containers が持つ（スライドと同じ規則。22-P）
+const OPEN_RE = NOTE_OPEN_RE;
+const CLOSE_RE = CONTAINER_CLOSE_RE;
 
 /// 本文の中の囲みを、出てくる順に返す。
 ///

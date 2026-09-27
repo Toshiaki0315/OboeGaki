@@ -20,6 +20,49 @@ const said = (block: SlideBlock) =>
 const runsOf = (block: SlideBlock) => ("runs" in block ? block.runs : []);
 const plainOf = (block: SlideBlock) => plainText(runsOf(block));
 
+describe("囲みの行はスライドに出さない（22-P）", () => {
+  const blocksOf = (body: string) =>
+    splitDeck(`## A\n\n${body}\n`).slides[0].blocks.map((block) => [
+      block.kind,
+      block.kind === "code" ? block.text : said(block),
+    ]);
+
+  test("test_note_と_details_は中身だけ残す", () => {
+    expect(blocksOf(":::note warn\n注意\n:::")).toEqual([
+      ["paragraph", "注意"],
+    ]);
+    expect(blocksOf(":::details 詳しく\n中身\n:::")).toEqual([
+      ["paragraph", "中身"],
+    ]);
+  });
+
+  test("test_前後の段落とは別の段落になる", () => {
+    expect(blocksOf("前\n:::note\n注意\n:::\n後")).toEqual([
+      ["paragraph", "前"],
+      ["paragraph", "注意"],
+      ["paragraph", "後"],
+    ]);
+  });
+
+  test("test_中の箇条書きに閉じの行が混ざらない", () => {
+    expect(blocksOf(":::note\n- a\n- b\n:::")).toEqual([
+      ["bullet", "a"],
+      ["bullet", "b"],
+    ]);
+  });
+
+  test("test_コードの中の囲みの行はそのまま残す", () => {
+    expect(blocksOf("```\n:::note\nx\n:::\n```")).toEqual([
+      ["code", ":::note\nx\n:::"],
+    ]);
+    expect(blocksOf(":::note\n```\n:::\n```\n:::")).toEqual([["code", ":::"]]);
+  });
+
+  test("test_閉じの無い開きは字のまま（画面と同じ）", () => {
+    expect(blocksOf(":::note\n本文")).toEqual([["paragraph", ":::note 本文"]]);
+  });
+});
+
 describe("画像の説明（CFG-72 / TASKS 8-2 の積み残し）", () => {
   it("test_道と説明の両方を持つ", () => {
     const deck = splitDeck("## A\n\n![犬の写真](dog.png)\n");
