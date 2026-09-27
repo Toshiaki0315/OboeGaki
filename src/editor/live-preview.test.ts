@@ -2,7 +2,7 @@
 // previewDecorations は EditorState だけで動く純関数なので DOM 無しで
 // テストできる（widget の描画は除く — それは実機で見る）。
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   EditorSelection,
   EditorState,
@@ -1207,6 +1207,57 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     expect(shapeOf(back.field(blockWidgetField))).toEqual(
       rebuilt(back.doc.toString(), back.selection.main.head, blockWidgetField),
     );
+  });
+
+  test("表のリビール状態が一度に大量に変わったら_1_表ずつ差し替えず全部数え直す（レビュー 2026-09-27）", () => {
+    // 差し替えは変わった表ごとに RangeSet を組み直すので「変わった数 × 全表」に
+    // なる。表 1,000 個で全選択して戻すと 19ms（全部数え直せば 5ms）だった。
+    // ブロックの装飾は 21-14 で上限を入れたが、表には無かった
+    const doc = Array.from(
+      { length: 40 },
+      (_, i) => `| A${i} | B |\n| --- | --- |\n| 1 | 2 |\n\n段落 ${i}\n`,
+    ).join("\n");
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: doc.length },
+      extensions: [LANG, sourceModeField, tableField],
+    });
+    state.field(tableField);
+    const updates = vi.spyOn(RangeSet.prototype, "update");
+    try {
+      const all = state.update({
+        selection: { anchor: 0, head: doc.length },
+      }).state;
+      all.field(tableField);
+      expect(updates).not.toHaveBeenCalled();
+      // 全選択の間は全部の表がソースに戻る（同じ選択で作り直したものと同じ）
+      expect(shapeOf(all.field(tableField))).toEqual(
+        shapeOf(
+          EditorState.create({
+            doc,
+            selection: { anchor: 0, head: doc.length },
+            extensions: [LANG, sourceModeField, tableField],
+          }).field(tableField),
+        ),
+      );
+      const back = all.update({ selection: { anchor: doc.length } }).state;
+      back.field(tableField);
+      expect(updates).not.toHaveBeenCalled();
+      expect(shapeOf(back.field(tableField))).toEqual(
+        rebuilt(back.doc.toString(), back.selection.main.head, tableField),
+      );
+      // 少しだけ変わるとき（キャレットが 1 つの表に入る）は今までどおり差し替え
+      const one = back.update({
+        selection: { anchor: doc.indexOf("A5") },
+      }).state;
+      one.field(tableField);
+      expect(updates).toHaveBeenCalled();
+      expect(shapeOf(one.field(tableField))).toEqual(
+        rebuilt(one.doc.toString(), one.selection.main.head, tableField),
+      );
+    } finally {
+      updates.mockRestore();
+    }
   });
 
   test("HTML_の塊の中の普通の打鍵では_外の表と数式を作り直さない（21-9）", () => {
