@@ -166,6 +166,44 @@ describe("環境設定からの体裁（TASKS 8-2）", () => {
     expect(pic).not.toMatch(/<a:srcRect l="-?[1-9]/);
   });
 
+  it("test_寄せの囲みの中の段落と小見出しは枠の中で寄せる（22-5）", async () => {
+    const doc =
+      "## A\n\n:::center\n中央の文\n:::\n\n:::right\n右の文\n:::\n\n左の文\n";
+    const base64 = await buildPptx(
+      splitDeck(doc),
+      async () => null,
+      readSlideTheme(doc),
+      null,
+      DEFAULT_PPTX_OPTIONS,
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    const paragraphOf = (text: string) =>
+      xml.split("<a:p>").find((part) => part.includes(text)) ?? "";
+    expect(paragraphOf("中央の文")).toContain('algn="ctr"');
+    expect(paragraphOf("右の文")).toContain('algn="r"');
+    expect(paragraphOf("左の文")).not.toMatch(/algn="(ctr|r)"/);
+  });
+
+  it("test_横並びの箱の見出しも寄せる（22-5）", async () => {
+    const doc = "## A\n\n:::center\n### 一\n本文一\n\n### 二\n本文二\n:::\n";
+    const base64 = await buildPptx(
+      splitDeck(doc),
+      async () => null,
+      readSlideTheme(doc),
+      null,
+      DEFAULT_PPTX_OPTIONS,
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    const paragraphOf = (text: string) =>
+      xml.split("<a:p>").find((part) => part.includes(text)) ?? "";
+    expect(paragraphOf(">一<")).toContain('algn="ctr"');
+    expect(paragraphOf("本文二")).toContain('algn="ctr"');
+  });
+
   it("test_CFG_72_画像の説明を出せる（既定は出さない）", async () => {
     const doc = "## A\n\n![犬の写真](dog.png)\n";
     const withImage = async (imageCaption: boolean) => {

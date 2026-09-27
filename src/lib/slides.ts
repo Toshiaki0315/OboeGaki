@@ -34,9 +34,13 @@ import { extendedInline } from "../editor/extended-inline";
 export type { Run } from "../markdown/runs";
 export { plainText } from "../markdown/runs";
 
+/// 段落と小見出しの寄せ（`:::center` / `:::right`。ADR-0069 / 22-5）。
+/// 無ければ左（既定）
+export type SlideAlign = "center" | "right";
+
 export type SlideBlock =
-  | { kind: "paragraph"; runs: Run[] }
-  | { kind: "heading"; runs: Run[] }
+  | { kind: "paragraph"; runs: Run[]; align?: SlideAlign }
+  | { kind: "heading"; runs: Run[]; align?: SlideAlign }
   | { kind: "bullet"; runs: Run[]; level: number }
   | { kind: "code"; text: string; language: string }
   /// 表。区切り行は落とし、セルごとに run で持つ（`\|` は字、`**` は装飾に。
@@ -95,19 +99,38 @@ export type SplitLevel = 1 | 2 | 3;
 /// 前後と別の段落になる（HTML 書き出しの markdown-it-container と同じ切れ方）。
 /// 長さを保つので、本文の中の位置はずれない。コード・数式ブロックの中の `:::` は
 /// 囲みにしない（見つけ方は lib/container-lines。HTML 書き出しと同じ）
-function withoutContainerLines(text: string): string {
+function withoutContainerLines(text: string): {
+  text: string;
+  /// 寄せの囲みの中身の範囲（本文の中の位置。空白に置き換えても変わらない）
+  aligns: { kind: SlideAlign; from: number; to: number }[];
+} {
   const { lines, containers } = containersOf(text);
-  if (containers.length === 0) return text;
-  for (const { open, close } of containers) {
+  if (containers.length === 0) return { text, aligns: [] };
+  const starts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += line.length + 1;
+  }
+  const aligns: { kind: SlideAlign; from: number; to: number }[] = [];
+  for (const { kind, open, close } of containers) {
+    if (kind === "center" || kind === "right") {
+      aligns.push({ kind, from: starts[open + 1], to: starts[close] });
+    }
     lines[open] = " ".repeat(lines[open].length);
     lines[close] = " ".repeat(lines[close].length);
   }
-  return lines.join("\n");
+  return { text: lines.join("\n"), aligns };
 }
 
 export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
-  const text = withoutContainerLines(source);
+  const { text, aligns } = withoutContainerLines(source);
   const tree = parser.parse(text);
+  // その位置の寄せ（段落と小見出しにだけ使う。決定 4）
+  const alignAt = (pos: number): { align?: SlideAlign } => {
+    const found = aligns.find((range) => range.from <= pos && pos < range.to);
+    return found ? { align: found.kind } : {};
+  };
   const deck: Deck = { title: "", subtitle: "", slides: [] };
   const subtitle: string[] = [];
   let current: Slide | null = null;
@@ -121,6 +144,15 @@ export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
     if (heading) {
       const level = Number(heading[1]);
       const body = plain(text, node);
+      // 枚が替わる見出しで寄せの囲みも切れる（ADR-0069 の決定 4。囲みの中に
+      // `##` を書いたら、そこから先は寄せない）
+      if (level <= splitLevel) {
+        for (const range of aligns) {
+          if (range.from <= node.from && node.from < range.to) {
+            range.to = node.from;
+          }
+        }
+      }
       if (level === 1 && !deck.title) {
         deck.title = body;
       } else if (level < splitLevel) {
@@ -144,7 +176,11 @@ export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
         };
         deck.slides.push(current);
       } else {
-        add({ kind: "heading", runs: runsOf(text, node) });
+        add({
+          kind: "heading",
+          runs: runsOf(text, node),
+          ...alignAt(node.from),
+        });
       }
       continue;
     }
@@ -158,7 +194,7 @@ export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
         }
         const runs = runsOf(text, node);
         if (plainText(runs) === "") break;
-        if (current) add({ kind: "paragraph", runs });
+        if (current) add({ kind: "paragraph", runs, ...alignAt(node.from) });
         else subtitle.push(plainText(runs)); // 表紙に載る文章はここにある
         break;
       }
@@ -195,7 +231,7 @@ export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
 }
 
 /// 横並びの箱（TASKS 5-4）。小見出しごとに 1 つ。
-export type Card = { heading: Run[]; blocks: SlideBlock[] };
+export type Card = { heading: Run[]; blocks: SlideBlock[]; align?: SlideAlign };
 
 /// 箱にできる数の上限。**5 つ以上は細すぎて読めない**（横幅の割り算）。
 const MAX_CARDS = 4;
@@ -220,7 +256,11 @@ export function cardsOf(blocks: readonly SlideBlock[]): Card[] | null {
   const cards: Card[] = [];
   for (const block of blocks) {
     if (block.kind === "heading") {
-      cards.push({ heading: block.runs, blocks: [] });
+      cards.push({
+        heading: block.runs,
+        blocks: [],
+        ...(block.align ? { align: block.align } : {}),
+      });
     } else {
       cards[cards.length - 1].blocks.push(block);
     }

@@ -178,3 +178,25 @@ describe("placeImage（絵は縦横比を保って枠に収める）", () => {
     expect(caption).toEqual({ x: 1, y: 5.5, w: 6, h: 0.5 });
   });
 });
+
+describe("寄せは高さの見積もりを変えない（22-5 / ADR-0069 の決定 2）", () => {
+  it("test_寄せても枠の割り方と高さは同じ", () => {
+    const sheet = sheetOf("16:9");
+    const body = "### 小見出し\n段落の文がここに入ります。".repeat(3);
+    const plainBlocks = splitDeck(`## A\n\n${body}\n`).slides[0].blocks;
+    const centered = splitDeck(`## A\n\n:::center\n${body}\n:::\n`).slides[0]
+      .blocks;
+    expect(centered.some((block) => "align" in block && block.align)).toBe(
+      true,
+    );
+    const layout = bodyLayout(sheet, 0);
+    expect(estimateHeightIn(centered, layout.bodyW, sheet)).toBe(
+      estimateHeightIn(plainBlocks, layout.bodyW, sheet),
+    );
+    const boxes = (frames: Frame[]) =>
+      frames.map(({ x, y, w, h }) => [x, y, w, h]);
+    expect(boxes(bodyFrames(centered, layout, false, sheet))).toEqual(
+      boxes(bodyFrames(plainBlocks, layout, false, sheet)),
+    );
+  });
+});

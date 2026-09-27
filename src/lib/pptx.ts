@@ -342,6 +342,7 @@ function placeCards(
             fontSize: sheet.points.heading,
             bold: true,
             color: theme.accent,
+            ...(card.align ? { align: card.align } : {}),
             ...(at === card.heading.length - 1 ? { breakLine: true } : {}),
           },
           theme,
@@ -383,6 +384,8 @@ function flowRuns(
         {
           fontSize: heading ? sheet.points.heading : sheet.points.body,
           ...(heading ? { bold: true, color: theme.accent } : {}),
+          // 寄せ（22-5）。段落の props は行の頭の run から読まれるので、全部に付ける
+          ...("align" in block && block.align ? { align: block.align } : {}),
           ...(index === 0 && block.kind === "bullet"
             ? { bullet: true, indentLevel: Math.min(block.level, MAX_LEVEL) }
             : {}),

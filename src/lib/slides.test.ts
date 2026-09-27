@@ -67,6 +67,50 @@ describe("囲みの行はスライドに出さない（22-P）", () => {
   });
 });
 
+describe("段落と見出しを寄せる囲み（22-5 / ADR-0069）", () => {
+  const alignsOf = (markdown: string) =>
+    splitDeck(markdown).slides.map((slide) =>
+      slide.blocks.map((block) => [
+        block.kind,
+        "runs" in block ? plainText(block.runs) : "",
+        "align" in block ? (block.align ?? null) : null,
+      ]),
+    );
+
+  test("test_中の段落と小見出しに寄せを持たせる", () => {
+    expect(
+      alignsOf(
+        "## A\n\n:::center\n### 小見出し\n段落\n:::\n\n:::right\n署名\n:::\n\n後",
+      ),
+    ).toEqual([
+      [
+        ["heading", "小見出し", "center"],
+        ["paragraph", "段落", "center"],
+        ["paragraph", "署名", "right"],
+        ["paragraph", "後", null],
+      ],
+    ]);
+  });
+
+  test("test_箇条書きとコードは寄せない（決定 4）", () => {
+    expect(alignsOf("## A\n\n:::center\n- 項目\n\n```\nx\n```\n:::\n")).toEqual(
+      [
+        [
+          ["bullet", "項目", null],
+          ["code", "", null],
+        ],
+      ],
+    );
+  });
+
+  test("test_枚が替わるところで囲みも切れる（`##` から先は寄せない）", () => {
+    expect(alignsOf("## A\n\n:::center\n一\n\n## B\n\n二\n:::\n")).toEqual([
+      [["paragraph", "一", "center"]],
+      [["paragraph", "二", null]],
+    ]);
+  });
+});
+
 describe("画像の説明（CFG-72 / TASKS 8-2 の積み残し）", () => {
   it("test_道と説明の両方を持つ", () => {
     const deck = splitDeck("## A\n\n![犬の写真](dog.png)\n");
