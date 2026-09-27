@@ -1395,16 +1395,6 @@ c109393（0.5.63）を対象に 4 観点で読んだ。IPC の契約（77 コマ
       - 据え置き: 改名が読み込みより先に済むと「開けませんでした」と出る件（表示は
         見出し追従が正しく移す。文言だけ）／フォルダ移動・一覧からのドロップは改名の
         記録を通らない（人の操作が数 ms の間に要り、現実的でない）
-引用内リストの Enter で `- ` が落ちる／タブ字下げのリストで
-      補助が崩れる／右クリックメニューが Esc で閉じない／改名で EditorView が作り直され
-      Undo が消える（`[initialDoc]` 依存）／アシスタントの答えがノートを替えても残る／
-      `::**b**::` の中を書き出しが解析しない／CSS に無いクラス 4 つ（history-diff・
-      saved-search-name・task-note・task-due）／`RelatedNote` `HistoryEntry` の GUI と MCP
-      二重定義／同じ小関数の二重化 5 組（leadWidthCh≡indentWidth など）／テストにしか
-      使われていない pub 4 つ／`autosave` が権限・xattr を落とす（未実測）／`.tmp` の
-      掃除が無い／`resetPreferences` が 4 項目を戻さない／HistoryDialog の「60 分」決め
-      打ち／`note_write` の force 常に false とコメントの食い違い／コメントと実装のずれ
-      数か所（`vault-changed` の kind・menu-checks の数・ipc の説明の付け違い）
 
 ## 待ち — 外部要因でブロック中
 
