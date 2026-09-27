@@ -31,6 +31,18 @@ describe("setTaskDone", () => {
 // いることがあるので、文も突き合わせる（Rust の complete_matching と同じ答え。
 // レビュー 2026-09-27: 開いているノートの道だけ行番号しか見ていなかった）
 describe("completeMatching", () => {
+  test("test_front_matter_の中は数えない_Rust_の_extract_tasks_と同じ（レビュー 2026-09-28）", () => {
+    // YAML のブロック文字列の中の ``` でフェンスの内外が入れ替わらない
+    const fenced = "---\nnote: |\n  ```\n---\n- [ ] a\n";
+    expect(completeMatching(fenced, 4, "a")).toEqual({
+      kind: "edit",
+      edit: { from: 22, to: 29, insert: "- [x] a" },
+    });
+    // front matter の中の `- [ ]` はやることではない
+    const listed = "---\ntodo:\n- [ ] x\n---\n本文\n";
+    expect(completeMatching(listed, 2, "x")).toEqual({ kind: "mismatch" });
+  });
+
   test("test_行番号と文が合えば印を書き換える", () => {
     expect(
       completeMatching("# 題\n\n- [ ] 買い物\n- [ ] 掃除\n", 2, "買い物"),

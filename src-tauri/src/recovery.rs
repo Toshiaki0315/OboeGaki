@@ -67,10 +67,6 @@ pub fn discard(dir: &Path, note_path: &Path) {
     let _ = fs::remove_file(dir.join(format!("{key}.{SOURCE_SUFFIX}")));
 }
 
-/// 起動時に拾う。**壊れた退避は黙って飛ばす。**
-///
-/// 読めない退避のせいで起動できなくなってはいけない（退避を諦めるのは
-/// 我慢できるが、起動しないのは我慢できない）。
 /// ノートが改名・移動されたので、退避を新しいパスの鍵へ付け替える。退避が無ければ
 /// 何もしない（false）。表示していないノートの改名で、退避を捨てるしかなかった
 /// （保存の失敗と改名が重なると、書いたものが退避ごと消えた。21-15）
@@ -86,6 +82,10 @@ pub fn relocate(dir: &Path, from: &Path, to: &Path) -> io::Result<bool> {
     Ok(true)
 }
 
+/// 起動時に拾う。**壊れた退避は黙って飛ばす。**
+///
+/// 読めない退避のせいで起動できなくなってはいけない（退避を諦めるのは
+/// 我慢できるが、起動しないのは我慢できない）。
 pub fn pending(dir: &Path) -> Vec<Stashed> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();

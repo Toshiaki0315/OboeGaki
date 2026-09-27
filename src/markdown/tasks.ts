@@ -12,6 +12,7 @@ export function lineStartOffset(text: string, line: number): number | null {
   return offset <= text.length ? offset : null;
 }
 
+import { frontMatterRange } from "./front-matter";
 import { TASK_LINE_RE } from "./syntax";
 
 /// その行がやることの印を持つか。持てば済んだかと本文
@@ -59,8 +60,15 @@ export function completeMatching(
 ): Completion {
   const lines = text.split("\n");
   if (line < 0 || line >= lines.length) return { kind: "mismatch" };
+  // front matter の中は数えない（Rust の extract_tasks と同じ。YAML のブロック
+  // 文字列の中の ``` でフェンスの内外が入れ替わっていた。レビュー 2026-09-28）
+  const front = frontMatterRange(text);
+  const bodyLine = front
+    ? text.slice(0, front.bodyStart).split("\n").length - 1
+    : 0;
+  if (line < bodyLine) return { kind: "mismatch" };
   let inFence = false;
-  for (let number = 0; number < line; number++) {
+  for (let number = bodyLine; number < line; number++) {
     const trimmed = lines[number].trimStart();
     if (trimmed.startsWith("```") || trimmed.startsWith("~~~"))
       inFence = !inFence;

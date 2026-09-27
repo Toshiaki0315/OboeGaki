@@ -24,7 +24,6 @@ pub fn block_len(text: &str) -> Option<usize> {
     None // 閉じが無ければただの水平線で始まる本文
 }
 
-/// `pinned: true` が立っているか（spec §7.3）。
 /// front matter（区切りごと）と本文に分ける。無ければ front は空。
 /// 7 か所で `block_len` + `split_at` を書いていた（19-3）
 pub fn split(text: &str) -> (&str, &str) {
@@ -39,6 +38,7 @@ pub fn body(text: &str) -> &str {
     split(text).1
 }
 
+/// `pinned: true` が立っているか（spec §7.3）。
 pub fn pinned(text: &str) -> bool {
     let Some(end) = block_len(text) else {
         return false;
