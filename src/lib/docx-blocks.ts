@@ -98,6 +98,11 @@ export class DocxEmitter {
   private listItemFresh = false;
   // 脚注の本文（`[^1]: …`）の最初の段落に付ける番号。本文側の `[1]` と対にする
   private footnoteLabel: string | null = null;
+  // `:::center` / `:::right` の囲み（ADR-0069 / 22-4）。入れ子は組まないので 1 つ
+  // だけ持つ。寄せるのは囲みの**直下**の段落と見出し（HTML の `.align-center > p`
+  // と同じ。リストや引用の中の段落は level が深いので寄せない）
+  private align: { kind: "center" | "right"; level: number } | null = null;
+  private alignNext: "center" | "right" | undefined;
   private readonly headingOf: Record<string, HeadingValue>;
 
   constructor(private readonly ctx: DocxContext) {
@@ -191,10 +196,18 @@ export class DocxEmitter {
     inline: Token | null,
     extra: { heading?: HeadingValue; prefix?: string } = {},
   ): Promise<Paragraph> {
-    const { Paragraph, TextRun, BorderStyle } = this.ctx.mods;
+    const { Paragraph, TextRun, BorderStyle, AlignmentType } = this.ctx.mods;
     const list = this.listStack[this.listStack.length - 1];
+    const align = this.alignNext;
+    this.alignNext = undefined;
     return new Paragraph({
       heading: extra.heading,
+      alignment:
+        align === "center"
+          ? AlignmentType.CENTER
+          : align === "right"
+            ? AlignmentType.RIGHT
+            : undefined,
       children: [
         ...(extra.prefix ? [new TextRun({ text: extra.prefix })] : []),
         ...(inline ? await this.runsOf(inline) : []),
@@ -229,8 +242,20 @@ export class DocxEmitter {
     const { Paragraph, TextRun, Table, TableRow, TableCell, WidthType } =
       this.ctx.mods;
     switch (token.type) {
+      case "container_center_open":
+      case "container_right_open":
+        this.align = {
+          kind: token.type === "container_center_open" ? "center" : "right",
+          level: token.level,
+        };
+        break;
+      case "container_center_close":
+      case "container_right_close":
+        this.align = null;
+        break;
       case "heading_open":
         this.inHeading = this.headingOf[token.tag];
+        this.alignNext = this.alignFor(token);
         break;
       case "heading_close":
         this.children.push(
@@ -242,6 +267,7 @@ export class DocxEmitter {
         this.inHeading = undefined;
         break;
       case "paragraph_open":
+        this.alignNext = this.alignFor(token);
         break;
       case "paragraph_close":
         await this.closeParagraph();
@@ -370,6 +396,13 @@ export class DocxEmitter {
     }
   }
 
+  /// その段落・見出しを寄せるか（囲みの直下のときだけ）
+  private alignFor(token: Token): "center" | "right" | undefined {
+    return this.align && token.level === this.align.level + 1
+      ? this.align.kind
+      : undefined;
+  }
+
   /// 段落の閉じ。表の中では何もしない（セルは inline で積んだ）
   private async closeParagraph(): Promise<void> {
     if (this.inTable) return;
@@ -395,6 +428,7 @@ export class DocxEmitter {
     }
     this.listItemFresh = false;
     this.pendingInline = null;
+    this.alignNext = undefined; // 箇条書きの続きの段落では使わずに捨てる
   }
 
   /// コード。Mermaid は描けていれば絵（PowerPoint と同じ経路）、ファイル名は

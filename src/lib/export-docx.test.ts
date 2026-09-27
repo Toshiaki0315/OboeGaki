@@ -163,3 +163,38 @@ describe("棚卸しレビュー 2026-09-17（Word 書き出し）", () => {
     expect(numbering).toContain('<w:start w:val="3"/>');
   });
 });
+
+describe("段落と見出しを寄せる囲み（22-4 / ADR-0069）", () => {
+  /// その字を含む段落（`<w:p>` 1 つ）
+  const paragraphOf = (xml: string, text: string) =>
+    xml.split("<w:p>").find((part) => part.includes(text)) ??
+    xml.split(/<w:p[ >]/).find((part) => part.includes(text)) ??
+    "";
+
+  test("test_中の段落と見出しに揃えを渡す", async () => {
+    const xml = await documentXml(
+      ":::center\n## 中央の題\n中央の文\n:::\n\n:::right\n署名\n:::\n\n後の文\n",
+    );
+    expect(paragraphOf(xml, "中央の題")).toContain('<w:jc w:val="center"/>');
+    expect(paragraphOf(xml, "中央の文")).toContain('<w:jc w:val="center"/>');
+    expect(paragraphOf(xml, "署名")).toMatch(/<w:jc w:val="(right|end)"\/>/);
+    expect(paragraphOf(xml, "後の文")).not.toContain("<w:jc");
+  });
+
+  test("test_箇条書き・引用・表は囲みの中でも寄せない（決定 4）", async () => {
+    const xml = await documentXml(
+      ":::center\n- 項目\n\n> 引用\n\n| a |\n| - |\n| セル |\n:::\n",
+    );
+    for (const text of ["項目", "引用", "セル"]) {
+      expect(paragraphOf(xml, text), text).not.toContain("<w:jc");
+    }
+  });
+
+  test("test_段落の中の画像も段落ごと寄る", async () => {
+    const xml = await documentXml(
+      ":::center\n![絵](a.png)\n:::\n",
+      async () => PNG,
+    );
+    expect(paragraphOf(xml, "<w:drawing>")).toContain('<w:jc w:val="center"/>');
+  });
+});
