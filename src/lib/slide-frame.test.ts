@@ -6,6 +6,7 @@ import {
   bodyLayout,
   estimateHeightIn,
   LABEL_H,
+  placeImage,
   type Frame,
 } from "./slide-frame";
 import { splitDeck } from "./slides";
@@ -137,5 +138,43 @@ describe("bodyFrames（枠は中身の分だけ。実機報告 2026-09-08）", (
     const frames = bodyFrames(blocks, layout, false, sheet);
     const total = frames.reduce((sum, f) => sum + f.h, 0);
     expect(total).toBeCloseTo(estimateHeightIn(blocks, layout.bodyW, sheet), 6);
+  });
+});
+
+describe("placeImage（絵は縦横比を保って枠に収める）", () => {
+  const box = { x: 1, y: 2, w: 6, h: 4 };
+
+  it("test_横長の絵は幅いっぱいにして上下の真ん中に置く", () => {
+    const { image, caption } = placeImage(
+      box,
+      { width: 4000, height: 1000 },
+      0,
+    );
+    expect(image).toEqual({ x: 1, y: 2 + (4 - 1.5) / 2, w: 6, h: 1.5 });
+    expect(caption).toBeNull();
+  });
+
+  it("test_縦長の絵は高さいっぱいにして左右の真ん中に置く", () => {
+    const { image } = placeImage(box, { width: 1000, height: 2000 }, 0);
+    expect(image).toEqual({ x: 1 + (6 - 2) / 2, y: 2, w: 2, h: 4 });
+  });
+
+  it("test_説明は絵のすぐ下に付け_絵と説明をまとめて真ん中に置く", () => {
+    const { image, caption } = placeImage(
+      box,
+      { width: 4000, height: 1000 },
+      0.5,
+    );
+    expect(image.w).toBe(6);
+    expect(image.h).toBe(1.5);
+    const top = 2 + (4 - (1.5 + 0.5)) / 2;
+    expect(image.y).toBeCloseTo(top, 9);
+    expect(caption).toEqual({ x: 1, y: image.y + 1.5, w: 6, h: 0.5 });
+  });
+
+  it("test_大きさが読めない絵は枠いっぱい（説明のぶんは空ける）", () => {
+    const { image, caption } = placeImage(box, null, 0.5);
+    expect(image).toEqual({ x: 1, y: 2, w: 6, h: 3.5 });
+    expect(caption).toEqual({ x: 1, y: 5.5, w: 6, h: 0.5 });
   });
 });

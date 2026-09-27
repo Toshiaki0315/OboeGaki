@@ -79,6 +79,15 @@ export function imageDimensions(
   }
 }
 
+/// data URL の絵の大きさ（ピクセル）。種類が分からない・読めなければ null
+export function dataUrlDimensions(
+  dataUrl: string,
+): { width: number; height: number } | null {
+  const decoded = decodeDataUrl(dataUrl);
+  const type = decoded ? docxImageType(decoded.mime) : null;
+  return decoded && type ? imageDimensions(type, decoded.bytes) : null;
+}
+
 /// JPEG はセグメントを辿って SOF（フレーム開始）を探す。SOF の中身は
 /// 長さ 2・精度 1・高さ 2・幅 2（big endian）
 function jpegDimensions(

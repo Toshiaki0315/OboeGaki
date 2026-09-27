@@ -139,6 +139,33 @@ describe("環境設定からの体裁（TASKS 8-2）", () => {
     expect(dated.master).toContain("2026-09-06");
   });
 
+  it("test_絵は縦横比を保って置く（枠の形に引き伸ばさない）", async () => {
+    // IHDR だけの PNG（幅 4000 × 高さ 1000）。大きさはヘッダから読む
+    const header = new Uint8Array(33);
+    header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    header.set([0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52], 8);
+    new DataView(header.buffer).setUint32(16, 4000);
+    new DataView(header.buffer).setUint32(20, 1000);
+    const wide = `data:image/png;base64,${btoa(String.fromCharCode(...header))}`;
+    const doc = "## A\n\n![横長](wide.png)\n";
+    const base64 = await buildPptx(
+      splitDeck(doc),
+      async () => wide,
+      readSlideTheme(doc),
+      null,
+      DEFAULT_PPTX_OPTIONS,
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    const pic = xml.slice(xml.indexOf("<p:pic>"), xml.indexOf("</p:pic>"));
+    const ext = /<a:ext cx="(\d+)" cy="(\d+)"/.exec(pic);
+    expect(ext).not.toBeNull();
+    expect(Number(ext![1]) / Number(ext![2])).toBeCloseTo(4, 2);
+    // 切り抜き・余白（srcRect）で見かけを変えていない
+    expect(pic).not.toMatch(/<a:srcRect l="-?[1-9]/);
+  });
+
   it("test_CFG_72_画像の説明を出せる（既定は出さない）", async () => {
     const doc = "## A\n\n![犬の写真](dog.png)\n";
     const withImage = async (imageCaption: boolean) => {

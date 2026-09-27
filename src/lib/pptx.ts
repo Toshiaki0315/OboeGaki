@@ -29,8 +29,10 @@ import {
   bodyFrames,
   bodyLayout,
   LABEL_H,
+  placeImage,
   type BodyLayout,
 } from "./slide-frame";
+import { dataUrlDimensions } from "./image-bytes";
 import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 import { dayValue } from "./day";
 
@@ -503,20 +505,13 @@ function placeImages(
     // 説明を出すぶんだけ絵を縮める（重ねると字が読めない）
     const captionH =
       caption && alt ? sheet.points.body / 72 + sheet.sizes.captionPad : 0;
-    page.addImage({
-      data,
-      x: box.x,
-      y: box.y,
-      w: box.w,
-      h: box.h - captionH,
-      sizing: { type: "contain", w: box.w, h: box.h - captionH },
-    });
-    if (captionH === 0) return;
+    // 縦横比は自分で合わせて、その大きさで置く。pptxgenjs の sizing（contain）は
+    // 渡した w / h を絵の大きさとみなすので、枠の大きさを渡すと引き伸ばしになる
+    const placed = placeImage(box, dataUrlDimensions(data), captionH);
+    page.addImage({ data, ...placed.image });
+    if (!placed.caption) return;
     page.addText(alt, {
-      x: box.x,
-      y: box.y + box.h - captionH,
-      w: box.w,
-      h: captionH,
+      ...placed.caption,
       fontSize: sheet.points.caption,
       color: "tx2",
       align: "center",

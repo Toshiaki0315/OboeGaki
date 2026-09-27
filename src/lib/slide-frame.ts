@@ -85,6 +85,32 @@ export function bodyLayout(
   };
 }
 
+/// 絵を枠の中に**縦横比を保って**収める（contain）。説明（`captionH` > 0）は
+/// 絵のすぐ下に付け、絵と説明をまとめて枠の真ん中に置く。大きさが読めない絵は
+/// 枠いっぱい。以前は枠の大きさをそのまま絵の大きさとして渡していて、横長の
+/// 写真も枠の形に引き伸ばされていた（レビュー 2026-09-28）
+export function placeImage(
+  box: Box,
+  size: { width: number; height: number } | null,
+  captionH: number,
+): { image: Box; caption: Box | null } {
+  const areaH = box.h - captionH;
+  let w = box.w;
+  let h = areaH;
+  if (size && size.width > 0 && size.height > 0) {
+    const scale = Math.min(box.w / size.width, areaH / size.height);
+    w = size.width * scale;
+    h = size.height * scale;
+  }
+  const x = box.x + (box.w - w) / 2;
+  const y = box.y + (box.h - (h + captionH)) / 2;
+  return {
+    image: { x, y, w, h },
+    caption:
+      captionH > 0 ? { x: box.x, y: y + h, w: box.w, h: captionH } : null,
+  };
+}
+
 /// 行の高さ（字の大きさの何倍か）。PowerPoint の既定に合わせる。
 const LINE = 1.2;
 /// 段落と段落のあいだ。
