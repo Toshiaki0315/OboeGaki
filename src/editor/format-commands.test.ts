@@ -16,6 +16,7 @@ import {
   toggleOrdered,
   toggleQuote,
 } from "./format-commands";
+import { LANG } from "./test-utils";
 
 describe("toggleWrap", () => {
   test("選択が無ければ記号だけ置いて間にキャレットを入れる", () => {
@@ -305,5 +306,70 @@ describe("FORMAT_COMMANDS", () => {
     expect(FORMAT_KEYS.strong).toBe("Mod-b");
     expect(FORMAT_KEYS.emphasis).toBe("Mod-i");
     expect(FORMAT_KEYS.heading).toBeUndefined(); // 見出しは循環なので割り当てない
+  });
+});
+
+describe("選んだ行を寄せの囲みで包む・外す（23-1 / ADR-0069 の決定 5）", () => {
+  /// `｜` を選択の端として書いた文書でコマンドを走らせる（木も作る = 本番と同じ）
+  function align(kind: "center" | "right", marked: string) {
+    const [from, to = from] = [...marked.matchAll(/｜/g)].map(
+      (m, i) => m.index! - i,
+    );
+    const doc = marked.split("｜").join("");
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: from, head: to },
+      extensions: [LANG],
+    });
+    let next = state;
+    const handled = FORMAT_COMMANDS[kind]({
+      state,
+      dispatch: (tr) => void (next = tr.state),
+    });
+    const { from: a, to: b } = next.selection.main;
+    const out = next.doc.toString();
+    return {
+      handled,
+      doc: out,
+      selected: out.slice(a, b),
+    };
+  }
+
+  test("test_選んだ行の前後に囲みの行を差し込み_中身を選び直す", () => {
+    expect(align("center", "前\n｜題\n副題｜\n後")).toEqual({
+      handled: true,
+      doc: "前\n:::center\n題\n副題\n:::\n後",
+      selected: "題\n副題",
+    });
+    expect(align("right", "｜署名").doc).toBe(":::right\n署名\n:::");
+  });
+
+  test("test_何も選ばず空行にいれば_空の囲みを入れて中に入る", () => {
+    const result = align("center", "前\n\n｜\n\n後");
+    expect(result.doc).toBe("前\n\n:::center\n\n:::\n\n後");
+    expect(result.handled).toBe(true);
+  });
+
+  test("test_同じ寄せの中なら外す_区切りの行にいても外す", () => {
+    expect(align("center", ":::center\n｜題｜\n:::\n後").doc).toBe("題\n後");
+    expect(align("center", "｜:::center\n題\n:::").doc).toBe("題");
+  });
+
+  test("test_別の寄せの中なら種類を替える", () => {
+    expect(align("right", ":::center\n｜題\n:::").doc).toBe(
+      ":::right\n題\n:::",
+    );
+  });
+
+  test("test_note_などの中や_囲みにまたがる選択では何もしない（入れ子を作らない）", () => {
+    expect(align("center", ":::note\n｜注意\n:::").handled).toBe(false);
+    expect(align("center", "｜前\n:::note\n注意｜\n:::").handled).toBe(false);
+  });
+
+  test("test_コードの途中には差し込まない_コードごと包むのはよい", () => {
+    expect(align("center", "```\n｜a\nb｜\n```").handled).toBe(false);
+    expect(align("center", "｜```\na\n```｜").doc).toBe(
+      ":::center\n```\na\n```\n:::",
+    );
   });
 });

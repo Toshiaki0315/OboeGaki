@@ -1498,6 +1498,8 @@ function App() {
       "format-bullet": () => editorRef.current?.applyFormat("bullet"),
       "format-ordered": () => editorRef.current?.applyFormat("ordered"),
       "format-quote": () => editorRef.current?.applyFormat("quote"),
+      "format-center": () => editorRef.current?.applyFormat("center"),
+      "format-right": () => editorRef.current?.applyFormat("right"),
       extract: () => void handleExtract(),
       "link-graph": () =>
         void runWithStatus(setStatus, "リンクの図", () =>

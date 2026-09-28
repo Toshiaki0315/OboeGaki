@@ -122,6 +122,8 @@ mod tests {
             ":::center\n",
             ":::right\n",
             "字のまま見えます",
+            // 23-1: 選んだ行を包む・外す操作
+            "「編集」→「中央に寄せる」",
         ] {
             assert!(MANUAL.contains(piece), "無い説明: {piece}");
         }

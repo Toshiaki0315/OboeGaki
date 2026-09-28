@@ -19,6 +19,7 @@ import {
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
 import { colonContainers } from "../markdown/containers";
+import { codeLineTest } from "./code-lines";
 import { type MermaidTheme } from "./mermaid";
 
 import {
@@ -511,50 +512,6 @@ export function mermaidCode(
 /// **StateField から提供する。** CM6 はブロック構造を変える装飾を plugin
 /// 由来の装飾に許さず、**投げる**（画面が真っ白になる。ADR-0035 が表で
 /// 踏んだ罠を、数式と図でもう一度踏んだ = 実機で発覚 2026-09-04）。
-/// コードフェンスの範囲（トップレベルのみ）。:::note の除外に使う。
-function fencedRanges(state: EditorState): { from: number; to: number }[] {
-  const out: { from: number; to: number }[] = [];
-  syntaxTree(state).iterate({
-    enter: (node) => {
-      if (node.name === "FencedCode") {
-        out.push({ from: node.from, to: node.to });
-        return false;
-      }
-      return node.node.parent === null || node.name === "Document"
-        ? undefined
-        : false;
-    },
-  });
-  return out;
-}
-
-/// その行（0 始まり）がフェンスの中か。行頭の `:::` や `<details>` がコード例か
-/// を見分ける（レビュー 2026-09-04）。**トップレベルのフェンスだけで足りる** —
-/// 行頭から始まる行は、リストや引用の中のコードの行にはならない。
-///
-/// 以前はフェンスと**重なる**囲みを丸ごと外していて、コードブロックを含む
-/// `:::note` が囲みにならなかった（HTML 書き出しは囲みにする。22-1）。今は
-/// コードの行だけを開きにも閉じにも数えない
-function codeLineTest(state: EditorState): (index: number) => boolean {
-  const ranges = fencedRanges(state).map((fence) => [
-    state.doc.lineAt(fence.from).number - 1,
-    state.doc.lineAt(fence.to).number - 1,
-  ]);
-  if (ranges.length === 0) return () => false;
-  return (index) => {
-    // 範囲は出てきた順（重ならない）。二分探索で index を含む範囲を探す
-    let low = 0;
-    let high = ranges.length - 1;
-    while (low <= high) {
-      const middle = (low + high) >> 1;
-      const [first, last] = ranges[middle];
-      if (index < first) high = middle - 1;
-      else if (index > last) low = middle + 1;
-      else return true;
-    }
-    return false;
-  };
-}
 
 /// 段落と見出しを寄せる囲み（`:::center` / `:::right`。ADR-0069 / 22-2）。
 /// 位置は note / details と同じ形で持つ（編集への追従を共有する）

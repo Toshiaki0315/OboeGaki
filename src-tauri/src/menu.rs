@@ -155,6 +155,9 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("format-bullet", "箇条書き", None)?)
         .item(&item("format-ordered", "番号付きリスト", None)?)
         .item(&item("format-quote", "引用", None)?)
+        // 寄せ（ADR-0069 の決定 5）。選んだ行を `:::center` / `:::right` で包む・外す
+        .item(&item("format-center", "中央に寄せる", None)?)
+        .item(&item("format-right", "右に寄せる", None)?)
         .separator()
         .item(&item("insert-table", "表を挿入…", None)?)
         .separator()

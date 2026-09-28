@@ -7,6 +7,8 @@
 import type { StateCommand } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
+import { colonContainers } from "../markdown/containers";
+import { codeLineTest, fenceLineRanges } from "./code-lines";
 import {
   ATX_HEADING_RE as HEADING_RE,
   BULLET_ITEM_RE as UNORDERED_RE,
@@ -355,6 +357,95 @@ function linesCommand(
   };
 }
 
+/// 選んだ行を寄せの囲み（`:::center` / `:::right`）で包む・外す（ADR-0069 の
+/// 決定 5 / 23-1）。
+///
+/// - 同じ寄せの中（区切りの行を含む）なら外す。別の寄せの中なら種類を替える
+/// - `:::note` などの中や、囲みにまたがる選択では何もしない（入れ子を作らない。
+///   決定 3）
+/// - コードの**途中**には差し込まない（フェンスごと包むのはよい）
+///
+/// 囲みの見つけ方は画面と同じ（markdown/containers の 1 本 + フェンスの行を飛ばす）
+function alignCommand(kind: "center" | "right"): StateCommand {
+  return ({ state, dispatch }) => {
+    const { from, to } = state.selection.main;
+    const endsAtLineStart = to > from && state.doc.lineAt(to).from === to;
+    const first = state.doc.lineAt(from);
+    const last = state.doc.lineAt(endsAtLineStart ? to - 1 : to);
+    const top = first.number - 1; // 0 始まり
+    const bottom = last.number - 1;
+    const containers = colonContainers(
+      state.doc.iterLines(),
+      codeLineTest(state),
+    );
+    const around = containers.find(
+      (entry) => entry.open <= top && bottom <= entry.close,
+    );
+    if (around) {
+      if (around.kind !== "center" && around.kind !== "right") return false;
+      const open = state.doc.line(around.open + 1);
+      if (around.kind !== kind) {
+        dispatch(
+          state.update({
+            changes: { from: open.from, to: open.to, insert: `:::${kind}` },
+            userEvent: "input",
+          }),
+        );
+        return true;
+      }
+      // 外す: 開きと閉じの行を改行ごと消し、中身を選び直す
+      const close = state.doc.line(around.close + 1);
+      const changes = state.changes([
+        { from: open.from, to: Math.min(open.to + 1, state.doc.length) },
+        { from: Math.max(close.from - 1, open.to), to: close.to },
+      ]);
+      const bodyFrom = changes.mapPos(open.to + 1, 1);
+      const bodyTo = changes.mapPos(close.from - 1, -1);
+      dispatch(
+        state.update({
+          changes,
+          selection: {
+            anchor: Math.min(bodyFrom, bodyTo),
+            head: Math.max(bodyFrom, bodyTo),
+          },
+          userEvent: "input",
+          scrollIntoView: true,
+        }),
+      );
+      return true;
+    }
+    // 別の囲みにかかる選択は包まない（包むと入れ子になる）
+    if (
+      containers.some((entry) => entry.open <= bottom && top <= entry.close)
+    ) {
+      return false;
+    }
+    // フェンスの途中（開きの行より後ろ・閉じの行より前）には差し込まない
+    for (const [open, close] of fenceLineRanges(state)) {
+      if ((open < top && top <= close) || (open <= bottom && bottom < close)) {
+        return false;
+      }
+    }
+    const head = `:::${kind}\n`;
+    dispatch(
+      state.update({
+        changes: [
+          { from: first.from, insert: head },
+          { from: last.to, insert: "\n:::" },
+        ],
+        // 包んだ中身を選び直す（続けて別の書式を押せる）
+        selection: {
+          anchor: first.from + head.length,
+          head: last.to + head.length,
+        },
+        userEvent: "input",
+        scrollIntoView: true,
+      }),
+    );
+    return true;
+  };
+}
+
 /// 書式の種類。**入口はショートカット・メニュー・ツールバーの 3 つあるが、
 /// 変換は 1 つ**（参照実装 ui/format_toolbar.py の言）。ここが台帳。
 export const FORMAT_KINDS = [
@@ -368,6 +459,8 @@ export const FORMAT_KINDS = [
   "ordered",
   "checkbox",
   "quote",
+  "center",
+  "right",
   "link",
 ] as const;
 
@@ -385,6 +478,8 @@ export const FORMAT_COMMANDS: Record<FormatKind, StateCommand> = {
   ordered: linesCommand(toggleOrdered),
   checkbox: lineCommand(toggleCheckbox),
   quote: linesCommand(toggleQuote),
+  center: alignCommand("center"),
+  right: alignCommand("right"),
   link: linkCommand,
 };
 

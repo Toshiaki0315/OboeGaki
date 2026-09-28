@@ -47,4 +47,26 @@ describe("App の配線", () => {
     // 行番号だけで印を書き換える道を残さない
     expect(body).not.toContain("setTaskDone(");
   });
+
+  test("test_編集メニューの書式の項目は_すべて_App_が受ける（23-1）", () => {
+    const menu = readFileSync(
+      new URL("../src-tauri/src/menu.rs", import.meta.url),
+      "utf8",
+    );
+    const ids = Array.from(
+      menu.matchAll(/item\("(format-[a-z]+)"/g),
+      (m) => m[1],
+    );
+    // 寄せ（ADR-0069 の決定 5）もメニューに出ている
+    expect(ids).toEqual(
+      expect.arrayContaining(["format-center", "format-right"]),
+    );
+    for (const id of ids) {
+      expect(source, id).toMatch(
+        new RegExp(
+          `"${id}": \\(\\) => editorRef\\.current\\?\\.applyFormat\\("${id.slice(7)}"\\)`,
+        ),
+      );
+    }
+  });
 });
