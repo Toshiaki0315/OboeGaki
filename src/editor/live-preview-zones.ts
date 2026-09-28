@@ -18,7 +18,7 @@ import {
   UNKNOWN_NOTE_KIND,
 } from "./note-container";
 import { detailsContainers, type DetailsContainer } from "./details-container";
-import { colonContainers } from "../markdown/containers";
+import { ALIGN_HTML_OPEN_RE, colonContainers } from "../markdown/containers";
 import { codeLineTest } from "./code-lines";
 import { type MermaidTheme } from "./mermaid";
 
@@ -482,12 +482,19 @@ const editNearTables = (tr: NearTr) =>
     /\||\$\$|```|~~~|<!--|-->|<\/?(?:pre|script|style|textarea)\b|<\?|\?>|<![A-Za-z]|<!\[CDATA\[|\]\]>/i,
     tr,
   );
-// 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる
+// 数式（$$）・図（フェンス）・:::note の生成・破壊はこの記号の近くで起きる。
+// 寄せの HTML の開き（`<div align=…>`・`<p style=…>`。23-2）もここに入れる
 const editNearBlockWidgets = (tr: NearTr) =>
   editNearMarker(
-    /\$\$|```|~~~|:::|<\/?details>|<!--|-->|<\/?(?:pre|script|style|textarea)\b|<\?|\?>|<![A-Za-z]|<!\[CDATA\[|\]\]>/i,
+    /\$\$|```|~~~|:::|<\/?details>|<(?:div|p)\s+(?:align|style)\b|<!--|-->|<\/?(?:pre|script|style|textarea)\b|<\?|\?>|<![A-Za-z]|<!\[CDATA\[|\]\]>/i,
     tr,
   );
+/// 寄せの HTML の閉じ（`</div>`・`</p>`）の近くの編集。**文書に寄せの HTML の開きが
+/// あるときだけ**数え直す — 閉じのタグの中に 1 字打つ・閉じの行を次の行とつなぐと
+/// 囲みが消える（乱数で見つけた。23-2）が、ふつうの `<div>` の塊の中の打鍵まで
+/// 全部数え直すと 21-9 / 21-11 の間引きが崩れる
+const editNearHtmlAlignClose = (tr: NearTr) =>
+  editNearMarker(/<\/(?:div|p)>/i, tr);
 
 /// ```mermaid のフェンスなら中身。違えば null。
 export function mermaidCode(
@@ -872,6 +879,8 @@ type BlockWidgetMeta = {
   details: DetailsContainer[];
   /// 同じく寄せの控え（22-2）
   aligns: AlignContainer[];
+  /// 寄せの HTML の開きの行が文書にあるか（閉じの近くの編集で数え直すかを決める。23-2）
+  htmlAlign: boolean;
   revealKey: string;
   /// 計算した時点で構文解析が届いていた位置。ここより先へ解析が進んだら
   /// 数え直す（オブジェクト同一性で見ると打鍵のたびに全再計算になる —
@@ -888,10 +897,21 @@ function computeBlockWidgetSet(state: EditorState): DecorationSet {
   blockWidgetMeta.set(set, {
     zones,
     ...found,
+    htmlAlign: hasHtmlAlignOpener(state),
     revealKey: revealKeyOf(state, zones),
     parsedTo: syntaxTree(state).length,
   });
   return set;
+}
+
+/// 寄せの HTML の開きの行（閉じの有無は問わない）が文書にあるか。数え直しの
+/// ときだけ走る（行頭が `<` の行だけ正規表現に掛ける）
+function hasHtmlAlignOpener(state: EditorState): boolean {
+  for (const iter = state.doc.iterLines(); !iter.next().done;) {
+    const text = iter.value;
+    if (text.charCodeAt(0) === 60 && ALIGN_HTML_OPEN_RE.test(text)) return true;
+  }
+  return false;
 }
 
 /// 位置だけを写す（囲みの控えを編集に追従させる）。
@@ -1003,7 +1023,11 @@ export const blockWidgetField = StateField.define<DecorationSet>({
 
     const parsed = syntaxTree(tr.state).length;
     if (tr.docChanged) {
-      if (editNearBlockWidgets(tr) || editTouchesHtmlBlock(tr)) {
+      if (
+        editNearBlockWidgets(tr) ||
+        editTouchesHtmlBlock(tr) ||
+        (meta.htmlAlign && editNearHtmlAlignClose(tr))
+      ) {
         return computeBlockWidgetSet(tr.state);
       }
       const parsedTo = tr.changes.mapPos(meta.parsedTo, 1);
@@ -1036,7 +1060,15 @@ export const blockWidgetField = StateField.define<DecorationSet>({
         return refreshZones(
           tr.state,
           mapped,
-          { zones, notes, details, aligns, revealKey, parsedTo },
+          {
+            zones,
+            notes,
+            details,
+            aligns,
+            htmlAlign: meta.htmlAlign,
+            revealKey,
+            parsedTo,
+          },
           [...indices],
         );
       }
@@ -1045,6 +1077,7 @@ export const blockWidgetField = StateField.define<DecorationSet>({
         notes,
         details,
         aligns,
+        htmlAlign: meta.htmlAlign,
         revealKey,
         parsedTo,
       });

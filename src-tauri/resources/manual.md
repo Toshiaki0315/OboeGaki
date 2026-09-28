@@ -186,6 +186,11 @@ def hello() -> str:
   書かなければ左です）
 - **おぼえがき以外（GitHub・Obsidian・VS Code など）で開くと、
   `:::center` の行は字のまま見えます。** 中身の文はそのまま読めます
+- GitHub などから貼った寄せの HTML（`<div align="center">` … `</div>`、
+  `<p align="right">` … `</p>`、`<div style="text-align: center;">` … `</div>`）も、
+  開きと閉じが別の行なら同じように寄ります。中の太字や見出しを画面でも
+  効かせるには、開きのタグの後と閉じのタグの前に空行を入れてください
+  （GitHub と同じ読み方です。書き出しは空行が無くても組みます）
 
 ### 表
 

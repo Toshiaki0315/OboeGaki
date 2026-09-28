@@ -190,6 +190,13 @@ describe("段落と見出しを寄せる囲み（22-4 / ADR-0069）", () => {
     }
   });
 
+  test("test_寄せの_HTML_も同じに寄せる（23-2）", async () => {
+    const xml = await documentXml(
+      '<div align="center">\nHTML の中央\n</div>\n',
+    );
+    expect(paragraphOf(xml, "HTML の中央")).toContain('<w:jc w:val="center"/>');
+  });
+
   test("test_段落の中の画像も段落ごと寄る", async () => {
     const xml = await documentXml(
       ":::center\n![絵](a.png)\n:::\n",

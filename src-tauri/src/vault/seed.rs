@@ -124,6 +124,8 @@ mod tests {
             "字のまま見えます",
             // 23-1: 選んだ行を包む・外す操作
             "「編集」→「中央に寄せる」",
+            // 23-2: 貼った寄せの HTML も受ける
+            "`<div align=\"center\">`",
         ] {
             assert!(MANUAL.contains(piece), "無い説明: {piece}");
         }

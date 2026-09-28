@@ -103,6 +103,12 @@ describe("段落と見出しを寄せる囲み（22-5 / ADR-0069）", () => {
     );
   });
 
+  test("test_寄せの_HTML_も同じに寄せる（23-2）", () => {
+    expect(alignsOf('## A\n\n<div align="center">\n段落\n</div>\n')).toEqual([
+      [["paragraph", "段落", "center"]],
+    ]);
+  });
+
   test("test_枚が替わるところで囲みも切れる（`##` から先は寄せない）", () => {
     expect(alignsOf("## A\n\n:::center\n一\n\n## B\n\n二\n:::\n")).toEqual([
       [["paragraph", "一", "center"]],

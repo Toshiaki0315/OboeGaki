@@ -12,8 +12,8 @@ describe("colonContainers", () => {
       lines(":::note warn\n注意\n:::\n\n:::details 詳しく\n中身\n:::"),
     );
     expect(found).toEqual([
-      { kind: "note", open: 0, close: 2, info: "warn" },
-      { kind: "details", open: 4, close: 6, info: "詳しく" },
+      { kind: "note", open: 0, close: 2, info: "warn", form: "colon" },
+      { kind: "details", open: 4, close: 6, info: "詳しく", form: "colon" },
     ]);
   });
 
@@ -26,14 +26,16 @@ describe("colonContainers", () => {
       lines(":::note\n外\n:::details 内\n中\n:::\n後\n:::"),
     );
     // 最初の `:::` で note が閉じる。`:::details` と最後の `:::` は字のまま
-    expect(found).toEqual([{ kind: "note", open: 0, close: 4, info: "" }]);
+    expect(found).toEqual([
+      { kind: "note", open: 0, close: 4, info: "", form: "colon" },
+    ]);
   });
 
   test("test_コードの行は開きにも閉じにも数えない", () => {
     const text = ":::note\n```\n:::\n```\n:::";
     const code = new Set([1, 2, 3]);
     expect(colonContainers(lines(text), (index) => code.has(index))).toEqual([
-      { kind: "note", open: 0, close: 4, info: "" },
+      { kind: "note", open: 0, close: 4, info: "", form: "colon" },
     ]);
   });
 
@@ -46,8 +48,8 @@ describe("colonContainers", () => {
     expect(
       colonContainers(lines(":::center\n題\n:::\n\n:::right\n署名\n:::")),
     ).toEqual([
-      { kind: "center", open: 0, close: 2, info: "" },
-      { kind: "right", open: 4, close: 6, info: "" },
+      { kind: "center", open: 0, close: 2, info: "", form: "colon" },
+      { kind: "right", open: 4, close: 6, info: "", form: "colon" },
     ]);
   });
 
@@ -59,10 +61,10 @@ describe("colonContainers", () => {
 
   test("test_寄せと_note_は互いの中で囲みにしない（入れ子を許さない。決定 3）", () => {
     expect(colonContainers(lines(":::note\n:::center\n文\n:::\n:::"))).toEqual([
-      { kind: "note", open: 0, close: 3, info: "" },
+      { kind: "note", open: 0, close: 3, info: "", form: "colon" },
     ]);
     expect(colonContainers(lines(":::right\n:::note\n文\n:::\n:::"))).toEqual([
-      { kind: "right", open: 0, close: 3, info: "" },
+      { kind: "right", open: 0, close: 3, info: "", form: "colon" },
     ]);
   });
 
@@ -73,7 +75,51 @@ describe("colonContainers", () => {
       yield ":::";
     }
     expect(colonContainers(rows())).toEqual([
-      { kind: "center", open: 0, close: 2, info: "" },
+      { kind: "center", open: 0, close: 2, info: "", form: "colon" },
     ]);
+  });
+
+  describe("寄せの HTML を読むときだけ受ける（23-2 / ADR-0069 の決定 6）", () => {
+    test("test_開きと閉じが別の行の_div_と_p_を寄せの囲みとして読む", () => {
+      const html = (open: string, close: string) =>
+        colonContainers(lines(`${open}\n題\n${close}`));
+      expect(html('<div align="center">', "</div>")).toEqual([
+        { kind: "center", open: 0, close: 2, info: "", form: "html" },
+      ]);
+      expect(html("<p align='right'>", "</p>")[0]?.kind).toBe("right");
+      expect(html('<div style="text-align: center;">', "</div>")[0]?.kind).toBe(
+        "center",
+      );
+      expect(html('<DIV ALIGN="CENTER">', "</DIV>")[0]?.kind).toBe("center");
+    });
+
+    test("test_決めた形でないものは受けない", () => {
+      for (const open of [
+        '<div align="left">',
+        '<div align="center" class="x">',
+        '<span align="center">',
+        '  <div align="center">',
+        '<div style="color: red">',
+      ]) {
+        expect(colonContainers(lines(`${open}\n題\n</div>`)), open).toEqual([]);
+      }
+      // 閉じのタグが違えば閉じない
+      expect(colonContainers(lines('<div align="center">\n題\n</p>'))).toEqual(
+        [],
+      );
+    });
+
+    test("test_入れ子は許さない_HTML_の寄せの中の_:::_では閉じない", () => {
+      expect(
+        colonContainers(
+          lines(':::note\n<div align="center">\n題\n</div>\n:::'),
+        ),
+      ).toEqual([{ kind: "note", open: 0, close: 4, info: "", form: "colon" }]);
+      expect(
+        colonContainers(lines('<div align="center">\n:::\n題\n</div>')),
+      ).toEqual([
+        { kind: "center", open: 0, close: 3, info: "", form: "html" },
+      ]);
+    });
   });
 });

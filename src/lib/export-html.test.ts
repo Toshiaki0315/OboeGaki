@@ -387,4 +387,15 @@ describe("段落と見出しを寄せる囲み（22-3 / ADR-0069）", () => {
     const html = renderBody("![[署名]]\n", undefined, undefined, embeds);
     expect(html).toContain('<div class="align-right">\n<p>野村</p>\n</div>');
   });
+
+  test("test_寄せの_HTML_も同じ箱になる_中は_Markdown_として組む（23-2）", () => {
+    expect(renderBody('<div align="center">\n# 題\n**太字**\n</div>\n')).toBe(
+      '<div class="align-center">\n<h1>題</h1>\n<p><strong>太字</strong></p>\n</div>\n',
+    );
+    expect(renderBody("<p align='right'>\n署名\n</p>\n")).toBe(
+      '<div class="align-right">\n<p>署名</p>\n</div>\n',
+    );
+    // 決めた形でない HTML は今までどおり字のまま（html: false）
+    expect(renderBody('<div class="x">\n題\n</div>\n')).toContain("&lt;div");
+  });
 });

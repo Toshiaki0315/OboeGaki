@@ -1597,6 +1597,55 @@ describe("段落と見出しを寄せる囲み（22-2 / ADR-0069）", () => {
     expect(alignedIn(edited)).toEqual([doc.indexOf("署名") + 1]);
   });
 
+  test("test_寄せの_HTML_も同じに寄せ_タグの行を隠す（23-2）", () => {
+    const doc = '前\n\n<div align="center">\n\n題\n\n</div>\n\n後';
+    expect(aligned(doc)).toEqual([["題", "cm-align-center"]]);
+    expect(hidden(doc)).toEqual(['<div align="center">', "</div>"]);
+  });
+
+  test("test_寄せの_HTML_のタグの行を書き換えたら数え直す（23-2。乱数で見つけた形）", () => {
+    const fresh = (state: EditorState) =>
+      EditorState.create({
+        doc: state.doc,
+        selection: state.selection,
+        extensions: [LANG, sourceModeField, blockWidgetField],
+      });
+    const shape = (state: EditorState) => {
+      const out: string[] = [];
+      for (let c = state.field(blockWidgetField).iter(); c.value; c.next()) {
+        const spec = c.value.spec as { class?: string };
+        out.push(`${c.from}-${c.to}:${spec.class ?? "hide"}`);
+      }
+      return out;
+    };
+    const cases = [
+      // 閉じのタグの中に 1 字打って閉じでなくする（seed 4）
+      {
+        doc: '- item\n\n<p align="right">\nsig\n</p>\n後',
+        at: "</p>",
+        insert: "_",
+        offset: 2,
+      },
+      // 閉じのタグの行を次の行とつなぐ（seed 26）
+      {
+        doc: '<p align="right">\nsi\n</p>\n<x>',
+        at: "</p>",
+        insert: "",
+        offset: 4,
+        remove: 1,
+      },
+    ];
+    for (const { doc, at, insert, offset, remove = 0 } of cases) {
+      const pos = doc.indexOf(at) + offset;
+      const state = EditorState.create({
+        doc,
+        selection: { anchor: doc.length },
+        extensions: [LANG, sourceModeField, blockWidgetField],
+      }).update({ changes: { from: pos, to: pos + remove, insert } }).state;
+      expect(shape(state), doc).toEqual(shape(fresh(state)));
+    }
+  });
+
   test("test_閉じの無い囲みは寄せない", () => {
     expect(aligned(":::center\n題\n\n後")).toEqual([]);
   });

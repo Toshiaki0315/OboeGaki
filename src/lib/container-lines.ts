@@ -18,6 +18,11 @@ const parser = markdown({
 /// 字のまま読まれるブロック。この中の `:::` は囲みの開きにも閉じにもしない
 const VERBATIM = new Set(["FencedCode", "CodeBlock", "MathBlock"]);
 
+/// 囲み（`:::` か寄せの HTML）がありうるか。無ければ解析を省く
+function mayHaveContainers(text: string): boolean {
+  return text.includes(":::") || /^<(?:div|p)\s/im.test(text);
+}
+
 /// 本文の行と、囲みを見るときに飛ばす行（コード・数式ブロックの中。リストや
 /// 引用の中のものも含む）
 export function containersOf(text: string): {
@@ -27,7 +32,7 @@ export function containersOf(text: string): {
 } {
   const lines = text.split("\n");
   const verbatim = new Set<number>();
-  if (!text.includes(":::")) return { lines, verbatim, containers: [] };
+  if (!mayHaveContainers(text)) return { lines, verbatim, containers: [] };
   const starts: number[] = [];
   let offset = 0;
   for (const line of lines) {
@@ -76,22 +81,25 @@ const COLON_RUN_RE =
 ///   ので、そのまま渡すと画面と食い違う（ADR-0069 の決定 3）
 /// - コードと数式ブロックの中は 1 字も変えない
 export function forMarkdownIt(text: string): string {
+  if (!mayHaveContainers(text)) return text;
   const { lines, verbatim, containers } = containersOf(text);
-  if (!text.includes(":::")) return text;
-  const marker = new Map<number, number>();
-  for (const { open, close } of containers) {
+  // 区切りの行を何に書き換えるか（`:::` の形は語を残す。寄せの HTML は
+  // `:::center` の区切りに読み替える = 23-2）
+  const marker = new Map<number, string>();
+  for (const { kind, form, open, close } of containers) {
     let longest = 2;
     for (let line = open + 1; line < close; line++) {
       const run = /^[ \t]*(:+)/.exec(lines[line])?.[1].length ?? 0;
       longest = Math.max(longest, run);
     }
-    marker.set(open, longest + 1);
-    marker.set(close, longest + 1);
+    const colons = ":".repeat(longest + 1);
+    marker.set(open, colons + (form === "html" ? kind : lines[open].slice(3)));
+    marker.set(close, colons + (form === "html" ? "" : lines[close].slice(3)));
   }
   return lines
     .map((line, index) => {
-      const length = marker.get(index);
-      if (length !== undefined) return ":".repeat(length) + line.slice(3);
+      const rewritten = marker.get(index);
+      if (rewritten !== undefined) return rewritten;
       if (verbatim.has(index)) return line;
       return line.replace(
         COLON_RUN_RE,
