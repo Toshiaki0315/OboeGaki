@@ -109,6 +109,15 @@ describe("段落と見出しを寄せる囲み（22-5 / ADR-0069）", () => {
     ]);
   });
 
+  test("test_1_行の寄せの_HTML_も寄せる（23-2 後半）", () => {
+    expect(alignsOf('## A\n\n<p align="right">署名</p>\n\n後')).toEqual([
+      [
+        ["paragraph", "署名", "right"],
+        ["paragraph", "後", null],
+      ],
+    ]);
+  });
+
   test("test_枚が替わるところで囲みも切れる（`##` から先は寄せない）", () => {
     expect(alignsOf("## A\n\n:::center\n一\n\n## B\n\n二\n:::\n")).toEqual([
       [["paragraph", "一", "center"]],

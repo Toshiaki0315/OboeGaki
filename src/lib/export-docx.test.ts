@@ -197,6 +197,13 @@ describe("段落と見出しを寄せる囲み（22-4 / ADR-0069）", () => {
     expect(paragraphOf(xml, "HTML の中央")).toContain('<w:jc w:val="center"/>');
   });
 
+  test("test_1_行の寄せの_HTML_も寄せる（23-2 後半）", async () => {
+    const xml = await documentXml('<p align="right">1 行の署名</p>\n');
+    expect(paragraphOf(xml, "1 行の署名")).toMatch(
+      /<w:jc w:val="(right|end)"\/>/,
+    );
+  });
+
   test("test_段落の中の画像も段落ごと寄る", async () => {
     const xml = await documentXml(
       ":::center\n![絵](a.png)\n:::\n",

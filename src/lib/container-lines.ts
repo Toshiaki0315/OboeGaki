@@ -86,7 +86,16 @@ export function forMarkdownIt(text: string): string {
   // 区切りの行を何に書き換えるか（`:::` の形は語を残す。寄せの HTML は
   // `:::center` の区切りに読み替える = 23-2）
   const marker = new Map<number, string>();
-  for (const { kind, form, open, close } of containers) {
+  for (const { kind, form, open, close, inline } of containers) {
+    if (inline) {
+      // 1 行の形（`<p align="center">題</p>`）は 3 行の囲みに読み替える。中身が
+      // コロンで始まっても閉じに見えないよう、区切りはそれより長くする
+      const content = lines[open].slice(inline.from, inline.to);
+      const run = /^[ \t]*(:+)/.exec(content)?.[1].length ?? 0;
+      const colons = ":".repeat(Math.max(3, run + 1));
+      marker.set(open, `${colons}${kind}\n${content}\n${colons}`);
+      continue;
+    }
     let longest = 2;
     for (let line = open + 1; line < close; line++) {
       const run = /^[ \t]*(:+)/.exec(lines[line])?.[1].length ?? 0;

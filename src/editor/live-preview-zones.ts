@@ -547,12 +547,18 @@ function blockContainers(state: EditorState): BlockContainers {
     if (entry.kind !== "center" && entry.kind !== "right") continue;
     const open = state.doc.line(entry.open + 1);
     const close = state.doc.line(entry.close + 1);
+    const { inline } = entry;
     aligns.push({
       from: open.from,
       to: close.to,
       kind: entry.kind,
-      open: { from: open.from, to: open.to },
-      close: { from: close.from, to: close.to },
+      // 1 行の形（23-2 後半）は、行の中の開きのタグと閉じのタグを隠す範囲にする
+      open: inline
+        ? { from: open.from, to: open.from + inline.from }
+        : { from: open.from, to: open.to },
+      close: inline
+        ? { from: open.from + inline.to, to: open.to }
+        : { from: close.from, to: close.to },
     });
   }
   return {
@@ -677,6 +683,18 @@ function alignZoneDecorations(
   entry: AlignContainer,
   out: Range<Decoration>[],
 ): void {
+  const openLine = state.doc.lineAt(entry.open.from);
+  if (openLine.number === state.doc.lineAt(entry.close.to).number) {
+    // 1 行の形（`<p align="center">題</p>`。23-2 後半）: 中身だけを読んで、その行を寄せる
+    const body = state.sliceDoc(entry.open.to, entry.close.from);
+    if (alignableLines(state, body)[0]) {
+      out.push(
+        Decoration.line({ class: `cm-align-${entry.kind}` }).range(
+          openLine.from,
+        ),
+      );
+    }
+  }
   const first = state.doc.lineAt(entry.open.to).number + 1;
   const last = state.doc.lineAt(entry.close.from).number - 1;
   if (first <= last) {

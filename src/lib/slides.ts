@@ -113,7 +113,21 @@ function withoutContainerLines(text: string): {
     offset += line.length + 1;
   }
   const aligns: { kind: SlideAlign; from: number; to: number }[] = [];
-  for (const { kind, open, close } of containers) {
+  for (const { kind, open, close, inline } of containers) {
+    if (inline) {
+      // 1 行の形（`<p align="center">題</p>`。23-2 後半）: 中身を行頭に寄せ、
+      // 行の長さは空白で保つ（位置をずらさない）
+      if (kind === "center" || kind === "right") {
+        aligns.push({
+          kind,
+          from: starts[open],
+          to: starts[open] + lines[open].length + 1,
+        });
+      }
+      const content = lines[open].slice(inline.from, inline.to);
+      lines[open] = content.padEnd(lines[open].length, " ");
+      continue;
+    }
     if (kind === "center" || kind === "right") {
       aligns.push({ kind, from: starts[open + 1], to: starts[close] });
     }

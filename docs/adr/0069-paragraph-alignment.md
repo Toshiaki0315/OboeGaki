@@ -184,7 +184,8 @@ GitHub の README や Obsidian・Typora のノートを持ち込むと、今は�
 
 - 開きの行: `<div align="center">`・`<p align="center">`・
   `<div style="text-align: center;">`（`right` も同じ）。閉じの行: `</div>`・`</p>`
-- 1 行の形: `<p align="center">…</p>`・`<div align="center">…</div>`（23-2 の後半）
+- 1 行の形: `<p align="center">…</p>`・`<div align="center">…</div>`（23-2 の後半。
+  中身が空のものは受けない）
 - 扱いは `:::center` と同じ（寄るのは段落と見出しだけ・入れ子を許さない・4 つの
   書き出しでも寄せる）。開きと閉じの間はふつうの Markdown として組む
   （貼った `<details>` と同じ。CommonMark の HTML ブロックより寛い）

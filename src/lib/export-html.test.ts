@@ -398,4 +398,10 @@ describe("段落と見出しを寄せる囲み（22-3 / ADR-0069）", () => {
     // 決めた形でない HTML は今までどおり字のまま（html: false）
     expect(renderBody('<div class="x">\n題\n</div>\n')).toContain("&lt;div");
   });
+
+  test("test_1_行の寄せの_HTML_も同じ箱になる（23-2 後半）", () => {
+    expect(renderBody('<p align="center">題と**強調**</p>\n')).toBe(
+      '<div class="align-center">\n<p>題と<strong>強調</strong></p>\n</div>\n',
+    );
+  });
 });

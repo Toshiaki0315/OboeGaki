@@ -121,5 +121,36 @@ describe("colonContainers", () => {
         { kind: "center", open: 0, close: 3, info: "", form: "html" },
       ]);
     });
+
+    test("test_1_行の形は同じ行に開きと閉じを持ち_中身の位置を返す（23-2 後半）", () => {
+      const line = '<p align="center">題と**強調**</p>';
+      expect(colonContainers(lines(`前\n${line}\n後`))).toEqual([
+        {
+          kind: "center",
+          open: 1,
+          close: 1,
+          info: "",
+          form: "html",
+          inline: { from: line.indexOf("題"), to: line.indexOf("</p>") },
+        },
+      ]);
+      expect(
+        colonContainers(lines('<div style="text-align: right">署名</div>'))[0]
+          ?.kind,
+      ).toBe("right");
+    });
+
+    test("test_1_行の形でも_中身が空・タグ違い・開いている囲みの中は受けない", () => {
+      for (const text of [
+        '<p align="center"></p>',
+        '<p align="center">題</div>',
+        '<p align="center" class="x">題</p>',
+      ]) {
+        expect(colonContainers(lines(text)), text).toEqual([]);
+      }
+      expect(
+        colonContainers(lines(':::note\n<p align="center">題</p>\n:::')),
+      ).toEqual([{ kind: "note", open: 0, close: 2, info: "", form: "colon" }]);
+    });
   });
 });

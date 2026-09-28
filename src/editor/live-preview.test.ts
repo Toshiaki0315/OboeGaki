@@ -1646,6 +1646,16 @@ describe("段落と見出しを寄せる囲み（22-2 / ADR-0069）", () => {
     }
   });
 
+  test("test_1_行の寄せの_HTML_はその行を寄せ_前後のタグを隠す（23-2 後半）", () => {
+    const doc = '前\n\n<p align="center">題</p>\n\n後';
+    expect(aligned(doc)).toEqual([
+      ['<p align="center">題</p>', "cm-align-center"],
+    ]);
+    expect(hidden(doc)).toEqual(['<p align="center">', "</p>"]);
+    // 触れている間はタグを見せる（寄せは残す）
+    expect(hidden(doc, doc.indexOf("題"))).toEqual([]);
+  });
+
   test("test_閉じの無い囲みは寄せない", () => {
     expect(aligned(":::center\n題\n\n後")).toEqual([]);
   });

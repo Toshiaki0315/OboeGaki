@@ -126,6 +126,7 @@ mod tests {
             "「編集」→「中央に寄せる」",
             // 23-2: 貼った寄せの HTML も受ける
             "`<div align=\"center\">`",
+            "`<p align=\"center\">題</p>`",
         ] {
             assert!(MANUAL.contains(piece), "無い説明: {piece}");
         }

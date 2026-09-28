@@ -20,6 +20,10 @@ export const CONTAINER_CLOSE_RE = /^:::[ \t]*$/;
 /// の形だけ。属性は 1 つだけ（`class` などが付いたものは受けない = 狭く見分ける）
 export const ALIGN_HTML_OPEN_RE =
   /^<(div|p)\s+(?:align\s*=\s*(["'])(center|right)\2|style\s*=\s*(["'])\s*text-align\s*:\s*(center|right)\s*;?\s*\4)\s*>[ \t]*$/i;
+/// 1 行の形（`<p align="center">題</p>`。23-2 後半）。属性の規則は開きの行と同じ。
+/// 中身が空のものは受けない
+const ALIGN_HTML_LINE_RE =
+  /^<(div|p)\s+(?:align\s*=\s*(["'])(center|right)\2|style\s*=\s*(["'])\s*text-align\s*:\s*(center|right)\s*;?\s*\4)\s*>(.*?\S.*?)<\/\1>[ \t]*$/i;
 
 export type ColonContainer = {
   kind: "note" | "details" | "center" | "right";
@@ -31,6 +35,9 @@ export type ColonContainer = {
   info: string;
   /// 書き方。`html` は寄せの HTML（`<div align="center">` … `</div>`。23-2）
   form: "colon" | "html";
+  /// 1 行の形（`<p align="center">題</p>`）なら、その行の中の中身の位置
+  /// （開きのタグの後ろから閉じのタグの前まで。open と close は同じ行）
+  inline?: { from: number; to: number };
 };
 
 /// 行の並びから `:::` の囲みを出てくる順に返す。
@@ -52,6 +59,22 @@ export function colonContainers(
     // 行頭が `:` でも `<` でもない行は正規表現に掛けない（全行走査なので）
     const first = text.charCodeAt(0);
     if ((first !== 58 && first !== 60) || isCode(index)) continue;
+    if (open === null && first === 60) {
+      const line = ALIGN_HTML_LINE_RE.exec(text);
+      if (line) {
+        const content = line[6];
+        const from = text.indexOf(">") + 1;
+        found.push({
+          kind: (line[3] ?? line[5]).toLowerCase() as "center" | "right",
+          open: index,
+          close: index,
+          info: "",
+          form: "html",
+          inline: { from, to: from + content.length },
+        });
+        continue;
+      }
+    }
     if (open !== null) {
       if (closes(open, text)) {
         const { tag: _tag, ...entry } = open;
