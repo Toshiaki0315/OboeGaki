@@ -36,9 +36,18 @@ describe("FORMAT_TOOLBAR", () => {
       FORMAT_TOOLBAR.map((group) => group.map((item) => item.kind)),
     ).toEqual([
       ["strong", "emphasis", "strike", "code", "highlight"],
-      ["heading", "bullet", "ordered", "checkbox", "quote"],
+      // 寄せ（ADR-0069 の決定 5）は行の書式の群の最後
+      ["heading", "bullet", "ordered", "checkbox", "quote", "center", "right"],
       ["link", "table"],
     ]);
+  });
+
+  test("test_寄せのボタンは呼び名で見分けられ_絵も違う（要望 2026-09-28）", () => {
+    const center = items.find((item) => item.kind === "center");
+    const right = items.find((item) => item.kind === "right");
+    expect(center?.label).toBe("中央に寄せる");
+    expect(right?.label).toBe("右に寄せる");
+    expect(center?.paths).not.toEqual(right?.paths);
   });
 
   test("同じものを 2 つ置かない", () => {

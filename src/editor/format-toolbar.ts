@@ -124,6 +124,18 @@ export const FORMAT_TOOLBAR: readonly (readonly ToolbarItem[])[] = [
       label: "引用",
       paths: ["M3.2 3.8v8.4", "M6.5 5h7M6.5 8h7M6.5 11h4.5"],
     },
+    {
+      // 寄せ（ADR-0069 の決定 5）。長い線と短い線を交互に置き、短い線の位置で
+      // 寄せる向きを見せる（よくある揃えの絵と同じ形）
+      kind: "center",
+      label: "中央に寄せる",
+      paths: ["M2.5 3.5h11M2.5 9.5h11", "M4.5 6.5h7M4.5 12.5h7"],
+    },
+    {
+      kind: "right",
+      label: "右に寄せる",
+      paths: ["M2.5 3.5h11M2.5 9.5h11", "M6.5 6.5h7M6.5 12.5h7"],
+    },
   ],
   [
     {
