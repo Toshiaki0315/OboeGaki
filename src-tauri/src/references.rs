@@ -39,6 +39,38 @@ pub fn attachment_names(text: &str) -> HashSet<String> {
     found
 }
 
+/// 本文の `attachments/` の後ろを、**行の終わりまで**そろえた字面で集める（24-1）。
+///
+/// 添付の片づけは「消しても安全か」を答えるので、名前を記法の区切りで切らない。
+/// `attachment_names` は空白と `)` で切るため、`<attachments/my photo.png>` や
+/// `attachments/図(1).png` の名前が途中で切れ、使っている添付を未使用と答えていた。
+/// ここではファイル名がこの字面の**頭と一致するか**で見る（呼び手）。途中の `/` の
+/// 後ろからも 1 つずつ足す（`attachments/sub/x.png` の `x.png`）。
+///
+/// そろえ方: パーセント符号化を戻す・合成形（NFC）・小文字（APFS は大文字小文字を
+/// 区別しない。Finder が作った名前は分解形で来ることがある）
+pub fn attachment_tails(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(PREFIX) {
+        let tail = &rest[at + PREFIX.len()..];
+        let end = tail.find(['\n', '\r']).unwrap_or(tail.len());
+        let line = attachment_key(&percent_decode(&tail[..end]));
+        for (index, _) in line.match_indices('/') {
+            found.push(line[index + 1..].to_string());
+        }
+        found.push(line);
+        rest = &tail[end..];
+    }
+    found
+}
+
+/// 添付の名前を比べるためのそろえた字面（NFC + 小文字）
+pub fn attachment_key(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    name.nfc().collect::<String>().to_lowercase()
+}
+
 /// `%E5%9B%B3` のような並びを戻す。**戻せないものはそのまま返す**
 /// （壊れた符号化のせいで参照を見失うより、余分に残すほうが安全）。
 fn percent_decode(text: &str) -> String {

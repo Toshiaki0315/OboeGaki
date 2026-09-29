@@ -31,19 +31,26 @@ impl Vault {
         let Ok(entries) = fs::read_dir(self.attachments_dir()) else {
             return Vec::new();
         };
-        let mut used: HashSet<String> = HashSet::new();
+        // 本文の `attachments/` の後ろを行末まで集め、ファイル名がその頭と一致すれば
+        // 使っていると見る（名前を記法の区切りで切らない・大文字小文字と NFC/NFD を
+        // そろえる。24-1）。迷ったら残す向きに倒す
+        let mut tails: Vec<String> = Vec::new();
         for note in self.all_markdown() {
             if let Ok(text) = read_note(&note) {
-                used.extend(crate::references::attachment_names(&text));
+                tails.extend(crate::references::attachment_tails(&text));
             }
         }
+        let used = |name: &str| {
+            let key = crate::references::attachment_key(name);
+            tails.iter().any(|tail| tail.starts_with(&key))
+        };
         let mut found: Vec<PathBuf> = entries
             .filter_map(|entry| entry.ok().map(|entry| entry.path()))
             .filter(|path| {
                 let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
                     return false;
                 };
-                path.is_file() && !name.starts_with('.') && !used.contains(name)
+                path.is_file() && !name.starts_with('.') && !used(name)
             })
             .collect();
         found.sort();
@@ -210,6 +217,39 @@ mod tests {
         let found = vault.unused_attachments();
 
         assert_eq!(found, vec![vault.attachments_dir().join("孤児.png")]);
+    }
+
+    /// 使っている添付を「使われていない」と言わない（24-1）。以前は名前を空白と `)`
+    /// で切り、大文字小文字と NFC/NFD を見ずに完全一致で比べていて、下の 4 つとも
+    /// 未使用と答え、確かめて進むとゴミ箱へ移っていた
+    #[test]
+    fn test_unused_attachments_空白や括弧を含む名前_大文字小文字_分解形も使っていると数える() {
+        use unicode_normalization::UnicodeNormalization;
+        let (root, vault) = crate::test_support::temp_vault();
+        let dir = root.path().join("attachments");
+        fs::create_dir_all(&dir).unwrap();
+        let decomposed: String = "データ.png".nfd().collect();
+        for name in [
+            "my photo.png",
+            "図(1).png",
+            "Photo.png",
+            decomposed.as_str(),
+        ] {
+            fs::write(dir.join(name), b"x").unwrap();
+        }
+        fs::write(dir.join("本当に使っていない.png"), b"x").unwrap();
+        crate::test_support::note(
+            root.path(),
+            "a.md",
+            "![](<attachments/my photo.png>)\n![](attachments/図(1).png)\n\
+             ![](attachments/photo.png)\n![](attachments/データ.png)\n",
+        );
+        let found: Vec<String> = vault
+            .unused_attachments()
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(found, vec!["本当に使っていない.png".to_string()]);
     }
 
     #[test]
