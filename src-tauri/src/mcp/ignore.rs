@@ -78,7 +78,13 @@ pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<
     // 全部消えた（24-2）。無いときだけ既定の中身から始める
     let current = read_ignore(&path)?.unwrap_or_else(|| DEFAULT_IGNORE.to_string());
     let mut lines: Vec<String> = current.lines().map(str::to_string).collect();
-    let listed = |line: &str| line.trim().trim_matches('/') == cleaned;
+    // 隠しの判定と同じ見方で比べる（大文字小文字・NFD・前後の空白を同じと見る。
+    // 25-3。字面で比べると、表記の違う行を外せず、隠し直すと行が増えた）
+    let wanted = match_key(cleaned);
+    let listed = |line: &str| {
+        let line = line.trim();
+        !line.starts_with('#') && match_key(line.trim_matches('/')) == wanted
+    };
     if hidden {
         if !lines.iter().any(|line| listed(line)) {
             lines.push(cleaned.to_string());
@@ -432,6 +438,24 @@ mod tests {
         fs::write(&path, "秘密\n").unwrap();
         ensure_ignore_file(root.path()).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "秘密\n");
+    }
+
+    #[test]
+    fn test_set_hidden_表記だけ違う行も同じものとして外す_足さない() {
+        // 隠しの判定は表記違い（大文字小文字・NFD・前後の空白）を同じと見る（24-2）。
+        // 付け外しだけ字面で比べていて、`private` の行を「見せる」で消せず、
+        // 隠し直すと行が増えた（25-3）
+        let root = TempDir::new().unwrap();
+        fs::write(root.path().join(IGNORE_FILE), "# メモ\n private /\n").unwrap();
+        assert!(IgnoreList::load(root.path()).is_ignored("Private/a.md"));
+
+        set_hidden(root.path(), "Private", true).unwrap();
+        assert_eq!(hidden_list(root.path()).listed.len(), 1); // 増えない
+
+        set_hidden(root.path(), "Private", false).unwrap();
+        assert!(!IgnoreList::load(root.path()).is_ignored("Private/a.md"));
+        let text = fs::read_to_string(root.path().join(IGNORE_FILE)).unwrap();
+        assert!(text.starts_with("# メモ\n"), "{text:?}");
     }
 
     #[test]
