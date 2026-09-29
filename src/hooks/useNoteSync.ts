@@ -191,6 +191,17 @@ export function useNoteSync({
     if (held.current) await held.current.promise;
     await autosave.flush();
   };
+  /// アプリを終える前（メニューの「終了」。24-1）。書き切り、それでも書けて
+  /// いなければ**退避を書き終えるまで**待つ — 保存の失敗で投げる退避は待たない
+  /// ので、そのまま終えると打った字がどこにも残らない
+  const prepareToQuit = async () => {
+    await flush();
+    const root = vaultRootRef.current;
+    const path = currentPathRef.current;
+    if (dirty.current && root && path) {
+      await keepStash(root, path, readTextRef.current());
+    }
+  };
   /// 予約を破棄する（聞く前・戻す前）
   /// 予約を捨てる。保留中に貯めた予約も一緒に捨てる — 残すと解除で蘇り、
   /// 競合の問いに答える前に自分の版で外部の変更を潰す（21-8）
@@ -447,6 +458,7 @@ export function useNoteSync({
     savedAt,
     noteChanged,
     flush,
+    prepareToQuit,
     holdSaves,
     cancel,
     dropPending,

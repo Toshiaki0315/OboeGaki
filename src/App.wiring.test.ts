@@ -69,4 +69,30 @@ describe("App の配線", () => {
       );
     }
   });
+
+  test("test_終了は書き切ってから_窓が開いていても通す（24-1）", () => {
+    const menu = readFileSync(
+      new URL("../src-tauri/src/menu.rs", import.meta.url),
+      "utf8",
+    );
+    // OS の標準の「終了」はその場で終える（書き切る間が無い）。自前の項目にする
+    expect(menu).not.toContain("PredefinedMenuItem::quit");
+    expect(menu).toMatch(
+      /item\("app-quit", labels\.quit, Some\("CmdOrCtrl\+Q"\)\)/,
+    );
+    expect(source).toMatch(
+      /"app-quit": \(\) =>\s*void sync\s*\.prepareToQuit\(\)\s*\.finally\(\(\) => exitApp\(\)\)/,
+    );
+    expect(source).toMatch(/id === "save" \|\| id === "app-quit"/);
+    expect(source).toContain("useSaveOnLeave(sync.flush)");
+    // 窓を閉じる前に書き切る（onCloseRequested）と、Tauri は済んだあと窓を
+    // destroy する。その権限が無いと、書き切ったあと窓が閉じなくなる
+    const capability = JSON.parse(
+      readFileSync(
+        new URL("../src-tauri/capabilities/default.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { permissions: string[] };
+    expect(capability.permissions).toContain("core:window:allow-destroy");
+  });
 });

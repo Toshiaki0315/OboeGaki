@@ -608,3 +608,44 @@ describe("useNoteSync: 退避の取りこぼし（21-10）", () => {
     expect(mocked.discardStash).not.toHaveBeenCalled();
   });
 });
+
+describe("終了の前の書き切り（24-1）", () => {
+  test("test_未保存なら書いてから終える", async () => {
+    const { result } = renderHook(() => useNoteSync(input()));
+    act(() => result.current.noteChanged(() => "打ったばかり"));
+    await act(() => result.current.prepareToQuit());
+    expect(mocked.writeNote).toHaveBeenCalledWith(
+      "/v",
+      "/v/a.md",
+      "打ったばかり",
+      60,
+    );
+  });
+
+  test("test_書けなければ退避を書き終えるまで待つ（落ちても字が残る）", async () => {
+    mocked.writeNote.mockRejectedValue(new Error("ディスクがいっぱい"));
+    let stashed: () => void = () => {};
+    mocked.stashNote.mockImplementation(
+      () => new Promise<void>((resolve) => (stashed = resolve)),
+    );
+    const { result } = renderHook(() =>
+      useNoteSync(input({ readText: () => "打ったばかり" })),
+    );
+    act(() => result.current.noteChanged(() => "打ったばかり"));
+    let done = false;
+    const quitting = act(async () => {
+      await result.current.prepareToQuit();
+      done = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocked.stashNote).toHaveBeenLastCalledWith(
+      "/v",
+      "/v/a.md",
+      "打ったばかり",
+    );
+    expect(done).toBe(false);
+    stashed();
+    await quitting;
+    expect(done).toBe(true);
+  });
+});

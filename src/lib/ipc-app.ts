@@ -123,6 +123,23 @@ export async function closeCurrentWindow(): Promise<void> {
   await getCurrentWindow().close();
 }
 
+/// アプリを終える（書き切ったあと。メニューの「終了」= 24-1）。OS の標準の
+/// 「終了」はその場で終えるので、書き切る間が無かった
+export function exitApp(): Promise<void> {
+  return invoke<void>("app_exit", {});
+}
+
+/// 本文の窓が閉じられようとしている。`handler` が済むまで閉じるのを待つ
+/// （Tauri は handler の Promise を待ってから窓を壊す）。24-1
+export function onMainWindowCloseRequested(
+  handler: () => Promise<void>,
+): () => void {
+  return safeSubscribe(async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    return getCurrentWindow().onCloseRequested(() => handler());
+  });
+}
+
 /// 起動 → UI マウントの実測（spec §6.6）
 export function startupElapsedMs(): Promise<number> {
   return invoke<number>("startup_elapsed_ms", {});

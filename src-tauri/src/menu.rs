@@ -74,7 +74,10 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             Some(labels.show_all),
         )?)
         .separator()
-        .item(&PredefinedMenuItem::quit(handle, Some(labels.quit))?)
+        // 「終了」は自前の項目（24-1）。OS の標準の項目はその場で終えるので、画面が
+        // 打ちかけを書き切る間が無く、打って 0.8 秒以内に Cmd+Q を押すと最後の字が
+        // 消えた。画面が書き切ってから `app_exit` で終える
+        .item(&item("app-quit", labels.quit, Some("CmdOrCtrl+Q"))?)
         .build()?;
     // 手入れ（M-6）。**ふだん触らないものを畳む**（要望 2026-09-13）— 何か
     // おかしいときだけ使う 4 つが、毎日使う「新規・保存」の間に挟まっていた。
@@ -279,7 +282,13 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         app.manage(checks);
     }
     app.on_menu_event(|app, event| {
-        use tauri::Emitter;
+        use tauri::{Emitter, Manager};
+        // 本文の窓が無ければ（書き取りの窓だけ残っている等）、書き切るものも受け手も
+        // 無いのでその場で終える。受け手の無い「終了」で終われなくならないように
+        if event.id().0 == "app-quit" && app.get_webview_window("main").is_none() {
+            app.exit(0);
+            return;
+        }
         let _ = app.emit("menu", event.id().0.clone());
     });
     Ok(())

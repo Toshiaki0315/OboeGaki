@@ -38,6 +38,7 @@ import {
   pickFolder,
   printPage,
   startupElapsedMs,
+  exitApp,
   appendDaily,
   clearRecovery,
   conflictCopy,
@@ -470,6 +471,7 @@ describe("包みのコマンド名と引数（表）", () => {
       { app: "Notes" },
     ],
     ["startupElapsedMs", () => startupElapsedMs(), "startup_elapsed_ms", {}],
+    ["exitApp", () => exitApp(), "app_exit", {}],
     ["templateList", () => templateList("/v"), "template_list", { root: "/v" }],
     [
       "createFromTemplate（題は雛形の名前 = 空を送る）",

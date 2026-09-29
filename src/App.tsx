@@ -14,6 +14,7 @@ import { useSearch } from "./hooks/useSearch";
 import { useMcpHidden } from "./hooks/useMcpHidden";
 import { useLatest } from "./hooks/useLatest";
 import { useAppMenu } from "./hooks/useAppMenu";
+import { useSaveOnLeave } from "./hooks/useSaveOnLeave";
 import { useNoteCommands } from "./hooks/useNoteCommands";
 import { useExport } from "./hooks/useExport";
 import { useOutline } from "./hooks/useOutline";
@@ -178,6 +179,7 @@ import {
   subscribeIndexSynced,
   subscribeIndexSyncFailed,
   writeClipboardText,
+  exitApp,
 } from "./lib/ipc";
 import { useAppStore } from "./stores/app";
 import "./App.css";
@@ -274,6 +276,8 @@ function App() {
       if (written[0]) await noteCommands.openNote(written[0]);
     },
   });
+  // フォーカスが外れる・隠れる・窓を閉じるときにも書き切る（spec §7.4 / 24-1）
+  useSaveOnLeave(sync.flush);
   const { savedAt } = sync;
   // 開いているノートと、ノートへの操作（19-4 で hooks/useNoteCommands に）
   const noteCommands = useNoteCommands({
@@ -1405,7 +1409,8 @@ function App() {
         sync.recovery > 0 ||
         sync.deleted !== null ||
         sync.conflict !== null;
-      if (!blocked || id === "save") return true;
+      // 終了も通す（窓が開いていても、書き切ってから終える。24-1）
+      if (!blocked || id === "save" || id === "app-quit") return true;
       // パレット（クイックオープン・見出し・雛形）の間の Cmd+O は切り替えに使う
       const palette =
         dialog?.kind === "quickOpen" ||
@@ -1494,6 +1499,9 @@ function App() {
         changeSettings({ treesVisible: !settingsRef.current.treesVisible }),
       "toggle-notes": () =>
         changeSettings({ notesVisible: !settingsRef.current.notesVisible }),
+      // メニューの「終了」（Cmd+Q）。書き切ってから終える（24-1）。書けなかった
+      // ときも退避を書き終えてから終える（次の起動で復元を聞く）
+      "app-quit": () => void sync.prepareToQuit().finally(() => exitApp()),
       "format-heading": () => editorRef.current?.applyFormat("heading"),
       "format-bullet": () => editorRef.current?.applyFormat("bullet"),
       "format-ordered": () => editorRef.current?.applyFormat("ordered"),

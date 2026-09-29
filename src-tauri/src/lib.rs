@@ -174,10 +174,39 @@ pub fn run() {
             commands::llm_generate,
             commands::conflict_copy,
             commands::startup_elapsed_ms,
+            commands::app_exit,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // OS からの終了の求め（Dock の「終了」など）。本文の窓が開いていれば
+            // 1 度だけ止め、画面に打ちかけを書き切らせてから `app_exit` で終える
+            // （24-1）。2 度目は止めない — 画面が応えなくても終われるように
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
+                use tauri::{Emitter, Manager};
+                let main_open = app.get_webview_window("main").is_some();
+                if hold_exit(*code, main_open, &EXIT_ASKED) {
+                    api.prevent_exit();
+                    let _ = app.emit("menu", "app-quit");
+                }
+            }
+        });
 }
+
+/// 終了の求めを止めて、画面に書き切らせるか（24-1）。
+///
+/// - `code` が `Some` なのは `app.exit()`（画面が書き切ったあとの `app_exit`）。止めない
+/// - 本文の窓が無ければ書き切るものも受け手も無い。止めない
+/// - 止めるのは 1 度だけ。画面が応えないときに終われなくならないように
+fn hold_exit(
+    code: Option<i32>,
+    main_window_open: bool,
+    asked: &std::sync::atomic::AtomicBool,
+) -> bool {
+    code.is_none() && main_window_open && !asked.swap(true, std::sync::atomic::Ordering::SeqCst)
+}
+
+static EXIT_ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(test)]
 // テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
@@ -189,6 +218,20 @@ mod tests {
     #[test]
     fn test_テスト基盤が動く() {
         assert_eq!(1 + 1, 2);
+    }
+
+    /// OS からの終了の求めは 1 度だけ止めて、画面に書き切らせる（24-1）
+    #[test]
+    fn test_終了の求めは本文の窓があるとき_1_度だけ止める() {
+        use std::sync::atomic::AtomicBool;
+        let asked = AtomicBool::new(false);
+        assert!(super::hold_exit(None, true, &asked));
+        // 2 度目は止めない（画面が応えなくても終われる）
+        assert!(!super::hold_exit(None, true, &asked));
+        // 画面が書き切ったあとの app.exit(0) は止めない
+        assert!(!super::hold_exit(Some(0), true, &AtomicBool::new(false)));
+        // 本文の窓が無ければ止めない（受け手が無い）
+        assert!(!super::hold_exit(None, false, &AtomicBool::new(false)));
     }
 
     /// 版は 3 箇所（Cargo / tauri.conf / package.json）が同じ字面であること。

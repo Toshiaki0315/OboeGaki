@@ -132,6 +132,13 @@ pub fn vault_is_empty(root: String) -> bool {
     Vault::new(&root).is_empty()
 }
 
+/// アプリを終える。画面が打ちかけを書き切ったあとに呼ぶ（メニューの「終了」と
+/// OS からの終了の求め。24-1）
+#[tauri::command]
+pub fn app_exit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 /// プロセス開始から UI マウントまでの時間（spec §6.6: 起動 < 1.5 秒の実測）。
 /// フロントが最初のマウントで呼ぶ。OBOEGAKI_BENCH_STARTUP=1 のときは
 /// 値を印字してから終了する（make bench-startup 用）。
