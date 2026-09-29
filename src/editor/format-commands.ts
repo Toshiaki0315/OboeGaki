@@ -384,17 +384,42 @@ function alignCommand(kind: "center" | "right"): StateCommand {
     if (around) {
       if (around.kind !== "center" && around.kind !== "right") return false;
       const open = state.doc.line(around.open + 1);
-      if (around.kind !== kind) {
+      const close = state.doc.line(around.close + 1);
+      // 1 行の形（`<p align="center">題</p>`。23-2）は行ごと書き直す。中身を残す
+      if (around.inline) {
+        const content = open.text.slice(around.inline.from, around.inline.to);
+        const head = around.kind === kind ? "" : `:::${kind}\n`;
+        const insert =
+          around.kind === kind ? content : `${head}${content}\n:::`;
         dispatch(
           state.update({
-            changes: { from: open.from, to: open.to, insert: `:::${kind}` },
+            changes: { from: open.from, to: open.to, insert },
+            selection: {
+              anchor: open.from + head.length,
+              head: open.from + head.length + content.length,
+            },
+            userEvent: "input",
+            scrollIntoView: true,
+          }),
+        );
+        return true;
+      }
+      if (around.kind !== kind) {
+        // 向きを替える。寄せの HTML（`<div align="center">` … `</div>`）も `:::` の
+        // 区切りに書き直す — 開きだけ替えると閉じの `</div>` が残って囲みが
+        // 壊れた（レビュー 2026-09-29）。書く形は `:::` だけ（ADR-0069 の決定 6）
+        dispatch(
+          state.update({
+            changes: [
+              { from: open.from, to: open.to, insert: `:::${kind}` },
+              { from: close.from, to: close.to, insert: ":::" },
+            ],
             userEvent: "input",
           }),
         );
         return true;
       }
       // 外す: 開きと閉じの行を改行ごと消し、中身を選び直す
-      const close = state.doc.line(around.close + 1);
       const changes = state.changes([
         { from: open.from, to: Math.min(open.to + 1, state.doc.length) },
         { from: Math.max(close.from - 1, open.to), to: close.to },

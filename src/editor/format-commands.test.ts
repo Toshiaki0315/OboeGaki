@@ -361,6 +361,31 @@ describe("選んだ行を寄せの囲みで包む・外す（23-1 / ADR-0069 の
     );
   });
 
+  test("test_寄せの_HTML_で向きを替えると_:::_の囲みに書き直す（レビュー 2026-09-29）", () => {
+    // 1 行の形: 以前は行ごと `:::right` に差し替えて中身が消えた
+    expect(align("right", '<p align="center">｜題</p>')).toEqual({
+      handled: true,
+      doc: ":::right\n題\n:::",
+      selected: "題",
+    });
+    // 行を分けた形: 以前は開きだけ差し替えて閉じの `</div>` が残り、囲みが壊れた
+    expect(align("right", '<div align="center">\n｜題\n</div>').doc).toBe(
+      ":::right\n題\n:::",
+    );
+  });
+
+  test("test_寄せの_HTML_で同じ向きを押すと外す_1_行の形は中身を残す（レビュー 2026-09-29）", () => {
+    // 1 行の形: 以前は同じ行の開きと閉じを別々に消そうとして RangeError になった
+    expect(align("center", '前\n<p align="center">｜題</p>\n後')).toEqual({
+      handled: true,
+      doc: "前\n題\n後",
+      selected: "題",
+    });
+    expect(align("center", '<div align="center">\n｜題\n</div>').doc).toBe(
+      "題",
+    );
+  });
+
   test("test_note_などの中や_囲みにまたがる選択では何もしない（入れ子を作らない）", () => {
     expect(align("center", ":::note\n｜注意\n:::").handled).toBe(false);
     expect(align("center", "｜前\n:::note\n注意｜\n:::").handled).toBe(false);
