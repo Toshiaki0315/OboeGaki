@@ -102,8 +102,12 @@ impl Vault {
         } else {
             self.root.join(&cleaned)
         };
-        if path.parent() == Some(destination.as_path()) {
-            return Ok(path.to_path_buf()); // 同じ場所。動かす意味が無い
+        // 同じ場所なら動かす意味が無い。**実体で比べる** — 字面で比べると、表記違いの
+        // 同じフォルダ（`Work` と `work`。APFS は大文字小文字を区別しない）を別の
+        // フォルダと見なし、自分自身と名前がぶつかって `-2` に改名された（24-5）
+        let real = |dir: &Path| dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+        if path.parent().map(real) == Some(real(&destination)) {
+            return Ok(path.to_path_buf());
         }
         fs::create_dir_all(&destination)?;
         // 行き先も**実体**で封じ込めを確かめる。字句検査だけだと、
@@ -113,7 +117,8 @@ impl Vault {
             return Err(outside_error("保管フォルダの外へは移せない", &destination));
         }
         let (stem, suffix) = split_name(path, ".md");
-        let target = unique_path(&destination, &stem, &suffix, None);
+        // 自分自身はぶつかりに数えない（24-5）
+        let target = unique_path(&destination, &stem, &suffix, Some(path));
         let carry = self.history_carry(path, &target); // 鍵は動かす前に（24-1）
         fs::rename(path, &target)?;
         self.carry_history(&carry);
@@ -509,6 +514,19 @@ mod tests {
         // 何も動いていない（動かした後に失敗すると旧パスと新パスの 2 つになる。21-5）
         assert!(!root.path().join("新.md").exists());
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "# 旧\n\n本文\n");
+    }
+
+    /// 表記違いの同じフォルダ（`Work` と `work`）へ移しても、名前を変えない（24-5）。
+    /// 以前は字面で比べて別のフォルダと見なし、自分自身と名前がぶつかって `-2` に
+    /// 改名された
+    #[test]
+    fn test_move_note_表記違いの同じフォルダへ移しても改名しない() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let note = crate::test_support::note(root.path(), "Work/a.md", "# a\n");
+        let moved = vault.move_note(&note, "work").unwrap();
+        assert_eq!(moved.file_name().unwrap(), "a.md");
+        assert!(note.exists());
+        assert!(!root.path().join("Work/a-2.md").exists());
     }
 
     /// 大文字小文字だけの改名（`foo` → `Foo`）でも履歴を連れて行く（24-1）。以前は
