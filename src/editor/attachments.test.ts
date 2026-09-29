@@ -1,6 +1,8 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import { EditorState, Text } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import {
+  dropFiles,
   insertionTarget,
   isImageFile,
   looksLikeAttachment,
@@ -88,5 +90,62 @@ describe("insertionTarget（保存を待つ間に文書が変わったとき）"
       from: 0,
       to: 0,
     });
+  });
+});
+
+describe("変換中は差し込まない（24-5 / T5）", () => {
+  /// 本物の EditorView は組まず、dropFiles が触るものだけ持つ入れ物
+  function fakeView(doc: string) {
+    const dispatch = vi.fn();
+    const view = {
+      state: EditorState.create({ doc, selection: { anchor: doc.length } }),
+      composing: true,
+      dom: { isConnected: true },
+      dispatch,
+      posAtCoords: () => null,
+    };
+    return { view, dispatch };
+  }
+
+  test("test_保存が終わっても変換中なら待ち_確定してから入れる", async () => {
+    vi.useFakeTimers();
+    try {
+      const { view, dispatch } = fakeView("本文");
+      const file = new File([new Uint8Array([1])], "a.png", {
+        type: "image/png",
+      });
+      dropFiles(
+        view as unknown as EditorView,
+        [file],
+        null,
+        async () => "attachments/a.png",
+      );
+      await vi.advanceTimersByTimeAsync(200);
+      // 変換中に dispatch すると、変換中の字と入れ違って壊れる
+      expect(dispatch).not.toHaveBeenCalled();
+      view.composing = false;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(dispatch.mock.calls[0][0].changes.insert).toContain(
+        "attachments/a.png",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("test_変換中でなければ待たずに入れる", async () => {
+    const { view, dispatch } = fakeView("本文");
+    view.composing = false;
+    const file = new File([new Uint8Array([1])], "a.png", {
+      type: "image/png",
+    });
+    dropFiles(
+      view as unknown as EditorView,
+      [file],
+      null,
+      async () => "attachments/a.png",
+    );
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
   });
 });

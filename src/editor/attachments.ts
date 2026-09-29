@@ -88,6 +88,22 @@ async function saveAll(
   return markdownFor(links);
 }
 
+/// 変換が済むまで確かめ直す間隔（ms）
+const COMPOSING_POLL_MS = 50;
+
+/// 変換中でなくなってから `run` する（24-5 / T5）。保存や読み込みを待つ間に
+/// 変換が始まっていることがあり、その最中に dispatch すると変換中の字と
+/// 入れ違って壊れる。挿す位置は `run` の中で取り直すこと（待つ間に文書が変わる）。
+/// 閉じたエディタは待たない（二度と変換が終わらない）
+export function afterComposition(view: EditorView, run: () => void): void {
+  if (!view.dom.isConnected) return;
+  if (!view.composing) {
+    run();
+    return;
+  }
+  setTimeout(() => afterComposition(view, run), COMPOSING_POLL_MS);
+}
+
 function insertAt(view: EditorView, from: number, to: number, text: string) {
   if (!text) return;
   view.dispatch({
@@ -109,10 +125,12 @@ export function attachmentEvents(save: SaveAttachment): Extension {
         from: view.state.selection.main.from,
         to: view.state.selection.main.to,
       };
-      void saveAll(save, pickImages(files)).then((text) => {
-        const target = insertionTarget(startDoc, captured, view.state);
-        insertAt(view, target.from, target.to, text);
-      });
+      void saveAll(save, pickImages(files)).then((text) =>
+        afterComposition(view, () => {
+          const target = insertionTarget(startDoc, captured, view.state);
+          insertAt(view, target.from, target.to, text);
+        }),
+      );
       return true;
     },
     drop: (event, view) => {
@@ -141,13 +159,15 @@ export function dropFiles(
   const startDoc = view.state.doc;
   const pos =
     (at ? view.posAtCoords(at) : null) ?? view.state.selection.main.head;
-  void saveAll(save, pickImages(files)).then((text) => {
-    const target = insertionTarget(
-      startDoc,
-      { from: pos, to: pos },
-      view.state,
-    );
-    insertAt(view, target.from, target.to, text);
-  });
+  void saveAll(save, pickImages(files)).then((text) =>
+    afterComposition(view, () => {
+      const target = insertionTarget(
+        startDoc,
+        { from: pos, to: pos },
+        view.state,
+      );
+      insertAt(view, target.from, target.to, text);
+    }),
+  );
   return true;
 }

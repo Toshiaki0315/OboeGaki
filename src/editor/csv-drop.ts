@@ -9,7 +9,7 @@ import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { csvToMarkdown, isCsvFile, parseCsv } from "../lib/csv";
 import { decodeText } from "../lib/decode-text";
-import { insertionTarget } from "./attachments";
+import { afterComposition, insertionTarget } from "./attachments";
 
 /// 前後に空行を足す（段落の途中に表が食い込まないように）。
 export function tableBlock(
@@ -44,18 +44,8 @@ export function csvDropEvents(): Extension {
       // **行の頭に入れる。** 表は行をまるごと使うものなので、落とした場所が
       // 文の途中でも語を割らない（落とした行の上に出る）
       const pos = view.state.doc.lineAt(dropped).from;
-      void Promise.all(
-        files.map(async (file) => {
-          try {
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            return csvToMarkdown(parseCsv(decodeText(bytes)));
-          } catch {
-            return ""; // 読めないものは黙って見送る（本文を壊さない）
-          }
-        }),
-      ).then((tables) => {
-        const table = tables.filter(Boolean).join("\n");
-        if (!table) return;
+      // 挿す位置は入れる瞬間に取り直す（読む間・変換を待つ間に文書が変わる）
+      const insertTable = (table: string) => {
         const target = insertionTarget(
           startDoc,
           { from: pos, to: pos },
@@ -74,6 +64,21 @@ export function csvDropEvents(): Extension {
           selection: { anchor: target.from + text.length },
           userEvent: "input.paste",
         });
+      };
+      void Promise.all(
+        files.map(async (file) => {
+          try {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            return csvToMarkdown(parseCsv(decodeText(bytes)));
+          } catch {
+            return ""; // 読めないものは黙って見送る（本文を壊さない）
+          }
+        }),
+      ).then((tables) => {
+        const table = tables.filter(Boolean).join("\n");
+        if (!table) return;
+        // 変換中なら確定を待つ（24-5 / T5）
+        afterComposition(view, () => insertTable(table));
       });
       return true;
     },
