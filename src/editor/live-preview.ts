@@ -445,7 +445,16 @@ export function previewDecorations(
       }
     },
   });
-  return out;
+  // **改行をまたぐ置き換えは出さない**（24-3）。この装飾は ViewPlugin から出すので、
+  // CM6 は改行を置き換えると投げ、画面が作れずノートが開けなくなる（行をまたぐ
+  // `<span\nstyle=…>` の開きタグ、`[[名前\n続き|表示]]` の隠しなど）。そのときは
+  // 隠さず字のまま見せる — 開けないより、記号が見えるほうがよい
+  return out.filter(
+    (range) =>
+      !(range.value as { point?: boolean }).point ||
+      range.from === range.to ||
+      !state.sliceDoc(range.from, range.to).includes("\n"),
+  );
 }
 
 const hideMarkers = ViewPlugin.fromClass(

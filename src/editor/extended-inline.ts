@@ -47,6 +47,7 @@ const HASH = 35; // #
 const BRACKET = 91; // [
 const BANG = 33; // `!`
 const CLOSE_BRACKET = 93; // ]
+const NEWLINE = 10; // \n
 const PIPE = 124; // |
 const DOLLAR = 36; // $
 
@@ -177,7 +178,8 @@ export const extendedInline: MarkdownConfig = {
         let end = pos + 3;
         while (end < cx.end && cx.char(end) !== CLOSE_BRACKET) {
           const code = cx.char(end);
-          if (code === BRACKET || code === PIPE) return -1;
+          // 名前は行をまたがない（24-3。Obsidian も同じ）
+          if (code === BRACKET || code === PIPE || code === NEWLINE) return -1;
           end++;
         }
         if (end + 1 >= cx.end || cx.char(end + 1) !== CLOSE_BRACKET) return -1;
@@ -205,7 +207,9 @@ export const extendedInline: MarkdownConfig = {
         let pipe = -1;
         while (end < cx.end && cx.char(end) !== CLOSE_BRACKET) {
           const code = cx.char(end);
-          if (code === BRACKET) return -1;
+          // 名前も表示も行をまたがない（24-3。またぐと、名前と縦棒を隠す範囲が
+          // 改行を含み、CM6 が投げてノートが開けなくなった。Obsidian も同じ規則）
+          if (code === BRACKET || code === NEWLINE) return -1;
           if (code === PIPE && pipe < 0) pipe = end;
           end++;
         }
