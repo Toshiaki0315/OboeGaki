@@ -136,13 +136,21 @@ fn note_preview(text: &str) -> String {
 
 /// その日の 0 時（**その土地の時計で**）を epoch からのナノ秒で。
 /// 更新日の絞り込みは「画面に出ている日付」で切りたいので UTC ではない。
+///
+/// ナノ秒で表せない日付（1677〜2262 年の外）は、**その側の果て**に倒す（25-3。
+/// 昔も未来の果てに倒していたので、昔の日付で絞りの向きが逆になった）
 fn day_start_ns(day: chrono::NaiveDate) -> i64 {
-    use chrono::TimeZone;
+    use chrono::{Datelike, TimeZone};
+    let beyond = if day.year() < 1970 {
+        i64::MIN
+    } else {
+        i64::MAX
+    };
     chrono::Local
         .from_local_datetime(&day.and_hms_opt(0, 0, 0).expect("0 時は必ずある"))
         .earliest()
-        .map(|at| at.timestamp_nanos_opt().unwrap_or(i64::MAX))
-        .unwrap_or(i64::MAX)
+        .and_then(|at| at.timestamp_nanos_opt())
+        .unwrap_or(beyond)
 }
 
 /// 索引のキー（vault からの相対パス）。文字列としては **NFC** に揃える —
@@ -1443,6 +1451,21 @@ mod tests {
             paths(&db.search("記録 before:+262142-12-31").unwrap()),
             ["a.md"]
         );
+    }
+
+    /// ナノ秒で表せない昔（1677 年より前）でも、絞りの向きを逆にしない（25-3。
+    /// 表せないときに未来の果てへ倒していたので、`before:1600-01-01` が全部に当たり、
+    /// `after:1600-01-01` が何にも当たらなかった）
+    #[test]
+    fn test_search_1677_年より前の日付でも絞りの向きは変わらない() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n記録。\n")]);
+        let db = synced(&vault);
+        assert!(paths(&db.search("記録 before:1600-01-01").unwrap()).is_empty());
+        assert_eq!(
+            paths(&db.search("記録 after:1600-01-01").unwrap()),
+            ["a.md"]
+        );
+        assert!(paths(&db.search("記録 before:-262143-01-01").unwrap()).is_empty());
     }
 
     #[test]
