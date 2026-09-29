@@ -1639,7 +1639,8 @@ PowerPoint・印刷）は docs/manual_test.md の各項目で確かめる。見�
       - [x] 制御文字（U+000B など）で Word・PowerPoint のファイルが壊れる → 入口
             （buildDocx・splitDeck・フッタの字）で `xmlSafeText` を通す。U+000B と U+000C
             は改行に、ほかの制御文字は取り除く
-      - [ ] PowerPoint で字下げのコードが 1 行目しか残らない
+      - [x] PowerPoint で字下げのコードが 1 行目しか残らない → 行の範囲から字下げを
+            外して全部の行を読む（空行も残す）
       - [ ] 埋め込んだノートの front matter が HTML・Word・印刷に出る
 - [ ] **24-5. 残りの中と低**（24-4 まで済んだら改めて並べる）
 

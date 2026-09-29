@@ -305,6 +305,18 @@ function listItems(
 }
 
 function fencedCode(text: string, node: SyntaxNode): SlideBlock {
+  if (node.name === "CodeBlock") {
+    // 字下げのコード。Lezer は 1 行ずつ別の CodeText に分けるので、最初の 1 つだけ
+    // 読むと 2 行目以降が黙って消えた（24-4）。行の範囲から字下げ（空白 4 つか
+    // タブ 1 つ）を外して読む。空行もそのまま残す
+    const start = text.lastIndexOf("\n", node.from - 1) + 1;
+    const lines = text
+      .slice(start, node.to)
+      .replace(/\n+$/, "")
+      .split("\n")
+      .map((line) => line.replace(/^(?: {1,4}|\t)/, ""));
+    return { kind: "code", text: lines.join("\n"), language: "" };
+  }
   const info = node.getChild("CodeInfo");
   const body = node.getChild("CodeText");
   return {

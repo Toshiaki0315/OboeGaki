@@ -126,6 +126,16 @@ describe("段落と見出しを寄せる囲み（22-5 / ADR-0069）", () => {
   });
 });
 
+describe("字下げのコード（24-4）", () => {
+  test("test_字下げのコードは全部の行を残す_空行も", () => {
+    // Lezer は字下げのコードを 1 行ずつ別の CodeText に分ける。以前は最初の 1 つだけ
+    // 読んでいて、2 行目以降が黙って消えた
+    const deck = splitDeck("## A\n\n    l1\n    l2\n\n      l3\n");
+    const code = deck.slides[0].blocks.find((block) => block.kind === "code");
+    expect(code?.kind === "code" && code.text).toBe("l1\nl2\n\n  l3");
+  });
+});
+
 describe("画像の説明（CFG-72 / TASKS 8-2 の積み残し）", () => {
   it("test_道と説明の両方を持つ", () => {
     const deck = splitDeck("## A\n\n![犬の写真](dog.png)\n");
