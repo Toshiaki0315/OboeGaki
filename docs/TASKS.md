@@ -1645,7 +1645,8 @@ PowerPoint・印刷）は docs/manual_test.md の各項目で確かめる。見�
             本文と同じく bodyText を通してから組む
 - [ ] **24-5. 残りの中と低**
       - 中
-        - [ ] PowerPoint だけ front matter を本文として読む（コメント行が表紙の題になる）
+        - [x] PowerPoint だけ front matter を本文として読む（コメント行が表紙の題になる）→
+              splitDeck の入口で bodyText を通す
         - [ ] PowerPoint だけ行内の書き方を組まない（自動リンクが消える・リンクの題が出る・
               `\*` や `&amp;` が字のまま・`\` の改行が字で残る）
         - [ ] PowerPoint だけ下線の見出し（setext）とリストの中のコードが消える

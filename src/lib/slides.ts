@@ -20,6 +20,7 @@ import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
 import { containersOf } from "./container-lines";
 import { xmlSafeText } from "./xml-safe";
+import { bodyText } from "../markdown/front-matter";
 import { splitImageAlt } from "../markdown/image-size";
 import { plainText, sameStyle, type Run } from "../markdown/runs";
 import {
@@ -141,7 +142,10 @@ function withoutContainerLines(text: string): {
 export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
   // XML が許さない制御文字を入口で落とす（24-4。貼った U+000B で壊れた PowerPoint に
   // なった）。枚の中の字はすべてここから作る
-  const { text, aligns } = withoutContainerLines(xmlSafeText(source));
+  // front matter も本文として読まない（HTML・Word と同じ。24-5）。読むと YAML の
+  // コメント行が表紙の題になり、リストや空行を含むものは副題に入った。書体などの
+  // 見た目は呼び手が front matter から別に読む（readSlideTheme）
+  const { text, aligns } = withoutContainerLines(xmlSafeText(bodyText(source)));
   const tree = parser.parse(text);
   // その位置の寄せ（段落と小見出しにだけ使う。決定 4）
   const alignAt = (pos: number): { align?: SlideAlign } => {

@@ -126,6 +126,19 @@ describe("段落と見出しを寄せる囲み（22-5 / ADR-0069）", () => {
   });
 });
 
+describe("front matter（24-5）", () => {
+  test("test_front_matter_は本文として読まない（表紙の題や副題にならない）", () => {
+    // YAML のコメント行が表紙の題になり、本当の `# T` が扉に落ちていた。リストや
+    // 空行を含む front matter は副題に入っていた
+    const deck = splitDeck(
+      "---\n# 設定\ntags:\n  - a\n\nslide-font: X\n---\n# T\n\n副題の文\n\n## A\n\n本文\n",
+    );
+    expect(deck.title).toBe("T");
+    expect(deck.subtitle).toBe("副題の文");
+    expect(deck.slides.map((slide) => slide.title)).toEqual(["A"]);
+  });
+});
+
 describe("字下げのコード（24-4）", () => {
   test("test_字下げのコードは全部の行を残す_空行も", () => {
     // Lezer は字下げのコードを 1 行ずつ別の CodeText に分ける。以前は最初の 1 つだけ
