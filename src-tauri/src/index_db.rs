@@ -778,8 +778,12 @@ impl IndexDb {
             params.push(Box::new(day_start_ns(after)));
         }
         if let Some(before) = parsed.before {
-            clause.push_str(" AND notes.mtime_ns < ?");
-            params.push(Box::new(day_start_ns(before + chrono::Duration::days(1))));
+            // 翌日の 0 時より前。暦の果て（NaiveDate::MAX）では翌日が無いので上限を
+            // 付けない（以前は `+ Duration::days(1)` があふれて panic した。24-5）
+            if let Some(next) = before.succ_opt() {
+                clause.push_str(" AND notes.mtime_ns < ?");
+                params.push(Box::new(day_start_ns(next)));
+            }
         }
         (clause, params)
     }
@@ -1418,6 +1422,26 @@ mod tests {
                     .unwrap()
             ),
             ["古い.md"]
+        );
+    }
+
+    /// 極端な日付でも落ちない（24-5。`before:` の翌日を足すところで桁があふれて
+    /// panic していた。GUI の検索と MCP の search_notes の両方が通る）
+    #[test]
+    fn test_search_極端な日付でも落ちない() {
+        let (_root, vault) = vault_with(&[("a.md", "# a\n\n記録。\n")]);
+        let db = synced(&vault);
+        for query in [
+            "記録 before:+262142-12-31",
+            "記録 after:+262142-12-31",
+            "記録 before:-262143-01-01",
+        ] {
+            assert!(db.search(query).is_ok(), "{query}");
+        }
+        // 未来の果てより前 = 全部
+        assert_eq!(
+            paths(&db.search("記録 before:+262142-12-31").unwrap()),
+            ["a.md"]
         );
     }
 
