@@ -14,8 +14,16 @@ use super::*;
 pub fn decode_text(bytes: &[u8]) -> String {
     let text = match std::str::from_utf8(bytes) {
         Ok(text) => text.to_string(),
-        // 日本語の `.txt` はほぼ Shift_JIS（ポメラの既定もこれ）
-        Err(_) => encoding_rs::SHIFT_JIS.decode(bytes).0.into_owned(),
+        // 日本語の `.txt` はほぼ Shift_JIS（ポメラの既定もこれ）。ただし **Shift_JIS と
+        // して誤りなく読めたときだけ** — UTF-8 のノートに読めないバイトが 1 つ紛れた
+        // だけで全体を Shift_JIS と決めつけると、日本語が丸ごと化け、書き戻す操作
+        // （改名・一括置換・やることの完了…）がそれを保存し、履歴の版も化けたものに
+        // なった（レビュー 2026-09-29）。どちらでも読み切れなければ UTF-8 のまま読み、
+        // 読めないバイトだけを置き換え文字にする
+        Err(_) => match encoding_rs::SHIFT_JIS.decode_without_bom_handling(bytes) {
+            (sjis, false) => sjis.into_owned(),
+            (_, true) => String::from_utf8_lossy(bytes).into_owned(),
+        },
     };
     // BOM は字ではない（先頭に見えない文字が残ると検索も置換も外れる）
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text).to_string();
@@ -134,6 +142,22 @@ mod tests {
         // 「こんにちは」の Shift_JIS
         let sjis = [0x82, 0xB1, 0x82, 0xF1, 0x82, 0xC9, 0x82, 0xBF, 0x82, 0xCD];
         assert_eq!(decode_text(&sjis), "こんにちは");
+    }
+
+    #[test]
+    fn test_UTF8_に読めないバイトが_1_つ混じっても日本語は化けない() {
+        // Latin-1 の é（0xE9）が 1 字だけ紛れた UTF-8 のノート。以前は全体を
+        // Shift_JIS として読み直して「繝｡繝｢」と化け、書き戻しでそれを保存した
+        let mut bytes = "# メモ\n\n日本語の本文です\ncaf".as_bytes().to_vec();
+        bytes.push(0xE9);
+        bytes.push(b'\n');
+        let text = decode_text(&bytes);
+        assert!(
+            text.starts_with("# メモ\n\n日本語の本文です\ncaf"),
+            "{text}"
+        );
+        // 読めないバイトだけが置き換え文字になる
+        assert_eq!(text.matches('\u{FFFD}').count(), 1, "{text}");
     }
 
     #[test]
