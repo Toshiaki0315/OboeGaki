@@ -233,6 +233,17 @@ describe("折りたたみの呼び名（24-5）", () => {
     ]);
     expect(runsOf(blocks[0]).every((run) => run.bold)).toBe(true);
   });
+
+  test("test_すぐ上の段落に呼び名を繋げない（25-3）", () => {
+    // HTML では囲みが段落を切るので別の段落。以前は呼び名が上の段落の続きになった
+    const blocks = splitDeck("## S\n\ntext\n:::details 呼び名\nbody\n:::\n")
+      .slides[0].blocks;
+    expect(blocks.map((block) => [block.kind, said(block)])).toEqual([
+      ["paragraph", "text"],
+      ["paragraph", "呼び名"],
+      ["paragraph", "body"],
+    ]);
+  });
 });
 
 describe("front matter（24-5）", () => {

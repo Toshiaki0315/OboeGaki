@@ -119,10 +119,12 @@ function withoutContainerLines(text: string): {
       continue;
     }
     // 折りたたみの呼び名は太字の段落として残す（24-5。HTML と同じ。以前は開きの
-    // 行ごと空白にして消えていた）。記号は逃がす（`#` で見出しにならないように）
+    // 行ごと空白にして消えていた）。記号は逃がす（`#` で見出しにならないように）。
+    // 前後に空行を置く — 前に無いと、すぐ上の段落の続きになった（25-3。HTML では
+    // 囲みが段落を切る）
     lines[open] =
       kind === "details"
-        ? `**${escapeMarkdown(info || DEFAULT_SUMMARY)}**\n`
+        ? `\n**${escapeMarkdown(info || DEFAULT_SUMMARY)}**\n`
         : " ".repeat(lines[open].length);
     lines[close] = " ".repeat(lines[close].length);
   }
