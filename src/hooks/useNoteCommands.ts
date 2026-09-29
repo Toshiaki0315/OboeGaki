@@ -369,17 +369,29 @@ export function useNoteCommands(input: NoteCommandsInput) {
       { title: APP_NAME, kind: "warning" },
     );
     if (!ok) return;
-    // 捨てるのが開いているノートなら、保存予約も破棄する
-    if (path === currentPath) sync.dropPending();
+    const closing = path === currentPath;
+    const release = closing ? await holdForTrash(sync) : () => {};
     try {
       await trashNote(vaultRoot, path);
     } catch (error) {
+      release(); // 予約は残す。移せなかったノートの字を消さない（24-5）
       status(String(error));
       return;
     }
+    // 移せてから予約を捨てる。解いたあとの保存で元の場所に蘇らせない
+    if (closing) sync.dropPending();
+    release();
     await refreshLists();
-    if (path === currentPath) closeNote();
+    if (closing) closeNote();
     status("");
+  }
+
+  /// 開いているノートをゴミ箱へ移す前の支度（24-5）。未保存分を書き切り
+  /// （ゴミ箱の中身に最後の字まで入る）、移すまで保存を止める。以前は先に
+  /// 予約を捨てていて、移すのに失敗すると未保存の字が消えた
+  async function holdForTrash(sync: NoteSyncPort): Promise<() => void> {
+    await sync.flush();
+    return sync.holdSaves();
   }
 
   /// 複数のノートをまとめてゴミ箱へ（一覧の複数選択をゴミ箱へ落とした）。
@@ -412,16 +424,21 @@ export function useNoteCommands(input: NoteCommandsInput) {
       { title: APP_NAME, kind: "warning" },
     );
     if (!ok) return;
-    const closing = currentPath !== null && targets.includes(currentPath);
-    if (closing) sync.dropPending();
+    const holding = currentPath !== null && targets.includes(currentPath);
+    const release = holding ? await holdForTrash(sync) : () => {};
     const failed: string[] = [];
+    let closing = false;
     for (const path of targets) {
       try {
         await trashNote(vaultRoot, path);
+        if (path === currentPath) closing = true;
       } catch (error) {
         failed.push(`${noteStem(path)}: ${String(error)}`);
       }
     }
+    // 開いているノートを移せたときだけ予約を捨てて閉じる（24-5）
+    if (closing) sync.dropPending();
+    release();
     await refreshLists();
     clearSelection();
     if (closing) closeNote();

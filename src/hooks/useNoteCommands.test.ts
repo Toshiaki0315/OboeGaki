@@ -558,6 +558,52 @@ describe("useNoteCommands", () => {
     expect(given.storage!.getItem(LAST_NOTE_KEY)).toBeNull();
   });
 
+  test("test_ゴミ箱へ移せなければ予約を捨てない（24-5）", async () => {
+    // 以前は移す前に予約を捨てていて、移すのに失敗すると未保存の字が消えた
+    mocked.confirmDialog.mockResolvedValue(true);
+    mocked.trashNote.mockRejectedValue("移せない");
+    const given = input({ currentPath: "/v/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.openNote("/v/a.md"));
+    await act(() => result.current.trash());
+    expect(given.sync.dropPending).not.toHaveBeenCalled();
+    expect(given.onStatus).toHaveBeenLastCalledWith("移せない");
+    // 保存の止めは解く（止めたままだと以後の字が書かれない）
+    const release = (given.sync.holdSaves as ReturnType<typeof vi.fn>).mock
+      .results[0].value;
+    expect(release).toHaveBeenCalled();
+  });
+
+  test("test_開いているノートは書き切ってから移し_移すまで保存を止める（24-5）", async () => {
+    const order = (fn: unknown) =>
+      (fn as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+    mocked.confirmDialog.mockResolvedValue(true);
+    mocked.trashNote.mockResolvedValue("/v/.trash/a.md");
+    const given = input({ currentPath: "/v/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.openNote("/v/a.md"));
+    await act(() => result.current.trash());
+    // ゴミ箱の中身に最後の字まで入る。移したあとの保存で元の場所に蘇らせない
+    expect(order(given.sync.flush)).toBeLessThan(order(mocked.trashNote));
+    const release = (given.sync.holdSaves as ReturnType<typeof vi.fn>).mock
+      .results[0].value;
+    expect(order(given.sync.dropPending)).toBeLessThan(order(release));
+  });
+
+  test("test_まとめて移すとき_開いているノートが移せなければ予約を捨てない（24-5）", async () => {
+    mocked.confirmDialog.mockResolvedValue(true);
+    mocked.trashNote.mockImplementation(async (_root: string, path: string) => {
+      if (path === "/v/a.md") throw "移せない";
+      return "/v/.trash/b.md";
+    });
+    const given = input({ currentPath: "/v/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.openNote("/v/a.md"));
+    await act(() => result.current.trashMany(["/v/a.md", "/v/b.md"]));
+    expect(given.sync.dropPending).not.toHaveBeenCalled();
+    expect(result.current.doc).not.toBeNull(); // 開いたまま
+  });
+
   test("test_ピンは開いているノートなら本文を受け取り直す", async () => {
     mocked.pinNote.mockResolvedValue("---\npinned: true\n---\n# 題\n");
     const given = input({
