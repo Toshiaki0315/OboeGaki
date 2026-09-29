@@ -122,9 +122,11 @@ impl Vault {
         } else {
             target
         };
+        // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042。restore と対称）。
+        // 鍵は動かす前に控える（24-1）
+        let carry = self.history_carry(path, &target);
         fs::rename(path, &target)?;
-        // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042。restore と対称）
-        self.carry_history(path, &target);
+        self.carry_history(&carry);
         // purge_trash の期限は「捨ててから」数える。rename は mtime を
         // 変えないので、ここで刻み直さないと古いノートが即座に消える。
         // 失敗は黙らせない（読み取り専用・同期フォルダ等で普通に起きる）—
@@ -308,9 +310,11 @@ impl Vault {
         fs::create_dir_all(&destination)?;
         let (stem, suffix) = split_name(&resolved, "");
         let target = unique_path(&destination, &stem, &suffix, None);
+        // 版も連れて戻る（trash と対称。戻した先の名前が変わっても鍵は付いて回る）。
+        // 鍵は動かす前に控える（24-1）
+        let carry = self.history_carry(&resolved, &target);
         fs::rename(&resolved, &target)?;
-        // 版も連れて戻る（trash と対称。戻した先の名前が変わっても鍵は付いて回る）
-        self.carry_history(&resolved, &target);
+        self.carry_history(&carry);
         if let Some(parent) = resolved.parent() {
             prune_empty_dirs(parent, &trash);
         }

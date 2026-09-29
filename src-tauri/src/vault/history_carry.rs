@@ -35,6 +35,26 @@ pub fn history_key(root: &Path, path: &Path) -> String {
     format!("path:{composed}")
 }
 
+/// 行き先の鍵（`history_key` と同じ字面）。**名前は渡された綴りのまま**、親だけを
+/// 実体に解決する — 名前まで解決すると、大文字小文字だけ違う今あるファイルの綴りに
+/// なる（24-1）
+fn history_key_as_named(root: &Path, path: &Path) -> String {
+    let named = match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => parent
+            .canonicalize()
+            .map(|real| real.join(name))
+            .unwrap_or_else(|_| path.to_path_buf()),
+        _ => path.to_path_buf(),
+    };
+    let real_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let relative = named
+        .strip_prefix(&real_root)
+        .or_else(|_| path.strip_prefix(root))
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|_| path.to_path_buf());
+    format!("path:{}", nfc_string(&relative.to_string_lossy()))
+}
+
 /// 実体のパス。無いファイルは親を解決して名前を継ぐ
 pub(super) fn resolve_existing(path: &Path) -> PathBuf {
     if let Ok(real) = path.canonicalize() {
@@ -46,6 +66,23 @@ pub(super) fn resolve_existing(path: &Path) -> PathBuf {
             .map(|real| real.join(name))
             .unwrap_or_else(|_| path.to_path_buf()),
         _ => path.to_path_buf(),
+    }
+}
+
+/// 履歴の引き継ぎの控え（旧鍵 → 新鍵）。`Vault::history_carry` が動かす前に作る
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryCarry {
+    from: String,
+    to: String,
+}
+
+impl HistoryCarry {
+    /// 逆向き（動かしたのを戻したとき）
+    pub fn reversed(&self) -> Self {
+        Self {
+            from: self.to.clone(),
+            to: self.from.clone(),
+        }
     }
 }
 
@@ -90,17 +127,28 @@ impl Vault {
         .map(|_| ())
     }
 
-    /// 履歴の置き場を新しいパスへ付け替える。**失敗しても進める** —
-    /// 版を連れて行けないことより、動かせないことの方が困る。
-    /// **履歴を動かす道はここ 1 本**（改名・移動・ゴミ箱・戻す・フォルダ）
-    pub fn carry_history(&self, before: &Path, after: &Path) {
-        if before == after {
+    /// 履歴の引き継ぎの控えを作る。**動かす前に**呼ぶ（24-1）。
+    ///
+    /// 鍵は実体に解決して作る（`history_key`）。APFS は大文字小文字の違いを同じ
+    /// ファイルと見るので、大文字小文字だけの改名（`foo` → `Foo`）では、動かした後の
+    /// 旧パスも動かす前の行き先も今ある方の綴りに解決され、旧鍵と新鍵が同じになって
+    /// 版が旧鍵に取り残された。旧鍵は動かす前に実体で、行き先の鍵は**親だけを**実体に
+    /// 解決して名前は渡された綴りのまま作る（動かした後の `history_key` と同じ字面）
+    pub fn history_carry(&self, before: &Path, after: &Path) -> HistoryCarry {
+        HistoryCarry {
+            from: self.history_key(before),
+            to: history_key_as_named(&self.root, after),
+        }
+    }
+
+    /// 控えた鍵で履歴の置き場を移す（動かした後に呼ぶ）。trash / restore / rename /
+    /// move が全部ここを通る
+    pub fn carry_history(&self, carry: &HistoryCarry) {
+        if carry.from == carry.to {
             return;
         }
         let store = crate::history::store_root(&self.managed_dir());
-        if let Err(error) =
-            crate::history::rekey(&store, &self.history_key(before), &self.history_key(after))
-        {
+        if let Err(error) = crate::history::rekey(&store, &carry.from, &carry.to) {
             eprintln!("履歴の置き場を移せなかった: {error}");
         }
     }

@@ -114,8 +114,9 @@ impl Vault {
         }
         let (stem, suffix) = split_name(path, ".md");
         let target = unique_path(&destination, &stem, &suffix, None);
+        let carry = self.history_carry(path, &target); // 鍵は動かす前に（24-1）
         fs::rename(path, &target)?;
-        self.carry_history(path, &target);
+        self.carry_history(&carry);
         Ok(target)
     }
 
@@ -191,16 +192,18 @@ impl Vault {
                 )
             })?;
         }
+        // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042）。鍵は動かす前に
+        // 控える — 大文字小文字だけの改名で旧鍵を取り違えないように（24-1）
+        let carry = self.history_carry(path, &target);
         fs::rename(path, &target)?;
-        // 版も連れて行く（鍵はファイルに付いて回る = ADR-0042）
-        self.carry_history(path, &target);
+        self.carry_history(&carry);
         if rewritten != text {
             if let Err(error) = crate::autosave::save_atomic(&target, &rewritten) {
                 // 見出しを書けなかったら**元の名前に戻す**。動いたまま Err を返すと、
                 // 呼び手は旧パスのまま次の自動保存を書いてノートが二重になる
                 // （再レビュー 2026-09-25 / 21-6）。版は旧鍵で残してあるので安全
                 if fs::rename(&target, path).is_ok() {
-                    self.carry_history(&target, path);
+                    self.carry_history(&carry.reversed());
                     return Err(io::Error::new(
                         error.kind(),
                         format!("見出しを書き換えられなかったので改名を戻しました: {error}"),
@@ -506,6 +509,24 @@ mod tests {
         // 何も動いていない（動かした後に失敗すると旧パスと新パスの 2 つになる。21-5）
         assert!(!root.path().join("新.md").exists());
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "# 旧\n\n本文\n");
+    }
+
+    /// 大文字小文字だけの改名（`foo` → `Foo`）でも履歴を連れて行く（24-1）。以前は
+    /// 動かした後に旧パスの鍵を計算していて、APFS では旧パスが新しい綴りに解決され、
+    /// 旧鍵と新鍵が同じになって版が旧鍵に取り残された（一覧に出ず、やがて片付く）
+    #[test]
+    fn test_rename_大文字小文字だけの改名でも履歴を連れて行く() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let note = crate::test_support::note(root.path(), "foo.md", "# foo\n\n本文\n");
+        let old_key = vault.history_key(&note);
+        let renamed = vault.rename(&note, "Foo").unwrap();
+        assert_eq!(renamed.file_name().unwrap(), "Foo.md");
+        let store = crate::history::store_root(&vault.managed_dir());
+        let versions = crate::history::versions(&store, &vault.history_key(&renamed));
+        assert_eq!(versions.len(), 1, "改名した先で版が見えない");
+        if old_key != vault.history_key(&renamed) {
+            assert!(crate::history::versions(&store, &old_key).is_empty());
+        }
     }
 
     /// 見出しの書き込みに失敗したら元の名前に戻す（21-6。テストの足場が無く据え
