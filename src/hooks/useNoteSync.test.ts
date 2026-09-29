@@ -715,3 +715,33 @@ describe("別のノートへ移る間の打鍵（24-1）", () => {
     );
   });
 });
+
+describe("書いている間の打鍵（24-1）", () => {
+  test("test_書いている間に打ったら_書き終えても未保存のまま_外部の変更は競合として聞く", async () => {
+    let finish: () => void = () => {};
+    mocked.writeNote.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const onStatus = vi.fn();
+    const replaceText = vi.fn();
+    let editor = "一";
+    const { result } = renderHook(() =>
+      useNoteSync(input({ onStatus, replaceText, readText: () => editor })),
+    );
+    act(() => result.current.noteChanged(() => editor));
+    await tick(800); // 1 回目の保存が書き始める
+    editor = "一二"; // 書いている間に打つ
+    act(() => result.current.noteChanged(() => editor));
+    await act(async () => finish());
+    // 以前はここで「保存済み」になり、未保存の印も消えた
+    expect(onStatus).not.toHaveBeenLastCalledWith("保存済み");
+    // 次の自動保存より先に外部の変更が来たら、黙って読み直さず競合として聞く
+    mocked.readNote.mockResolvedValue("外部の変更");
+    await act(async () => {
+      external?.({ path: "/v/a.md", kind: "modified" });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(replaceText).not.toHaveBeenCalled();
+    expect(result.current.conflict).not.toBeNull();
+  });
+});

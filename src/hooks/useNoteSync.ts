@@ -80,6 +80,8 @@ export function useNoteSync({
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
   const pendingTarget = useRef<{ path: string } | null>(null);
   const dirty = useRef(false); // 保存されていない編集があるか
+  // 打鍵の数。保存が書き始めてから打たれていないかを見る（24-1）
+  const edits = useRef(0);
   // 予約した保存が失敗したまま、次の予約が無い（24-1）。予約を使い切るので、
   // これが無いと Cmd+S も切り替え前の書き切りも何も書かなかった
   const failed = useRef<(() => Promise<void>) | null>(null);
@@ -124,6 +126,7 @@ export function useNoteSync({
       void autosave.flush();
     }
     dirty.current = true;
+    edits.current += 1;
     onStatusRef.current("未保存");
     // 書き先は**箱に入れて**持つ。見出しに合わせて改名したら `renamed` が
     // 箱の中身を付け替える（捕まえたパスのままだと消した旧ファイルが蘇る）
@@ -132,6 +135,7 @@ export function useNoteSync({
     const save = async () => {
       const path = target.path;
       const text = getText();
+      const written = edits.current;
       await writeNote(root, path, text, historyMinutesRef.current);
       // 完了する頃には別のノートが開いているかもしれない。共有の
       // dirty と表示と **known** を触るのは**今もそのノートを開いているときだけ**
@@ -142,9 +146,14 @@ export function useNoteSync({
       failed.current = null;
       if (currentPathRef.current === path) {
         known.current = { path, text };
-        dirty.current = false;
-        onStatusRef.current("保存済み");
-        setSavedAt(Date.now());
+        // 書いている間に打たれていたら、その字はまだ書けていない。未保存のまま
+        // にする — 「保存済み」にすると、次の自動保存より先に来た外部の変更を
+        // 未編集と見て黙って読み直し、打った字が消えた（24-1）
+        if (edits.current === written) {
+          dirty.current = false;
+          onStatusRef.current("保存済み");
+          setSavedAt(Date.now());
+        }
       }
       // 書けたので保険は要らない。**退避したときだけ**捨てに行く
       // （毎回の保存でディスクを余分に叩かない）
