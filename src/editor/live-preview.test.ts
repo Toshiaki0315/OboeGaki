@@ -223,6 +223,21 @@ describe("previewDecorations（ブロック系）", () => {
     );
   });
 
+  test("test_リストの行で開いたフェンスでも箇条書きの印を消さない（24-5）", () => {
+    // 以前は開きフェンスの**行ごと**隠していて、同じ行の `- ` まで消えた
+    const doc = "- 項目\n- ```js\n  x\n  ```\n\nあと";
+    const decos = decorationsOf(doc, doc.length);
+    const mark = doc.indexOf("- ```");
+    const fence = doc.indexOf("```js");
+    expect(
+      decos.some((d) => d.kind === "hide" && d.from <= mark && d.to > mark),
+    ).toBe(false);
+    expect(
+      decos.some((d) => d.from === mark && d.kind.startsWith("bullet:")),
+    ).toBe(true);
+    expect(has(decos, { from: fence, to: fence + 5, kind: "hide" })).toBe(true);
+  });
+
   test("ファイル名が無ければフェンス行は今まで通り帯の外", () => {
     const doc = "本文\n\n```js\nconst a = 1;\n```\n\nあと";
     const decos = decorationsOf(doc, 0);

@@ -341,10 +341,12 @@ export function previewDecorations(
           if (touchesSelection(state, node.from, node.to)) return false;
           const first = state.doc.lineAt(node.from);
           const last = state.doc.lineAt(node.to);
+          // 開きフェンスは**フェンスの字から**隠す。行頭からだと、リストの行で
+          // 開いたとき同じ行の `- ` まで消えた（24-5）
           out.push(
             Decoration.replace(
               fileName ? { widget: new FileNameWidget(fileName) } : {},
-            ).range(first.from, first.to),
+            ).range(node.from, first.to),
           );
           // 閉じフェンスの行は**閉じているときだけ**隠す。閉じの無い
           // 書きかけでは last はコードの実データ行で、隠すと「書いた行が
