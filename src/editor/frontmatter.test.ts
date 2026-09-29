@@ -69,6 +69,34 @@ describe("parseFrontMatterMeta", () => {
   it("test_front_matterが無ければ空", () => {
     expect(parseFrontMatterMeta("# 本文\n")).toEqual({});
   });
+
+  it("test_行末のコメントは値に入れない（24-5）", () => {
+    // YAML では空白に続く # から後ろはコメント。slide-theme の説明の書き方そのまま
+    const doc = [
+      "---",
+      "slide-font: Hiragino Sans   # 見出しと本文の書体",
+      'slide-accent: "#44546A"     # 見出しの色',
+      "count: 3 # 数",
+      "pinned: true\t# 固定",
+      "---",
+      "",
+    ].join("\n");
+    expect(parseFrontMatterMeta(doc)).toEqual({
+      "slide-font": "Hiragino Sans",
+      "slide-accent": "#44546A",
+      count: 3,
+      pinned: true,
+    });
+  });
+
+  it("test_空白を挟まない_#_と引用符の中の_#_は値のうち", () => {
+    const doc = '---\ntag: C#\ntitle: "a # b"\nurl: x#y # 注\n---\n';
+    expect(parseFrontMatterMeta(doc)).toEqual({
+      tag: "C#",
+      title: "a # b",
+      url: "x#y",
+    });
+  });
 });
 
 function stateOf(doc: string): EditorState {

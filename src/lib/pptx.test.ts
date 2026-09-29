@@ -646,3 +646,26 @@ describe("XML が許さない制御文字（24-4）", () => {
     expect(slide).toContain("字");
   });
 });
+
+describe("書体名の記号（24-5）", () => {
+  it("test_書体名の_&_や引用符で_壊れた_PowerPoint_にしない", async () => {
+    // pptxgenjs は書体名を逃がさずに属性へ置く。`&` 1 字で開けないファイルになった
+    const doc =
+      '---\nslide-font: A&B "Sans"\nslide-mono: M<ono>\n---\n\n## 題\n\n`x` と本文\n\n```\ncode\n```\n';
+    const { zip } = await open(doc);
+    for (const name of Object.keys(zip.files).filter((n) =>
+      n.endsWith(".xml"),
+    )) {
+      const xml = (await zip.file(name)?.async("string")) ?? "";
+      // 裸の & と、属性の中で閉じてしまう書体名が無いこと
+      expect(xml, name).not.toMatch(/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/);
+      expect(xml, name).not.toMatch(/typeface="[^"]*"[^ />]/);
+    }
+    const theme =
+      (await zip.file("ppt/theme/theme1.xml")?.async("string")) ?? "";
+    expect(theme).toContain('typeface="A&amp;B &quot;Sans&quot;"');
+    const slide =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    expect(slide).toContain('typeface="M&lt;ono&gt;"');
+  });
+});

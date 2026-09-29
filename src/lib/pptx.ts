@@ -36,6 +36,7 @@ import { dataUrlDimensions } from "./image-bytes";
 import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 import { dayValue } from "./day";
 import { xmlSafeText } from "./xml-safe";
+import { escapeHtml } from "./html-escape";
 
 /// 用紙の名前（`defineLayout` に渡す。GR-06）
 const LAYOUT_NAME = "OBOEGAKI_PAGE";
@@ -85,7 +86,7 @@ export async function buildPptx(
   deck: Deck,
   resolveImage: ImageResolver,
   /// ノートの front matter から読んだ見た目（TASKS 5-5）
-  theme: SlideTheme = DEFAULT_SLIDE_THEME,
+  given: SlideTheme = DEFAULT_SLIDE_THEME,
   /// テンプレートから借りた配色と書体（TASKS 5-6 / ADR-0045 案 A）
   borrowed: ThemeParts | null = null,
   options: PptxOptions = DEFAULT_PPTX_OPTIONS,
@@ -100,6 +101,13 @@ export async function buildPptx(
     height: sheet.height,
   });
   pptx.layout = LAYOUT_NAME;
+  // **書体名は逃がしてから渡す**（24-5）。pptxgenjs は書体名をそのまま属性に置くので、
+  // `&` や `"` の入った名前で開けないファイルになった
+  const theme: SlideTheme = {
+    ...given,
+    font: escapeHtml(given.font),
+    mono: escapeHtml(given.mono),
+  };
   // 書体は全体の既定に置く（枠ごとに書くと、あとで足した枠で付け忘れる）
   if (theme.font) {
     pptx.theme = { headFontFace: theme.font, bodyFontFace: theme.font };

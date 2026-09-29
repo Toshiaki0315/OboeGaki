@@ -33,8 +33,28 @@ export function bodyText(text: string): string {
   return range ? text.slice(range.bodyStart) : text;
 }
 
+/// 空白に続く `#` から後ろ（YAML の行末コメント）か、何も無いか
+const TRAILER = /^(?:\s+#.*|\s*)$/;
+
+/// 引用符で囲んだ値の中身。閉じの引用符のあとが空かコメントのものを左から探す
+/// （コメントの中に引用符があっても、そこを閉じと取らない）
+function quotedValue(raw: string): string | null {
+  const quote = raw[0];
+  if (quote !== '"' && quote !== "'") return null;
+  for (
+    let at = raw.indexOf(quote, 1);
+    at > 0;
+    at = raw.indexOf(quote, at + 1)
+  ) {
+    if (TRAILER.test(raw.slice(at + 1))) return raw.slice(1, at);
+  }
+  return null;
+}
+
 /// front matter の `key: スカラー` を読む。true/false・数値・引用符付き
 /// 文字列・素の文字列だけ。入れ子や配列など読めないものは黙って飛ばす。
+/// **行末のコメントは値に入れない**（24-5。`slide-font: X  # 説明` の説明まで
+/// 書体名になり、`"#44546A"  # 説明` は色として読めずに既定へ倒れていた）
 export function parseFrontMatterMeta(text: string): Record<string, unknown> {
   const range = frontMatterRange(text);
   if (!range) return {};
@@ -42,12 +62,18 @@ export function parseFrontMatterMeta(text: string): Record<string, unknown> {
   for (const line of text.slice(4, range.to - 3).split("\n")) {
     const found = /^([A-Za-z0-9_-]+):\s*(.+?)\s*$/.exec(line);
     if (!found) continue;
-    const [, key, raw] = found;
+    const [, key, written] = found;
+    if (written.startsWith("#")) continue; // 値が無くコメントだけ
+    const quoted = quotedValue(written);
+    if (quoted !== null) {
+      meta[key] = quoted;
+      continue;
+    }
+    // 空白を挟まない `#`（`C#`・`x#y`）は値のうち
+    const raw = written.replace(/\s+#.*$/, "");
     if (raw === "true") meta[key] = true;
     else if (raw === "false") meta[key] = false;
     else if (/^-?\d+(\.\d+)?$/.test(raw)) meta[key] = Number(raw);
-    else if (/^".*"$/.test(raw) || /^'.*'$/.test(raw))
-      meta[key] = raw.slice(1, -1);
     else meta[key] = raw;
   }
   return meta;
