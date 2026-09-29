@@ -467,12 +467,20 @@ export function useNoteSync({
   async function handleRecovery(restore: boolean) {
     const root = vaultRootRef.current;
     if (!root) return;
+    const count = recovery;
     setRecovery(0);
     if (!restore) {
-      await clearRecovery(root);
+      try {
+        await clearRecovery(root);
+      } catch (error) {
+        // 退避は残っている。黙って消えたように見せず、もう一度選べるようにする（24-5）
+        setRecovery(count);
+        onStatusRef.current(
+          `未保存の内容を捨てられませんでした: ${String(error)}`,
+        );
+      }
       return;
     }
-    const count = recovery;
     try {
       const written = await restoreRecovery(root);
       await refreshListsRef.current();

@@ -391,6 +391,21 @@ describe("useNoteSync: 前回の未保存（H-1）", () => {
       expect.stringContaining("1 件"),
     );
   });
+
+  test("test_捨てられなければ知らせて_もう一度選べるようにする（24-5）", async () => {
+    mocked.pendingRecovery.mockResolvedValue([
+      { source: "a.md", text: "x", stashed_at_ms: 1 },
+    ]);
+    mocked.clearRecovery.mockRejectedValue("書き込めない");
+    const given = input();
+    const { result } = renderHook(() => useNoteSync(given));
+    await tick(1);
+    await act(() => result.current.handleRecovery(false));
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      "未保存の内容を捨てられませんでした: 書き込めない",
+    );
+    expect(result.current.recovery).toBe(1);
+  });
 });
 
 describe("useNoteSync: 棚卸しレビュー 2026-09-17", () => {

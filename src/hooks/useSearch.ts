@@ -19,6 +19,7 @@ import {
   upsertSearch,
   type SavedSearch,
 } from "../lib/saved-searches";
+import { failureText } from "../lib/run-command";
 
 const SORT_KEY = "oboegaki.sort";
 
@@ -43,6 +44,9 @@ export function useSearch({
   queryRef.current = query;
   const vaultRootRef = useRef(vaultRoot);
   vaultRootRef.current = vaultRoot;
+  // 絞り込みの effect から知らせる（依存に入れると、呼ぶたびに引き直す）
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
   const [hits, setHits] = useState<SearchHit[]>([]);
   const searchSoon = useMemo(() => createDebouncer(200), []);
 
@@ -162,9 +166,14 @@ export function useSearch({
       return;
     }
     let alive = true;
-    void notesWithTag(vaultRoot, tagFilter).then((found) => {
-      if (alive) setTagNotes(found);
-    });
+    notesWithTag(vaultRoot, tagFilter)
+      .then((found) => {
+        if (alive) setTagNotes(found);
+      })
+      // 黙っていると前の一覧のままに見える（24-5）
+      .catch((error: unknown) => {
+        if (alive) onStatusRef.current(failureText("タグの絞り込み", error));
+      });
     return () => {
       alive = false;
     };
@@ -191,9 +200,14 @@ export function useSearch({
       return;
     }
     let alive = true;
-    void notesInFolder(vaultRoot, folderFilter).then((found) => {
-      if (alive) setFolderNotes(found);
-    });
+    notesInFolder(vaultRoot, folderFilter)
+      .then((found) => {
+        if (alive) setFolderNotes(found);
+      })
+      .catch((error: unknown) => {
+        if (alive)
+          onStatusRef.current(failureText("フォルダの絞り込み", error));
+      });
     return () => {
       alive = false;
     };

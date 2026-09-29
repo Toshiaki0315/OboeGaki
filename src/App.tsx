@@ -1344,7 +1344,10 @@ function App() {
     const root = vaultRootRef.current;
     if (!root) return;
     if (action.kind === "link") {
-      void openExternalUrl(action.payload);
+      // 断られたら言う（24-5。黙っていると押しても無反応に見える）
+      void openExternalUrl(action.payload).catch((error: unknown) =>
+        setStatus(`リンクを開けませんでした: ${String(error)}`),
+      );
       return;
     }
     if (action.kind === "tag") {
@@ -1469,10 +1472,16 @@ function App() {
         void runWithStatus(setStatus, "Word の書き出し", () =>
           handleExportDocx(),
         ),
-      "export-pdf": () => void handlePrint(true),
-      "import-pdf": () => void handleImport("pdf"),
-      "import-pptx": () => void handleImport("pptx"),
-      "import-image": () => void handleImport("image"),
+      "export-pdf": () =>
+        void runWithStatus(setStatus, "PDF の書き出し", () =>
+          handlePrint(true),
+        ),
+      "import-pdf": () =>
+        void runWithStatus(setStatus, "読み込み", () => handleImport("pdf")),
+      "import-pptx": () =>
+        void runWithStatus(setStatus, "読み込み", () => handleImport("pptx")),
+      "import-image": () =>
+        void runWithStatus(setStatus, "読み込み", () => handleImport("image")),
       print: () => void runWithStatus(setStatus, "印刷", () => handlePrint()),
       history: () => void openHistory(),
       trash: () => void handleTrash(),

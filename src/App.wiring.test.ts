@@ -132,4 +132,27 @@ describe("App の配線", () => {
       expect(text, name).toMatch(new RegExp(`pub async fn ${name}\\(`));
     }
   });
+
+  test("test_PDF と読み込みのメニューも失敗を知らせる（24-5）", () => {
+    // 中に catch の無い操作は、Rust が断っても無反応に見える（17-6）
+    for (const id of [
+      "export-pdf",
+      "import-pdf",
+      "import-pptx",
+      "import-image",
+    ]) {
+      const line =
+        new RegExp(`"${id}": \\(\\) =>[\\s\\S]*?\\),\\n`).exec(source)?.[0] ??
+        "";
+      expect(line, id).toContain("runWithStatus(");
+    }
+  });
+
+  test("test_Cmd+クリックの外部リンクも失敗を知らせる（24-5）", () => {
+    const body =
+      /async function handleActivate\([\s\S]*?\n {2}\}\n/.exec(source)?.[0] ??
+      "";
+    expect(body).not.toContain("void openExternalUrl(action.payload);");
+    expect(body).toContain("リンクを開けませんでした");
+  });
 });

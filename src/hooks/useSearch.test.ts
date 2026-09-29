@@ -178,6 +178,26 @@ describe("useSearch", () => {
     expect(mocked.notesInFolder).toHaveBeenCalledTimes(1);
   });
 
+  test("test_タグやフォルダの索引が引けなければ知らせる（24-5）", async () => {
+    // 以前は黙って前の一覧のままだった
+    mocked.notesWithTag.mockRejectedValue("索引が開けない");
+    mocked.notesInFolder.mockRejectedValue("索引が開けない");
+    const given = input();
+    const { result } = renderHook(() => useSearch(given));
+    act(() => result.current.filterByTag("仕事"));
+    await waitFor(() =>
+      expect(given.onStatus).toHaveBeenCalledWith(
+        "タグの絞り込みできませんでした: 索引が開けない",
+      ),
+    );
+    act(() => result.current.filterByFolder("仕事"));
+    await waitFor(() =>
+      expect(given.onStatus).toHaveBeenCalledWith(
+        "フォルダの絞り込みできませんでした: 索引が開けない",
+      ),
+    );
+  });
+
   test("test_打つとタグとフォルダの絞りは解ける", () => {
     const given = input();
     const { result } = renderHook(() => useSearch(given));
