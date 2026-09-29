@@ -203,3 +203,54 @@ describe("slidesToMarkdown", () => {
     ).toBe("");
   });
 });
+
+describe("読み込んだ Markdown が崩れない（24-5）", () => {
+  test("test_隣り合う太字の字の単位はまとめて囲む（****_を残さない）", () => {
+    // 実際の .pptx は、言語や校正の印の違いだけで同じ太字が細かく割れる。以前は
+    // 1 つずつ囲んで `**太字****続き**` になり、`****` が字のまま出た
+    const md = slidesToMarkdown("資料", [
+      {
+        title: "A",
+        shapes: [
+          {
+            kind: "text",
+            paragraphs: [
+              {
+                runs: [
+                  run("前 "),
+                  run("太字", { bold: true }),
+                  run("続き", { bold: true }),
+                  run(" 後"),
+                ],
+                level: 0,
+                bulletNone: false,
+              },
+            ],
+          },
+        ],
+        notes: "",
+      },
+    ]);
+    expect(md).toContain("**太字続き**");
+    expect(md).not.toContain("****");
+  });
+
+  test("test_表のセルの縦棒は逃がす（列がずれない）", () => {
+    const md = slidesToMarkdown("資料", [
+      {
+        title: "A",
+        shapes: [
+          {
+            kind: "table",
+            rows: [
+              ["項目", "値"],
+              ["a|b", "1"],
+            ],
+          },
+        ],
+        notes: "",
+      },
+    ]);
+    expect(md).toContain("| a\\|b | 1 |");
+  });
+});

@@ -129,8 +129,10 @@ function shapeBlocks(shape: ImportedShape): string[] {
 
 function tableBlocks(rows: string[][]): string[] {
   if (rows.length === 0) return [];
+  // セルの縦棒は逃がす（CSV の取り込みと同じ。24-5）。逃がさないと列の数が区切り行と
+  // 合わず、表ごと段落に崩れた
   const cells = rows.map((row) =>
-    row.map((cell) => normalizeText(cell).trim()),
+    row.map((cell) => normalizeText(cell).trim().replace(/\|/g, "\\|")),
   );
   const header = `| ${cells[0].join(" | ")} |`;
   const divider = `| ${cells[0].map(() => "---").join(" | ")} |`;
@@ -143,7 +145,7 @@ function tableBlocks(rows: string[][]): string[] {
 /// **等幅は段落の中に混ざる。** インラインコード（`` `AWS` ``）がそう
 /// 書かれているので、枠ごとコードにせず記号で囲み直す。
 function paragraphText(paragraph: ImportedParagraph): string {
-  return paragraph.runs
+  return mergeRuns(paragraph.runs)
     .map((run) => {
       if (!run.text.trim()) return run.text;
       const head = run.text.slice(
@@ -157,6 +159,22 @@ function paragraphText(paragraph: ImportedParagraph): string {
       return `${head}${body}${tail}`;
     })
     .join("");
+}
+
+/// 書式の同じ隣り合う run をまとめる（24-5）。実際の .pptx は、言語や校正の印の違い
+/// だけで同じ太字が細かく割れる。1 つずつ囲むと `**太字****続き**` になり、`****` が
+/// 字のまま出た
+function mergeRuns(runs: readonly ImportedRun[]): ImportedRun[] {
+  const merged: ImportedRun[] = [];
+  for (const run of runs) {
+    const last = merged[merged.length - 1];
+    if (last && last.bold === run.bold && last.mono === run.mono) {
+      merged[merged.length - 1] = { ...last, text: last.text + run.text };
+    } else {
+      merged.push({ ...run });
+    }
+  }
+  return merged;
 }
 
 // ------------------------------------------------------------ .pptx を読む
