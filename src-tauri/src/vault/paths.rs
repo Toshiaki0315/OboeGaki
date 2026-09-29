@@ -162,6 +162,27 @@ pub fn contains(root: &Path, candidate: &Path) -> bool {
 
 /// NFC に揃える（Finder が作る名前は NFD で来ることがある。索引の鍵・履歴の鍵・
 /// リンク名・無視リストが全部これを通る。10 か所で `nfc().collect()` を書いていた。19-3）
+/// 空きの名前を探して**新しいファイルとして**書く（24-5）。探してから書くまでの間に
+/// 同名のファイルが現れたら上書きせず、次の空きで書き直す。本文は名前しだいで変わる
+/// ことがある（複製は見出しを新しい名前にする）ので、名前から作る
+pub(crate) fn create_unique(
+    folder: &Path,
+    stem: &str,
+    suffix: &str,
+    text: impl Fn(&Path) -> String,
+) -> io::Result<PathBuf> {
+    let mut last = None;
+    for _ in 0..100 {
+        let target = unique_path(folder, stem, suffix, None);
+        match crate::autosave::save_new(&target, &text(&target)) {
+            Ok(()) => return Ok(target),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => last = Some(error),
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| io::Error::other("空きの名前が見つからない")))
+}
+
 pub fn nfc_string(text: &str) -> String {
     text.nfc().collect()
 }

@@ -27,11 +27,18 @@ impl Vault {
             .map(|text| template_body(&text))
             .unwrap_or_else(|_| format!("# {title}\n\n"));
         let filled = expand(&body, now, &title);
-        let path = self.create_with(&title, &filled.text)?;
-        Ok(NewNote {
-            path,
-            cursor: filled.cursor,
-        })
+        // 今日のノートは名前が決まっている。確かめてから書くまでの間によそ（MCP など）が
+        // 作っていたら、上書きも `-2` も作らずそちらを返す（24-5）
+        match crate::autosave::save_new(&path, &filled.text) {
+            Ok(()) => Ok(NewNote {
+                path,
+                cursor: filled.cursor,
+            }),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                Ok(NewNote { path, cursor: None })
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// 今日のノートの末尾に追記する（どこからでも書き取り = ADR-0057）。
@@ -132,5 +139,22 @@ mod tests {
         assert!(vault.append_to_daily(&now, "追記").is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), before);
         let _ = root;
+    }
+
+    /// 今日のノートを作る間に、よそ（MCP など）が同じ今日のノートを作っていたら、
+    /// 上書きも `-2` も作らず、そちらを返す（24-5）
+    #[test]
+    fn test_daily_note_間によそが作っていたらそちらを返す() {
+        let (_root, vault) = crate::test_support::temp_vault();
+        let now = chrono::Local::now();
+        let path = vault.daily_path(&now);
+        crate::autosave::RACE_BEFORE_PERSIST
+            .with(|race| *race.borrow_mut() = Some((path.clone(), "よそで書いた\n".into())));
+        let made = vault.daily_note(&now);
+        crate::autosave::RACE_BEFORE_PERSIST.with(|race| *race.borrow_mut() = None);
+        assert_eq!(made.unwrap().path, path);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "よそで書いた\n");
+        let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+        assert!(!path.with_file_name(format!("{stem}-2.md")).exists());
     }
 }

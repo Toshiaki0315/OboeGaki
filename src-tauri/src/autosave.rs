@@ -63,6 +63,48 @@ pub fn save_bytes_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+/// **新しいファイルとして**アトミックに書く。同名のファイルが既にあれば書かずに
+/// `AlreadyExists` を返す（24-5）。
+///
+/// `save_atomic` は rename で置き換えるので、空きを確かめてから書くまでの間に
+/// 現れた同名のファイル（MCP と画面が同時に作る・同期ソフトが置いた）を黙って
+/// 上書きし、そちらの中身が版も残さず消えた。新しいノートはこちらで書く
+pub fn save_new(path: &Path, text: &str) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut temporary = tempfile::Builder::new()
+        .prefix(&format!(".{file_name}."))
+        .suffix(TEMP_SUFFIX)
+        .tempfile_in(parent)?;
+    temporary.write_all(text.as_bytes())?;
+    temporary.as_file().sync_all()?;
+    #[cfg(test)]
+    RACE_BEFORE_PERSIST.with(|race| {
+        if let Some((raced, text)) = race.borrow().as_ref() {
+            if raced == path {
+                let _ = fs::write(raced, text);
+            }
+        }
+    });
+    temporary
+        .persist_noclobber(path)
+        .map(|_| ())
+        .map_err(|error| error.error)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// テスト用: 新しいファイルを置く直前に、よそがそのパスへ書いた形にする（24-5）
+    pub(crate) static RACE_BEFORE_PERSIST: std::cell::RefCell<Option<(std::path::PathBuf, String)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// 元のファイルの拡張属性（Finder のタグ・色ラベルなど）を一時ファイルへ写す。
 /// rename で元を置き換えるので、写さないと保存のたびにタグが消える（実測
 /// 2026-09-25。21-15）。写せないもの（システムが持つ `com.apple.provenance`、

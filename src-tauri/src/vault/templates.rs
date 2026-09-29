@@ -50,14 +50,20 @@ impl Vault {
         let target = self
             .templates_dir()
             .join(format!("{}.md", sanitize_filename(typed)));
-        if target.exists() {
-            return Err(io::Error::new(
+        // 同名の雛形は断る。確かめてから書くまでの間に現れたものも上書きしない（24-5）
+        let taken = || {
+            io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!("同じ名前の雛形があります: {typed}"),
-            ));
+            )
+        };
+        if target.exists() {
+            return Err(taken());
         }
-        crate::autosave::save_atomic(&target, &with_title(&body, "{{title}}"))?;
-        Ok(target)
+        match crate::autosave::save_new(&target, &with_title(&body, "{{title}}")) {
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Err(taken()),
+            other => other.map(|()| target),
+        }
     }
 
     // --------------------------------------------------------- テンプレート（E-4）

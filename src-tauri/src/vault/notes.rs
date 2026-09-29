@@ -36,17 +36,14 @@ impl Vault {
             return Err(outside_error("保管フォルダの外には作れない", &destination));
         }
         let stem = sanitize_filename(title);
-        let path = unique_path(&destination, &stem, ".md", None);
-        crate::autosave::save_atomic(&path, text)?;
-        Ok(path)
+        // 間に現れた同名のファイルを上書きしない（24-5）
+        create_unique(&destination, &stem, ".md", |_| text.to_string())
     }
 
     /// 本文を指定して新しいノートを作る（雛形から作るとき）。
     pub(super) fn create_with(&self, title: &str, text: &str) -> io::Result<PathBuf> {
         let stem = sanitize_filename(title);
-        let path = unique_path(&self.root, &stem, ".md", None);
-        crate::autosave::save_atomic(&path, text)?;
-        Ok(path)
+        create_unique(&self.root, &stem, ".md", |_| text.to_string())
     }
 
     /// ノートを複製する。作った先を返す。
@@ -67,12 +64,14 @@ impl Vault {
             .unwrap_or(UNTITLED);
         // **先に sanitize してから空きを探す**（参照実装のコードレビュー指摘）。
         // 生の名前から探すと `-2-2` の二重接尾や見出しとの食い違いが起きる
-        let target = unique_path(&folder, &sanitize_filename(stem), ".md", None);
-        let title = target
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or(UNTITLED);
-        crate::autosave::save_atomic(&target, &with_title(&text, title))?;
+        // 見出しは決まった名前に揃える。間に現れた同名は上書きしない（24-5）
+        let target = create_unique(&folder, &sanitize_filename(stem), ".md", |target| {
+            let title = target
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or(UNTITLED);
+            with_title(&text, title)
+        })?;
         Ok(target)
     }
 
@@ -150,9 +149,8 @@ impl Vault {
             .and_then(|stem| stem.to_str())
             .unwrap_or(UNTITLED);
         let name = sanitize_filename(&format!("{stem} (復元 {stamp})"));
-        let target = unique_path(&folder, &name, ".md", None);
-        crate::autosave::save_atomic(&target, text)?;
-        Ok(target)
+        // 間に現れた同名は上書きしない（24-5）
+        create_unique(&folder, &name, ".md", |_| text.to_string())
     }
 
     /// タイトル変更に合わせてファイル名を変える。
@@ -514,6 +512,23 @@ mod tests {
         // 何も動いていない（動かした後に失敗すると旧パスと新パスの 2 つになる。21-5）
         assert!(!root.path().join("新.md").exists());
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "# 旧\n\n本文\n");
+    }
+
+    /// 新しいノートは、空きを確かめてから書くまでの間に現れた同名のファイルを上書き
+    /// しない（24-5）。以前は rename で黙って上書きし、そちらの中身が版も残さず消えた
+    /// （MCP と画面が同時に作る・同期ソフトが置いた）。ぶつかったら次の空きへ
+    #[test]
+    fn test_create_間に現れた同名のファイルを上書きせず次の空きに作る() {
+        let (root, vault) = crate::test_support::temp_vault();
+        let raced = root.path().join("題.md");
+        crate::autosave::RACE_BEFORE_PERSIST
+            .with(|race| *race.borrow_mut() = Some((raced.clone(), "よそで書いた".into())));
+        let made = vault.create_in_with("", "題", "# 題\n\n新しい\n");
+        crate::autosave::RACE_BEFORE_PERSIST.with(|race| *race.borrow_mut() = None);
+        let made = made.unwrap();
+        assert_eq!(std::fs::read_to_string(&raced).unwrap(), "よそで書いた");
+        assert_ne!(made, raced);
+        assert_eq!(std::fs::read_to_string(&made).unwrap(), "# 題\n\n新しい\n");
     }
 
     /// 表記違いの同じフォルダ（`Work` と `work`）へ移しても、名前を変えない（24-5）。
