@@ -72,7 +72,14 @@ export async function buildDocx(
       }),
     );
   }
-  for (const token of markdownTokens(markdownText, options.embeds)) {
+  // 埋め込みの本文も同じく掃除する（25-1。本文だけ掃除して、埋め込みから入った
+  // 制御文字で壊れた Word になっていた）
+  const embeds = options.embeds
+    ? new Map(
+        Array.from(options.embeds, ([name, text]) => [name, xmlSafeText(text)]),
+      )
+    : undefined;
+  for (const token of markdownTokens(markdownText, embeds)) {
     await emitter.emit(token);
   }
 

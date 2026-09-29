@@ -252,6 +252,20 @@ describe("XML が許さない制御文字（24-4）", () => {
     for (const text of ["前", "後", "あと", "の字"])
       expect(xml).toContain(text);
   });
+
+  test("test_埋め込んだノートの制御文字も落とす（25-1）", async () => {
+    // 以前は本文だけ掃除して、埋め込みの本文はそのまま document.xml に入った
+    const base64 = await buildDocx("前\n\n![[他]]\n", {
+      title: "t",
+      resolveImage: async () => null,
+      embeds: new Map([["他", "埋め\u000bこみ\u0001の字"]]),
+    });
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml = (await zip.file("word/document.xml")?.async("string")) ?? "";
+    // eslint-disable-next-line no-control-regex -- 制御文字を見分けるための正規表現（24-4）
+    expect(xml).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+    for (const text of ["埋め", "こみ", "の字"]) expect(xml).toContain(text);
+  });
 });
 
 describe("折りたたみの呼び名（24-5）", () => {
