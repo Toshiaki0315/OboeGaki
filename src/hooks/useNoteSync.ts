@@ -126,7 +126,10 @@ export function useNoteSync({
       void autosave.flush();
     }
     dirty.current = true;
-    edits.current += 1;
+    // この打鍵の番号。getText は**この打鍵の本文**を返すので、書けたかどうかも
+    // この番号で比べる（25-1。書き始めの時点で数を読むと、前の書き込みの後ろに
+    // 並んで待つ間に打った字まで書けたことになった）
+    const stamp = ++edits.current;
     onStatusRef.current("未保存");
     // 書き先は**箱に入れて**持つ。見出しに合わせて改名したら `renamed` が
     // 箱の中身を付け替える（捕まえたパスのままだと消した旧ファイルが蘇る）
@@ -135,7 +138,6 @@ export function useNoteSync({
     const save = async () => {
       const path = target.path;
       const text = getText();
-      const written = edits.current;
       await writeNote(root, path, text, historyMinutesRef.current);
       // 完了する頃には別のノートが開いているかもしれない。共有の
       // dirty と表示と **known** を触るのは**今もそのノートを開いているときだけ**
@@ -149,7 +151,7 @@ export function useNoteSync({
         // 書いている間に打たれていたら、その字はまだ書けていない。未保存のまま
         // にする — 「保存済み」にすると、次の自動保存より先に来た外部の変更を
         // 未編集と見て黙って読み直し、打った字が消えた（24-1）
-        if (edits.current === written) {
+        if (edits.current === stamp) {
           dirty.current = false;
           onStatusRef.current("保存済み");
           setSavedAt(Date.now());

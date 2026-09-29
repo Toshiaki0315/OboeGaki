@@ -759,4 +759,34 @@ describe("書いている間の打鍵（24-1）", () => {
     expect(replaceText).not.toHaveBeenCalled();
     expect(result.current.conflict).not.toBeNull();
   });
+
+  test("test_書き切りが前の書き込みの後ろに並んだ間に打った字も未保存のまま（25-1）", async () => {
+    // 本文は予約した打鍵のもの。打鍵の数を書き始めで読むと、並んで待つ間に
+    // 打った字まで書けた数に入り、書けていない字が「保存済み」になった
+    let finish: () => void = () => {};
+    mocked.writeNote.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const onStatus = vi.fn();
+    const { result } = renderHook(() => useNoteSync(input({ onStatus })));
+    act(() => result.current.noteChanged(() => "一"));
+    await tick(800); // 1 回目が書き始めて詰まる
+    act(() => result.current.noteChanged(() => "一二"));
+    let flushed: Promise<void> = Promise.resolve();
+    act(() => {
+      flushed = result.current.flush(); // 2 回目は 1 回目の後ろに並ぶ
+    });
+    act(() => result.current.noteChanged(() => "一二三")); // 並んでいる間に打つ
+    await act(async () => {
+      finish();
+      await flushed;
+    });
+    expect(mocked.writeNote).toHaveBeenLastCalledWith(
+      "/v",
+      "/v/a.md",
+      "一二",
+      60,
+    );
+    expect(onStatus).not.toHaveBeenLastCalledWith("保存済み");
+  });
 });
