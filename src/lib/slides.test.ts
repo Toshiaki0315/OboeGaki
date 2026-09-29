@@ -163,6 +163,40 @@ describe("行内の書き方（24-5。HTML・Word と同じに組む）", () => 
   });
 });
 
+describe("PowerPoint だけ落ちていた形（24-5）", () => {
+  test("test_下線の見出し（setext）も見出しとして割る", () => {
+    const deck = splitDeck(
+      "表紙\n===\n\n枚の題\n---\n\n本文\n\n### 小\n\n中身\n",
+    );
+    expect(deck.title).toBe("表紙");
+    expect(deck.slides.map((slide) => slide.title)).toEqual(["枚の題"]);
+    expect(
+      deck.slides[0].blocks.map((block) => [block.kind, said(block)]),
+    ).toEqual([
+      ["paragraph", "本文"],
+      ["heading", "小"],
+      ["paragraph", "中身"],
+    ]);
+  });
+
+  test("test_リストの中のコードも項目のあとにコードとして残す", () => {
+    const deck = splitDeck(
+      "## A\n\n- 項目\n\n  ```js\n  code()\n  ```\n- 次\n",
+    );
+    expect(
+      deck.slides[0].blocks.map((block) =>
+        block.kind === "code"
+          ? ["code", block.text, block.language]
+          : [block.kind, said(block)],
+      ),
+    ).toEqual([
+      ["bullet", "項目"],
+      ["code", "code()", "js"],
+      ["bullet", "次"],
+    ]);
+  });
+});
+
 describe("front matter（24-5）", () => {
   test("test_front_matter_は本文として読まない（表紙の題や副題にならない）", () => {
     // YAML のコメント行が表紙の題になり、本当の `# T` が扉に落ちていた。リストや

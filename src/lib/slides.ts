@@ -75,7 +75,9 @@ const parser = markdown({
   extensions: [relaxedAsterisk, extendedInline, TaskList, Table],
 }).language.parser;
 
-const HEADING = /^ATXHeading(\d)$/;
+// 下線の見出し（setext: `題\n===`）も見出しとして割る（24-5。HTML と Word は見出しに
+// するのに、PowerPoint だけ `#` の形しか見ておらず、下線の見出しが消えていた）
+const HEADING = /^(?:ATX|Setext)Heading(\d)$/;
 // 装飾の記号（スライドに `**` を出さない）。本文の写しを作るだけで、
 // ソースには触れない
 const MARKS = new Set([
@@ -235,6 +237,17 @@ export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {
             runs: runsOf(text, item.node),
             level: item.level,
           });
+          // 項目の中のコードは、項目のあとにコードの枠として置く（24-5。以前は
+          // 項目の字からも外し、コードの枠にもしないので黙って消えた）
+          for (
+            let child = item.node.firstChild;
+            child;
+            child = child.nextSibling
+          ) {
+            if (child.name === "FencedCode" || child.name === "CodeBlock") {
+              add(listedCode(text, child));
+            }
+          }
         }
         break;
       case "FencedCode":
@@ -328,6 +341,24 @@ function fencedCode(text: string, node: SyntaxNode): SlideBlock {
     kind: "code",
     text: body ? text.slice(body.from, body.to) : "",
     language: info ? text.slice(info.from, info.to).trim() : "",
+  };
+}
+
+/// リストの項目の中のコード。2 行目から後ろの行には項目の字下げが付いてくるので、
+/// フェンスの開きの字下げの分だけ外す
+function listedCode(text: string, node: SyntaxNode): SlideBlock {
+  const block = fencedCode(text, node);
+  if (block.kind !== "code") return block;
+  const lineStart = text.lastIndexOf("\n", node.from - 1) + 1;
+  const indent = node.from - lineStart;
+  const pattern = new RegExp(`^ {0,${indent}}`);
+  return {
+    ...block,
+    text: block.text
+      .split("\n")
+      .map((line, index) => (index === 0 ? line : line.replace(pattern, "")))
+      .join("\n")
+      .replace(/\n$/, ""),
   };
 }
 
