@@ -190,3 +190,33 @@ describe("bodyText（front matter を落とした本文。書き出し 3 か所�
     expect(bodyText("---\nk: v\n---")).toBe("");
   });
 });
+
+describe("あとから作った front matter（24-5）", () => {
+  test("test_閉じの_---_をあとから打っても_その場で_front_matter_と認める", () => {
+    // 以前は front matter が無いとき、先頭 4 字に触れる編集でしか数え直さず、
+    // 開き直すまで隠れも守られもしなかった
+    const start = "---\ntitle: x\n本文\n";
+    let state = EditorState.create({
+      doc: start,
+      extensions: [frontMatterHide],
+    });
+    expect(state.field(frontMatterField)).toBeNull();
+    // 本文の行を閉じにする形（`---` を 1 字ずつ打つ）
+    const at = start.indexOf("本文");
+    state = state.update({
+      changes: { from: at, to: at + 2, insert: "" },
+    }).state;
+    for (const char of "---") {
+      const end = state.doc.lineAt(at).to;
+      state = state.update({ changes: { from: end, insert: char } }).state;
+    }
+    const fresh = EditorState.create({
+      doc: state.doc,
+      extensions: [frontMatterHide],
+    });
+    expect(state.field(frontMatterField)).toEqual(
+      fresh.field(frontMatterField),
+    );
+    expect(state.field(frontMatterField)).not.toBeNull();
+  });
+});

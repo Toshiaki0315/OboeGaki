@@ -23,6 +23,28 @@ import {
   type FrontMatterRange,
 } from "../markdown/front-matter";
 
+/// 先頭が `---` の文書で、編集した行が `---` だけの行になったか（24-5）。front matter
+/// が無いときは先頭 4 字に触れる編集でしか数え直しておらず、あとから閉じの `---` を
+/// 打っても開き直すまで隠れも守られもしなかった。**触った行だけを見る**（打鍵ごとに
+/// 文書全体を読まない）
+const CLOSE_LINE_RE = /^---[ \t]*$/;
+function closesFrontMatter(tr: Transaction): boolean {
+  const doc = tr.newDoc;
+  if (doc.lines < 2 || !CLOSE_LINE_RE.test(doc.line(1).text)) return false;
+  let found = false;
+  tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+    if (found) return;
+    const last = doc.lineAt(toB).number;
+    for (let number = doc.lineAt(fromB).number; number <= last; number++) {
+      if (number > 1 && CLOSE_LINE_RE.test(doc.line(number).text)) {
+        found = true;
+        return;
+      }
+    }
+  });
+  return found;
+}
+
 export const frontMatterField = StateField.define<FrontMatterRange | null>({
   create: (state) => frontMatterRange(state.doc.toString()),
   update(value, tr) {
@@ -32,7 +54,9 @@ export const frontMatterField = StateField.define<FrontMatterRange | null>({
     // to+1 にすると本文先頭への**挿入**（境界の点）まで「触れた」扱いに
     // なり、ノート冒頭で打つたびに全文を走査していた（レビュー 2026-09-04）
     if (value && !tr.changes.touchesRange(0, value.to)) return value;
-    if (!value && !tr.changes.touchesRange(0, 4)) return null;
+    if (!value && !tr.changes.touchesRange(0, 4) && !closesFrontMatter(tr)) {
+      return null;
+    }
     return frontMatterRange(tr.newDoc.toString());
   },
   provide: (field) =>
