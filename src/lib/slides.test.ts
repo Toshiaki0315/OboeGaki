@@ -126,6 +126,43 @@ describe("段落と見出しを寄せる囲み（22-5 / ADR-0069）", () => {
   });
 });
 
+describe("行内の書き方（24-5。HTML・Word と同じに組む）", () => {
+  const paragraphOf = (body: string) => {
+    const block = splitDeck(`## A\n\n${body}\n`).slides[0].blocks[0];
+    return block;
+  };
+  const textOf = (body: string) => said(paragraphOf(body));
+
+  test("test_自動リンクは_URL_を残してリンクにする", () => {
+    expect(textOf("see <https://x.example> here")).toBe(
+      "see https://x.example here",
+    );
+    expect(
+      runsOf(paragraphOf("see <https://x.example> here")).some(
+        (run) => run.link === "https://x.example",
+      ),
+    ).toBe(true);
+  });
+
+  test("test_リンクの題は出さない", () => {
+    expect(textOf('[t](https://u.example "ttl")')).toBe("t");
+  });
+
+  test("test_逃がした記号はその字だけにする", () => {
+    expect(textOf("1\\*2 と \\# と \\[x\\]")).toBe("1*2 と # と [x]");
+  });
+
+  test("test_文字参照は字に戻す", () => {
+    expect(textOf("&amp; &lt;b&gt; &quot;q&quot; &#x41;&#66; &copy;")).toBe(
+      '& <b> "q" AB ©',
+    );
+  });
+
+  test("test_バックスラッシュの改行は改行にする（ふつうの改行と同じ）", () => {
+    expect(textOf("一\\\n二")).toBe(textOf("一\n二"));
+  });
+});
+
 describe("front matter（24-5）", () => {
   test("test_front_matter_は本文として読まない（表紙の題や副題にならない）", () => {
     // YAML のコメント行が表紙の題になり、本当の `# T` が扉に落ちていた。リストや

@@ -16,6 +16,7 @@
 // （ADR-0007 の判断）。フェンス・表・引用の細かい規則を書き直さずに済む。
 
 import { markdown } from "@codemirror/lang-markdown";
+import MarkdownIt from "markdown-it";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
 import { containersOf } from "./container-lines";
@@ -347,6 +348,17 @@ function imageOnly(text: string, node: SyntaxNode): SlideImage | null {
   };
 }
 
+/// 逃がし（`\*`）と文字参照（`&amp;`）を字に戻す。HTML 書き出しと同じ markdown-it の
+/// 規則を使う（自前の表を持つと、戻せる文字参照が HTML と食い違う）
+let unescaper: ((raw: string) => string) | null = null;
+function unescapeInline(raw: string): string {
+  if (!unescaper) {
+    const md = new MarkdownIt();
+    unescaper = (value) => md.utils.unescapeAll(value);
+  }
+  return unescaper(raw);
+}
+
 /// 装飾ごと拾った本文（TASKS 5-1）。
 ///
 /// **記号は落とすが、装飾は落とさない。** 太字を素の文字にすると、書いた人が
@@ -393,6 +405,40 @@ function runsOf(text: string, node: SyntaxNode): Run[] {
         } else if (isSpanClose(tag) && colorStack.length > 0) {
           styles.length = colorStack.pop()! - 1;
         }
+        return false;
+      }
+      // 自動リンク `<https://…>`: URL を字として残し、リンクにする（24-5。以前は
+      // URL を記号として捨てて字が消えた）
+      if (child.name === "Autolink") {
+        emit(child.from);
+        const url = child.node.getChild("URL");
+        if (url) {
+          const target = text.slice(url.from, url.to);
+          runs.push({ text: target, ...style(), link: target });
+        }
+        pos = Math.max(pos, child.to);
+        return false;
+      }
+      // 逃がし `\*` と文字参照 `&amp;`: HTML と同じ字に戻す（24-5）
+      if (child.name === "Escape" || child.name === "Entity") {
+        emit(child.from);
+        const raw = text.slice(child.from, child.to);
+        runs.push({ text: unescapeInline(raw), ...style() });
+        pos = Math.max(pos, child.to);
+        return false;
+      }
+      // `\` の改行: ふつうの改行と同じに扱う（24-5。以前は `\` が字で残った）
+      if (child.name === "HardBreak") {
+        emit(child.from);
+        runs.push({ text: "\n", ...style() });
+        pos = Math.max(pos, child.to);
+        return false;
+      }
+      // リンクの URL から後ろ（題 `"ttl"` と閉じ）は本文に出さない（24-5。以前は
+      // 題が本文に出た）
+      if (child.name === "URL" && child.node.parent?.name === "Link") {
+        emit(child.from);
+        pos = Math.max(pos, child.node.parent.to);
         return false;
       }
       if (

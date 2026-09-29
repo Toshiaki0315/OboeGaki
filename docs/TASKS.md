@@ -1647,8 +1647,9 @@ PowerPoint・印刷）は docs/manual_test.md の各項目で確かめる。見�
       - 中
         - [x] PowerPoint だけ front matter を本文として読む（コメント行が表紙の題になる）→
               splitDeck の入口で bodyText を通す
-        - [ ] PowerPoint だけ行内の書き方を組まない（自動リンクが消える・リンクの題が出る・
-              `\*` や `&amp;` が字のまま・`\` の改行が字で残る）
+        - [x] PowerPoint だけ行内の書き方を組まない（自動リンクが消える・リンクの題が出る・
+              `\*` や `&amp;` が字のまま・`\` の改行が字で残る）→ runsOf が自動リンク・
+              逃がし・文字参照（markdown-it の unescapeAll）・`\` の改行・リンクの題を扱う
         - [ ] PowerPoint だけ下線の見出し（setext）とリストの中のコードが消える
         - [ ] Word だけ `:::details` の呼び名が消える
         - [ ] PowerPoint の読み込みで、隣り合う太字が `****` と字で残る・セルの `|` を逃がさない
