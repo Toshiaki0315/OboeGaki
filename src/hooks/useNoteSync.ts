@@ -117,13 +117,19 @@ export function useNoteSync({
     const root = vaultRootRef.current;
     const path = currentPathRef.current;
     if (!root || !path) return;
+    // 別のノートの予約が残っていたら、先に書き切る（24-1）。予約は 1 つの入れ物を
+    // 使い回すので、B の読み込みを待つ間に A へ打った字の予約が、B の打鍵で置き換え
+    // られて消えていた。掴んだ保存（下の `attempt`）を今すぐ発射する
+    if (pendingTarget.current && pendingTarget.current.path !== path) {
+      void autosave.flush();
+    }
     dirty.current = true;
     onStatusRef.current("未保存");
     // 書き先は**箱に入れて**持つ。見出しに合わせて改名したら `renamed` が
     // 箱の中身を付け替える（捕まえたパスのままだと消した旧ファイルが蘇る）
     const target = { path };
     pendingTarget.current = target;
-    pendingSave.current = async () => {
+    const save = async () => {
       const path = target.path;
       const text = getText();
       await writeNote(root, path, text, historyMinutesRef.current);
@@ -144,6 +150,7 @@ export function useNoteSync({
       // （毎回の保存でディスクを余分に叩かない）
       dropStash(root, path);
     };
+    pendingSave.current = save;
     // 打ち続けている間はデバウンスが伸びて保存が走らない。その間も
     // 一定の間隔で退避しておく（H-1）
     const now = Date.now();
@@ -153,9 +160,9 @@ export function useNoteSync({
     }
     // 保存を試す。失敗はここで受け止め、知らせて退避し、書き切りで試し直せる
     // ように覚える（24-1）
+    // **この打鍵の保存を掴んで**試す（発射の時点の入れ物を読むと、別のノートの
+    // 保存に置き換わっていることがある。24-1）
     const attempt = async (): Promise<void> => {
-      const save = pendingSave.current;
-      if (!save) return;
       await save().catch((error) => {
         // 書き先は箱で追う（改名で付け替わる。退避も同じパスで）
         if (currentPathRef.current === target.path) {

@@ -688,3 +688,30 @@ describe("保存の失敗のあと（24-1）", () => {
     expect(mocked.writeNote).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("別のノートへ移る間の打鍵（24-1）", () => {
+  test("test_A_の予約が残ったまま_B_で打っても_A_に打った字を書く", async () => {
+    // B の読み込みを待つ間に A へ打ち、B が開いてすぐ B で打った形。以前は予約が
+    // 1 つの入れ物を共有していて、B の打鍵が A の保存を置き換え、A の字が消えた
+    const { result, rerender } = renderHook(
+      (props: NoteSyncInput) => useNoteSync(props),
+      { initialProps: input({ currentPath: "/v/a.md" }) },
+    );
+    act(() => result.current.noteChanged(() => "A に打った字"));
+    rerender(input({ currentPath: "/v/b.md" }));
+    act(() => result.current.noteChanged(() => "B に打った字"));
+    await tick(800);
+    expect(mocked.writeNote).toHaveBeenCalledWith(
+      "/v",
+      "/v/a.md",
+      "A に打った字",
+      60,
+    );
+    expect(mocked.writeNote).toHaveBeenCalledWith(
+      "/v",
+      "/v/b.md",
+      "B に打った字",
+      60,
+    );
+  });
+});
