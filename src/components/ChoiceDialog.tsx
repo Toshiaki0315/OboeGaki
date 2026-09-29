@@ -19,7 +19,8 @@ export function ChoiceDialog({
   choices: readonly Choice[];
 }) {
   return (
-    <Dialog title={title}>
+    // 打鍵の最中に勝手に開く窓なので、どのボタンにもフォーカスを当てない（24-1）
+    <Dialog title={title} initialFocus="dialog">
       {text && <p className="dialog-text">{text}</p>}
       <div className="conflict-actions">
         {choices.map((choice) => (

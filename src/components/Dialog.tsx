@@ -23,6 +23,10 @@ export type DialogProps = {
   onClose?: () => void;
   /// 中で押された鍵。Esc を自分で扱って閉じたくないときは preventDefault する
   onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
+  /// 開いたときのフォーカス。`first` は最初の部品（既定）、`dialog` は窓そのもの。
+  /// 打鍵の最中に勝手に開く窓（競合・外部削除・復元）は `dialog` にする —
+  /// 最初のボタンに当てると、打ちかけの Enter や変換の Space で押されてしまう（24-1）
+  initialFocus?: "first" | "dialog";
   children: ReactNode;
 };
 
@@ -39,6 +43,7 @@ export function Dialog({
   className,
   onClose,
   onKeyDown,
+  initialFocus = "first",
   children,
 }: DialogProps) {
   const name = label ?? (typeof title === "string" ? title : undefined);
@@ -53,7 +58,8 @@ export function Dialog({
     const box = root.current;
     if (box && !box.contains(document.activeElement)) {
       // autoFocus が中に居ればそちらが先に取っているので奪わない
-      focusables(box)[0]?.focus();
+      if (initialFocus === "dialog") box.focus();
+      else focusables(box)[0]?.focus();
     }
     return () => {
       const active = document.activeElement;
@@ -65,6 +71,8 @@ export function Dialog({
         previous.focus();
       }
     };
+    // 開いたときに一度だけ（窓の中身が変わっても奪い直さない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -81,7 +89,11 @@ export function Dialog({
       const last = items[items.length - 1];
       if (!first || !last) return;
       const active = document.activeElement;
-      if (event.shiftKey && active === first) {
+      // 窓そのものに居る（initialFocus = dialog）ときは、Tab で最初・Shift+Tab で最後へ
+      if (active === root.current) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && active === last) {
@@ -98,6 +110,8 @@ export function Dialog({
         className={className ? `palette ${className}` : "palette"}
         role="dialog"
         aria-label={name}
+        // 窓そのものにフォーカスを当てられるように（Tab の並びには入れない）
+        tabIndex={-1}
         onMouseDown={
           onClose ? (event: MouseEvent) => event.stopPropagation() : undefined
         }

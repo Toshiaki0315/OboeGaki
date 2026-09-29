@@ -477,6 +477,11 @@ body {
   box-shadow: 0 12px 40px color-mix(in srgb, black 35%, transparent);
   padding: 0.6rem;
 }
+/* 窓そのものにフォーカスを当てる窓（競合・復元の問い。24-1）で枠を描かない。
+   ボタンに移ったら、ボタンの側がいつもどおり枠を描く */
+.palette:focus {
+  outline: none;
+}
 
 .palette-input {
   width: 100%;

@@ -50,4 +50,48 @@ describe("ChoiceDialog", () => {
     );
     expect(container.querySelector(".dialog-text")).toBeNull();
   });
+
+  test("test_開いたときはどのボタンにもフォーカスを当てない_打ちかけの_Enter_で選ばれない（24-1）", () => {
+    // 打鍵の最中に勝手に開く窓（外部の変更との競合・起動時の復元）。以前は最初の
+    // ボタン（「外部の変更を採用（自分の編集を捨てる）」）にフォーカスが当たり、
+    // 変換の Space や Enter で押されて編集が捨てられた
+    const editor = document.createElement("textarea");
+    document.body.append(editor);
+    editor.focus();
+    const discard = vi.fn();
+    render(
+      <ChoiceDialog
+        title="競合"
+        choices={[
+          {
+            label: "外部の変更を採用（自分の編集を捨てる）",
+            onChoose: discard,
+          },
+          { label: "自分の版で上書き", onChoose: vi.fn() },
+        ]}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "競合" });
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    fireEvent.keyDown(document.activeElement!, { key: " " });
+    expect(discard).not.toHaveBeenCalled();
+    editor.remove();
+  });
+
+  test("test_Tab_で最初の選択肢へ移れる", () => {
+    render(
+      <ChoiceDialog
+        title="問い"
+        choices={[
+          { label: "いいえ", onChoose: vi.fn() },
+          { label: "はい", onChoose: vi.fn() },
+        ]}
+      />,
+    );
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "いいえ" }),
+    );
+  });
 });
