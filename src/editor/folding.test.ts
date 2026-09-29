@@ -2,7 +2,8 @@
 // 畳む範囲は純関数。見出しの行末から、同じか浅い見出しの手前まで。
 
 import { describe, expect, test } from "vitest";
-import { foldable } from "@codemirror/language";
+import { ensureSyntaxTree, foldable, syntaxTree } from "@codemirror/language";
+import type { EditorState } from "@codemirror/state";
 import { headingFolding, headingSection } from "./folding";
 import { LANG, stateOf } from "./test-utils";
 
@@ -92,5 +93,30 @@ describe("折りたたみの囲み（6-2 / 22-1）", () => {
     ).toBeNull();
     // 外に書いた :::details は今までどおり畳める
     expect(foldAt(":::details 外\n中\n:::\n", 1)).not.toBeNull();
+  });
+
+  test("test_解析が追いついたら数え直す（控えは構文木ごと。レビュー 2026-09-29）", () => {
+    // 長いノートを開いた直後は、先のフェンスまで解析が届いていない。フェンスの中の
+    // `:::note` を本物の開きと数えると、後ろの本物の :::details を入れ子とみなして
+    // 畳めない。解析が追いついても文書は同じなので、文書で控えると直らなかった
+    const filler = Array.from({ length: 60_000 }, (_, i) => `段落 ${i}`).join(
+      "\n\n",
+    );
+    const doc = `${filler}\n\n\`\`\`\n:::note\n\`\`\`\n\n:::details 詳しく\n中\n:::\n`;
+    const partial = stateOf(doc, 0, [LANG, headingFolding]);
+    expect(syntaxTree(partial).length).toBeLessThan(doc.length);
+    const line = (state: EditorState) => state.doc.line(state.doc.lines - 3); // `:::details 詳しく`
+    const at = line(partial);
+    expect(at.text).toBe(":::details 詳しく");
+    foldable(partial, at.from, at.to); // 途中までの木で一度数えさせる
+    ensureSyntaxTree(partial, doc.length, 10_000);
+    const caught = partial.update({}).state;
+    expect(syntaxTree(caught).length).toBe(doc.length);
+    // details として畳む（閉じの行は残す）。段落としての畳み（閉じの行まで）が
+    // 返るのは、details と認めていない印
+    expect(foldable(caught, at.from, at.to)).toEqual({
+      from: at.to,
+      to: caught.doc.line(at.number + 1).to,
+    });
   });
 });

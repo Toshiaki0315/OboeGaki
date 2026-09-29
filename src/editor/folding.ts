@@ -5,9 +5,9 @@
 // 置換ウィジェットまで標準機構が持つ。状態はセッション限り（ノートを
 // 開き直せば全部開く — EditorView がノートごとに作り直されるため）。
 
-import type { EditorState, Text } from "@codemirror/state";
-import { foldGutter, foldService } from "@codemirror/language";
-import type { SyntaxNode } from "@lezer/common";
+import type { EditorState } from "@codemirror/state";
+import { foldGutter, foldService, syntaxTree } from "@codemirror/language";
+import type { SyntaxNode, Tree } from "@lezer/common";
 import { treeOf } from "./parse-tree";
 
 import { detailsSection } from "./details-container";
@@ -73,18 +73,25 @@ function insideCode(state: EditorState, pos: number): boolean {
 /// 画面が囲みと認めた `:::details` の開きの行（0 始まり）。`:::note` や寄せの中の
 /// `:::details` は入れ子になるので囲みにならず、字のまま見える（ADR-0069 の
 /// 決定 3）。開きの行から閉じを探すだけでは分からないので、画面と同じ 1 本の走査で
-/// 見る。折りたたみは見えている行ごとに訊かれるので、**文書ごとに 1 回だけ**数える
-const detailsOpens = new WeakMap<Text, Set<number>>();
+/// 見る。折りたたみは見えている行ごとに訊かれるので、**構文木ごとに 1 回だけ**数える。
+///
+/// 控えの鍵は構文木（文書ではなく）。コードの行の見分けは木に頼るので、長い
+/// ノートを開いた直後の途中までの木で数えると、まだ届いていない先のフェンスの中の
+/// `:::note` を本物の開きと数え、後ろの本物の `:::details` を畳めなかった。文書で
+/// 控えると、解析が追いついても文書が同じなので直らなかった（レビュー 2026-09-29）。
+/// 木は文書が変わっても解析が進んでも新しくなる
+const detailsOpens = new WeakMap<Tree, Set<number>>();
 
 function detailsOpensOf(state: EditorState): Set<number> {
-  let found = detailsOpens.get(state.doc);
+  const tree = syntaxTree(state);
+  let found = detailsOpens.get(tree);
   if (!found) {
     found = new Set(
       colonContainers(state.doc.iterLines(), codeLineTest(state))
         .filter((entry) => entry.kind === "details")
         .map((entry) => entry.open),
     );
-    detailsOpens.set(state.doc, found);
+    detailsOpens.set(tree, found);
   }
   return found;
 }
