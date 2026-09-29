@@ -325,6 +325,8 @@ impl McpVault {
         };
         let mut body = body;
         crate::vault::ensure_trailing_newline(&mut body);
+        // 書き込みは順番待ちを通す（24-5。同じ題名の作成が並ぶと 2 つとも同じ空きを見た）
+        let _turn = self.write_turn();
         let path = self
             .vault
             .create_in_with(&folder, title, &body)
@@ -441,6 +443,7 @@ impl McpVault {
     pub fn move_note(&self, relative: &str, folder: &str) -> Result<Written, String> {
         let (_, absolute) = self.guarded(relative)?;
         let destination = self.guarded_folder(Some(folder))?;
+        let _turn = self.write_turn(); // 書き足しと重なって旧パスへ書かれないように（24-5）
         let moved = self
             .vault
             .move_note(&absolute, &destination)
@@ -458,6 +461,8 @@ impl McpVault {
         if !absolute.is_file() {
             return Err(format!("ノートがありません: {cleaned}"));
         }
+        // 書き足しと重なって、移したノートが蘇らないように（24-5）
+        let _turn = self.write_turn();
         let moved = self
             .vault
             .trash_note(&absolute)
@@ -547,6 +552,28 @@ mod tests {
         assert!(read.mtime_ms > 0);
         assert!(mcp.read_note("秘密/給与.md").is_err());
         assert!(mcp.read_note("../外.md").is_err());
+    }
+
+    /// 書き込みの道具はすべて順番待ち（write_turn）を通る（24-5）。サーバは頼みを
+    /// 並べて扱うので、通らないと同じ題名の作成が 2 つとも空きを見て片方が消えたり、
+    /// 書き足しとゴミ箱が重なって移したノートが蘇った
+    #[test]
+    fn test_書き込みの道具はすべて順番待ちを通る() {
+        let source: String = include_str!("mod.rs").split_whitespace().collect();
+        for name in [
+            "pubfncreate_note(",
+            "pubfnappend_to_note(",
+            "pubfndaily_note(",
+            "pubfnreplace_note(",
+            "pubfnmove_note(",
+            "pubfntrash_note(",
+        ] {
+            let start = source.find(name).unwrap_or_else(|| panic!("無い: {name}"));
+            let body = &source[start + name.len()..];
+            let end = body.find("pubfn").unwrap_or(body.len());
+            let turn = ["self.write", "_turn()"].concat();
+            assert!(body[..end].contains(&turn), "{name} が順番待ちを通らない");
+        }
     }
 
     /// 隠しは大文字小文字と前後の空白ですり抜けない（24-2。レビューが再現した形）
