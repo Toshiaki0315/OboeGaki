@@ -35,7 +35,12 @@ export const embedExtensions = Facet.define<() => Extension, () => Extension>({
   combine: (values) => values[0] ?? (() => []),
 });
 
-type Mounted = { view: EditorView | null; unwatch: (() => void) | null };
+type Mounted = {
+  view: EditorView | null;
+  unwatch: (() => void) | null;
+  /// 部品が壊された。読み込みから戻ったら何もしない（24-5）
+  destroyed: boolean;
+};
 const mounted = new WeakMap<HTMLElement, Mounted>();
 
 export class EmbedWidget extends WidgetType {
@@ -57,11 +62,14 @@ export class EmbedWidget extends WidgetType {
     holder.append(head, body);
     const { name, heading } = splitEmbedTarget(this.embedName);
     head.textContent = heading ? `${name} › ${heading}` : name;
-    const state: Mounted = { view: null, unwatch: null };
+    const state: Mounted = { view: null, unwatch: null, destroyed: false };
     mounted.set(holder, state);
     const resolver = view.state.facet(embedResolver);
     const render = async () => {
       const found = await resolver.resolve(name);
+      // 読み込みを待つ間に壊されていたら何もしない（24-5）。作ると、壊れた部品の中に
+      // 入れ子のエディタと見張りが残り、見張りを外す機会がもう来ない
+      if (state.destroyed) return;
       state.view?.destroy();
       state.view = null;
       if (!found) {
@@ -100,6 +108,7 @@ export class EmbedWidget extends WidgetType {
   }
   destroy(dom: HTMLElement): void {
     const state = mounted.get(dom);
+    if (state) state.destroyed = true;
     state?.view?.destroy();
     state?.unwatch?.();
     mounted.delete(dom);
