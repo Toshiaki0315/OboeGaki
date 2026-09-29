@@ -239,7 +239,19 @@ describe("PowerPoint だけ落ちていた形（24-5）", () => {
       "x\n  y",
     );
     expect(codeOf("## A\n\n-\t```\n\tcode\n\t```\n")).toBe("code");
-    expect(codeOf("## A\n\n- a\n\n\t\tcode\n\t\tmore\n")).toBe("code\nmore");
+    // 字下げのコードは項目の字下げ（2 桁）と 4 桁を外す。タブは 4 桁なので 2 桁残る
+    // （HTML と同じ。27-1）
+    expect(codeOf("## A\n\n- a\n\n\t\tcode\n\t\tmore\n")).toBe(
+      "  code\n  more",
+    );
+  });
+
+  test("test_タブの字下げが項目より深ければ_その分はコードの字下げとして残す（27-1）", () => {
+    // タブは 4 桁。項目の字下げ（2 桁）を超えた 2 桁はコードの中の字下げ（HTML と同じ）
+    const code = splitDeck(
+      "## A\n\n- ```\n\tx\n\t\ty\n  ```\n",
+    ).slides[0].blocks.find((block) => block.kind === "code");
+    expect(code?.kind === "code" && code.text).toBe("  x\n  \ty");
   });
 
   test("test_リストの中の空のコードは空のまま", () => {

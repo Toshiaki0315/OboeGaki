@@ -358,20 +358,79 @@ function fencedCode(text: string, node: SyntaxNode): SlideBlock {
   };
 }
 
-/// リストの項目の中のコード。**行の範囲から読み、どの行からも項目の字下げを外す**
-/// （25-1）。リストの中では Lezer がコードを 1 行ずつ別の CodeText に分けるので、
-/// 最初の 1 つだけ読むと 2 行目から後ろが黙って消えた。字下げのコードは node.from が
-/// コードの字の位置なので、そこまでの空白（項目の字下げ + 4）を外す（25-3）
+/// タブの桁（CommonMark と同じく 4 桁ごとに止まる）
+const TAB_STOP = 4;
+
+/// 行の頭の `from`〜`to` の桁数（タブは次の止まりまで）
+function columnsOf(line: string, from: number, to: number): number {
+  let column = 0;
+  for (let at = from; at < to; at += 1) {
+    column =
+      line[at] === "\t" ? column + TAB_STOP - (column % TAB_STOP) : column + 1;
+  }
+  return column;
+}
+
+/// 行の頭から `columns` 桁ぶんの空白とタブを外す。タブが境目をまたぐときは、
+/// はみ出た桁を空白で残す（CommonMark と同じ読み方。27-1）
+function stripColumns(line: string, columns: number): string {
+  let column = 0;
+  let at = 0;
+  while (at < line.length && column < columns) {
+    const char = line[at];
+    if (char === " ") {
+      column += 1;
+    } else if (char === "\t") {
+      const next = column + TAB_STOP - (column % TAB_STOP);
+      if (next > columns)
+        return " ".repeat(next - columns) + line.slice(at + 1);
+      column = next;
+    } else {
+      break;
+    }
+    at += 1;
+  }
+  return line.slice(at);
+}
+
+/// 項目の中身が始まる桁（印のあとの空白 1〜4 桁まで。5 桁以上なら印 + 1 桁）
+function contentColumn(text: string, item: SyntaxNode): number {
+  const mark = item.getChild("ListMark");
+  const lineStart = text.lastIndexOf("\n", item.from - 1) + 1;
+  const line = text.slice(lineStart, text.indexOf("\n", item.from) >>> 0);
+  if (!mark) return columnsOf(line, 0, item.from - lineStart);
+  const markEnd = mark.to - lineStart;
+  const markColumn = columnsOf(line, 0, markEnd);
+  let after = markEnd;
+  while (line[after] === " " || line[after] === "\t") after += 1;
+  const gap = columnsOf(line, 0, after) - markColumn;
+  // 印のあとが空（空の項目）か 5 桁以上なら、中身は印 + 1 桁から（残りは字下げのコード）
+  return gap === 0 || gap > 4 || after >= line.length
+    ? markColumn + 1
+    : markColumn + gap;
+}
+
+/// リストの項目の中のコード。**行の範囲から読み、どの行からも字下げを桁で外す**
+/// （25-1。リストの中では Lezer がコードを 1 行ずつ別の CodeText に分けるので、
+/// 最初の 1 つだけ読むと 2 行目から後ろが黙って消えた）。
+/// - フェンス: 開きのフェンスの桁まで外す（それより深いぶんはコードの字下げ）
+/// - 字下げのコード: 項目の中身の桁 + 4 桁を外す（25-3）
+///
+/// 字の数ではなく**桁で**数える。タブは 4 桁なので、項目の字下げ（2 桁）より深い
+/// タブは、超えたぶんをコードの字下げとして残す（27-1。HTML と同じ）
 function listedCode(text: string, node: SyntaxNode): SlideBlock {
   const block = fencedCode(text, node);
   if (block.kind !== "code") return block;
   const lineStart = text.lastIndexOf("\n", node.from - 1) + 1;
-  const indent = node.from - lineStart;
   let from: number;
   let to: number;
+  let columns: number;
   if (node.name === "CodeBlock") {
     from = lineStart;
     to = node.to;
+    const item = node.parent;
+    columns =
+      (item?.name === "ListItem" ? contentColumn(text, item) : 0) + TAB_STOP;
   } else {
     const opened = text.indexOf("\n", node.from);
     if (opened < 0 || opened >= node.to) return { ...block, text: "" };
@@ -383,17 +442,19 @@ function listedCode(text: string, node: SyntaxNode): SlideBlock {
         ? text.lastIndexOf("\n", marks[marks.length - 1].from - 1)
         : node.to;
     if (to < from) return { ...block, text: "" };
+    columns = columnsOf(
+      text.slice(lineStart, node.from),
+      0,
+      node.from - lineStart,
+    );
   }
-  // 字下げはタブのこともある（21-4 でタブで書ける。26-1。空白だけ外していて、
-  // 行の頭にタブが残った）
-  const pattern = new RegExp(`^[ \\t]{0,${indent}}`);
   return {
     ...block,
     text: text
       .slice(from, to)
       .replace(/\n+$/, "")
       .split("\n")
-      .map((line) => line.replace(pattern, ""))
+      .map((line) => stripColumns(line, columns))
       .join("\n"),
   };
 }
