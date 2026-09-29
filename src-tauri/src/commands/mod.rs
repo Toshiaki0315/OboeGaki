@@ -96,6 +96,25 @@ cmd_error_from!(
     crate::llm::LlmError,
 );
 
+/// 動かしたノート・フォルダが隠してあったら、`.mcp-ignore` の行も動いた先へ
+/// 書き換える（24-2）。道は絶対でも相対でもよい。**失敗しても動かしたことは取り消さ
+/// ない**（記録だけ残す）— 動かせないより、行を直せない方が害が小さい
+pub(crate) fn follow_hidden(root: &str, from: &str, to: &str) {
+    let root = Path::new(root);
+    let (Ok(from), Ok(to)) = (
+        crate::mcp::hidden_relative(root, from),
+        crate::mcp::hidden_relative(root, to),
+    ) else {
+        return;
+    };
+    if from == to {
+        return;
+    }
+    if let Err(error) = crate::mcp::follow_move(root, &from, &to) {
+        eprintln!(".mcp-ignore を動いた先へ書き換えられなかった: {error}");
+    }
+}
+
 /// vault ごとに 1 本の watcher と、自書き込みの無視リスト。
 /// 新しい vault を開いたら watcher を置き換える（drop で旧監視は止まる）。
 pub struct WatchState {

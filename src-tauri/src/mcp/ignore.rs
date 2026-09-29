@@ -91,6 +91,51 @@ pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<
     crate::autosave::save_atomic(&path, &text)
 }
 
+/// 隠したノート・フォルダが動いた（改名・移動）。`.mcp-ignore` の該当する行を動いた
+/// 先へ書き換える（24-2）。書き換えたら `true`。
+///
+/// 以前は行が古い名前のまま残り、隠したノートの見出しを直すだけで（見出しに合わせた
+/// 自動の改名）隠しが外れ、MCP から読み書きできた。照合は `is_ignored` と同じ規則
+/// （NFC・成分の前後の空白・大文字小文字）。名指しの行も、その中を指す行も書き換える。
+/// **ほかの行・コメント・並びはそのまま**（`set_hidden` と同じ構え）
+pub fn follow_move(root: &Path, from: &str, to: &str) -> std::io::Result<bool> {
+    let path = root.join(IGNORE_FILE);
+    let Some(current) = read_ignore(&path)? else {
+        return Ok(false);
+    };
+    let from_key = match_key(from.trim_matches('/'));
+    let to = to.trim_matches('/');
+    let depth = from_key.split('/').count();
+    let mut changed = false;
+    let lines: Vec<String> = current
+        .lines()
+        .map(|line| {
+            let entry = line.trim().trim_matches('/');
+            if entry.is_empty() || entry.starts_with('#') {
+                return line.to_string();
+            }
+            let key = match_key(entry);
+            if key == from_key {
+                changed = true;
+                return to.to_string();
+            }
+            if key.starts_with(&format!("{from_key}/")) {
+                changed = true;
+                let rest: Vec<&str> = entry.split('/').skip(depth).collect();
+                return format!("{to}/{}", rest.join("/"));
+            }
+            line.to_string()
+        })
+        .collect();
+    if !changed {
+        return Ok(false);
+    }
+    let mut text = lines.join("\n");
+    text.push('\n');
+    crate::autosave::save_atomic(&path, &text)?;
+    Ok(true)
+}
+
 /// GUI から来た道を `.mcp-ignore` に書く形（保管フォルダからの相対）に直す。
 /// ノートは絶対パス、フォルダは相対で来る。**外の絶対パスは断る** —
 /// 剥がせないまま `Users/…/x.md` を書くと、何も隠れないのに画面は
@@ -318,6 +363,60 @@ mod tests {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
         assert!(result.is_err(), "読めないのに書いた");
         assert_eq!(fs::read_to_string(&path).unwrap(), "手で書いた行\n");
+    }
+
+    /// 隠したノート・フォルダを動かしたら、行も動いた先へ書き換える（24-2）。以前は
+    /// 古い名前のまま残り、見出しに合わせた自動の改名だけで隠しが外れた
+    #[test]
+    fn test_follow_move_隠した行を動いた先へ書き換え_ほかの行とコメントは残す() {
+        let root = TempDir::new().unwrap();
+        let path = root.path().join(IGNORE_FILE);
+        fs::write(&path, "# 見せない\n日記.md\n私用\n私用/深い/x.md\n仕事\n").unwrap();
+        assert!(follow_move(root.path(), "日記.md", "日記2.md").unwrap());
+        assert!(follow_move(root.path(), "私用", "私用2").unwrap());
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "# 見せない\n日記2.md\n私用2\n私用2/深い/x.md\n仕事\n"
+        );
+        let ignore = IgnoreList::load(root.path());
+        assert!(ignore.is_ignored("日記2.md"));
+        assert!(ignore.is_ignored("私用2/a.md"));
+        // 照合の規則は is_ignored と同じ（大文字小文字）
+        fs::write(&path, "Private\n").unwrap();
+        assert!(follow_move(root.path(), "private", "Secret").unwrap());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Secret\n");
+        // 隠していないものを動かしても触らない。ファイルが無くても困らない
+        assert!(!follow_move(root.path(), "公開", "公開2").unwrap());
+        fs::remove_file(&path).unwrap();
+        assert!(!follow_move(root.path(), "日記.md", "日記3.md").unwrap());
+        assert!(!path.exists());
+    }
+
+    /// アプリの改名・移動の 4 つの入口が、動かしたあとに行を書き換える（24-2）
+    #[test]
+    fn test_follow_move_改名と移動のコマンドがすべて呼ぶ() {
+        let notes: String = include_str!("../commands/notes.rs")
+            .split_whitespace()
+            .collect();
+        let folders: String = include_str!("../commands/folders.rs")
+            .split_whitespace()
+            .collect();
+        for (source, name) in [
+            (&notes, "pubfnnote_rename("),
+            (&notes, "pubfnnote_move("),
+            (&folders, "pubfnfolder_rename("),
+            (&folders, "pubfnfolder_move("),
+        ] {
+            let start = source.find(name).unwrap_or_else(|| panic!("無い: {name}"));
+            let body = &source[start..];
+            let end = body[1..]
+                .find("#[tauri::command]")
+                .map_or(body.len(), |at| at + 1);
+            assert!(
+                body[..end].contains("follow_hidden("),
+                "{name} が .mcp-ignore を追いかけていない"
+            );
+        }
     }
 
     #[test]

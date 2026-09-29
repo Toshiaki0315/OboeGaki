@@ -264,6 +264,8 @@ pub fn note_move(
         return Ok(moved.to_string_lossy().into_owned());
     }
     state.suppressor.mark(&moved);
+    // 隠してあったら隠したまま動かす（24-2）
+    super::follow_hidden(&root, &path.to_string_lossy(), &moved.to_string_lossy());
     if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
         db.remove(&vault, &path)?;
         db.upsert(&vault, &moved)
@@ -285,6 +287,8 @@ pub fn note_rename(
     state.suppressor.mark(&path);
     let renamed = Vault::new(&root).rename(&path, &title)?;
     state.suppressor.mark(&renamed);
+    // 隠してあったら隠したまま改名する（見出しに合わせた自動の改名も通る。24-2）
+    super::follow_hidden(&root, &path.to_string_lossy(), &renamed.to_string_lossy());
     let stem = |p: &Path| {
         p.file_stem()
             .map(|s| s.to_string_lossy().into_owned())

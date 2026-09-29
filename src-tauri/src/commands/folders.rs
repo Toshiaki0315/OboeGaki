@@ -80,6 +80,7 @@ pub fn folder_rename(
     let vault = Vault::new(&root);
     let before = folder.trim_matches('/').to_string();
     let renamed = vault.rename_folder(&folder, &name)?;
+    super::follow_hidden(&root, &before, &renamed); // 隠したまま（24-2）
     after_folder_moved(&state, &vault, &before, &renamed);
     Ok(renamed)
 }
@@ -96,6 +97,7 @@ pub fn folder_move(
     let before = folder.trim_matches('/').to_string();
     let moved = vault.move_folder(&folder, &into)?;
     if moved != before {
+        super::follow_hidden(&root, &before, &moved); // 隠したまま（24-2）
         after_folder_moved(&state, &vault, &before, &moved);
     }
     Ok(moved)
