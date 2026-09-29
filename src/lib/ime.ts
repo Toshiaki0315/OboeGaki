@@ -26,11 +26,14 @@ export function imeEnterGuard() {
     onCompositionEnd(event: { timeStamp: number }) {
       endedAt = event.timeStamp;
     },
-    /// この keydown の Enter は IME のものか
-    isImeEnter(event: KeyLike): boolean {
-      if (event.key !== "Enter") return false;
+    /// この keydown は IME のものか（キーを問わない。変換取り消しの Esc など。24-5）
+    isImeKey(event: KeyLike): boolean {
       if (event.isComposing || event.keyCode === 229) return true;
       return event.timeStamp - endedAt < SAME_STROKE_MS;
+    },
+    /// この keydown の Enter は IME のものか
+    isImeEnter(event: KeyLike): boolean {
+      return event.key === "Enter" && this.isImeKey(event);
     },
   };
 }

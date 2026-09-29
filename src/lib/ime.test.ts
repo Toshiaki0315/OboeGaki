@@ -45,3 +45,25 @@ describe("imeEnterGuard", () => {
     expect(guard.isImeEnter(enter({ timeStamp: 1400 }))).toBe(false);
   });
 });
+
+describe("isImeKey（Enter 以外の打鍵。24-5）", () => {
+  const escape = (over = {}) => ({
+    key: "Escape",
+    keyCode: 27,
+    isComposing: false,
+    timeStamp: 1000,
+    ...over,
+  });
+
+  test("test_素の_Esc_は人が押したもの", () => {
+    expect(imeEnterGuard().isImeKey(escape())).toBe(false);
+  });
+
+  test("test_WebKit_の変換取り消しの_Esc_は_IME_のもの", () => {
+    // WebKit は変換中の打鍵を keyCode 229 で送り、isComposing を立てない
+    expect(imeEnterGuard().isImeKey(escape({ keyCode: 229 }))).toBe(true);
+    const guard = imeEnterGuard();
+    guard.onCompositionEnd({ timeStamp: 1000 });
+    expect(guard.isImeKey(escape({ timeStamp: 1005 }))).toBe(true);
+  });
+});

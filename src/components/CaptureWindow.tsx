@@ -2,7 +2,8 @@
 // Cmd+Enter で今日のノートの末尾へ、Esc で捨てる。**素の textarea** —
 // 書き取りは数行で、CM6 を起こすほどではない。IME は OS の素の動き
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { imeEnterGuard } from "../lib/ime";
 
 export function CaptureWindow({
   disabled = false,
@@ -17,6 +18,7 @@ export function CaptureWindow({
 }) {
   const [text, setText] = useState("");
   const box = useRef<HTMLTextAreaElement>(null);
+  const ime = useMemo(() => imeEnterGuard(), []);
   useEffect(() => {
     box.current?.focus();
   }, []);
@@ -40,11 +42,13 @@ export function CaptureWindow({
             if (text.trim()) onSubmit(text);
             return;
           }
-          if (event.key === "Escape") {
+          // 変換中の Esc は IME の取り消し（T5 / 24-5）。書いたものを捨てる窓を出さない
+          if (event.key === "Escape" && !ime.isImeKey(event.nativeEvent)) {
             event.preventDefault();
             onCancel(text);
           }
         }}
+        onCompositionEnd={(event) => ime.onCompositionEnd(event.nativeEvent)}
       />
       <footer className="capture-hint">
         ⌘+Enter で今日のノートの末尾へ ／ Esc で閉じる

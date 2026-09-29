@@ -64,6 +64,25 @@ describe("Dialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  test("test_WebKit の変換取り消しの Esc でも閉じない（24-5）", () => {
+    // WebKit は変換中の打鍵を keyCode 229 で送り、取り消しの Esc は
+    // compositionend の後に isComposing: false で届くことがある
+    const onClose = vi.fn();
+    const onKeyDown = vi.fn();
+    render(
+      <Dialog title="問い" onClose={onClose} onKeyDown={onKeyDown}>
+        <input aria-label="欄" />
+      </Dialog>,
+    );
+    const field = screen.getByLabelText("欄");
+    fireEvent.keyDown(field, { key: "Escape", keyCode: 229 });
+    fireEvent.compositionEnd(field);
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    // 呼び手（環境設定のキャンセルなど）にも渡さない
+    expect(onKeyDown).not.toHaveBeenCalled();
+  });
+
   test("test_呼び手の onKeyDown が先に止めた Esc では閉じない", () => {
     const onClose = vi.fn();
     render(

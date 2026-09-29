@@ -34,6 +34,16 @@ describe("CaptureWindow", () => {
     expect(onCancel).toHaveBeenCalledWith("一行目");
   });
 
+  test("test_変換中の_Esc_は_IME_の取り消しなので捨てない（24-5）", () => {
+    const { onCancel, box } = setup();
+    fireEvent.change(box, { target: { value: "書きかけ" } });
+    fireEvent.keyDown(box, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(box, { key: "Escape", keyCode: 229 });
+    fireEvent.compositionEnd(box);
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   test("test_案内に送り方が書いてある", () => {
     setup();
     expect(screen.getByText(/⌘\+Enter/)).toBeTruthy();

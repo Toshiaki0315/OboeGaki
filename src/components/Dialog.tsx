@@ -5,11 +5,13 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { imeEnterGuard } from "../lib/ime";
 
 export type DialogProps = {
   /// 読み上げの名前（aria-label）。省けば title の字
@@ -48,6 +50,7 @@ export function Dialog({
 }: DialogProps) {
   const name = label ?? (typeof title === "string" ? title : undefined);
   const root = useRef<HTMLDivElement>(null);
+  const ime = useMemo(() => imeEnterGuard(), []);
 
   // 開いたら中へ、閉じたら元へ。編集面（CM6）から窓を開いて閉じると、
   // 何もしなければ focus は body に落ちて、次の打鍵がどこにも届かない。
@@ -76,11 +79,14 @@ export function Dialog({
   }, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // 変換中の Esc は IME の取り消し（T5）。窓を閉じるのは確定してから。
+    // WebKit の keyCode 229 と確定直後の Esc も見る（24-5）。呼び手にも渡さない
+    // （環境設定の Esc はキャンセルで、変換を取り消しただけで設定が戻った）
+    if (event.key === "Escape" && ime.isImeKey(event.nativeEvent)) return;
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
     if (event.key === "Escape") {
-      // 変換中の Esc は IME の取り消し（T5）。窓を閉じるのは確定してから
-      if (event.nativeEvent.isComposing || !onClose) return;
+      if (!onClose) return;
       event.preventDefault();
       onClose();
     } else if (event.key === "Tab" && root.current) {
@@ -116,6 +122,7 @@ export function Dialog({
           onClose ? (event: MouseEvent) => event.stopPropagation() : undefined
         }
         onKeyDown={handleKeyDown}
+        onCompositionEnd={(event) => ime.onCompositionEnd(event.nativeEvent)}
       >
         {title !== undefined && (
           <header className="palette-title">{title}</header>
