@@ -10,7 +10,7 @@ import {
   type Range,
 } from "@codemirror/state";
 import type { Decoration, DecorationSet } from "@codemirror/view";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { FORMAT_COMMANDS } from "./format-commands";
 import {
   bulletGlyph,
@@ -814,13 +814,24 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
     }
     return out;
   }
+  /// 解析を最後まで済ませた状態（済んでいれば同じ状態）。作った直後の木も、打鍵の
+  /// あとの木も時間の予算の中で読めたところまでで、テストを並べて走らせて重いと
+  /// 片方だけ途中で止まり、突き合わせの答えが揺れた（make check で 21-7 の乱数が
+  /// たまに落ちた。2026-09-29）。済ませたら空の transaction で数え直させる
+  function settled(state: EditorState): EditorState {
+    if (syntaxTree(state).length >= state.doc.length) return state;
+    ensureSyntaxTree(state, state.doc.length, 10_000);
+    return state.update({}).state;
+  }
   function rebuilt(doc: string, anchor: number, field: typeof tableField) {
     return shapeOf(
-      EditorState.create({
-        doc,
-        selection: { anchor },
-        extensions: [LANG, sourceModeField, field],
-      }).field(field),
+      settled(
+        EditorState.create({
+          doc,
+          selection: { anchor },
+          extensions: [LANG, sourceModeField, field],
+        }),
+      ).field(field),
     );
   }
   /// 決め打ちの乱数（毎回同じ列。落ちたら doc と操作の列を印字する）
@@ -1340,12 +1351,13 @@ describe("差分更新は作り直しと同じ答えを出す（再レビュー 
       const check = (label: string) => {
         const doc = state.doc.toString();
         const head = state.selection.main.head;
+        const caught = settled(state);
         expect(
-          shapeOf(state.field(tableField)),
+          shapeOf(caught.field(tableField)),
           `${label} 表 step ${step}\n${doc}`,
         ).toEqual(rebuilt(doc, head, tableField));
         expect(
-          shapeOf(state.field(blockWidgetField)),
+          shapeOf(caught.field(blockWidgetField)),
           `${label} ブロック step ${step}\n${doc}`,
         ).toEqual(rebuilt(doc, head, blockWidgetField));
       };
