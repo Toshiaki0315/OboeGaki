@@ -229,3 +229,15 @@ describe("段落と見出しを寄せる囲み（22-4 / ADR-0069）", () => {
     expect(paragraphOf(xml, "<w:drawing>")).toContain('<w:jc w:val="center"/>');
   });
 });
+
+describe("XML が許さない制御文字（24-4）", () => {
+  test("test_貼った改行_U+000B_や制御文字があっても_壊れた_Word_にしない", async () => {
+    // PowerPoint や Word から貼った文には U+000B（段落内の改行）や U+000C が残る。
+    // 以前はそのまま document.xml に入り、Word が「壊れている」と言った
+    const xml = await documentXml("前\u000b後\u000cあと\u0001の字\n");
+    // eslint-disable-next-line no-control-regex -- 制御文字を見分けるための正規表現（24-4）
+    expect(xml).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+    for (const text of ["前", "後", "あと", "の字"])
+      expect(xml).toContain(text);
+  });
+});

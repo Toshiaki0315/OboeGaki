@@ -6,6 +6,7 @@
 // 使える。数式は MathML → OMML が要るので元の LaTeX を等幅で置く。Mermaid は
 // PNG（PowerPoint と同じ経路）。設定タブは作らない。
 
+import { xmlSafeText } from "./xml-safe";
 import { frontMatterRange } from "../markdown/front-matter";
 import { BULLETS, DocxEmitter, numbersReference } from "./docx-blocks";
 import { markdownTokens } from "./export-html";
@@ -37,9 +38,11 @@ function frontMatterTitle(markdownText: string): string | null {
 }
 
 export async function buildDocx(
-  markdownText: string,
+  source: string,
   options: DocxOptions,
 ): Promise<string> {
+  // XML が許さない制御文字を入口で落とす（24-4。貼った U+000B で壊れた Word になった）
+  const markdownText = xmlSafeText(source);
   // docx は大きいので書き出すときだけ読む（pptxgenjs と同じ手口）
   const mods = await import("docx");
   const {

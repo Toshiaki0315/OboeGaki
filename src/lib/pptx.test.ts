@@ -618,3 +618,31 @@ describe("GR-01: pptx.ts に枠の数字を直に書かない（21-15）", () =>
     expect(offsets).toEqual([]);
   });
 });
+
+describe("XML が許さない制御文字（24-4）", () => {
+  it("test_本文とフッタに制御文字があっても_壊れた_PowerPoint_にしない", async () => {
+    const doc = "## 題\u000b続き\n\n本文\u000bの\u0001字\n";
+    const base64 = await buildPptx(
+      splitDeck(doc),
+      async () => null,
+      readSlideTheme(doc),
+      null,
+      {
+        ...DEFAULT_PPTX_OPTIONS,
+        footer: { ...DEFAULT_PPTX_OPTIONS.footer, text: "足\u000cもと" },
+      },
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    for (const name of Object.keys(zip.files).filter((n) =>
+      n.endsWith(".xml"),
+    )) {
+      const xml = (await zip.file(name)?.async("string")) ?? "";
+      // eslint-disable-next-line no-control-regex -- 制御文字を見分けるための正規表現（24-4）
+      expect(xml, name).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+    }
+    const slide =
+      (await zip.file("ppt/slides/slide1.xml")?.async("string")) ?? "";
+    expect(slide).toContain("本文");
+    expect(slide).toContain("字");
+  });
+});

@@ -35,6 +35,7 @@ import {
 import { dataUrlDimensions } from "./image-bytes";
 import { DEFAULT_PPTX_SETTINGS } from "./pptx-settings";
 import { dayValue } from "./day";
+import { xmlSafeText } from "./xml-safe";
 
 /// 用紙の名前（`defineLayout` に渡す。GR-06）
 const LAYOUT_NAME = "OBOEGAKI_PAGE";
@@ -73,7 +74,8 @@ export const DEFAULT_PPTX_OPTIONS: PptxOptions = {
 
 /// フッタに出す字。**空なら題名**（今までどおり）。日付は末尾に足す。
 function footerText(deck: Deck, options: PptxOptions): string {
-  const base = options.footer.text || deck.title;
+  // 設定から来る字も XML に入る。制御文字を落とす（24-4）
+  const base = xmlSafeText(options.footer.text) || deck.title;
   if (!options.footer.showDate) return base;
   const day = dayValue(options.today ?? new Date());
   return base ? `${base}　${day}` : day;
