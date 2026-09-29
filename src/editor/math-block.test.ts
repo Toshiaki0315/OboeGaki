@@ -73,3 +73,25 @@ describe("MathBlock", () => {
     expect(widgets).toHaveLength(0);
   });
 });
+
+describe("引用の中の数式ブロック（24-5）", () => {
+  test("test_引用が終わったところで数式ブロックも終わる（コードフェンスと同じ）", () => {
+    // 以前は引用の外まで伸び、下の見出しや本文の装飾が消え、引用の線が付いた
+    const doc = "> $$\n> x\n\n# 見出し\n\n本文 **強**";
+    const state = EditorState.create({ doc, extensions: [LANG] });
+    const tree = ensureSyntaxTree(state, doc.length, 1000)!;
+    const top: string[] = [];
+    for (let node = tree.topNode.firstChild; node; node = node.nextSibling) {
+      top.push(node.name);
+    }
+    expect(top).toEqual(["Blockquote", "ATXHeading1", "Paragraph"]);
+    let math: { from: number; to: number } | null = null;
+    tree.iterate({
+      enter: (node) => {
+        if (node.name === "MathBlock") math = { from: node.from, to: node.to };
+      },
+    });
+    expect(math).not.toBeNull();
+    expect(doc.slice(math!.from, math!.to)).toBe("> $$\n> x");
+  });
+});

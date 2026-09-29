@@ -116,6 +116,12 @@ export const extendedInline: MarkdownConfig = {
         const start = cx.lineStart;
         let end = cx.lineStart + line.text.length;
         while (cx.nextLine()) {
+          // 入れ物（引用・リスト）が終わったらブロックも終わる（コードフェンスと同じ
+          // 条件。24-5）。見ないと、引用の中の `> $$` が引用の外まで伸び、下の見出しや
+          // 本文の装飾が消えて引用の線が付いた。その行は次のブロックへ渡す
+          // `depth` は Lezer の内部の値（公開の型に無い）だが、組み込みのコード
+          // フェンスが同じ値で判定している。名前が変わったら回帰テストが落ちる
+          if ((line as unknown as { depth: number }).depth < cx.depth) break;
           end = cx.lineStart + line.text.length;
           // 開きと同じく line.pos から見る（引用の中の `> $$` でも閉じる）
           if (line.text.slice(line.pos).trim() === "$$") {
