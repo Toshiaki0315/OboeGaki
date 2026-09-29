@@ -5,6 +5,7 @@
 // docx は大きいので書き出すときだけ読む（呼ぶ側が `import("docx")` した結果を渡す）。
 // 出来上がりは fixtures/golden/export-docx.*.xml が字面で見張る
 
+import { DEFAULT_SUMMARY } from "../editor/details-container";
 import { splitFenceInfo } from "../markdown/fence-info";
 import type { markdownTokens } from "./export-html";
 import {
@@ -384,18 +385,41 @@ export class DocxEmitter {
           );
         }
         break;
+      case "container_details_open": {
+        // `:::details 呼び名` の呼び名（24-5）。貼った <details> の形（details_open）は
+        // 出していたのに、こちらの形は落としていた。HTML と同じく、書いていなければ
+        // 「詳細」
+        const summary =
+          String(token.info ?? "")
+            .trim()
+            .replace(/^details\b/, "")
+            .trim() || DEFAULT_SUMMARY;
+        this.children.push(this.summaryParagraph(summary));
+        break;
+      }
       case "details_open":
         if (token.info) {
-          this.children.push(
-            new Paragraph({
-              children: [new TextRun({ text: String(token.info), bold: true })],
-            }),
-          );
+          this.children.push(this.summaryParagraph(String(token.info)));
         }
         break;
       default:
         break; // th/td/thead/tbody/tr_open・details_close・footnote_* は形だけ
     }
+  }
+
+  /// 折りたたみの呼び名の段落（太字。書体は本文と同じ）
+  private summaryParagraph(summary: string): Paragraph {
+    const { Paragraph, TextRun } = this.ctx.mods;
+    const { body } = this.ctx;
+    return new Paragraph({
+      children: [
+        new TextRun({
+          text: summary,
+          bold: true,
+          font: body ? { name: body } : undefined,
+        }),
+      ],
+    });
   }
 
   /// その段落・見出しを寄せるか（囲みの直下のときだけ）

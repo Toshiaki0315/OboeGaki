@@ -31,7 +31,9 @@ describe("囲みの行はスライドに出さない（22-P）", () => {
     expect(blocksOf(":::note warn\n注意\n:::")).toEqual([
       ["paragraph", "注意"],
     ]);
+    // 折りたたみの呼び名は太字の段落として残す（24-5。HTML と同じ）
     expect(blocksOf(":::details 詳しく\n中身\n:::")).toEqual([
+      ["paragraph", "詳しく"],
       ["paragraph", "中身"],
     ]);
   });
@@ -194,6 +196,18 @@ describe("PowerPoint だけ落ちていた形（24-5）", () => {
       ["code", "code()", "js"],
       ["bullet", "次"],
     ]);
+  });
+});
+
+describe("折りたたみの呼び名（24-5）", () => {
+  test("test_:::details_の呼び名を太字の段落として残す", () => {
+    const blocks = splitDeck("## A\n\n:::details 詳しい # 話\n中身\n:::\n")
+      .slides[0].blocks;
+    expect(blocks.map((block) => [block.kind, said(block)])).toEqual([
+      ["paragraph", "詳しい # 話"],
+      ["paragraph", "中身"],
+    ]);
+    expect(runsOf(blocks[0]).every((run) => run.bold)).toBe(true);
   });
 });
 

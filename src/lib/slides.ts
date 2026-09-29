@@ -20,6 +20,7 @@ import MarkdownIt from "markdown-it";
 import { Table, TaskList } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
 import { containersOf } from "./container-lines";
+import { DEFAULT_SUMMARY } from "../editor/details-container";
 import { xmlSafeText } from "./xml-safe";
 import { bodyText } from "../markdown/front-matter";
 import { splitImageAlt } from "../markdown/image-size";
@@ -106,11 +107,26 @@ export type SplitLevel = 1 | 2 | 3;
 /// 囲みにしない（見つけ方は lib/container-lines。HTML 書き出しと同じ）
 function withoutContainerLines(text: string): {
   text: string;
-  /// 寄せの囲みの中身の範囲（本文の中の位置。空白に置き換えても変わらない）
+  /// 寄せの囲みの中身の範囲（書き換えたあとの本文の中の位置）
   aligns: { kind: SlideAlign; from: number; to: number }[];
 } {
   const { lines, containers } = containersOf(text);
   if (containers.length === 0) return { text, aligns: [] };
+  for (const { kind, info, open, close, inline } of containers) {
+    if (inline) {
+      // 1 行の形（`<p align="center">題</p>`。23-2 後半）: 中身だけを残す
+      lines[open] = lines[open].slice(inline.from, inline.to);
+      continue;
+    }
+    // 折りたたみの呼び名は太字の段落として残す（24-5。HTML と同じ。以前は開きの
+    // 行ごと空白にして消えていた）。記号は逃がす（`#` で見出しにならないように）
+    lines[open] =
+      kind === "details"
+        ? `**${escapeMarkdown(info || DEFAULT_SUMMARY)}**\n`
+        : " ".repeat(lines[open].length);
+    lines[close] = " ".repeat(lines[close].length);
+  }
+  // 寄せの範囲は書き換えたあとの行から数える（呼び名の行で長さが変わる）
   const starts: number[] = [];
   let offset = 0;
   for (const line of lines) {
@@ -119,27 +135,23 @@ function withoutContainerLines(text: string): {
   }
   const aligns: { kind: SlideAlign; from: number; to: number }[] = [];
   for (const { kind, open, close, inline } of containers) {
-    if (inline) {
-      // 1 行の形（`<p align="center">題</p>`。23-2 後半）: 中身を行頭に寄せ、
-      // 行の長さは空白で保つ（位置をずらさない）
-      if (kind === "center" || kind === "right") {
-        aligns.push({
-          kind,
-          from: starts[open],
-          to: starts[open] + lines[open].length + 1,
-        });
-      }
-      const content = lines[open].slice(inline.from, inline.to);
-      lines[open] = content.padEnd(lines[open].length, " ");
-      continue;
-    }
-    if (kind === "center" || kind === "right") {
-      aligns.push({ kind, from: starts[open + 1], to: starts[close] });
-    }
-    lines[open] = " ".repeat(lines[open].length);
-    lines[close] = " ".repeat(lines[close].length);
+    if (kind !== "center" && kind !== "right") continue;
+    aligns.push(
+      inline
+        ? {
+            kind,
+            from: starts[open],
+            to: starts[open] + lines[open].length + 1,
+          }
+        : { kind, from: starts[open + 1], to: starts[close] },
+    );
   }
   return { text: lines.join("\n"), aligns };
+}
+
+/// Markdown の記号（ASCII の約物）を逃がす。呼び名などを字のまま段落に置くため
+function escapeMarkdown(text: string): string {
+  return text.replace(/[!-/:-@[-`{-~]/g, (char) => `\\${char}`);
 }
 
 export function splitDeck(source: string, splitLevel: SplitLevel = 2): Deck {

@@ -241,3 +241,16 @@ describe("XML が許さない制御文字（24-4）", () => {
       expect(xml).toContain(text);
   });
 });
+
+describe("折りたたみの呼び名（24-5）", () => {
+  test("test_:::details_の呼び名を太字の段落として残す（HTML と同じ）", async () => {
+    // 以前は貼った <details> の形だけ呼び名を出し、:::details の形は落としていた
+    const xml = await documentXml(":::details 詳しい話\n\n中身\n\n:::\n");
+    const summary =
+      xml.split("<w:p>").find((part) => part.includes("詳しい話")) ?? "";
+    expect(summary).toContain("<w:b/>");
+    expect(xml).toContain("中身");
+    // 呼び名を書かなければ「詳細」（HTML と同じ）
+    expect(await documentXml(":::details\n中身\n:::\n")).toContain("詳細");
+  });
+});
