@@ -109,6 +109,16 @@ pub fn hidden_relative(root: &Path, path: &str) -> Result<String, String> {
     Ok(rest.to_string_lossy().trim_matches('/').to_string())
 }
 
+/// 照合に使う字面: NFC・成分ごとに前後の空白を落とす・小文字（24-2）
+fn match_key(path: &str) -> String {
+    crate::vault::nfc_string(path)
+        .split('/')
+        .map(str::trim)
+        .collect::<Vec<_>>()
+        .join("/")
+        .to_lowercase()
+}
+
 /// 見せないフォルダの一覧。`.mcp-ignore` の各行（`#` から始まる行と空行は
 /// 飛ばす）と、一覧に出ないもの（`.trash` / `templates` / 管理フォルダ）
 #[derive(Debug, Clone, Default)]
@@ -133,15 +143,24 @@ impl IgnoreList {
     /// 隠さない）。既定で見せないフォルダは先頭の成分で見る。ドットで始まる
     /// 成分は**どの階層でも**見せない — `scan()` が各階層でドットフォルダを
     /// 飛ばすのと揃える（アプリに一切出ないものを MCP だけが読まない）
+    ///
+    /// **大文字小文字と、成分の前後の空白は区別しない**（24-2）。APFS は大文字小文字を
+    /// 区別しないので `private/diary.md` で `Private/diary.md` が開け、MCP のフォルダ名
+    /// は成分ごとに空白を落として使う（`existing_folder_relative`）ので ` Private` で
+    /// `Private/` に書けた。字面そのままで比べていて、どちらも隠しをすり抜けた。
+    /// 画面の `mcp-hidden.isHiddenFromMcp` も同じ規則（共有の見本が見張る）
     pub fn is_ignored(&self, relative: &str) -> bool {
-        let relative = crate::vault::nfc_string(relative);
+        let relative = match_key(relative);
         let first = relative.split('/').next().unwrap_or("");
-        if SKIP_DIRS.contains(&first) || relative.split('/').any(|part| part.starts_with('.')) {
+        if SKIP_DIRS.iter().any(|dir| dir.to_lowercase() == first)
+            || relative.split('/').any(|part| part.starts_with('.'))
+        {
             return true;
         }
-        self.folders
-            .iter()
-            .any(|folder| relative == *folder || relative.starts_with(&format!("{folder}/")))
+        self.folders.iter().any(|folder| {
+            let folder = match_key(folder);
+            relative == folder || relative.starts_with(&format!("{folder}/"))
+        })
     }
 }
 

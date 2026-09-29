@@ -1,11 +1,6 @@
 {
-  "_comment": "`.mcp-ignore` の照合（ADR-0051）。Rust `mcp::IgnoreList::is_ignored` と TS `mcp-hidden.isHiddenFromMcp` が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。hiddenBy は TS だけ（親ごと隠れているときの親）。",
-  "builtin": [
-    ".trash",
-    ".OboeGaki",
-    "attachments",
-    "templates"
-  ],
+  "_comment": "`.mcp-ignore` の照合（ADR-0051）。Rust `mcp::IgnoreList::is_ignored` と TS `mcp-hidden.isHiddenFromMcp` が同じ答えを出すことを突き合わせる（棚卸し 2026-09-17 / TASKS 17-8）。hiddenBy は TS だけ（親ごと隠れているときの親）。 大文字小文字と成分の前後の空白は区別しない（APFS は大文字小文字を区別せず、MCP のフォルダ名は成分ごとに空白を落として使う。24-2）。",
+  "builtin": [".trash", ".OboeGaki", "attachments", "templates"],
   "cases": [
     {
       "ignore": "秘密\n",
@@ -70,6 +65,36 @@
     {
       "ignore": "仕事/評価\n",
       "relative": "仕事/a.md",
+      "hidden": false,
+      "hiddenBy": null
+    },
+    {
+      "ignore": "Private\n",
+      "relative": "private/diary.md",
+      "hidden": true,
+      "hiddenBy": "Private"
+    },
+    {
+      "ignore": "秘密.md\n",
+      "relative": "秘密.MD",
+      "hidden": true,
+      "hiddenBy": null
+    },
+    {
+      "ignore": "Private\n",
+      "relative": " Private/x.md",
+      "hidden": true,
+      "hiddenBy": "Private"
+    },
+    {
+      "ignore": "Work/Eval\n",
+      "relative": "work /eval/x.md",
+      "hidden": true,
+      "hiddenBy": "Work/Eval"
+    },
+    {
+      "ignore": "Private\n",
+      "relative": "Private2/x.md",
       "hidden": false,
       "hiddenBy": null
     }

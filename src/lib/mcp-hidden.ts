@@ -32,14 +32,26 @@ export const NO_MCP_HIDDEN: McpHidden = { listed: [], builtin: [] };
 /// ドットフォルダを飛ばすのと揃える。15-12）
 export function isHiddenFromMcp(hidden: McpHidden, relative: string): boolean {
   if (!relative) return false;
-  // NFC に寄せて比べる（Rust と同じ。Finder が作った名前は NFD で来ることがある。
-  // 共有の見本 fixtures/mcp-ignore-cases.json が両側を見張る）
-  const target = relative.normalize("NFC");
+  // Rust と同じ字面で比べる（NFC・成分の前後の空白を落とす・小文字。24-2）。
+  // 共有の見本 fixtures/mcp-ignore-cases.json が両側を見張る
+  const target = matchKey(relative);
   if (target.split("/").some((part) => part.startsWith("."))) return true;
   return [...hidden.listed, ...hidden.builtin].some((raw) => {
-    const entry = raw.normalize("NFC");
+    const entry = matchKey(raw);
     return target === entry || target.startsWith(`${entry}/`);
   });
+}
+
+/// 照合に使う字面（Rust の `match_key` と同じ）。NFC に寄せ（Finder が作った名前は
+/// NFD で来る）、成分ごとに前後の空白を落とし、小文字にする（APFS は大文字小文字を
+/// 区別しない。24-2）
+function matchKey(path: string): string {
+  return path
+    .normalize("NFC")
+    .split("/")
+    .map((part) => part.trim())
+    .join("/")
+    .toLowerCase();
 }
 
 /// その道を**親ごと**隠している場所（`.mcp-ignore` の行、または最初から
@@ -51,16 +63,18 @@ export function hiddenByAncestor(
   relative: string,
 ): string | null {
   if (!relative) return null;
-  const target = relative.normalize("NFC");
+  const target = matchKey(relative);
   // 途中のドット始まりの成分（そこまでの道が「親」）
-  const parts = target.split("/");
+  const parts = relative.normalize("NFC").split("/");
   for (let depth = 0; depth < parts.length - 1; depth++) {
-    if (parts[depth].startsWith("."))
+    if (parts[depth].trim().startsWith("."))
       return parts.slice(0, depth + 1).join("/");
   }
   for (const raw of [...hidden.listed, ...hidden.builtin]) {
-    const entry = raw.normalize("NFC");
-    if (entry !== target && target.startsWith(`${entry}/`)) return entry;
+    const entry = matchKey(raw);
+    // 返すのは書いてある字面（NFC）。照合だけをそろえた字面で行う
+    if (entry !== target && target.startsWith(`${entry}/`))
+      return raw.normalize("NFC");
   }
   return null;
 }

@@ -549,6 +549,29 @@ mod tests {
         assert!(mcp.read_note("../外.md").is_err());
     }
 
+    /// 隠しは大文字小文字と前後の空白ですり抜けない（24-2。レビューが再現した形）
+    #[test]
+    fn test_隠したフォルダは大文字小文字や前後の空白を変えても読めず_書けない() {
+        let (root, _vault) = temp_vault();
+        note(root.path(), "Private/diary.md", "# diary\n\nsecret text\n");
+        note(root.path(), "秘密.md", "# 秘密\n\n中身\n");
+        fs::write(root.path().join(".mcp-ignore"), "Private\n秘密.md\n").unwrap();
+        let mcp = McpVault::open(root.path()).unwrap();
+        assert!(mcp.read_note("private/diary.md").is_err());
+        assert!(mcp.read_note("秘密.MD").is_err());
+        assert!(mcp
+            .create_note("y", Some("本文"), Some("private"), None)
+            .is_err());
+        assert!(mcp
+            .create_note("x", Some("本文"), Some(" Private"), None)
+            .is_err());
+        // 隠したフォルダに何も増えていない
+        assert_eq!(
+            fs::read_dir(root.path().join("Private")).unwrap().count(),
+            1
+        );
+    }
+
     #[test]
     fn test_related_notes_指している_同じタグ_題名の出現を根拠ごと返す() {
         let (root, _vault) = temp_vault();
