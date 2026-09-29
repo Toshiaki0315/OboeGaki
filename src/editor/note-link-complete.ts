@@ -75,13 +75,23 @@ export function noteLinkCompletion(
     const options = matchTags(prefix, knownTitles());
     if (options.length === 0) return null;
     const from = context.pos - prefix.length;
-    const rest = line.text.slice(column);
-    const apply = (view: EditorView, completion: Completion) => {
+    // 書き換えは**確定したときの**範囲と文書から作る（24-3）。CM6 は候補が出た
+    // あとも打ち続ける間は同じ候補を使い回し（validFor）、確定のときに今の範囲を
+    // 渡す。候補を作った時点の位置と後ろの字を使うと、打ち足した字を残したまま
+    // 差し込み、`[[会議メモ]]議` や `[[会議メモ議]]` に壊れた
+    const apply = (
+      view: EditorView,
+      completion: Completion,
+      applyFrom: number,
+      applyTo: number,
+    ) => {
+      const now = view.state.doc.lineAt(applyTo);
+      const rest = now.text.slice(applyTo - now.from);
       const edit = linkCompletionEdit(
         rest,
         completion.label,
-        from,
-        context.pos,
+        applyFrom,
+        applyTo,
       );
       view.dispatch({
         changes: { from: edit.from, to: edit.to, insert: edit.insert },

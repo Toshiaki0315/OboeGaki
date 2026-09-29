@@ -1,8 +1,8 @@
 // `[[ノート名]]` の補完（E-6、参照実装 core/notelink.py の移植）。
 
 import { describe, expect, test } from "vitest";
-import { EditorState } from "@codemirror/state";
-import { CompletionContext } from "@codemirror/autocomplete";
+import { EditorState, type TransactionSpec } from "@codemirror/state";
+import { CompletionContext, type Completion } from "@codemirror/autocomplete";
 import type { EditorView } from "@codemirror/view";
 import {
   closingTail,
@@ -108,5 +108,52 @@ describe("noteLinkCompletion", () => {
     expect(complete(doc, doc.length, titles, true)).toBeNull();
     const fenced = "```md\n[[会議";
     expect(complete(fenced, fenced.length, titles)).toBeNull();
+  });
+});
+
+describe("候補が出たあとに打ってから確定する（24-3）", () => {
+  // CM6 は候補が出たあとも打ち続ける間は同じ候補を使い回し（validFor）、確定の
+  // ときに**今の**範囲（from, to）を apply に渡す。以前は候補を作った時点の位置と
+  // 後ろの字を使っていて、打ち足した字を残したまま差し込み、字を壊した
+  function acceptAfterTyping(before: string, cursor: number, typed: string) {
+    const state = EditorState.create({
+      doc: before,
+      selection: { anchor: cursor },
+      extensions: [LANG],
+    });
+    const result = noteLinkCompletion(() => ["会議メモ"])(
+      new CompletionContext(state, cursor, false),
+    );
+    if (!result) throw new Error("候補が出ない");
+    const option = result.options.find((o) => o.label === "会議メモ")!;
+    // 候補が出たあとに打ち足す
+    let now = state.update({
+      changes: { from: cursor, insert: typed },
+      selection: { anchor: cursor + typed.length },
+    }).state;
+    const view = {
+      get state() {
+        return now;
+      },
+      dispatch: (spec: TransactionSpec) => {
+        now = now.update(spec).state;
+      },
+    } as unknown as EditorView;
+    const apply = option.apply as (
+      view: EditorView,
+      completion: Completion,
+      from: number,
+      to: number,
+    ) => void;
+    apply(view, option, result.from, cursor + typed.length);
+    return now.doc.toString();
+  }
+
+  test("test_開きかけのリンクで打ち足してから確定しても_打った字が残らない", () => {
+    expect(acceptAfterTyping("[[会", 3, "議")).toBe("[[会議メモ]]");
+  });
+
+  test("test_閉じたリンクの中で打ち足してから確定しても_名前が壊れない", () => {
+    expect(acceptAfterTyping("[[会]]", 3, "議")).toBe("[[会議メモ]]");
   });
 });
