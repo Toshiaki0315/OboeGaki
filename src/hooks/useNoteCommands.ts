@@ -488,14 +488,42 @@ export function useNoteCommands(input: NoteCommandsInput) {
     await refreshLists();
   }
 
+  /// 開いているノートのファイルを動かす（フォルダへ移す・一覧へのドロップ・
+  /// フォルダの改名と移動。24-1）。**改名と同じ手順** — 書き切り、動かす間は保存を
+  /// 止め、動いた直後に予約の書き先と今のパスを付け替えてから止めを解く。以前は
+  /// 止めも付け替えもしておらず、動かす間に打った字の保存が旧パスに書いて旧
+  /// ファイルが蘇った（開いた新しいパスには字が無い）。開いていないノートなら
+  /// 記録だけして動かす。`move` は動いた先のパスを返す
+  async function relocate(
+    path: string,
+    move: () => Promise<string>,
+  ): Promise<string> {
+    const { currentPath, sync } = latest.current;
+    if (path !== currentPath) {
+      const moved = await move();
+      noteMoved(path, moved); // 走っている開き直しが動いた先で開けるように
+      return moved;
+    }
+    await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
+    const release = sync.holdSaves();
+    try {
+      const moved = await move();
+      noteMoved(path, moved);
+      sync.renamed(path, moved);
+      return moved;
+    } finally {
+      release();
+    }
+  }
+
   /// フォルダへ移す（ADR-0024）。本文は書き換えない。移した先を開く
   async function moveTo(path: string, folder: string) {
-    const { vaultRoot, sync, refreshLists } = latest.current;
+    const { vaultRoot, refreshLists } = latest.current;
     if (!vaultRoot) return;
-    await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     try {
-      const moved = await moveNote(vaultRoot, path, folder);
-      noteMoved(path, moved); // 走っている開き直しが動いた先で開けるように
+      const moved = await relocate(path, () =>
+        moveNote(vaultRoot, path, folder),
+      );
       await refreshLists();
       await openNote(moved);
       status(folder ? `「${folder}」へ移しました` : "直下へ移しました");
@@ -524,5 +552,6 @@ export function useNoteCommands(input: NoteCommandsInput) {
     deleteForever: deleteForeverAsked,
     emptyTrash: emptyTrashAsked,
     moveTo,
+    relocate,
   };
 }

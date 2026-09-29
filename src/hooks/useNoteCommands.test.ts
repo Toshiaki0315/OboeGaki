@@ -575,3 +575,64 @@ describe("useNoteCommands", () => {
     expect(given.onStatus).toHaveBeenCalledWith("ピン留めしました");
   });
 });
+
+describe("useNoteCommands: 開いているノートを動かす（24-1）", () => {
+  const order = (fn: unknown) =>
+    (fn as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+
+  test("test_フォルダへ移す間は保存を止め_書き先を付け替えてから解く", async () => {
+    mocked.moveNote.mockResolvedValue("/v/f/a.md");
+    const given = input({ currentPath: "/v/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.moveTo("/v/a.md", "f"));
+    // 以前は止めも付け替えもせず、移す間に打った字の保存が旧パスに書いて
+    // 旧ファイルが蘇った（開いた新しいパスには字が無い）
+    expect(given.sync.holdSaves).toHaveBeenCalledTimes(1);
+    expect(given.sync.renamed).toHaveBeenCalledWith("/v/a.md", "/v/f/a.md");
+    const release = (given.sync.holdSaves as ReturnType<typeof vi.fn>).mock
+      .results[0].value;
+    expect(order(release)).toBeGreaterThan(order(given.sync.renamed));
+  });
+
+  test("test_開いていないノートを移すときは保存を止めない", async () => {
+    mocked.moveNote.mockResolvedValue("/v/f/b.md");
+    const given = input({ currentPath: "/v/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.moveTo("/v/b.md", "f"));
+    expect(given.sync.holdSaves).not.toHaveBeenCalled();
+    expect(given.sync.renamed).not.toHaveBeenCalled();
+  });
+
+  test("test_フォルダの改名などでも同じ手順で動かせる（relocate）", async () => {
+    const given = input({ currentPath: "/v/旧/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    let moved = "";
+    await act(async () => {
+      moved = await result.current.relocate("/v/旧/a.md", async () => {
+        // 動かしている最中は保存が止まっている
+        expect(given.sync.holdSaves).toHaveBeenCalledTimes(1);
+        return "/v/新/a.md";
+      });
+    });
+    expect(moved).toBe("/v/新/a.md");
+    expect(given.sync.flush).toHaveBeenCalled();
+    expect(order(given.sync.flush)).toBeLessThan(order(given.sync.holdSaves));
+    expect(given.sync.renamed).toHaveBeenCalledWith("/v/旧/a.md", "/v/新/a.md");
+  });
+
+  test("test_動かすのに失敗しても保存の止めは解く", async () => {
+    const given = input({ currentPath: "/v/a.md" });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(async () => {
+      await expect(
+        result.current.relocate("/v/a.md", async () => {
+          throw new Error("移せない");
+        }),
+      ).rejects.toThrow("移せない");
+    });
+    const release = (given.sync.holdSaves as ReturnType<typeof vi.fn>).mock
+      .results[0].value;
+    expect(release).toHaveBeenCalled();
+    expect(given.sync.renamed).not.toHaveBeenCalled();
+  });
+});

@@ -856,15 +856,19 @@ function App() {
         await createFolder(vaultRoot, `${parent}${typed}`);
         setStatus(`フォルダ「${typed}」を作りました`);
       } else {
-        const renamed = await renameFolder(vaultRoot, dialog.folder, typed);
-        // 開いているノートのパスも変わっている。開き直して追いかける
-        if (currentPath?.startsWith(`${vaultRoot}/${dialog.folder}/`)) {
-          const moved = currentPath.replace(
-            `${vaultRoot}/${dialog.folder}/`,
-            `${vaultRoot}/${renamed}/`,
-          );
-          await sync.flush();
+        // 開いているノートがこの中なら、そのパスも変わる。改名と同じ手順で動かし
+        // （書き切り・保存を止める・書き先を付け替える。24-1）、開き直して追いかける。
+        // 以前は動かした**後**に書き切っていて、待っていた保存が旧フォルダに書いた
+        const inside = `${vaultRoot}/${dialog.folder}/`;
+        let renamed = dialog.folder;
+        if (currentPath?.startsWith(inside)) {
+          const moved = await noteCommands.relocate(currentPath, async () => {
+            renamed = await renameFolder(vaultRoot, dialog.folder, typed);
+            return currentPath.replace(inside, `${vaultRoot}/${renamed}/`);
+          });
           await openNote(moved);
+        } else {
+          renamed = await renameFolder(vaultRoot, dialog.folder, typed);
         }
         if (folderFilter === dialog.folder) filterByFolder(renamed);
         setStatus(`フォルダの名前を「${typed}」に変えました`);
@@ -1056,15 +1060,19 @@ function App() {
   async function handleMoveFolder(folder: string, into: string) {
     if (!vaultRoot) return;
     try {
-      const moved = await moveFolder(vaultRoot, folder, into);
-      if (moved === folder) return;
-      if (currentPath?.startsWith(`${vaultRoot}/${folder}/`)) {
-        const movedPath = currentPath.replace(
-          `${vaultRoot}/${folder}/`,
-          `${vaultRoot}/${moved}/`,
-        );
-        await sync.flush();
+      // 開いているノートがこの中なら、改名と同じ手順で動かす（24-1）
+      const inside = `${vaultRoot}/${folder}/`;
+      let moved = folder;
+      if (currentPath?.startsWith(inside)) {
+        const movedPath = await noteCommands.relocate(currentPath, async () => {
+          moved = await moveFolder(vaultRoot, folder, into);
+          return currentPath.replace(inside, `${vaultRoot}/${moved}/`);
+        });
+        if (moved === folder) return;
         await openNote(movedPath);
+      } else {
+        moved = await moveFolder(vaultRoot, folder, into);
+        if (moved === folder) return;
       }
       if (folderFilter === folder) filterByFolder(moved);
       setStatus(`フォルダ「${folder}」を「${into || "直下"}」へ移しました`);
@@ -1115,13 +1123,15 @@ function App() {
     if (!vaultRoot) return;
     const moving = paths.filter((path) => canDropInto(vaultRoot, path, folder));
     if (moving.length === 0) return;
-    const open = currentPath !== null && moving.includes(currentPath);
-    if (open) await sync.flush(); // 未保存分を旧パスへ書き切ってから動かす
     let movedOpen: string | null = null;
     const failed: string[] = [];
     for (const path of moving) {
       try {
-        const moved = await moveNote(vaultRoot, path, folder);
+        // 開いているノートは改名と同じ手順で動かす（書き切り・保存を止める・書き先を
+        // 付け替える。24-1）。以前は書き切るだけで、動かす間の保存が旧パスに書いた
+        const moved = await noteCommands.relocate(path, () =>
+          moveNote(vaultRoot, path, folder),
+        );
         if (path === currentPath) movedOpen = moved;
       } catch (error) {
         failed.push(`${noteStem(path)}: ${String(error)}`);

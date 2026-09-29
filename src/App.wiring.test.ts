@@ -95,4 +95,19 @@ describe("App の配線", () => {
     ) as { permissions: string[] };
     expect(capability.permissions).toContain("core:window:allow-destroy");
   });
+
+  test("test_開いているノートを動かす入口は_すべて_relocate_を通す（24-1）", () => {
+    // フォルダの改名・移動は以前、動かした**後**に書き切っていて、待っていた保存が
+    // 旧フォルダに書いた。一覧へのドロップも止めも付け替えもしていなかった
+    for (const name of [
+      "confirmFolderName",
+      "handleMoveFolder",
+      "handleDropOnFolder",
+    ]) {
+      const start = source.indexOf(`async function ${name}(`);
+      expect(start, name).toBeGreaterThan(-1);
+      const body = source.slice(start, source.indexOf("\n  }\n", start));
+      expect(body, name).toContain("noteCommands.relocate(");
+    }
+  });
 });
