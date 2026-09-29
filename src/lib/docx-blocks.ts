@@ -299,7 +299,9 @@ export class DocxEmitter {
         break;
       case "ordered_list_open": {
         this.numberInstance += 1;
-        const start = Number(token.attrGet("start") ?? 1) || 1;
+        // `0.` から始まる並びは 0 から（24-5。`|| 1` で 0 が 1 に化けていた）
+        const written = Number(token.attrGet("start") ?? 1);
+        const start = Number.isInteger(written) && written >= 0 ? written : 1;
         this.orderedStarts.add(start);
         this.listStack.push({
           reference: numbersReference(start),

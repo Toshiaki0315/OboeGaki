@@ -162,6 +162,18 @@ describe("棚卸しレビュー 2026-09-17（Word 書き出し）", () => {
       (await zip.file("word/numbering.xml")?.async("string")) ?? "";
     expect(numbering).toContain('<w:start w:val="3"/>');
   });
+
+  test("test_0_から始まる並びは_0_から（24-5）", async () => {
+    // 以前は `Number(start) || 1` で 0 が 1 に化けた
+    const base64 = await buildDocx("0. x\n1. y\n", {
+      title: "t",
+      resolveImage: async () => null,
+    });
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const numbering =
+      (await zip.file("word/numbering.xml")?.async("string")) ?? "";
+    expect(numbering).toContain('<w:start w:val="0"/>');
+  });
 });
 
 describe("段落と見出しを寄せる囲み（22-4 / ADR-0069）", () => {
