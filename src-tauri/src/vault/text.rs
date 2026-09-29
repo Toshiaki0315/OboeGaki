@@ -19,25 +19,44 @@ pub fn decode_text(bytes: &[u8]) -> String {
         // 全体を Shift_JIS と決めつけると、日本語が丸ごと化け、書き戻す操作（改名・
         // 一括置換・やることの完了…）がそれを保存し、履歴の版も化けたものになった
         // （レビュー 2026-09-29）。そのときは読めないバイトだけを置き換え文字にする
-        Err(_) if looks_like_utf8(bytes) => String::from_utf8_lossy(bytes).into_owned(),
-        // 切れた字など Shift_JIS として誤りがあっても Shift_JIS で読む。置き換え文字に
-        // なるのは読めない字だけ（25-3。以前は UTF-8 として読み、全文が化けた）
-        Err(_) => encoding_rs::SHIFT_JIS
-            .decode_without_bom_handling(bytes)
-            .0
-            .into_owned(),
+        Err(_) => {
+            let (sjis, sjis_broken) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(bytes);
+            // Shift_JIS は U+FFFD を持たないので、出てきた数がそのまま読めなかった字の数
+            let sjis_errors = if sjis_broken {
+                sjis.matches('\u{FFFD}').count()
+            } else {
+                0
+            };
+            if looks_like_utf8(bytes, sjis_errors) {
+                String::from_utf8_lossy(bytes).into_owned()
+            } else {
+                // 切れた字など Shift_JIS として誤りがあっても Shift_JIS で読む。置き換え
+                // 文字になるのは読めない字だけ（25-3。以前は UTF-8 として読み、全文が化けた）
+                sjis.into_owned()
+            }
+        }
     };
     // BOM は字ではない（先頭に見えない文字が残ると検索も置換も外れる）
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text).to_string();
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// UTF-8 として読めないバイトがあっても、UTF-8 の字（2 バイト以上）の方が多ければ
+/// UTF-8 として読めないバイトがあっても、UTF-8 の字（2 バイト以上）が並んでいれば
 /// UTF-8 と見る。Shift_JIS の日本語が UTF-8 の字の並びになることはまず無いので、
 /// これは「UTF-8 で書いたノートに読めないバイトが紛れた」形（25-3）。Shift_JIS として
-/// 誤りなく読めるかでは決められない — UTF-8 の日本語の多くは Shift_JIS としても
-/// 誤りなく（化けて）読めてしまう
-fn looks_like_utf8(bytes: &[u8]) -> bool {
+/// 誤りなく読めるかだけでは決められない — UTF-8 の日本語の多くは Shift_JIS としても
+/// 誤りなく（化けて）読めてしまう。
+///
+/// Shift_JIS として誤りなく読める（`sjis_errors` が 0）ときは、UTF-8 の字が壊れたバイト
+/// より多いときだけ UTF-8 — 半角カナの Shift_JIS はまれに UTF-8 の字の形になる
+/// （`ﾃｽ` = C3 BD）。どちらとしても誤りがあるときは、**読めないところが少ない方**を
+/// 取る（同じなら UTF-8）。
+///
+/// 26-2: 25-3 では常に「2 倍より多い」を求めていて、英語が多い・短い UTF-8 のノートを
+/// Shift_JIS と取り違えて化けさせた。docs/ の 2,108 段落で測ると、壊れたバイトを 1 つ
+/// 足した UTF-8 の取り違えは 3 通りの足し方で 717 → 4、正しい Shift_JIS の取り違えは
+/// 0 のまま、途中で切れた Shift_JIS の取り違えは 1
+fn looks_like_utf8(bytes: &[u8], sjis_errors: usize) -> bool {
     let (mut chars, mut broken) = (0usize, 0usize);
     for chunk in bytes.utf8_chunks() {
         chars += chunk.valid().chars().filter(|c| c.len_utf8() > 1).count();
@@ -45,8 +64,11 @@ fn looks_like_utf8(bytes: &[u8]) -> bool {
             broken += 1;
         }
     }
-    // 半角カナの Shift_JIS はまれに UTF-8 の字の形になる（`ﾃｽ` = C3 BD）。余裕を持たせる
-    chars > broken * 2
+    if sjis_errors == 0 {
+        chars > broken
+    } else {
+        broken <= sjis_errors
+    }
 }
 
 /// ノートの本文を読む。**文字コードの揺れはここで吸収する**（7-6）。
@@ -203,6 +225,18 @@ mod tests {
         bytes.push(0xFF);
         let text = decode_text(&bytes);
         assert!(text.starts_with("あいうえお"), "{text}");
+    }
+
+    #[test]
+    fn test_英語が多い_短い_UTF8_のノートに壊れたバイトが混じっても化けない() {
+        // UTF-8 の字が少ないノートを Shift_JIS と取り違えて化けさせていた（26-2）。
+        // 24-1 までは読めていた形
+        let mut english = "see caf\u{e9}".as_bytes().to_vec();
+        english.push(0xE9);
+        assert_eq!(decode_text(&english), "see caf\u{e9}\u{FFFD}");
+        let mut short = "# 買う".as_bytes().to_vec();
+        short.push(0xFF);
+        assert_eq!(decode_text(&short), "# 買う\u{FFFD}");
     }
 
     #[test]
