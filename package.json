@@ -1,7 +1,7 @@
 {
   "name": "oboegaki",
   "private": true,
-  "version": "0.5.159",
+  "version": "0.5.160",
   "type": "module",
   "scripts": {
     "dev": "vite",

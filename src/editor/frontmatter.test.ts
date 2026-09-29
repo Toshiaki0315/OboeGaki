@@ -89,6 +89,17 @@ describe("parseFrontMatterMeta", () => {
     });
   });
 
+  it("test_引用符の無い色（#_と_16_進_6_桁だけ）は値として読む（25-3）", () => {
+    // YAML ではコメントだが、24-5 の前は色として読めていた。書いたノートの色を
+    // 黙って既定へ戻さない
+    const doc =
+      "---\nslide-accent: #44546A\nb: #0a84ff  # 見出しの色\nc: # 注\nd: #12345\n---\n";
+    expect(parseFrontMatterMeta(doc)).toEqual({
+      "slide-accent": "#44546A",
+      b: "#0a84ff",
+    });
+  });
+
   it("test_空白を挟まない_#_と引用符の中の_#_は値のうち", () => {
     const doc = '---\ntag: C#\ntitle: "a # b"\nurl: x#y # 注\n---\n';
     expect(parseFrontMatterMeta(doc)).toEqual({

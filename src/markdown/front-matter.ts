@@ -63,6 +63,13 @@ export function parseFrontMatterMeta(text: string): Record<string, unknown> {
     const found = /^([A-Za-z0-9_-]+):\s*(.+?)\s*$/.exec(line);
     if (!found) continue;
     const [, key, written] = found;
+    // `#` と 16 進 6 桁だけは色として読む（25-3）。YAML ではコメントだが、24-5 の
+    // 前は読めていたので、書いたノートの色を黙って既定へ戻さない
+    const color = /^(#[0-9a-fA-F]{6})(?:\s+#.*)?$/.exec(written);
+    if (color) {
+      meta[key] = color[1];
+      continue;
+    }
     if (written.startsWith("#")) continue; // 値が無くコメントだけ
     const quoted = quotedValue(written);
     if (quoted !== null) {
