@@ -649,3 +649,42 @@ describe("終了の前の書き切り（24-1）", () => {
     expect(done).toBe(true);
   });
 });
+
+describe("保存の失敗のあと（24-1）", () => {
+  test("test_自動保存が一度失敗しても_Cmd+S_や切り替え前の書き切りで書き直す", async () => {
+    mocked.writeNote.mockRejectedValueOnce(new Error("ロックされている"));
+    const onStatus = vi.fn();
+    const { result } = renderHook(() => useNoteSync(input({ onStatus })));
+    act(() => result.current.noteChanged(() => "打った字"));
+    await tick(800); // 予約が発火して失敗する
+    expect(mocked.writeNote).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("保存に失敗"),
+    );
+    // 以前は予約を使い切っていて、ここで何も書かなかった
+    await act(() => result.current.flush());
+    expect(mocked.writeNote).toHaveBeenCalledTimes(2);
+    expect(mocked.writeNote).toHaveBeenLastCalledWith(
+      "/v",
+      "/v/a.md",
+      "打った字",
+      60,
+    );
+    expect(onStatus).toHaveBeenLastCalledWith("保存済み");
+  });
+
+  test("test_書き直しも失敗したら知らせて_次の書き切りでまた試す", async () => {
+    mocked.writeNote.mockRejectedValue(new Error("ディスクがいっぱい"));
+    const onStatus = vi.fn();
+    const { result } = renderHook(() => useNoteSync(input({ onStatus })));
+    act(() => result.current.noteChanged(() => "打った字"));
+    await tick(800);
+    await act(() => result.current.flush());
+    expect(mocked.writeNote).toHaveBeenCalledTimes(2);
+    expect(onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("保存に失敗"),
+    );
+    await act(() => result.current.flush());
+    expect(mocked.writeNote).toHaveBeenCalledTimes(3);
+  });
+});

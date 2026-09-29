@@ -80,6 +80,9 @@ export function useNoteSync({
   const pendingSave = useRef<(() => Promise<void>) | null>(null);
   const pendingTarget = useRef<{ path: string } | null>(null);
   const dirty = useRef(false); // 保存されていない編集があるか
+  // 予約した保存が失敗したまま、次の予約が無い（24-1）。予約を使い切るので、
+  // これが無いと Cmd+S も切り替え前の書き切りも何も書かなかった
+  const failed = useRef<(() => Promise<void>) | null>(null);
   // ディスクにあると分かっている本文（開いた・書いた・採用した）。外部変更の
   // イベントが来ても中身がこれと同じなら、外部の変更ではない — 自分の保存の
   // 残響（抑制窓 1.5 秒を過ぎて届く）や、同期ソフト（iCloud など）が
@@ -130,6 +133,7 @@ export function useNoteSync({
       // 判定され、打ったばかりの内容が静かにリロードで消える。
       // 棚卸し 2026-09-17: known を上書きすると今のノートの「開いた時の
       // 本文」が消え、同期ソフトの触り直しで偽の競合が出る）
+      failed.current = null;
       if (currentPathRef.current === path) {
         known.current = { path, text };
         dirty.current = false;
@@ -147,18 +151,23 @@ export function useNoteSync({
       lastStash.current = now;
       void keepStash(root, path, getText());
     }
-    const schedule = () =>
-      autosave.schedule(async () => {
-        // Promise を返す（= flush が完了を待てる）。失敗はここで受け止める
-        await pendingSave.current?.().catch((error) => {
-          // 書き先は箱で追う（改名で付け替わる。退避も同じパスで）
-          if (currentPathRef.current === target.path) {
-            onStatusRef.current(`保存に失敗: ${String(error)}`);
-          }
-          // 保存できないまま落ちても書いたものを失わない（H-1）
-          void keepStash(root, target.path, getText());
-        });
+    // 保存を試す。失敗はここで受け止め、知らせて退避し、書き切りで試し直せる
+    // ように覚える（24-1）
+    const attempt = async (): Promise<void> => {
+      const save = pendingSave.current;
+      if (!save) return;
+      await save().catch((error) => {
+        // 書き先は箱で追う（改名で付け替わる。退避も同じパスで）
+        if (currentPathRef.current === target.path) {
+          onStatusRef.current(`保存に失敗: ${String(error)}`);
+        }
+        failed.current = attempt;
+        // 保存できないまま落ちても書いたものを失わない（H-1）
+        void keepStash(root, target.path, getText());
       });
+    };
+    // Promise を返す（= flush が完了を待てる）
+    const schedule = () => autosave.schedule(attempt);
     if (held.current) {
       pendingSchedule.current = schedule; // 解除したときに予約する
       return;
@@ -190,6 +199,12 @@ export function useNoteSync({
   const flush = async () => {
     if (held.current) await held.current.promise;
     await autosave.flush();
+    // 予約が失敗したまま次の予約が無ければ、ここで試し直す（24-1）
+    const retry = failed.current;
+    if (retry && dirty.current) {
+      failed.current = null;
+      await retry();
+    }
   };
   /// アプリを終える前（メニューの「終了」。24-1）。書き切り、それでも書けて
   /// いなければ**退避を書き終えるまで**待つ — 保存の失敗で投げる退避は待たない
@@ -208,6 +223,7 @@ export function useNoteSync({
   function discardScheduled() {
     autosave.cancel();
     pendingSchedule.current = null;
+    failed.current = null; // 試し直しも捨てる（聞く前・戻す前に書かない）
   }
   const cancel = () => discardScheduled();
   /// 予約も未保存の印も捨てる（開いているノートを捨てるとき）
@@ -256,6 +272,7 @@ export function useNoteSync({
   /// ノートを開いた直後: 未編集で、保存時刻はまだ無い
   function markOpened(opened?: { path: string; text: string }) {
     dirty.current = false;
+    failed.current = null;
     setSavedAt(null);
     if (opened) known.current = opened;
   }

@@ -2870,7 +2870,7 @@ dependencies = [
 
 [[package]]
 name = "oboegaki"
-version = "0.5.111"
+version = "0.5.112"
 dependencies = [
  "base64 0.23.1",
  "chrono",
