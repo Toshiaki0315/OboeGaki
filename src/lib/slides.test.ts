@@ -2,6 +2,7 @@
 // 区切りは参照実装 core/slides.py と同じ（ユーザーと決めた並べ方）。
 
 import { describe, expect, it, test } from "vitest";
+import { renderBody } from "./export-html";
 import {
   cardsOf,
   diagramsAsImages,
@@ -666,5 +667,52 @@ describe("codeBlocksOf", () => {
       { language: "js", text: "const x = 1;" },
       { language: "", text: "plain" },
     ]);
+  });
+});
+
+describe("リストの中のコードは HTML と同じ字になる（27-1 のオラクル）", () => {
+  // HTML 書き出し（markdown-it = CommonMark）を正解にして、PowerPoint の読み方を
+  // 突き合わせる（inline-oracle.test.ts と同じ構え）。字下げの外し方を変えたら、
+  // ここで HTML との食い違いに気付く
+  const F = "```";
+  const cases: [string, string][] = [
+    [
+      "空白の字下げ・中の字下げと空行",
+      `- a\n\n  ${F}js\n  one()\n    two()\n\n  three()\n  ${F}\n`,
+    ],
+    ["タブで字下げした入れ子", `- a\n\t- ${F}\n\t  x\n\t    y\n\t  ${F}\n`],
+    ["印の直後がタブ", `-\t${F}\n\tcode\n\t${F}\n`],
+    ["タブが項目より深い（境目をまたぐタブ）", `- ${F}\n\tx\n\t\ty\n  ${F}\n`],
+    ["字下げのコードをタブで", `- a\n\n\t\tcode\n\t\tmore\n`],
+    ["字下げのコードを空白で", `- item\n\n      code1\n        code2\n`],
+    ["番号付き", `1. x\n\n   ${F}\n   a\n   b\n   ${F}\n`],
+    ["2 桁の番号", `10. x\n\n    ${F}\n    a\n      b\n    ${F}\n`],
+    ["印のあとの空白が広い", `-   x\n\n    ${F}\n    a\n    ${F}\n`],
+    ["入れ子の項目", `- a\n  - b\n\n    ${F}\n    deep\n    ${F}\n`],
+    ["フェンスより浅い行", `- a\n\n    ${F}\n    in\n  out\n    ${F}\n`],
+    ["チルダのフェンス", `- ~~~\n  t\n  ~~~\n`],
+    ["空のコード", `- a\n\n  ${F}\n  ${F}\n`],
+    ["タブで開いたフェンス", `- a\n\n\t${F}\n\tx\n\t${F}\n`],
+  ];
+
+  const unescapeHtml = (html: string) =>
+    html
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+
+  it.each(cases)("test_%s", (_name, body) => {
+    const doc = `## A\n\n${body}`;
+    const pptx = splitDeck(doc)
+      .slides[0].blocks.filter((block) => block.kind === "code")
+      .map((block) => (block.kind === "code" ? block.text : ""));
+    const html = Array.from(
+      renderBody(doc).matchAll(/<code[^>]*>([\s\S]*?)<\/code>/g),
+      (found) => unescapeHtml(found[1]).replace(/\n$/, ""),
+    );
+    expect(html.length).toBeGreaterThan(0); // HTML 側がコードとして読んでいること
+    expect(pptx).toEqual(html);
   });
 });
