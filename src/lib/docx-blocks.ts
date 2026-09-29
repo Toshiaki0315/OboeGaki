@@ -98,10 +98,12 @@ export class DocxEmitter {
   private listItemFresh = false;
   // 脚注の本文（`[^1]: …`）の最初の段落に付ける番号。本文側の `[1]` と対にする
   private footnoteLabel: string | null = null;
-  // `:::center` / `:::right` の囲み（ADR-0069 / 22-4）。入れ子は組まないので 1 つ
-  // だけ持つ。寄せるのは囲みの**直下**の段落と見出し（HTML の `.align-center > p`
-  // と同じ。リストや引用の中の段落は level が深いので寄せない）
-  private align: { kind: "center" | "right"; level: number } | null = null;
+  // `:::center` / `:::right` の囲み（ADR-0069 / 22-4）。寄せるのは囲みの**直下**の
+  // 段落と見出し（HTML の `.align-center > p` と同じ。リストや引用の中の段落は
+  // level が深いので寄せない）。**積んで持つ** — 本文の囲みは入れ子にならないが、
+  // 埋め込んだノート（ADR-0058）の寄せは外の寄せの中に入りうる。1 つだけ持つと
+  // 埋め込みの閉じで外の寄せを忘れ、後ろの段落が寄らなかった（レビュー 2026-09-29）
+  private aligns: { kind: "center" | "right"; level: number }[] = [];
   private alignNext: "center" | "right" | undefined;
   private readonly headingOf: Record<string, HeadingValue>;
 
@@ -244,14 +246,14 @@ export class DocxEmitter {
     switch (token.type) {
       case "container_center_open":
       case "container_right_open":
-        this.align = {
+        this.aligns.push({
           kind: token.type === "container_center_open" ? "center" : "right",
           level: token.level,
-        };
+        });
         break;
       case "container_center_close":
       case "container_right_close":
-        this.align = null;
+        this.aligns.pop();
         break;
       case "heading_open":
         this.inHeading = this.headingOf[token.tag];
@@ -398,9 +400,8 @@ export class DocxEmitter {
 
   /// その段落・見出しを寄せるか（囲みの直下のときだけ）
   private alignFor(token: Token): "center" | "right" | undefined {
-    return this.align && token.level === this.align.level + 1
-      ? this.align.kind
-      : undefined;
+    const align = this.aligns[this.aligns.length - 1];
+    return align && token.level === align.level + 1 ? align.kind : undefined;
   }
 
   /// 段落の閉じ。表の中では何もしない（セルは inline で積んだ）

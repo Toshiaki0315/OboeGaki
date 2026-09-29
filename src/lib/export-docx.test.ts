@@ -204,6 +204,23 @@ describe("段落と見出しを寄せる囲み（22-4 / ADR-0069）", () => {
     );
   });
 
+  test("test_寄せの中に寄せを持つノートを埋め込んでも_後ろの段落は外の寄せのまま（レビュー 2026-09-29）", async () => {
+    const base64 = await buildDocx(
+      ":::center\n前の文\n\n![[署名]]\n\n後の文\n:::\n",
+      {
+        title: "t",
+        resolveImage: async () => null,
+        embeds: new Map([["署名", ":::right\n野村\n:::\n"]]),
+      },
+    );
+    const zip = await JSZip.loadAsync(base64, { base64: true });
+    const xml = (await zip.file("word/document.xml")?.async("string")) ?? "";
+    expect(paragraphOf(xml, "前の文")).toContain('<w:jc w:val="center"/>');
+    expect(paragraphOf(xml, "野村")).toMatch(/<w:jc w:val="(right|end)"\/>/);
+    // 以前は埋め込みの閉じで寄せを忘れ、ここが寄らなかった（HTML は寄る）
+    expect(paragraphOf(xml, "後の文")).toContain('<w:jc w:val="center"/>');
+  });
+
   test("test_段落の中の画像も段落ごと寄る", async () => {
     const xml = await documentXml(
       ":::center\n![絵](a.png)\n:::\n",
