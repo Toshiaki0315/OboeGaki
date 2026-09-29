@@ -5,12 +5,14 @@
 // 置換ウィジェットまで標準機構が持つ。状態はセッション限り（ノートを
 // 開き直せば全部開く — EditorView がノートごとに作り直されるため）。
 
-import type { EditorState } from "@codemirror/state";
+import type { EditorState, Text } from "@codemirror/state";
 import { foldGutter, foldService } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { treeOf } from "./parse-tree";
 
 import { detailsSection } from "./details-container";
+import { colonContainers, DETAILS_OPEN_RE } from "../markdown/containers";
+import { codeLineTest } from "./code-lines";
 
 import { HEADING_NODE_RE as HEADING_RE } from "./outline";
 
@@ -68,13 +70,43 @@ function insideCode(state: EditorState, pos: number): boolean {
   return false;
 }
 
+/// 画面が囲みと認めた `:::details` の開きの行（0 始まり）。`:::note` や寄せの中の
+/// `:::details` は入れ子になるので囲みにならず、字のまま見える（ADR-0069 の
+/// 決定 3）。開きの行から閉じを探すだけでは分からないので、画面と同じ 1 本の走査で
+/// 見る。折りたたみは見えている行ごとに訊かれるので、**文書ごとに 1 回だけ**数える
+const detailsOpens = new WeakMap<Text, Set<number>>();
+
+function detailsOpensOf(state: EditorState): Set<number> {
+  let found = detailsOpens.get(state.doc);
+  if (!found) {
+    found = new Set(
+      colonContainers(state.doc.iterLines(), codeLineTest(state))
+        .filter((entry) => entry.kind === "details")
+        .map((entry) => entry.open),
+    );
+    detailsOpens.set(state.doc, found);
+  }
+  return found;
+}
+
 export const headingFolding = [
   foldService.of((state, lineStart) => headingSection(state, lineStart)),
   // 折りたたみの囲み（6-2）。行の並びで決まるが、コードの中の開きと閉じは
-  // 数えない（コード例の `:::details` を畳めてしまっていた。22-1）
-  foldService.of((state, lineStart) =>
-    detailsSection(state.doc, lineStart, (pos) => insideCode(state, pos)),
-  ),
+  // 数えない（コード例の `:::details` を畳めてしまっていた。22-1）。入れ子で
+  // 字のまま見える `:::details` も畳まない（レビュー 2026-09-29）
+  foldService.of((state, lineStart) => {
+    const line = state.doc.lineAt(lineStart);
+    if (
+      line.from === lineStart &&
+      DETAILS_OPEN_RE.test(line.text) &&
+      !detailsOpensOf(state).has(line.number - 1)
+    ) {
+      return null;
+    }
+    return detailsSection(state.doc, lineStart, (pos) =>
+      insideCode(state, pos),
+    );
+  }),
   foldGutter({
     openText: "▾",
     closedText: "▸",

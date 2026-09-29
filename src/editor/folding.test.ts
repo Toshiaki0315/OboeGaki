@@ -83,4 +83,14 @@ describe("折りたたみの囲み（6-2 / 22-1）", () => {
     expect(range).not.toBeNull();
     expect(doc.slice(range!.from, range!.to)).toBe("\n```\n:::\n```\n中身");
   });
+
+  test("test_入れ子で字のまま見える_:::details_は畳めない（レビュー 2026-09-29）", () => {
+    // 画面は囲みにしない（ADR-0069 の決定 3）ので、▾ も出さない
+    expect(foldAt(":::note\n:::details 内\n中\n:::\n:::\n\n後", 2)).toBeNull();
+    expect(
+      foldAt('<div align="center">\n:::details 内\n中\n:::\n</div>\n\n後', 2),
+    ).toBeNull();
+    // 外に書いた :::details は今までどおり畳める
+    expect(foldAt(":::details 外\n中\n:::\n", 1)).not.toBeNull();
+  });
 });
