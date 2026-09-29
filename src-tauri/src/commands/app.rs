@@ -133,10 +133,10 @@ pub fn vault_is_empty(root: String) -> bool {
 }
 
 /// アプリを終える。画面が打ちかけを書き切ったあとに呼ぶ（メニューの「終了」と
-/// OS からの終了の求め。24-1）
+/// OS からの終了の求め。24-1 / 25-2）。OS に「あとで答える」と返してあれば答える
 #[tauri::command]
 pub fn app_exit(app: tauri::AppHandle) {
-    app.exit(0);
+    crate::quit::frontend_done(&app);
 }
 
 /// プロセス開始から UI マウントまでの時間（spec §6.6: 起動 < 1.5 秒の実測）。

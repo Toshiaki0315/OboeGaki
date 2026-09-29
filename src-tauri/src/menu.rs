@@ -282,11 +282,14 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         app.manage(checks);
     }
     app.on_menu_event(|app, event| {
-        use tauri::{Emitter, Manager};
-        // 本文の窓が無ければ（書き取りの窓だけ残っている等）、書き切るものも受け手も
-        // 無いのでその場で終える。受け手の無い「終了」で終われなくならないように
-        if event.id().0 == "app-quit" && app.get_webview_window("main").is_none() {
-            app.exit(0);
+        use tauri::Emitter;
+        // 「終了」は quit.rs が受ける。画面に書き切らせ、応えなければ時間を切る。
+        // 本文の窓が無ければ（書き取りの窓だけ残っている等）その場で終える（25-2）
+        if event.id().0 == "app-quit" {
+            use crate::quit::{request_quit, Decision, Source};
+            if request_quit(app, Source::Menu) == Decision::ExitNow {
+                app.exit(0);
+            }
             return;
         }
         let _ = app.emit("menu", event.id().0.clone());
