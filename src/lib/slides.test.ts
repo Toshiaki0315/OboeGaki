@@ -150,6 +150,17 @@ describe("行内の書き方（24-5。HTML・Word と同じに組む）", () => 
     expect(textOf('[t](https://u.example "ttl")')).toBe("t");
   });
 
+  test("test_文の中の画像の題も出さない（25-3）", () => {
+    expect(textOf('![x](a.png "t") and more')).toBe("x and more");
+  });
+
+  test("test_メールアドレスの自動リンクは_mailto_にする（25-3）", () => {
+    // HTML と同じ。付けないと PowerPoint は相対の道として開こうとする
+    const runs = runsOf(paragraphOf("to <a@b.example> now"));
+    expect(runs.find((run) => run.link)?.link).toBe("mailto:a@b.example");
+    expect(textOf("to <a@b.example> now")).toBe("to a@b.example now");
+  });
+
   test("test_逃がした記号はその字だけにする", () => {
     expect(textOf("1\\*2 と \\# と \\[x\\]")).toBe("1*2 と # と [x]");
   });

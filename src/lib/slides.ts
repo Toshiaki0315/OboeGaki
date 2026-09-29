@@ -479,7 +479,13 @@ function runsOf(text: string, node: SyntaxNode): Run[] {
         const url = child.node.getChild("URL");
         if (url) {
           const target = text.slice(url.from, url.to);
-          runs.push({ text: target, ...style(), link: target });
+          // メールアドレスは mailto: にする（25-3。HTML と同じ。付けないと
+          // PowerPoint は相対の道として開こうとする）
+          const link =
+            target.includes("@") && !/^[a-z][a-z0-9+.-]*:/i.test(target)
+              ? `mailto:${target}`
+              : target;
+          runs.push({ text: target, ...style(), link });
         }
         pos = Math.max(pos, child.to);
         return false;
@@ -499,11 +505,16 @@ function runsOf(text: string, node: SyntaxNode): Run[] {
         pos = Math.max(pos, child.to);
         return false;
       }
-      // リンクの URL から後ろ（題 `"ttl"` と閉じ）は本文に出さない（24-5。以前は
-      // 題が本文に出た）
-      if (child.name === "URL" && child.node.parent?.name === "Link") {
+      // リンクと画像の URL から後ろ（題 `"ttl"` と閉じ）は本文に出さない（24-5。
+      // 以前は題が本文に出た。文の中の画像も同じ = 25-3）
+      const owner = child.node.parent;
+      if (
+        child.name === "URL" &&
+        owner &&
+        (owner.name === "Link" || owner.name === "Image")
+      ) {
         emit(child.from);
-        pos = Math.max(pos, child.node.parent.to);
+        pos = Math.max(pos, owner.to);
         return false;
       }
       if (

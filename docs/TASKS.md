@@ -1737,7 +1737,8 @@ PowerPoint・印刷）は docs/manual_test.md の各項目で確かめる。見�
       - [x] PowerPoint で `:::details` の題が上の段落に繋がる → 呼び名の行の前にも空行を置く
       - [x] PowerPoint でリストの中の字下げコードの 1 行目に空白が残る → 25-1 と同じ直しで
             1 行目からも外す
-      - [ ] PowerPoint で画像の title が本文に出る・メールの自動リンクに mailto: が無い
+      - [x] PowerPoint で画像の title が本文に出る・メールの自動リンクに mailto: が無い →
+            画像の URL から後ろも飛ばす。スキームの無いメールアドレスに mailto: を付ける
       - [ ] front matter の引用符なしの `#44546A` が読めなくなった
 
 ## 待ち — 外部要因でブロック中
