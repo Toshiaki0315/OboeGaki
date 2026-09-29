@@ -197,6 +197,8 @@ export const tableAutoFormat = ViewPlugin.fromClass(
     update(update: ViewUpdate) {
       if (!update.selectionSet && !update.docChanged) return;
       if (this.view.composing) return; // IME 中は触らない（T5）
+      // 読み取り専用の表示では整えない（24-5。見ているだけで本文が書き換わった）
+      if (update.state.readOnly) return;
       const oldHead = update.startState.selection.main.head;
       const oldTable = tableAt(update.startState, oldHead);
       if (!oldTable) return;

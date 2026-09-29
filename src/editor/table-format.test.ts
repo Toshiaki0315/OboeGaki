@@ -1,8 +1,11 @@
+// @vitest-environment jsdom
 // 表のソース整形・挿入・幅計算（TASKS 2-6、参照実装 core/table.py）。
 
 import { describe, expect, test } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import {
+  tableAutoFormat,
   formatTable,
   formatTableChange,
   insertTableAt,
@@ -131,5 +134,39 @@ describe("formatTableChange", () => {
     expect(
       formatTableChange(state, { from: 0, to: formatted.length }),
     ).toBeNull();
+  });
+});
+
+describe("表を離れたら整える（tableAutoFormat）", () => {
+  const TABLE = "|a|bb|\n|-|-|\n|ccc|d|\n\nあと";
+
+  /// 表の中にカーソルを置いた view から、表の外（「あと」）へ動かす
+  async function leaveTable(readOnly: boolean): Promise<string> {
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: TABLE,
+        selection: { anchor: 1 },
+        extensions: [
+          LANG,
+          tableAutoFormat,
+          ...(readOnly ? [EditorState.readOnly.of(true)] : []),
+        ],
+      }),
+      parent: document.body,
+    });
+    view.dispatch({ selection: { anchor: TABLE.length } });
+    await Promise.resolve();
+    const text = view.state.doc.toString();
+    view.destroy();
+    return text;
+  }
+
+  test("test_表を離れると整える", async () => {
+    expect(await leaveTable(false)).not.toBe(TABLE);
+  });
+
+  test("test_読み取り専用の表示では整えない（24-5）", async () => {
+    // 前の版や埋め込みを見ているだけで、本文が書き換わってはいけない
+    expect(await leaveTable(true)).toBe(TABLE);
   });
 });

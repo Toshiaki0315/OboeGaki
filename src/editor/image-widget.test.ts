@@ -81,12 +81,13 @@ describe("ImageWidget", () => {
 
 /// 掴んで大きさを変える（6-8b）。本物の EditorView は組まず、必要なものだけ
 /// （本文を持つ state・dispatch・posAtDOM）を持つ入れ物で試す
-function editable(doc: string) {
+function editable(doc: string, readOnly = false) {
   const state = EditorState.create({
     doc,
     extensions: [
       markdown(),
       imageResolver.of(async () => "data:image/png;base64,AA=="),
+      EditorState.readOnly.of(readOnly),
     ],
   });
   const dispatch = vi.fn();
@@ -132,6 +133,14 @@ describe("ImageWidget を掴んで大きさを変える（6-8b）", () => {
         insert: "![犬|350](attachments/a.png)",
       },
     });
+  });
+
+  test("test_読み取り専用の表示にはつまみを出さない（24-5）", async () => {
+    const { view } = editable("![犬|300](attachments/a.png)", true);
+    const dom = new ImageWidget("attachments/a.png", "犬", 300).toDOM(view);
+    await settle();
+    expect(dom.querySelector("img")).not.toBeNull();
+    expect(dom.querySelector(".cm-image-resize")).toBeNull();
   });
 
   test("test_動かさずに離せば本文は触らない", async () => {

@@ -81,11 +81,15 @@ export class CheckboxWidget extends WidgetType {
     box.type = "checkbox";
     box.className = "cm-task-checkbox";
     box.checked = this.checked;
+    // 読み取り専用の表示（前の版・埋め込み）では押せない（24-5）。readOnly は
+    // 打鍵を止めるだけで、ここからの dispatch は通ってしまう
+    box.disabled = view.state.readOnly;
     // click ではなく mousedown で切り替える。click を待つと、その前の
     // mousedown をエディタが処理してカーソルがこの行へ来てしまい、
     // リビールで widget ごと消えて click が成立しない（実機で発覚）
     box.onmousedown = (event) => {
       event.preventDefault();
+      if (view.state.readOnly) return;
       const at = view.posAtDOM(box);
       const line = view.state.doc.lineAt(at);
       const offset = line.text.slice(at - line.from).search(TASK_MARK_RE);
@@ -223,7 +227,9 @@ export class ImageWidget extends WidgetType {
       // 下に付いても、説明の上ではなく絵の上に出る）
       const frame = document.createElement("span");
       frame.className = "cm-image-frame";
-      frame.append(image, this.resizeHandle(view, image));
+      // 読み取り専用の表示ではつまみを出さない（24-5。引くと本文が書き換わった）
+      if (view.state.readOnly) frame.append(image);
+      else frame.append(image, this.resizeHandle(view, image));
       if (this.alt) {
         const caption = document.createElement("span");
         caption.className = "cm-image-caption";
