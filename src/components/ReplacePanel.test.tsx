@@ -5,8 +5,9 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { ReplacePanel } from "./ReplacePanel";
 
+// 数え直しは打ち終わるのを少し待ってから（24-5）。その分だけ待つ
 const settle = () =>
-  act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  act(() => new Promise((resolve) => setTimeout(resolve, 300)));
 
 function setup(query = "旧い") {
   const onPreview = vi.fn(async () => ({ notes: 2, occurrences: 3 }));
@@ -72,5 +73,22 @@ describe("ReplacePanel", () => {
         .disabled,
     ).toBe(true);
     expect(screen.getByText("該当なし")).toBeTruthy();
+  });
+
+  test("test_続けて打つ間は数えに行かず_打ち終えたら_1_回だけ数える（24-5）", async () => {
+    // 数えるのは保管フォルダの全ノートを読む重い処理。以前は 1 字ごとに数えに行き、
+    // 5,000 ノートの保管フォルダでは打つたびに窓が固まった
+    const onPreview = vi.fn(async () => ({ notes: 1, occurrences: 1 }));
+    const { rerender } = render(
+      <ReplacePanel query="あ" onPreview={onPreview} onApply={vi.fn()} />,
+    );
+    for (const query of ["あい", "あいう", "あいうえ"]) {
+      rerender(
+        <ReplacePanel query={query} onPreview={onPreview} onApply={vi.fn()} />,
+      );
+    }
+    expect(onPreview).not.toHaveBeenCalled();
+    await settle();
+    expect(onPreview).toHaveBeenCalledTimes(1);
   });
 });

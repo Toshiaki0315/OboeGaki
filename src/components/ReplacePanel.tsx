@@ -5,6 +5,9 @@
 import { useEffect, useState } from "react";
 import type { ReplaceCount, ReplaceOptions } from "../lib/ipc";
 
+/// 件数を数え直すまで待つ時間（打ち続けている間は数えに行かない）
+const PREVIEW_DELAY_MS = 250;
+
 export function ReplacePanel({
   query,
   onPreview,
@@ -25,15 +28,20 @@ export function ReplacePanel({
   useEffect(() => {
     let alive = true;
     setCount(null);
-    onPreview({ caseSensitive, includeCode })
-      .then((found) => {
-        if (alive) setCount(found);
-      })
-      .catch(() => {
-        if (alive) setCount({ notes: 0, occurrences: 0 });
-      });
+    // 打ち終えるのを少し待ってから数える（24-5）。数えるのは保管フォルダの全ノートを
+    // 読む重い処理で、以前は 1 字ごとに数えに行き、打つたびに窓が固まった
+    const timer = setTimeout(() => {
+      onPreview({ caseSensitive, includeCode })
+        .then((found) => {
+          if (alive) setCount(found);
+        })
+        .catch(() => {
+          if (alive) setCount({ notes: 0, occurrences: 0 });
+        });
+    }, PREVIEW_DELAY_MS);
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
     // onPreview は毎描画で作り直されるが、数え直す条件は字と 2 つの印
     // eslint-disable-next-line react-hooks/exhaustive-deps

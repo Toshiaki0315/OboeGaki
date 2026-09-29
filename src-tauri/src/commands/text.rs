@@ -57,8 +57,11 @@ pub fn task_complete(
 }
 
 /// 置換の下見（ADR-0055 / 12-3）。書かずに、何件のノートの何箇所が当たるかだけ
+// 置換の 3 つは保管フォルダの全ノートを読み書きする。同期のコマンドは Tauri がメインの
+// スレッドで動かすので、走る間は窓が固まった（件数は打つたびに数える。24-5）。
+// async にして Tauri の非同期のスレッドで動かす（attachments_unused と同じ）
 #[tauri::command]
-pub fn replace_preview(
+pub async fn replace_preview(
     root: String,
     from: String,
     case_sensitive: bool,
@@ -77,7 +80,7 @@ pub fn replace_preview(
 /// 置換を実行する。書いたノートは監視から抑制し、フロントが開いている
 /// ノートを読み直す（戻りの `paths`）
 #[tauri::command]
-pub fn replace_apply(
+pub async fn replace_apply(
     state: tauri::State<'_, WatchState>,
     root: String,
     from: String,
@@ -108,7 +111,7 @@ pub fn replace_apply(
 /// タグの改名・統合（ADR-0055 / 12-4）。`to` が既にあるタグなら統合になる
 /// （判断と確認はフロント）。書いたノートは監視から抑制する
 #[tauri::command]
-pub fn tag_rename(
+pub async fn tag_rename(
     state: tauri::State<'_, WatchState>,
     root: String,
     from: String,

@@ -110,4 +110,15 @@ describe("App の配線", () => {
       expect(body, name).toContain("noteCommands.relocate(");
     }
   });
+
+  test("test_全ノートを読む置換のコマンドはメインのスレッドで動かさない（24-5）", () => {
+    // 同期のコマンドは Tauri がメインのスレッドで動かすので、走る間は窓が固まる
+    const text = readFileSync(
+      new URL("../src-tauri/src/commands/text.rs", import.meta.url),
+      "utf8",
+    );
+    for (const name of ["replace_preview", "replace_apply", "tag_rename"]) {
+      expect(text, name).toMatch(new RegExp(`pub async fn ${name}\\(`));
+    }
+  });
 });
