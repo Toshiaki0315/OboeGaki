@@ -356,21 +356,41 @@ function fencedCode(text: string, node: SyntaxNode): SlideBlock {
   };
 }
 
-/// リストの項目の中のコード。2 行目から後ろの行には項目の字下げが付いてくるので、
-/// フェンスの開きの字下げの分だけ外す
+/// リストの項目の中のコード。**行の範囲から読み、どの行からも項目の字下げを外す**
+/// （25-1）。リストの中では Lezer がコードを 1 行ずつ別の CodeText に分けるので、
+/// 最初の 1 つだけ読むと 2 行目から後ろが黙って消えた。字下げのコードは node.from が
+/// コードの字の位置なので、そこまでの空白（項目の字下げ + 4）を外す（25-3）
 function listedCode(text: string, node: SyntaxNode): SlideBlock {
   const block = fencedCode(text, node);
   if (block.kind !== "code") return block;
   const lineStart = text.lastIndexOf("\n", node.from - 1) + 1;
   const indent = node.from - lineStart;
+  let from: number;
+  let to: number;
+  if (node.name === "CodeBlock") {
+    from = lineStart;
+    to = node.to;
+  } else {
+    const opened = text.indexOf("\n", node.from);
+    if (opened < 0 || opened >= node.to) return { ...block, text: "" };
+    from = opened + 1;
+    // 閉じていれば、閉じのフェンスの行の手前まで
+    const marks = node.getChildren("CodeMark");
+    to =
+      marks.length >= 2
+        ? text.lastIndexOf("\n", marks[marks.length - 1].from - 1)
+        : node.to;
+    if (to < from) return { ...block, text: "" };
+  }
   const pattern = new RegExp(`^ {0,${indent}}`);
   return {
     ...block,
-    text: block.text
+    text: text
+      .slice(from, to)
+      .replace(/\n+$/, "")
       .split("\n")
-      .map((line, index) => (index === 0 ? line : line.replace(pattern, "")))
-      .join("\n")
-      .replace(/\n$/, ""),
+      .map((line) => line.replace(pattern, ""))
+      .join("\n"),
   };
 }
 

@@ -197,6 +197,30 @@ describe("PowerPoint だけ落ちていた形（24-5）", () => {
       ["bullet", "次"],
     ]);
   });
+
+  test("test_リストの中の複数行のコードも全部の行を残す（25-1）", () => {
+    // リストの中では Lezer がコードを 1 行ずつ別の CodeText に分けるので、最初の
+    // 1 つだけ読むと 2 行目から後ろが黙って消えた。項目の中での字下げは残す
+    const deck = splitDeck(
+      "## A\n\n- 項目\n\n  ```js\n  one()\n    two()\n\n  three()\n  ```\n",
+    );
+    const code = deck.slides[0].blocks.find((block) => block.kind === "code");
+    expect(code?.kind === "code" && code.text).toBe(
+      "one()\n  two()\n\nthree()",
+    );
+  });
+
+  test("test_リストの中の字下げのコードは_1_行目にも空白を残さない（25-3）", () => {
+    const deck = splitDeck("## S\n\n- item\n\n      code1\n        code2\n");
+    const code = deck.slides[0].blocks.find((block) => block.kind === "code");
+    expect(code?.kind === "code" && code.text).toBe("code1\n  code2");
+  });
+
+  test("test_リストの中の空のコードは空のまま", () => {
+    const deck = splitDeck("## A\n\n- 項目\n\n  ```\n  ```\n");
+    const code = deck.slides[0].blocks.find((block) => block.kind === "code");
+    expect(code?.kind === "code" && code.text).toBe("");
+  });
 });
 
 describe("折りたたみの呼び名（24-5）", () => {
