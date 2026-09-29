@@ -292,6 +292,22 @@ describe("文字色の span", () => {
 
 // 埋め込み（ADR-0058）。HTML / PDF は中身を展開して埋める（読む側に元ノートは無い）
 describe("埋め込みの展開", () => {
+  test("test_埋め込んだノートの_front_matter_は出さない（本文と同じ。24-4）", () => {
+    const embeds = new Map([
+      ["n", "---\nid: 01ABC\nmodified: 2026-09-01\n---\n# 題\n\n本文\n"],
+    ]);
+    const html = renderBody("![[n]]\n", undefined, undefined, embeds);
+    expect(html).not.toContain("01ABC");
+    expect(html).not.toContain("modified");
+    expect(html).not.toContain("<hr");
+    expect(html).toContain("<h1>題</h1>");
+    // Word が読むトークンも同じ規則（同じ解析を通る）
+    const words = markdownTokens("![[n]]\n", embeds)
+      .map((token) => token.content)
+      .join(" ");
+    expect(words).not.toContain("01ABC");
+  });
+
   test("test_行まるごとの ![[名前]] は渡された本文を Markdown として組む", () => {
     const embeds = new Map([["会議メモ", "## 決定\n\n- **a**\n"]]);
     const html = renderHtml(

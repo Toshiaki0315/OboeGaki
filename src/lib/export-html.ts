@@ -200,7 +200,9 @@ const embedRule = (
   open.info = match[1].trim();
   open.map = [startLine, startLine + 1];
   state.md.block.parse(
-    forMarkdownIt(text),
+    // 埋め込んだノートの front matter も落とす（本文と同じ。24-4）。落とさないと
+    // `id:` や `modified:` が見出しや区切り線になって紙や Word に出た
+    forMarkdownIt(bodyText(text)),
     state.md,
     { ...state.env, embeds: undefined },
     state.tokens,
