@@ -111,12 +111,13 @@ pub fn generate(
     })
     .to_string();
     let mut answer = String::new();
-    request(
+    request_until(
         port,
         "POST",
         "/api/generate",
         Some(&body),
         timeout,
+        &should_stop,
         |line| {
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
                 if let Some(piece) = parsed["response"].as_str() {
@@ -204,11 +205,31 @@ fn request(
     path: &str,
     body: Option<&str>,
     timeout: Duration,
+    on_line: impl FnMut(&str) -> bool,
+) -> Result<String, LlmError> {
+    request_until(port, method, path, body, timeout, &|| false, on_line)
+}
+
+/// 読み取りの待ちの区切り。この間隔で「止める」と無通信の時間を確かめる（24-5）
+const POLL: Duration = Duration::from_millis(200);
+
+/// `request` に「止める」を足したもの。**何も届かない間も止められる** — 以前は読み
+/// 取りの待ちを生成の時間切れ（1〜120 分）にしたまま、止める印を行が届いたときに
+/// しか見なかったので、モデルの読み込み中や長い文を読んでいる間は止まらなかった
+/// （24-5）。止めたら、そこまでに受け取ったぶんを返す
+fn request_until(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    timeout: Duration,
+    should_stop: &dyn Fn() -> bool,
     mut on_line: impl FnMut(&str) -> bool,
 ) -> Result<String, LlmError> {
     let address = format!("{HOST}:{port}");
     let stream = TcpStream::connect(&address).map_err(|_| LlmError::NotRunning)?;
-    stream.set_read_timeout(Some(timeout)).ok();
+    // 読み取りは短く区切り、区切りごとに止める印と無通信の時間（timeout）を見る
+    stream.set_read_timeout(Some(POLL.min(timeout))).ok();
     stream.set_write_timeout(Some(timeout)).ok();
     let mut stream = stream;
 
@@ -225,7 +246,9 @@ fn request(
         .map_err(failed)?;
 
     let mut reader = BufReader::new(stream);
-    let status = read_status(&mut reader)?;
+    let Some(status) = read_status(&mut reader, timeout, should_stop)? else {
+        return Ok(String::new()); // 応答の頭を待つ間に止めた
+    };
     if !(200..300).contains(&status) {
         return Err(LlmError::Failed(http_failure(status, &mut reader)));
     }
@@ -237,11 +260,10 @@ fn request(
             return Err(LlmError::Failed("応答が長すぎるため打ち切った".into()));
         }
         let mut line = String::new();
-        // take で 1 行の長さを抑える（read_line は改行が来るまで無制限に読む）
-        match reader.by_ref().take(MAX_LINE_BYTES).read_line(&mut line) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(error) => return Err(failed(error)),
+        match read_line_waiting(&mut reader, &mut line, timeout, should_stop)? {
+            None => break, // 止めた。受け取ったぶんは返す
+            Some(0) => break,
+            Some(_) => {}
         }
         let trimmed = line.trim_end_matches(['\r', '\n']);
         // chunked のときは長さの行が挟まる。JSON でない行は数えない
@@ -286,9 +308,53 @@ fn http_failure(status: u16, reader: &mut BufReader<TcpStream>) -> String {
     }
 }
 
-fn read_status(reader: &mut BufReader<TcpStream>) -> Result<u16, LlmError> {
+/// 1 行を読む。区切り（POLL）ごとに止める印と無通信の時間を見る。止めたら `None`、
+/// 無通信が `idle` を超えたら時間切れ。バイト列で受けて最後に文字列にする —
+/// `read_line` は区切りが多バイト文字の途中に来ると、読めたぶんを捨てるので字が欠ける
+fn read_line_waiting(
+    reader: &mut BufReader<TcpStream>,
+    line: &mut String,
+    idle: Duration,
+    should_stop: &dyn Fn() -> bool,
+) -> Result<Option<usize>, LlmError> {
+    let started = std::time::Instant::now();
+    let mut bytes = Vec::new();
+    loop {
+        // take で 1 行の長さを抑える（区切りをまたいでも合わせて MAX_LINE_BYTES まで）
+        let room = MAX_LINE_BYTES.saturating_sub(bytes.len() as u64);
+        match reader.by_ref().take(room).read_until(b'\n', &mut bytes) {
+            Ok(_) => break,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                if should_stop() {
+                    return Ok(None);
+                }
+                if started.elapsed() >= idle {
+                    return Err(LlmError::TimedOut);
+                }
+            }
+            Err(error) => return Err(failed(error)),
+        }
+    }
+    let text = String::from_utf8(bytes)
+        .map_err(|_| LlmError::Failed("応答が UTF-8 ではありません".into()))?;
+    line.push_str(&text);
+    Ok(Some(text.len()))
+}
+
+fn read_status(
+    reader: &mut BufReader<TcpStream>,
+    idle: Duration,
+    should_stop: &dyn Fn() -> bool,
+) -> Result<Option<u16>, LlmError> {
     let mut line = String::new();
-    reader.read_line(&mut line).map_err(failed)?;
+    if read_line_waiting(reader, &mut line, idle, should_stop)?.is_none() {
+        return Ok(None);
+    }
     let status = line
         .split_whitespace()
         .nth(1)
@@ -297,14 +363,14 @@ fn read_status(reader: &mut BufReader<TcpStream>) -> Result<u16, LlmError> {
     // ヘッダは読み飛ばす（本文の始まりまで）
     loop {
         let mut header = String::new();
-        match reader.read_line(&mut header) {
-            Ok(0) => break,
-            Ok(_) if header.trim().is_empty() => break,
-            Ok(_) => {}
-            Err(error) => return Err(failed(error)),
+        match read_line_waiting(reader, &mut header, idle, should_stop)? {
+            None => return Ok(None),
+            Some(0) => break,
+            Some(_) if header.trim().is_empty() => break,
+            Some(_) => {}
         }
     }
-    Ok(status)
+    Ok(Some(status))
 }
 
 fn failed(error: std::io::Error) -> LlmError {
@@ -417,6 +483,96 @@ mod tests {
 
     const OK_TAGS: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n\
         {\"models\":[{\"name\":\"gemma3:4b\"},{\"name\":\"qwen3:8b\"}]}\n";
+
+    /// 頼みを受け取ったまま何も返さない代役（モデルの読み込み中・長い文を読んでいる間）
+    fn silent() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .expect("127.0.0.1 に待ち受けできない。このテストは実ソケットが要る");
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            if let Some(Ok(stream)) = listener.incoming().next() {
+                // 閉じずに持ち続ける（応答を返さない）
+                thread::sleep(Duration::from_secs(30));
+                drop(stream);
+            }
+        });
+        port
+    }
+
+    /// 何も届かない間も「止める」が効く（24-5）。以前は止める印を行が届いたときに
+    /// しか見ず、読み取りの待ちも生成の時間切れのままだったので、最初の 1 行が来るか
+    /// 時間切れになるまで止まらなかった
+    #[test]
+    fn test_generate_何も届かない間も止めるとすぐ戻る() {
+        let port = silent();
+        let started = std::time::Instant::now();
+        let stop_at = started + Duration::from_millis(300);
+        let result = generate(
+            Generation {
+                port,
+                model: "gemma3:4b",
+                prompt: "こんにちは",
+                context: 8192,
+                timeout: Duration::from_secs(60),
+                keep_alive: "5m",
+            },
+            |_| {},
+            || std::time::Instant::now() >= stop_at,
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "止めてから戻るまで {:?}",
+            started.elapsed()
+        );
+        assert_eq!(result.unwrap(), "");
+    }
+
+    /// 区切りの待ちが多バイト文字の途中に来ても字が欠けない（24-5）。`read_line` は
+    /// 途切れたときに UTF-8 として不完全なぶんを捨てるので、バイト列で受ける
+    #[test]
+    fn test_generate_文字の途中で間が空いても字が欠けない() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .expect("127.0.0.1 に待ち受けできない。このテストは実ソケットが要る");
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            if let Some(Ok(mut stream)) = listener.incoming().next() {
+                // 頼みを読み切ってから返す（読まずに閉じると接続が切られる）
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut length = 0usize;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                        break;
+                    }
+                    if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().unwrap_or(0);
+                    }
+                }
+                reader.read_exact(&mut vec![0u8; length]).ok();
+                let whole = "HTTP/1.1 200 OK\r\n\r\n{\"response\":\"あい\"}\n{\"done\":true}\n";
+                // 「あ」の 3 バイトの 1 バイト目までを送り、区切り（POLL）より長く黙る
+                let cut = whole.find('あ').unwrap() + 1;
+                stream.write_all(&whole.as_bytes()[..cut]).unwrap();
+                stream.flush().unwrap();
+                thread::sleep(POLL * 3);
+                stream.write_all(&whole.as_bytes()[cut..]).unwrap();
+            }
+        });
+        let answer = generate(
+            Generation {
+                port,
+                model: "gemma3:4b",
+                prompt: "こんにちは",
+                context: 8192,
+                timeout: Duration::from_secs(5),
+                keep_alive: "5m",
+            },
+            |_| {},
+            || false,
+        )
+        .unwrap();
+        assert_eq!(answer, "あい");
+    }
 
     #[test]
     fn test_available_動いていれば真() {
