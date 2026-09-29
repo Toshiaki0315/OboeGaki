@@ -70,8 +70,11 @@ pub fn folder_create(root: String, folder: String) -> CmdResult<String> {
 ///
 /// 中のノートはパスが変わるので、索引を取り直し、履歴の置き場も
 /// 付け替える（鍵がパスなので、そのままだと履歴が見えなくなる）。
+// フォルダの改名と移動は、中のノートの索引を付け替えるために同期の鍵を待つ。同期の
+// コマンドは Tauri がメインのスレッドで動かすので、索引の同期が走っている間は終わる
+// まで窓が固まった（24-5）。async にしてメインのスレッドで動かさない
 #[tauri::command]
-pub fn folder_rename(
+pub async fn folder_rename(
     state: tauri::State<'_, WatchState>,
     root: String,
     folder: String,
@@ -87,7 +90,7 @@ pub fn folder_rename(
 
 /// フォルダを別のフォルダの中へ移す（要望 2026-09-10）。`into` は空文字で直下。
 #[tauri::command]
-pub fn folder_move(
+pub async fn folder_move(
     state: tauri::State<'_, WatchState>,
     root: String,
     folder: String,

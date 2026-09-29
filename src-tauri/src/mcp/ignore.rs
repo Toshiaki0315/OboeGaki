@@ -402,10 +402,10 @@ mod tests {
             .split_whitespace()
             .collect();
         for (source, name) in [
-            (&notes, "pubfnnote_rename("),
-            (&notes, "pubfnnote_move("),
-            (&folders, "pubfnfolder_rename("),
-            (&folders, "pubfnfolder_move("),
+            (&notes, "fnnote_rename("),
+            (&notes, "fnnote_move("),
+            (&folders, "fnfolder_rename("),
+            (&folders, "fnfolder_move("),
         ] {
             let start = source.find(name).unwrap_or_else(|| panic!("無い: {name}"));
             let body = &source[start..];

@@ -121,4 +121,15 @@ describe("App の配線", () => {
       expect(text, name).toMatch(new RegExp(`pub async fn ${name}\\(`));
     }
   });
+
+  test("test_索引の同期を待つフォルダの改名と移動もメインのスレッドで動かさない（24-5）", () => {
+    // 同期が走っている間は同期の鍵を待つので、同期のコマンドだと終わるまで窓が固まった
+    const text = readFileSync(
+      new URL("../src-tauri/src/commands/folders.rs", import.meta.url),
+      "utf8",
+    );
+    for (const name of ["folder_rename", "folder_move"]) {
+      expect(text, name).toMatch(new RegExp(`pub async fn ${name}\\(`));
+    }
+  });
 });
