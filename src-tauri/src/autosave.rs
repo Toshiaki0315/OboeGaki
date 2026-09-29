@@ -92,10 +92,47 @@ pub fn save_new(path: &Path, text: &str) -> io::Result<()> {
             }
         }
     });
-    temporary
-        .persist_noclobber(path)
-        .map(|_| ())
-        .map_err(|error| error.error)
+    let temporary = if noclobber_unsupported() {
+        temporary
+    } else {
+        match temporary.persist_noclobber(path) {
+            Ok(_) => return Ok(()),
+            Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {
+                return Err(error.error);
+            }
+            // 上書きしない置き方をボリュームが断った（exFAT は ENOTSUP。SMB など
+            // hard link を持たないものも同じ）。tempfile は切り替えないので、ここで
+            // 別の道へ回る（25-1。以前は exFAT で新しいノートが作れなかった）
+            Err(error) => error.file,
+        }
+    };
+    // 名前を先に押さえる。`create_new`（O_EXCL）はどのボリュームでも効き、同名が
+    // あれば AlreadyExists で断る。押さえた空のファイルを一時ファイルで置き換える
+    // ので、中身は「無い」か「全部ある」かのどちらか（読み手が見るのは空か完成品）
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    temporary.persist(path).map(|_| ()).map_err(|error| {
+        let _ = fs::remove_file(path); // 押さえた空のファイルを残さない
+        error.error
+    })
+}
+
+#[cfg(test)]
+fn noclobber_unsupported() -> bool {
+    NOCLOBBER_UNSUPPORTED.with(|flag| *flag.borrow())
+}
+#[cfg(not(test))]
+fn noclobber_unsupported() -> bool {
+    false
+}
+
+#[cfg(test)]
+thread_local! {
+    /// テスト用: 上書きしない置き方をボリュームが断った形にする（25-1）
+    pub(crate) static NOCLOBBER_UNSUPPORTED: std::cell::RefCell<bool> =
+        const { std::cell::RefCell::new(false) };
 }
 
 #[cfg(test)]
@@ -199,6 +236,49 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    /// 上書きしない置き方を断るボリューム（exFAT は ENOTSUP を返す。25-1）の代役
+    fn without_noclobber<T>(run: impl FnOnce() -> T) -> T {
+        NOCLOBBER_UNSUPPORTED.with(|flag| *flag.borrow_mut() = true);
+        let result = run();
+        NOCLOBBER_UNSUPPORTED.with(|flag| *flag.borrow_mut() = false);
+        result
+    }
+
+    #[test]
+    fn test_save_new_上書きしない置き方が使えなくても新しいノートを作れる() {
+        // 以前は exFAT で新規作成・複製・今日のノート・復元がすべて失敗した
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        without_noclobber(|| save_new(&path, "新しい\n")).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "新しい\n");
+        // 一時ファイルを残さない
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn test_save_new_上書きしない置き方が使えなくても既にあるファイルは上書きしない() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        fs::write(&path, "よその中身").unwrap();
+        let error = without_noclobber(|| save_new(&path, "新しい\n")).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "よその中身");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn test_save_new_上書きしない置き方が使えなくても間に現れたファイルは上書きしない() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        RACE_BEFORE_PERSIST.with(|race| {
+            *race.borrow_mut() = Some((path.clone(), "間に現れた".into()));
+        });
+        let result = without_noclobber(|| save_new(&path, "新しい\n"));
+        RACE_BEFORE_PERSIST.with(|race| *race.borrow_mut() = None);
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "間に現れた");
+    }
 
     #[test]
     fn test_save_atomic_新規ファイルを書ける() {
