@@ -384,7 +384,9 @@ function listedCode(text: string, node: SyntaxNode): SlideBlock {
         : node.to;
     if (to < from) return { ...block, text: "" };
   }
-  const pattern = new RegExp(`^ {0,${indent}}`);
+  // 字下げはタブのこともある（21-4 でタブで書ける。26-1。空白だけ外していて、
+  // 行の頭にタブが残った）
+  const pattern = new RegExp(`^[ \\t]{0,${indent}}`);
   return {
     ...block,
     text: text

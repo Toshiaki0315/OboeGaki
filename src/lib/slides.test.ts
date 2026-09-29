@@ -227,6 +227,21 @@ describe("PowerPoint だけ落ちていた形（24-5）", () => {
     expect(code?.kind === "code" && code.text).toBe("code1\n  code2");
   });
 
+  test("test_タブで字下げしたリストの中のコードもタブを残さない（26-1）", () => {
+    // エディタはタブの字下げで書ける（21-4）。空白だけ外していて、行の頭にタブが残った
+    const codeOf = (doc: string) => {
+      const code = splitDeck(doc).slides[0].blocks.find(
+        (block) => block.kind === "code",
+      );
+      return code?.kind === "code" ? code.text : null;
+    };
+    expect(codeOf("## A\n\n- a\n\t- ```\n\t  x\n\t    y\n\t  ```\n")).toBe(
+      "x\n  y",
+    );
+    expect(codeOf("## A\n\n-\t```\n\tcode\n\t```\n")).toBe("code");
+    expect(codeOf("## A\n\n- a\n\n\t\tcode\n\t\tmore\n")).toBe("code\nmore");
+  });
+
   test("test_リストの中の空のコードは空のまま", () => {
     const deck = splitDeck("## A\n\n- 項目\n\n  ```\n  ```\n");
     const code = deck.slides[0].blocks.find((block) => block.kind === "code");
