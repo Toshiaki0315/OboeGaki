@@ -14,20 +14,39 @@ use super::*;
 pub fn decode_text(bytes: &[u8]) -> String {
     let text = match std::str::from_utf8(bytes) {
         Ok(text) => text.to_string(),
-        // 日本語の `.txt` はほぼ Shift_JIS（ポメラの既定もこれ）。ただし **Shift_JIS と
-        // して誤りなく読めたときだけ** — UTF-8 のノートに読めないバイトが 1 つ紛れた
-        // だけで全体を Shift_JIS と決めつけると、日本語が丸ごと化け、書き戻す操作
-        // （改名・一括置換・やることの完了…）がそれを保存し、履歴の版も化けたものに
-        // なった（レビュー 2026-09-29）。どちらでも読み切れなければ UTF-8 のまま読み、
-        // 読めないバイトだけを置き換え文字にする
-        Err(_) => match encoding_rs::SHIFT_JIS.decode_without_bom_handling(bytes) {
-            (sjis, false) => sjis.into_owned(),
-            (_, true) => String::from_utf8_lossy(bytes).into_owned(),
-        },
+        // 日本語の `.txt` はほぼ Shift_JIS（ポメラの既定もこれ）。ただし **UTF-8 の字が
+        // 並んでいれば UTF-8** — UTF-8 のノートに読めないバイトが 1 つ紛れただけで
+        // 全体を Shift_JIS と決めつけると、日本語が丸ごと化け、書き戻す操作（改名・
+        // 一括置換・やることの完了…）がそれを保存し、履歴の版も化けたものになった
+        // （レビュー 2026-09-29）。そのときは読めないバイトだけを置き換え文字にする
+        Err(_) if looks_like_utf8(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+        // 切れた字など Shift_JIS として誤りがあっても Shift_JIS で読む。置き換え文字に
+        // なるのは読めない字だけ（25-3。以前は UTF-8 として読み、全文が化けた）
+        Err(_) => encoding_rs::SHIFT_JIS
+            .decode_without_bom_handling(bytes)
+            .0
+            .into_owned(),
     };
     // BOM は字ではない（先頭に見えない文字が残ると検索も置換も外れる）
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text).to_string();
     text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// UTF-8 として読めないバイトがあっても、UTF-8 の字（2 バイト以上）の方が多ければ
+/// UTF-8 と見る。Shift_JIS の日本語が UTF-8 の字の並びになることはまず無いので、
+/// これは「UTF-8 で書いたノートに読めないバイトが紛れた」形（25-3）。Shift_JIS として
+/// 誤りなく読めるかでは決められない — UTF-8 の日本語の多くは Shift_JIS としても
+/// 誤りなく（化けて）読めてしまう
+fn looks_like_utf8(bytes: &[u8]) -> bool {
+    let (mut chars, mut broken) = (0usize, 0usize);
+    for chunk in bytes.utf8_chunks() {
+        chars += chunk.valid().chars().filter(|c| c.len_utf8() > 1).count();
+        if !chunk.invalid().is_empty() {
+            broken += 1;
+        }
+    }
+    // 半角カナの Shift_JIS はまれに UTF-8 の字の形になる（`ﾃｽ` = C3 BD）。余裕を持たせる
+    chars > broken * 2
 }
 
 /// ノートの本文を読む。**文字コードの揺れはここで吸収する**（7-6）。
@@ -158,6 +177,42 @@ mod tests {
         );
         // 読めないバイトだけが置き換え文字になる
         assert_eq!(text.matches('\u{FFFD}').count(), 1, "{text}");
+    }
+
+    #[test]
+    fn test_Shift_JIS_の途中で切れたノートも_切れた字のほかは読める() {
+        // 同期ソフトや書きかけのコピーで、最後の字の途中で切れたポメラの .txt。
+        // 以前は Shift_JIS として誤りがあるので UTF-8 として読み、全文が置き換え
+        // 文字になった（25-3）。書き戻す操作がそれを保存してしまう
+        let (sjis, _, _) = encoding_rs::SHIFT_JIS.encode("# メモ\n\n日本語の本文です\nおわり");
+        let mut bytes = sjis.into_owned();
+        bytes.push(0x82); // 次の字の 1 バイト目だけ
+        let text = decode_text(&bytes);
+        assert!(
+            text.starts_with("# メモ\n\n日本語の本文です\nおわり"),
+            "{text}"
+        );
+        assert!(text.matches('\u{FFFD}').count() <= 1, "{text}");
+    }
+
+    #[test]
+    fn test_Shift_JIS_として誤りなく読めても_UTF8_の字が並んでいれば_UTF8() {
+        // UTF-8 の日本語の多くは Shift_JIS としても誤りなく読めてしまう（字が化ける
+        // だけ）。読めないバイトが 1 つ紛れた UTF-8 のノートを Shift_JIS と決めつけない
+        let mut bytes = "あいうえお".as_bytes().to_vec();
+        bytes.push(0xFF);
+        let text = decode_text(&bytes);
+        assert!(text.starts_with("あいうえお"), "{text}");
+    }
+
+    #[test]
+    fn test_半角カナの_Shift_JIS_は_Shift_JIS_のまま() {
+        // 半角カナの並びはまれに UTF-8 の字の形になる。正しい Shift_JIS を化かさない
+        for sample in ["ｱｲｳｴｵ ﾃｽﾄ", "ﾃｽﾄ ﾃﾞｰﾀ ｶﾞｲﾄﾞ ﾒﾓ"]
+        {
+            let (sjis, _, _) = encoding_rs::SHIFT_JIS.encode(sample);
+            assert_eq!(decode_text(&sjis), sample);
+        }
     }
 
     #[test]
