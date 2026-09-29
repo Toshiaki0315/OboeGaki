@@ -30,6 +30,7 @@ import {
 } from "./live-preview";
 import { CheckboxWidget } from "./live-preview-widgets";
 import { LANG } from "./test-utils";
+import { markdownConfig } from "./extensions";
 
 type Deco = {
   from: number;
@@ -1654,6 +1655,26 @@ describe("段落と見出しを寄せる囲み（22-2 / ADR-0069）", () => {
     expect(hidden(doc)).toEqual(['<p align="center">', "</p>"]);
     // 触れている間はタグを見せる（寄せは残す）
     expect(hidden(doc, doc.indexOf("題"))).toEqual([]);
+  });
+
+  test("test_字下げコードの設定ごとに中身を読み直す（控えは解析の設定ごと。レビュー 2026-09-29）", () => {
+    const doc = ":::center\n    字下げの行\n:::\n\n後";
+    const alignedWith = (indentedCode: boolean) =>
+      blockWidgetDecorations(
+        EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: [markdownConfig(indentedCode)],
+        }),
+      ).filter((range) =>
+        String((range.value.spec as { class?: string }).class ?? "").includes(
+          "cm-align-",
+        ),
+      ).length;
+    // 字下げコードを切れば段落なので寄せる。入れればコードなので寄せない。
+    // 以前は中身の字だけで控えていて、先に数えた方の答えが返った
+    expect(alignedWith(false)).toBe(1);
+    expect(alignedWith(true)).toBe(0);
   });
 
   test("test_閉じの無い囲みは寄せない", () => {

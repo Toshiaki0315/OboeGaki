@@ -640,15 +640,27 @@ const ALIGNABLE_RE = /^(?:Paragraph|ATXHeading[1-6]|SetextHeading[12])$/;
 /// （差分更新と食い違う）。HTML 書き出しの markdown-it-container も中身を独立した
 /// ブロックとして読むので、この読み方で揃う。キャレットが動くだけのときに解析し
 /// 直さないよう、同じ中身の答えを控える（解析は 1,500 行で p95 2ms）
-const alignableCache = new Map<string, boolean[]>();
+///
+/// 控えは**解析の設定（パーサ）ごと**に分ける。字下げコード（indentedCode）の
+/// 切り替えで同じ中身の読み方が変わるのに、中身の字だけで控えていたため、先に
+/// 数えた方の答えが返っていた（レビュー 2026-09-29）
+const alignableCache = new WeakMap<object, Map<string, boolean[]>>();
 const ALIGNABLE_CACHE_MAX = 64;
+/// 言語が無い状態（テストの素の EditorState）の控えの鍵
+const NO_PARSER = {};
 
 function alignableLines(state: EditorState, body: string): boolean[] {
-  const cached = alignableCache.get(body);
+  const parser = state.facet(language)?.parser;
+  const key: object = parser ?? NO_PARSER;
+  let cache = alignableCache.get(key);
+  if (!cache) {
+    cache = new Map();
+    alignableCache.set(key, cache);
+  }
+  const cached = cache.get(body);
   if (cached) return cached;
   const rows = body.split("\n");
   const out = rows.map(() => false);
-  const parser = state.facet(language)?.parser;
   if (parser) {
     const starts: number[] = [];
     let offset = 0;
@@ -670,8 +682,8 @@ function alignableLines(state: EditorState, body: string): boolean[] {
       for (let row = first; row <= last; row++) out[row] = true;
     }
   }
-  if (alignableCache.size >= ALIGNABLE_CACHE_MAX) alignableCache.clear();
-  alignableCache.set(body, out);
+  if (cache.size >= ALIGNABLE_CACHE_MAX) cache.clear();
+  cache.set(body, out);
   return out;
 }
 
