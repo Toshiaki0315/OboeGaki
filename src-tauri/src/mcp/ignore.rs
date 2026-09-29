@@ -74,7 +74,9 @@ pub fn set_hidden(root: &Path, relative: &str, hidden: bool) -> std::io::Result<
         ));
     }
     let path = root.join(IGNORE_FILE);
-    let current = std::fs::read_to_string(&path).unwrap_or_else(|_| DEFAULT_IGNORE.to_string());
+    // 読めないときは書かない — 既定の中身から作り直して上書きすると、人が書いた行が
+    // 全部消えた（24-2）。無いときだけ既定の中身から始める
+    let current = read_ignore(&path)?.unwrap_or_else(|| DEFAULT_IGNORE.to_string());
     let mut lines: Vec<String> = current.lines().map(str::to_string).collect();
     let listed = |line: &str| line.trim().trim_matches('/') == cleaned;
     if hidden {
@@ -124,19 +126,45 @@ fn match_key(path: &str) -> String {
 #[derive(Debug, Clone, Default)]
 pub struct IgnoreList {
     folders: Vec<String>,
+    /// `.mcp-ignore` があるのに読めなかった。何を隠していたか分からないので、
+    /// **全部を見せない**（開いたまま見せると、隠していたものが全部見える）
+    unreadable: bool,
+}
+
+/// `.mcp-ignore` を読む。無ければ `None`。**本文と同じ読み方**（BOM を落とし、
+/// UTF-8 で読めなければ Shift_JIS も受ける）— 手で書くファイルなので、以前の
+/// `read_to_string` では BOM で 1 行目が効かず、Shift_JIS では読めずに全部見えた（24-2）
+fn read_ignore(path: &Path) -> std::io::Result<Option<String>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(crate::vault::decode_text(&bytes))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 impl IgnoreList {
     pub fn load(root: &Path) -> Self {
+        let text = match read_ignore(&root.join(IGNORE_FILE)) {
+            Ok(text) => text.unwrap_or_default(),
+            Err(error) => {
+                eprintln!(".mcp-ignore を読めないので、全部を見せない: {error}");
+                return Self {
+                    folders: Vec::new(),
+                    unreadable: true,
+                };
+            }
+        };
         // NFC に寄せて持つ。Finder が作ったフォルダ名は分解形（NFD）で来る
         // ことがあり、手で書いた行と字面が合わなくなる（レビュー 2026-09-14）
-        let folders = std::fs::read_to_string(root.join(IGNORE_FILE))
-            .unwrap_or_default()
+        let folders = text
             .lines()
             .map(|line| crate::vault::nfc_string(line.trim().trim_matches('/')))
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
-        Self { folders }
+        Self {
+            folders,
+            unreadable: false,
+        }
     }
 
     /// vault からの相対パスがその中か。**区切りで見る**（`秘密` は `秘密2` を
@@ -150,6 +178,9 @@ impl IgnoreList {
     /// `Private/` に書けた。字面そのままで比べていて、どちらも隠しをすり抜けた。
     /// 画面の `mcp-hidden.isHiddenFromMcp` も同じ規則（共有の見本が見張る）
     pub fn is_ignored(&self, relative: &str) -> bool {
+        if self.unreadable {
+            return true;
+        }
         let relative = match_key(relative);
         let first = relative.split('/').next().unwrap_or("");
         if SKIP_DIRS.iter().any(|dir| dir.to_lowercase() == first)
@@ -251,6 +282,42 @@ mod tests {
             }
             assert_eq!(ignore.is_ignored(relative), want, "見本: {relative:?}");
         }
+    }
+
+    /// 手で書いた `.mcp-ignore` の文字コードで隠しが外れない（24-2）。以前は BOM で
+    /// 1 行目が効かず、Shift_JIS では読めずに全部見えた
+    #[test]
+    fn test_ignore_list_BOM_や_Shift_JIS_で書いても隠す() {
+        let root = TempDir::new().unwrap();
+        let mut bom = vec![0xEF, 0xBB, 0xBF];
+        bom.extend_from_slice("Private\n".as_bytes());
+        fs::write(root.path().join(IGNORE_FILE), bom).unwrap();
+        assert!(IgnoreList::load(root.path()).is_ignored("Private/a.md"));
+
+        // 「秘密」の Shift_JIS
+        let sjis = [0x94, 0xE9, 0x96, 0xA7, b'\n'];
+        fs::write(root.path().join(IGNORE_FILE), sjis).unwrap();
+        assert!(IgnoreList::load(root.path()).is_ignored("秘密/a.md"));
+    }
+
+    /// 「隠す」で手書きの行を消さない（24-2）。以前は読めないと既定の中身から
+    /// 作り直して上書きし、人が書いた行が全部消えた
+    #[test]
+    fn test_set_hidden_Shift_JIS_の行を残し_読めなければ上書きしない() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = TempDir::new().unwrap();
+        let path = root.path().join(IGNORE_FILE);
+        fs::write(&path, [0x94, 0xE9, 0x96, 0xA7, b'\n']).unwrap(); // 秘密
+        set_hidden(root.path(), "仕事", true).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("秘密") && text.contains("仕事"), "{text}");
+
+        fs::write(&path, "手で書いた行\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let result = set_hidden(root.path(), "仕事", true);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(result.is_err(), "読めないのに書いた");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "手で書いた行\n");
     }
 
     #[test]
