@@ -11,6 +11,7 @@
 // | スライドのタイトル枠 | `##` |
 // | タイトル枠が無ければ、いちばん大きい字の短い枠 | `##`（要望 2026-10-01） |
 // | 太字の数字だけの小さな枠（カードの番号） | いちばん近い枠の頭に付ける（同上） |
+// | 中央に揃えた短い行だけの枠（カードのラベル） | 枠ごとに 1 項目（同上） |
 // | `buNone`（行頭記号なし）で短い段落 | `###` |
 // | 文の終わりの記号で終わる段落 | 本文。それ以外は `- ` |
 // | 等幅フォント | コードブロック |
@@ -28,6 +29,8 @@ export type ImportedParagraph = {
   level: number;
   /// 行頭記号を消してある段落（`buNone`）。
   bulletNone: boolean;
+  /// 中央に揃えた段落（`algn="ctr"`）。カードのラベルの手掛かり
+  centered?: boolean;
 };
 
 export type ImportedShape =
@@ -103,6 +106,9 @@ function shapeBlocks(shape: ImportedShape): string[] {
     return [`${fence}\n${lines.join("\n").replace(/\s+$/, "")}\n${fence}`];
   }
 
+  const label = labelLine(shape.paragraphs, lines);
+  if (label !== null) return [`- ${label}`];
+
   const blocks: string[] = [];
   let bullets: string[] = [];
   const flush = () => {
@@ -130,6 +136,37 @@ function shapeBlocks(shape: ImportedShape): string[] {
   });
   flush();
   return blocks;
+}
+
+/// カードのラベル（**中央に揃えた短い行だけ**の枠）なら、行を空白 1 つで繋いだ 1 行。
+/// 違えば null（要望 2026-10-01）。行ごとに箇条書きにすると 1 枚のカードが 2 項目に
+/// なり、書き出しで「（続き）」の枚が増えた。行は空白で繋ぐ — 「技能継承断絶」と
+/// 「人手不足」のような 2 つの言葉を貼り合わせない（折り返しただけの言葉にも空白が
+/// 入るが、手で直せる）。文の行・長い行・字下げのある枠はまとめない
+function labelLine(
+  paragraphs: readonly ImportedParagraph[],
+  lines: readonly string[],
+): string | null {
+  const kept = paragraphs
+    .map((paragraph, index) => ({ paragraph, line: lines[index].trim() }))
+    .filter(({ line }) => line && !isPageNumber(line));
+  if (kept.length < 2) return null;
+  const isLabel = kept.every(
+    ({ paragraph, line }) =>
+      paragraph.centered === true &&
+      paragraph.level === 0 &&
+      plainLength(line) <= MAX_LABEL_LENGTH &&
+      !SENTENCE_END.includes(line[line.length - 1]),
+  );
+  return isLabel ? kept.map(({ line }) => line).join(" ") : null;
+}
+
+/// ラベルの 1 行とみなす字数の上限（記号を除いた字数）
+const MAX_LABEL_LENGTH = 30;
+
+/// 太字や等幅の記号を除いた字数
+function plainLength(line: string): number {
+  return line.replace(/\*\*|`/g, "").length;
 }
 
 function tableBlocks(rows: string[][]): string[] {
@@ -493,6 +530,7 @@ function readParagraphs(shape: Element): ImportedParagraph[] {
         level: Number(properties?.getAttribute("lvl") ?? 0),
         bulletNone:
           (properties?.getElementsByTagName("a:buNone").length ?? 0) > 0,
+        centered: properties?.getAttribute("algn") === "ctr",
       };
     })
     .filter((paragraph) => paragraph.runs.length > 0);

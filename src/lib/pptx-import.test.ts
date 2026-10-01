@@ -21,11 +21,12 @@ const run = (text: string, extra: { bold?: boolean; mono?: boolean } = {}) => ({
 
 const para = (
   text: string,
-  extra: { level?: number; bulletNone?: boolean } = {},
+  extra: { level?: number; bulletNone?: boolean; centered?: boolean } = {},
 ) => ({
   runs: [run(text)],
   level: extra.level ?? 0,
   bulletNone: extra.bulletNone ?? false,
+  centered: extra.centered ?? false,
 });
 
 describe("normalizeText", () => {
@@ -504,5 +505,77 @@ describe("番号だけの小さな枠（要望 2026-10-01）", () => {
       { text: "遠い枠", x: 20 * EMU, y: 12 * EMU, w: 2 * EMU, h: EMU },
     ]);
     expect(md).toContain("- **1**");
+  });
+});
+
+describe("中央に揃えた短い行だけの枠（カードのラベル。要望 2026-10-01）", () => {
+  // 行ごとに箇条書きにすると、1 枚のカードが 2 項目になり、書き出しで「（続き）」が
+  // 増えた。枠ごとに 1 項目にする。行は空白 1 つで繋ぐ（2 つの言葉を貼り合わせない）
+  const label = (lines: string[], over: { centered?: boolean } = {}) =>
+    slidesToMarkdown("資料", [
+      {
+        title: "A",
+        shapes: [
+          {
+            kind: "text",
+            paragraphs: lines.map((line) =>
+              para(line, { centered: over.centered ?? true }),
+            ),
+          },
+        ],
+        notes: "",
+      },
+    ]);
+
+  test("test_ラベルの枠は_1_項目にまとめる", () => {
+    const md = label(["技能継承断絶", "人手不足"]);
+    expect(md).toContain("- 技能継承断絶 人手不足");
+    expect(splitDeck(md).slides[0].blocks).toHaveLength(1);
+  });
+
+  test("test_中央に揃っていなければ今までどおり行ごと", () => {
+    const md = label(["技能継承断絶", "人手不足"], { centered: false });
+    expect(md).toContain("- 技能継承断絶\n- 人手不足");
+  });
+
+  test("test_文の行や長い行の枠はまとめない", () => {
+    expect(label(["これは文です。", "次の文です。"])).toContain(
+      "これは文です。\n\n次の文です。",
+    );
+    const long = "あ".repeat(40);
+    expect(label([long, "短い"])).toContain(`- ${long}\n- 短い`);
+  });
+
+  test("test_1_行の枠は今までどおり", () => {
+    expect(label(["技術"])).toContain("- 技術");
+  });
+
+  test("test_太字は行ごとに残す", () => {
+    const md = slidesToMarkdown("資料", [
+      {
+        title: "A",
+        shapes: [
+          {
+            kind: "text",
+            paragraphs: [
+              {
+                runs: [run("帳票の", { bold: true })],
+                level: 0,
+                bulletNone: false,
+                centered: true,
+              },
+              {
+                runs: [run("大量の紙", { bold: true })],
+                level: 0,
+                bulletNone: false,
+                centered: true,
+              },
+            ],
+          },
+        ],
+        notes: "",
+      },
+    ]);
+    expect(md).toContain("- **帳票の** **大量の紙**");
   });
 });
