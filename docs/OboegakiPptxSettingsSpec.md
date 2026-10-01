@@ -89,7 +89,7 @@ interface PptxSettings {
   layout: {
     splitLevel: 1 | 2 | 3;          // 既定 2 (H2 で改ページ)
     density: "full" | "normal" | "sparse";
-    maxBulletItems: number;         // 3–10、既定 6
+    maxBulletItems: number;         // 3–10、既定 10（2026-10-01 に 6 から変更。ADR-0046 追記）
     continuationSuffix: string;     // 既定 "（続き）"
     marginScale: "compact" | "normal" | "wide";  // 0.8 / 1.0 / 1.25
   };
@@ -226,7 +226,7 @@ interface PptxSettings {
 | --- | --- | --- | --- | --- |
 | **CFG-40** | スライドを分ける見出しレベル | ラジオ: H1 / H2 / H3 | H2 | S-02 |
 | **CFG-41** | 情報密度 | ラジオ: 詳しく / 標準 / 要点のみ | 標準 | SH-11〜17 |
-| **CFG-42** | 箇条書きの 1 枚あたり最大項目数 | スライダ 3–10 | 6 | SH-14 / C-13a |
+| **CFG-42** | 箇条書きの 1 枚あたり最大項目数 | スライダ 3–10 | 10（2026-10-01 に 6 から） | SH-14 / C-13a |
 | **CFG-43** | 続きスライドの接尾辞 | テキスト | `（続き）` | S-05 |
 | **CFG-44** | 余白 | ラジオ: 狭い / 標準 / 広い | 標準 | G-01 |
 
@@ -412,7 +412,7 @@ export const DEFAULT_PPTX_SETTINGS: PptxSettings = {
     fallbackJp: ["Yu Gothic", "MS PGothic"], scale: "normal",
   },
   layout: {
-    splitLevel: 2, density: "normal", maxBulletItems: 6,
+    splitLevel: 2, density: "normal", maxBulletItems: 10,
     continuationSuffix: "（続き）", marginScale: "normal",
   },
   decoration: { imageCaption: false, codeLanguageLabel: true },

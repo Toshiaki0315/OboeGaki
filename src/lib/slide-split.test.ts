@@ -20,24 +20,29 @@ const run = (markdown: string, config = settings()) =>
 describe("CFG-42 箇条書きの上限", () => {
   const many = (count: number) =>
     `## A\n\n${Array.from({ length: count }, (_, i) => `- 項目${i + 1}`).join("\n")}\n`;
+  // 既定の上限に依らずに確かめる（既定は 2026-10-01 に 6 → 10）
+  const limit = DEFAULT_PPTX_SETTINGS.layout.maxBulletItems;
 
   it("test_上限までなら 1 枚のまま", () => {
-    expect(run(many(6)).slides).toHaveLength(1);
+    expect(run(many(limit)).slides).toHaveLength(1);
   });
 
   it("test_超えたら次の枚へ送る", () => {
-    const deck = run(many(7));
+    const deck = run(many(limit + 1));
     expect(deck.slides).toHaveLength(2);
-    expect(deck.slides[0].blocks).toHaveLength(6);
+    expect(deck.slides[0].blocks).toHaveLength(limit);
     expect(deck.slides[1].blocks).toHaveLength(1);
   });
 
   it("test_続きの枚には印を付ける（CFG-43）", () => {
-    expect(run(many(7)).slides[1].title).toBe("A（続き）");
+    expect(run(many(limit + 1)).slides[1].title).toBe("A（続き）");
   });
 
   it("test_印は設定で変えられる", () => {
-    const deck = run(many(7), settings({ continuationSuffix: " のつづき" }));
+    const deck = run(
+      many(limit + 1),
+      settings({ continuationSuffix: " のつづき" }),
+    );
     expect(deck.slides[1].title).toBe("A のつづき");
   });
 
@@ -149,7 +154,7 @@ describe("触らないもの", () => {
       { length: 9 },
       (_, i) => `- 項目${i}`,
     ).join("\n")}\n`;
-    const deck = run(doc);
+    const deck = run(doc, settings({ maxBulletItems: 6 }));
     expect(deck.slides[0].images).toHaveLength(1);
     expect(deck.slides[0].notes).toBe("話すこと");
     expect(deck.slides[1].images).toEqual([]);

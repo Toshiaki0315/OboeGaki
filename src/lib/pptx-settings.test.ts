@@ -23,7 +23,8 @@ describe("CFG-90 / ST-02 版", () => {
   it("test_既定は仕様の付録 A のとおり", () => {
     expect(DEFAULT_PPTX_SETTINGS.page.preset).toBe("16:9");
     expect(DEFAULT_PPTX_SETTINGS.layout.splitLevel).toBe(2);
-    expect(DEFAULT_PPTX_SETTINGS.layout.maxBulletItems).toBe(6);
+    // 既定は 10（要望 2026-10-01。6 では取り込んだ資料で「（続き）」の枚が増えた）
+    expect(DEFAULT_PPTX_SETTINGS.layout.maxBulletItems).toBe(10);
     expect(DEFAULT_PPTX_SETTINGS.layout.continuationSuffix).toBe("（続き）");
     expect(DEFAULT_PPTX_SETTINGS.footer.pageNumber).toBe(true);
     expect(DEFAULT_PPTX_SETTINGS.notes.keepOriginalText).toBe(true);
@@ -54,7 +55,7 @@ describe("ST-03 読み込みの立て直し", () => {
       layout: { maxBulletItems: "たくさん", continuationSuffix: "（つづき）" },
     });
     expect(found.page.preset).toBe("16:9");
-    expect(found.layout.maxBulletItems).toBe(6);
+    expect(found.layout.maxBulletItems).toBe(10);
     expect(found.layout.continuationSuffix).toBe("（つづき）"); // 生きている
   });
 

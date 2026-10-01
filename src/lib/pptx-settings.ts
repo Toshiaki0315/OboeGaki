@@ -140,7 +140,7 @@ export const DEFAULT_PPTX_SETTINGS: PptxSettings = {
   layout: {
     splitLevel: 2,
     density: "normal",
-    maxBulletItems: 6,
+    maxBulletItems: 10,
     continuationSuffix: "（続き）",
     marginScale: "normal",
   },
