@@ -10,6 +10,7 @@
 // | --- | --- |
 // | スライドのタイトル枠 | `##` |
 // | タイトル枠が無ければ、いちばん大きい字の短い枠 | `##`（要望 2026-10-01） |
+// | 太字の数字だけの小さな枠（カードの番号） | いちばん近い枠の頭に付ける（同上） |
 // | `buNone`（行頭記号なし）で短い段落 | `###` |
 // | 文の終わりの記号で終わる段落 | 本文。それ以外は `- ` |
 // | 等幅フォント | コードブロック |
@@ -276,10 +277,105 @@ function guessTitle(
   return best;
 }
 
+/// 枠の位置と大きさ（EMU）。書いていなければ null
+type Rect = { left: number; top: number; right: number; bottom: number };
+
+function rectOf(shape: Element): Rect | null {
+  // 位置は枠の a:xfrm の中から読む。名前の拡張（a:extLst の a:ext）も同じ名前なので、
+  // 枠の中を丸ごと探すと取り違える
+  const transform = shape.getElementsByTagName("a:xfrm")[0];
+  const offset = transform?.getElementsByTagName("a:off")[0];
+  const extent = transform?.getElementsByTagName("a:ext")[0];
+  if (!offset || !extent) return null;
+  const left = Number(offset.getAttribute("x") ?? NaN);
+  const top = Number(offset.getAttribute("y") ?? NaN);
+  const width = Number(extent.getAttribute("cx") ?? NaN);
+  const height = Number(extent.getAttribute("cy") ?? NaN);
+  if (![left, top, width, height].every(Number.isFinite)) return null;
+  return { left, top, right: left + width, bottom: top + height };
+}
+
+/// 番号を付ける枠とみなす近さ（EMU。0.5 インチ）
+const BADGE_REACH = 457200;
+/// これより近さの差が小さければ同じ近さとみなす（EMU。0.05 インチ）。生成した資料は
+/// 1 EMU ずれた位置に並ぶことがあり、その差で見出しより説明を選んでいた
+const BADGE_TIE = 45720;
+
+/// 番号の枠から見た近さ。**同じ行（縦が重なる）なら横の隙間だけ**、行が違えば
+/// 縦の隙間を重く見る — 「1」の右の見出しを、すぐ下の枠より先に選ぶ
+function badgeDistance(badge: Rect, target: Rect): number {
+  const gapX = Math.max(
+    0,
+    target.left - badge.right,
+    badge.left - target.right,
+  );
+  const gapY = Math.max(
+    0,
+    target.top - badge.bottom,
+    badge.top - target.bottom,
+  );
+  const sameRow = badge.top < target.bottom && target.top < badge.bottom;
+  return sameRow ? gapX : gapX + 2 * gapY;
+}
+
+/// カードや手順の頭に置いた「1」「2」の枠（太字の数字だけ）を、**いちばん近い枠の
+/// 頭に付ける**（要望 2026-10-01）。1 つずつ箇条書きにすると項目が増え、書き出しで
+/// 「（続き）」の枚が増えた。番号が先にまとめて並んでいる資料もあるので、順番では
+/// なく位置で選ぶ。太字でない数字（ページ番号）と、近くに枠の無い番号は触らない。
+/// 付けた番号の枠の位置を返す（本文から外す）
+function attachBadges(
+  entries: readonly {
+    shape: ImportedShape;
+    rect: Rect | null;
+    badge: string | null;
+  }[],
+  skip: ReadonlySet<number>,
+): Set<number> {
+  const attached = new Set<number>();
+  entries.forEach((entry, index) => {
+    const badge = entry.rect;
+    if (entry.badge === null || !badge) return;
+    let best: { index: number; distance: number; drift: number } | null = null;
+    for (const [at, target] of entries.entries()) {
+      if (at === index || skip.has(at) || target.badge !== null) continue;
+      const rect = target.rect;
+      if (!rect || target.shape.kind !== "text" || target.shape.mono) continue;
+      const distance = badgeDistance(badge, rect);
+      if (distance > BADGE_REACH) continue;
+      // 同じ近さなら、縦の中心が近い方（見出しと、その下の説明が並ぶとき）
+      const drift = Math.abs(
+        (rect.top + rect.bottom) / 2 - (badge.top + badge.bottom) / 2,
+      );
+      if (
+        !best ||
+        distance < best.distance - BADGE_TIE ||
+        (distance <= best.distance + BADGE_TIE && drift < best.drift)
+      ) {
+        best = { index: at, distance, drift };
+      }
+    }
+    if (!best) return;
+    const target = entries[best.index].shape;
+    if (target.kind !== "text" || target.paragraphs.length === 0) return;
+    target.paragraphs[0].runs.unshift({
+      text: `${entry.badge} `,
+      bold: true,
+      mono: false,
+    });
+    attached.add(index);
+  });
+  return attached;
+}
+
 function parseSlide(xml: string, notesXml: string): ImportedSlide {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   const slide: ImportedSlide = { title: "", shapes: [], notes: "" };
   const candidates: TitleCandidate[] = [];
+  const entries: {
+    shape: ImportedShape;
+    rect: Rect | null;
+    badge: string | null;
+  }[] = [];
 
   for (const shape of Array.from(doc.getElementsByTagName("p:sp"))) {
     const paragraphs = readParagraphs(shape);
@@ -305,23 +401,33 @@ function parseSlide(xml: string, notesXml: string): ImportedSlide {
       !isPageNumber(text)
     ) {
       candidates.push({
-        index: slide.shapes.length,
+        index: entries.length,
         text,
         size: largestSize(shape),
-        y: Number(
-          shape.getElementsByTagName("a:off")[0]?.getAttribute("y") ?? 0,
-        ),
+        y: rectOf(shape)?.top ?? 0,
       });
     }
-    slide.shapes.push({ kind: "text", paragraphs, mono });
+    const bold = paragraphs.every((paragraph) =>
+      paragraph.runs.every((run) => run.bold || !run.text.trim()),
+    );
+    entries.push({
+      shape: { kind: "text", paragraphs, mono },
+      rect: rectOf(shape),
+      badge: !mono && bold && /^\d{1,2}$/.test(text) ? text : null,
+    });
   }
+  const removed = new Set<number>();
   if (!slide.title) {
     const guessed = guessTitle(candidates);
     if (guessed) {
       slide.title = guessed.text;
-      slide.shapes.splice(guessed.index, 1); // 題は `##` に。本文に重ねて出さない
+      removed.add(guessed.index); // 題は `##` に。本文に重ねて出さない
     }
   }
+  for (const index of attachBadges(entries, removed)) removed.add(index);
+  entries.forEach((entry, index) => {
+    if (!removed.has(index)) slide.shapes.push(entry.shape);
+  });
 
   for (const table of Array.from(doc.getElementsByTagName("a:tbl"))) {
     const rows = Array.from(table.getElementsByTagName("a:tr")).map((row) =>
