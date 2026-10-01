@@ -1,13 +1,17 @@
+// @vitest-environment jsdom
 // PowerPoint の取り込み（TASKS 4-5 / F-3）。
 // ざっくり読んで手で直す前提。ここでは構造 → Markdown の規則を見る。
 
 import { describe, expect, test } from "vitest";
+import JSZip from "jszip";
 import {
   isPageNumber,
   looksLikeHeading,
   normalizeText,
+  readPptx,
   slidesToMarkdown,
 } from "./pptx-import";
+import { splitDeck } from "./slides";
 
 const run = (text: string, extra: { bold?: boolean; mono?: boolean } = {}) => ({
   text,
@@ -252,5 +256,120 @@ describe("読み込んだ Markdown が崩れない（24-5）", () => {
       },
     ]);
     expect(md).toContain("| a\\|b | 1 |");
+  });
+});
+
+describe("タイトル枠の無いスライド（要望 2026-10-01）", () => {
+  // 生成した資料などは、題をただの文字の枠で置いていて、タイトル枠（placeholder）が
+  // 無い。以前は `##` が 1 つも出ず、書き出すと全部が 1 枚になった
+  type Box = { text: string[]; size?: number; y?: number; title?: boolean };
+  const box = ({ text, size, y = 1000000, title }: Box) =>
+    `<p:sp><p:nvSpPr><p:cNvPr id="1" name="t"/><p:cNvSpPr/><p:nvPr>${
+      title ? '<p:ph type="title"/>' : ""
+    }</p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="${y}"/><a:ext cx="1" cy="1"/></a:xfrm></p:spPr><p:txBody>${text
+      .map(
+        (line) =>
+          `<a:p><a:r><a:rPr lang="ja-JP"${size ? ` sz="${size}"` : ""}/><a:t>${line}</a:t></a:r></a:p>`,
+      )
+      .join("")}</p:txBody></p:sp>`;
+  const slideXml = (boxes: Box[]) =>
+    `<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree>${boxes
+      .map(box)
+      .join("")}</p:spTree></p:cSld></p:sld>`;
+  const notesXml = (text: string) =>
+    `<?xml version="1.0" encoding="UTF-8"?><p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>`;
+  async function deckOf(slides: Box[][], notes: string[] = []) {
+    const zip = new JSZip();
+    slides.forEach((boxes, index) => {
+      zip.file(`ppt/slides/slide${index + 1}.xml`, slideXml(boxes));
+      if (notes[index])
+        zip.file(
+          `ppt/notesSlides/notesSlide${index + 1}.xml`,
+          notesXml(notes[index]),
+        );
+    });
+    return readPptx(await zip.generateAsync({ type: "uint8array" }));
+  }
+
+  test("test_いちばん大きい字の短い枠を題にし_本文からは外す", async () => {
+    const [slide] = await deckOf([
+      [
+        { text: ["工場の現場で取り組んだ事例です。"], size: 1400, y: 2000000 },
+        { text: ["自己紹介"], size: 2400, y: 540000 },
+        { text: ["野村"], size: 1200, y: 3000000 },
+      ],
+    ]);
+    expect(slide.title).toBe("自己紹介");
+    const md = slidesToMarkdown("資料", [slide]);
+    expect(md).toContain("## 自己紹介");
+    expect(md).not.toContain("- 自己紹介");
+    expect(md).toContain("工場の現場で取り組んだ事例です。");
+  });
+
+  test("test_大きい番号だけの枠や長い文は題にしない", async () => {
+    // 章の扉の大きな「1」や、大きな字の長い文は題ではない
+    const [slide] = await deckOf([
+      [
+        { text: ["1"], size: 4950, y: 1000000 },
+        { text: ["あ".repeat(80)], size: 4000, y: 500000 },
+        { text: ["ITで設備を制御する"], size: 3600, y: 1950000 },
+      ],
+    ]);
+    expect(slide.title).toBe("ITで設備を制御する");
+  });
+
+  test("test_2_行の題は日本語の境目では空白を挟まずに繋ぐ", async () => {
+    const [slide] = await deckOf([
+      [{ text: ["課題への個別対応は", "「モグラ叩き」になる"], size: 4000 }],
+      [{ text: ["Smart", "Factory"], size: 4000 }],
+    ]).then((slides) => slides);
+    expect(slide.title).toBe("課題への個別対応は「モグラ叩き」になる");
+    const [, latin] = await deckOf([
+      [{ text: ["a"], size: 1 }],
+      [{ text: ["Smart", "Factory"], size: 4000 }],
+    ]);
+    expect(latin.title).toBe("Smart Factory");
+  });
+
+  test("test_同じ大きさなら上にある枠を題にする", async () => {
+    const [slide] = await deckOf([
+      [
+        { text: ["下の見出し"], size: 2400, y: 3000000 },
+        { text: ["上の見出し"], size: 2400, y: 500000 },
+      ],
+    ]);
+    expect(slide.title).toBe("上の見出し");
+  });
+
+  test("test_タイトル枠があればそちらが先", async () => {
+    const [slide] = await deckOf([
+      [
+        { text: ["大きな字の言葉"], size: 4000 },
+        { text: ["本当の題"], size: 2000, title: true },
+      ],
+    ]);
+    expect(slide.title).toBe("本当の題");
+  });
+
+  test("test_字の大きさが分からなければ_今までどおり題を決めない", async () => {
+    const [slide] = await deckOf([
+      [{ text: ["言葉"] }, { text: ["別の言葉"] }],
+    ]);
+    expect(slide.title).toBe("");
+  });
+
+  test("test_題の無いスライドも_書き出すと_1_枚のまま", async () => {
+    // 発表者ノートだけのスライドなど。題が無いと前のスライドに混ざって枚数が減る
+    const slides = await deckOf(
+      [
+        [{ text: ["はじめに"], size: 2400 }],
+        [{ text: ["本日のまとめ"], size: 2400 }],
+        [],
+      ],
+      ["", "", "質疑の間はこのまま"],
+    );
+    const md = slidesToMarkdown("資料", slides);
+    expect(md).toContain("## スライド 3");
+    expect(splitDeck(md).slides).toHaveLength(3);
   });
 });

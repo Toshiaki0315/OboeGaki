@@ -9,6 +9,7 @@
 // | 手掛かり | 使い道 |
 // | --- | --- |
 // | スライドのタイトル枠 | `##` |
+// | タイトル枠が無ければ、いちばん大きい字の短い枠 | `##`（要望 2026-10-01） |
 // | `buNone`（行頭記号なし）で短い段落 | `###` |
 // | 文の終わりの記号で終わる段落 | 本文。それ以外は `- ` |
 // | 等幅フォント | コードブロック |
@@ -64,7 +65,7 @@ export function slidesToMarkdown(
   slides: ImportedSlide[],
 ): string {
   const parts: string[] = [];
-  for (const slide of slides) {
+  slides.forEach((slide, index) => {
     const heading = normalizeText(slide.title).trim();
     const blocks: string[] = [];
     for (const shape of slide.shapes) {
@@ -72,6 +73,9 @@ export function slidesToMarkdown(
     }
     const notes = normalizeText(slide.notes).trim();
     if (heading) parts.push(`## ${heading}`);
+    // 題が無くても 1 枚は 1 枚（要望 2026-10-01）。`##` が無いと書き出すときに
+    // 前のスライドへ混ざり、枚数が減る。仮の題を置き、手で直してもらう
+    else if (blocks.length > 0 || notes) parts.push(`## スライド ${index + 1}`);
     parts.push(...blocks);
     if (notes) {
       parts.push(
@@ -81,7 +85,7 @@ export function slidesToMarkdown(
           .join("\n"),
       );
     }
-  }
+  });
   if (parts.length === 0) return "";
   return `# ${title}\n\n${parts.join("\n\n")}\n`;
 }
@@ -221,28 +225,102 @@ function slideNumber(name: string): number {
   return Number(/slide(\d+)\.xml$/.exec(name)?.[1] ?? 0);
 }
 
+/// 段落を 1 行の題にする。行の境目に空白を挟むのは**英数字どうしのときだけ**
+/// （「課題への個別対応は」+「「モグラ叩き」になる」に空白を入れない）
+function titleText(paragraphs: readonly ImportedParagraph[]): string {
+  const lines = paragraphs
+    .map((paragraph) =>
+      paragraph.runs
+        .map((run) => run.text)
+        .join("")
+        .trim(),
+    )
+    .filter(Boolean);
+  return lines.reduce(
+    (joined, line) =>
+      !joined
+        ? line
+        : /[\x21-\x7e]$/.test(joined) && /^[\x21-\x7e]/.test(line)
+          ? `${joined} ${line}`
+          : `${joined}${line}`,
+    "",
+  );
+}
+
+/// 題とみなす枠の字数の上限（2 行に折った題まで入る長さ）
+const MAX_TITLE_LENGTH = 60;
+
+/// 題の候補になる文字の枠。字の大きさ（sz。1/100 pt）と上からの位置
+type TitleCandidate = { index: number; text: string; size: number; y: number };
+
+/// タイトル枠（placeholder）が無いスライドの題を決める（要望 2026-10-01）。
+///
+/// 生成した資料などは題をただの文字の枠で置いている。**いちばん大きい字の、短い
+/// 枠**を題とみなす（同じ大きさなら上にある方）。章の扉の大きな「1」のような
+/// 番号だけの枠と、長い文は題にしない。字の大きさが書いていなければ決めない
+/// （当てずっぽうで本文を題にしない。今までどおり `##` 無し）
+function guessTitle(
+  candidates: readonly TitleCandidate[],
+): TitleCandidate | null {
+  let best: TitleCandidate | null = null;
+  for (const candidate of candidates) {
+    if (candidate.size <= 0) continue;
+    if (
+      !best ||
+      candidate.size > best.size ||
+      (candidate.size === best.size && candidate.y < best.y)
+    ) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 function parseSlide(xml: string, notesXml: string): ImportedSlide {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   const slide: ImportedSlide = { title: "", shapes: [], notes: "" };
+  const candidates: TitleCandidate[] = [];
 
   for (const shape of Array.from(doc.getElementsByTagName("p:sp"))) {
     const paragraphs = readParagraphs(shape);
     if (paragraphs.length === 0) continue;
     if (isTitle(shape)) {
-      slide.title = paragraphs
-        .map((paragraph) => paragraph.runs.map((run) => run.text).join(""))
-        .join(" ")
-        .trim();
+      slide.title = titleText(paragraphs);
       continue;
     }
-    slide.shapes.push({
-      kind: "text",
-      paragraphs,
-      // 枠の run が全部等幅ならコードブロックとして扱う
-      mono: paragraphs.every((paragraph) =>
-        paragraph.runs.every((run) => run.mono || !run.text.trim()),
-      ),
-    });
+    // 枠の run が全部等幅ならコードブロックとして扱う
+    const mono = paragraphs.every((paragraph) =>
+      paragraph.runs.every((run) => run.mono || !run.text.trim()),
+    );
+    const text = titleText(paragraphs);
+    const lines = paragraphs.filter((paragraph) =>
+      paragraph.runs.some((run) => run.text.trim()),
+    ).length;
+    if (
+      !mono &&
+      text &&
+      lines <= 2 &&
+      text.length <= MAX_TITLE_LENGTH &&
+      !/^\d+$/.test(text) &&
+      !isPageNumber(text)
+    ) {
+      candidates.push({
+        index: slide.shapes.length,
+        text,
+        size: largestSize(shape),
+        y: Number(
+          shape.getElementsByTagName("a:off")[0]?.getAttribute("y") ?? 0,
+        ),
+      });
+    }
+    slide.shapes.push({ kind: "text", paragraphs, mono });
+  }
+  if (!slide.title) {
+    const guessed = guessTitle(candidates);
+    if (guessed) {
+      slide.title = guessed.text;
+      slide.shapes.splice(guessed.index, 1); // 題は `##` に。本文に重ねて出さない
+    }
   }
 
   for (const table of Array.from(doc.getElementsByTagName("a:tbl"))) {
@@ -268,6 +346,16 @@ function parseSlide(xml: string, notesXml: string): ImportedSlide {
       .join("\n");
   }
   return slide;
+}
+
+/// 枠の中でいちばん大きい字（sz。1/100 pt）。書いていなければ 0
+function largestSize(shape: Element): number {
+  let largest = 0;
+  for (const style of Array.from(shape.getElementsByTagName("a:rPr"))) {
+    const size = Number(style.getAttribute("sz") ?? 0);
+    if (size > largest) largest = size;
+  }
+  return largest;
 }
 
 function isTitle(shape: Element): boolean {
