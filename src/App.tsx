@@ -729,6 +729,8 @@ function App() {
     onStatus: setStatus,
     refreshLists: refresh,
     openNote,
+    // 取り込みも新しいノートと同じく、選んでいるフォルダに作る（要望 2026-10-01）
+    defaultFolder: () => newNoteFolder(folderFilter),
   });
 
   // 見た目（テーマ）。**「システムに合わせる」も含めて data-theme を書く** —

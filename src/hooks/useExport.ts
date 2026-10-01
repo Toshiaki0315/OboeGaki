@@ -78,6 +78,9 @@ export type ExportInput = {
   /// 取り込んで作ったノートを一覧に載せて開く
   refreshLists: () => Promise<void>;
   openNote: (path: string) => Promise<void>;
+  /// 取り込んで作るノートの置き場（空文字は直下）。新しいノート（Cmd+N）と同じく
+  /// **選んでいるフォルダ**（要望 2026-10-01）
+  defaultFolder: () => string;
 };
 
 export function useExport(input: ExportInput) {
@@ -359,7 +362,11 @@ export function useExport(input: ExportInput) {
         onStatus("文字を取り出せませんでした");
         return;
       }
-      const path = await createNote(vaultRoot, title);
+      const path = await createNote(
+        vaultRoot,
+        title,
+        latest.current.defaultFolder(),
+      );
       await writeNote(
         vaultRoot,
         path,

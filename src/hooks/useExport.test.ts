@@ -48,6 +48,7 @@ function input(over: Partial<ExportInput> = {}): ExportInput {
     onStatus: vi.fn(),
     refreshLists: vi.fn(async () => {}),
     openNote: vi.fn(async () => {}),
+    defaultFolder: () => "",
     ...over,
   };
 }
@@ -105,6 +106,20 @@ describe("useExport", () => {
     const { result } = renderHook(() => useExport(input()));
     await act(() => result.current.handleImport("pdf"));
     expect(mocked.importRead).not.toHaveBeenCalled();
+  });
+
+  test("test_取り込んだノートは選んでいるフォルダに作る（要望 2026-10-01）", async () => {
+    // 新しいノート（Cmd+N）と同じ。以前は選んでいても保管フォルダの直下に作った
+    mocked.pickFile.mockResolvedValue("/in/板書.png");
+    mocked.importRead.mockResolvedValue("AA==");
+    mocked.ocrImage.mockResolvedValue("読み取った字");
+    mocked.createNote.mockResolvedValue("/v/仕事/板書.md");
+    mocked.writeNote.mockResolvedValue(undefined);
+    const given = input({ defaultFolder: () => "仕事" });
+    const { result } = renderHook(() => useExport(given));
+    await act(() => result.current.handleImport("image"));
+    expect(mocked.createNote).toHaveBeenCalledWith("/v", "板書", "仕事");
+    expect(given.openNote).toHaveBeenCalledWith("/v/仕事/板書.md");
   });
 
   test("test_PowerPoint_の絵は_PowerPoint_向けの描き直しを通す（向きの印。レビュー 2026-09-28）", async () => {
