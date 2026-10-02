@@ -6,9 +6,11 @@
 // 作り直したときにも中身が変わったときにも気付ける。
 
 import { readFileSync } from "node:fs";
+import JSZip from "jszip";
 import { describe, expect, test } from "vitest";
 import { csvToMarkdown, parseCsv } from "./csv";
 import { renderHtml } from "./export-html";
+import { buildPptx } from "./pptx";
 import { readPptx, slidesToMarkdown } from "./pptx-import";
 import { splitDeck } from "./slides";
 
@@ -108,6 +110,59 @@ describe("読み込みの見本", () => {
     expect(text).toContain("PowerPoint の見本");
     expect(text).toContain("一つ目の項目");
     expect(text).toContain("発表者ノート");
+  });
+
+  // 生成した資料の形（題がただの文字の枠・カードの番号・中央揃えのラベル）を、
+  // 取り込んで書き出しても**枚数が保たれる**ことで見張る（TASKS 18-3〜18-5 の往復）。
+  // 要望は実物の 1 資料から 1 つずつ直したので、形ごとの見本がないと次で崩れても気付けない
+  describe("図の枠の見本（取り込み → 書き出しの往復）", () => {
+    const read = async () =>
+      readPptx(new Uint8Array(readFileSync(`${IMPORT}/見本-図の枠.pptx`)));
+
+    test("test_タイトル枠が無くても枚ごとに見出し 2 が付く", async () => {
+      const text = slidesToMarkdown("図の枠", await read());
+      const headings = text.match(/^## .+$/gm) ?? [];
+      expect(headings).toEqual([
+        "## 題の枠の無い枚",
+        "## 四つのカード",
+        "## スライド 3", // 字の大きさが書いていない枠は題にしない（仮の題）
+        "## 章の扉", // 大きな「2」は題にしない
+      ]);
+    });
+
+    test("test_カードは番号とラベルで 1 項目になる", async () => {
+      const text = slidesToMarkdown("図の枠", await read());
+      const cards = text.split(/^## /m)[2]; // `###` の中の `## ` で分けない
+      for (const [number, label] of [
+        ["1", "品質 管理"],
+        ["2", "技能継承 断絶"],
+        ["3", "人手 不足"],
+        ["4", "設備 老朽化"],
+      ]) {
+        expect(cards).toContain(`- **${number}** ${label}`);
+      }
+      // 番号もラベルの行も、単独の項目として残らない
+      expect(cards).not.toMatch(/^- \*\*\d\*\*$/m);
+      expect(cards).not.toMatch(/^- (品質|管理)$/m);
+    });
+
+    test("test_書き出すと元と同じ枚数（表紙を足して）", async () => {
+      const deck = splitDeck(slidesToMarkdown("図の枠", await read()));
+      expect(deck.slides.map((slide) => slide.title)).toEqual([
+        "題の枠の無い枚",
+        "四つのカード",
+        "スライド 3",
+        "章の扉",
+      ]);
+      const zip = await JSZip.loadAsync(
+        await buildPptx(deck, async () => null),
+        { base64: true },
+      );
+      const count = Object.keys(zip.files).filter((name) =>
+        /^ppt\/slides\/slide\d+\.xml$/.test(name),
+      ).length;
+      expect(count).toBe(1 + 4);
+    });
   });
 
   test("test_SVG と PNG と JPG は絵として置いてある", () => {

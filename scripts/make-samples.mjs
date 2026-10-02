@@ -264,3 +264,60 @@ picture.addText("絵の下の説明", { x: 0.8, y: 3.3, w: 6, h: 0.5, fontSize: 
 
 await pptx.writeFile({ fileName: join(OUT, "見本.pptx") });
 console.log("見本.pptx");
+
+// ------------------------------------------------------ PPTX（図の枠の見本）
+//
+// 生成した資料によくある形（TASKS 18-3〜18-5）。**タイトル枠（placeholder）を
+// 使わない** — pptxgenjs の addText はただの文字の枠になるので、そのまま再現できる。
+// 取り込んで書き出しても 4 枚が 4 枚のままであることを src/lib/samples.test.ts が見る
+
+const shapes = new PptxGenJS();
+shapes.layout = "LAYOUT_16x9";
+
+// 1 枚目: 題がいちばん大きい字の枠（18-3）
+const plain = shapes.addSlide();
+plain.addText("題の枠の無い枚", { x: 0.6, y: 0.4, w: 8, h: 0.8, fontSize: 32 });
+plain.addText(
+  [
+    { text: "題はただの文字の枠に書いてある", options: { breakLine: true } },
+    { text: "取り込むといちばん大きい字の枠が題になる" },
+  ],
+  { x: 0.6, y: 1.5, w: 8, h: 2, fontSize: 18 },
+);
+
+// 2 枚目: 番号の枠 + 中央揃えの 2 行のラベル + 説明のカードが 4 枚（18-4 / 18-5）
+const cards = shapes.addSlide();
+cards.addText("四つのカード", { x: 0.6, y: 0.4, w: 8, h: 0.8, fontSize: 28 });
+[
+  ["品質", "管理", "検査の手順を揃える。"],
+  ["技能継承", "断絶", "教える人が足りない。"],
+  ["人手", "不足", "採用が追いつかない。"],
+  ["設備", "老朽化", "更新の予算が無い。"],
+].forEach(([top, bottom, note], index) => {
+  const x = 0.4 + index * 2.3;
+  cards.addText(String(index + 1), {
+    x,
+    y: 1.5,
+    w: 0.4,
+    h: 0.4,
+    fontSize: 14,
+    bold: true,
+  });
+  cards.addText(
+    [{ text: top, options: { breakLine: true } }, { text: bottom }],
+    { x: x + 0.5, y: 1.5, w: 1.6, h: 0.6, fontSize: 12, align: "center" },
+  );
+  cards.addText(note, { x: x + 0.5, y: 2.3, w: 1.6, h: 0.8, fontSize: 11 });
+});
+
+// 3 枚目: 字の大きさが書いていない枠だけ（題を当てずっぽうで決めない → 仮の題）
+const bare = shapes.addSlide();
+bare.addText("大きさの書いていない字", { x: 0.6, y: 1, w: 8, h: 1 });
+
+// 4 枚目: 章の扉。大きな「2」は題にしない
+const chapter = shapes.addSlide();
+chapter.addText("2", { x: 0.6, y: 1, w: 2, h: 2, fontSize: 72 });
+chapter.addText("章の扉", { x: 3, y: 1.6, w: 6, h: 1, fontSize: 32 });
+
+await shapes.writeFile({ fileName: join(OUT, "見本-図の枠.pptx") });
+console.log("見本-図の枠.pptx");
