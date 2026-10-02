@@ -117,7 +117,7 @@ pub fn history_restore(
 }
 
 /// 競合の「両方残す」（spec §7.5）。自分の版を
-/// `名前 (競合 YYYY-MM-DD).md` に保存し、その場所を返す。
+/// `名前 (競合 YYYY-MM-DD 書き手).md` に保存し、その場所を返す（ADR-0052 決定 3）。
 /// 元のファイルは触らない（外部の版がそのまま残る）。
 #[tauri::command]
 pub fn conflict_copy(
@@ -128,7 +128,7 @@ pub fn conflict_copy(
 ) -> CmdResult<String> {
     let note = guarded(&root, &path)?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let copy = crate::vault::conflict_copy_path(&note, &today);
+    let copy = crate::vault::conflict_copy_path(&note, &today, &history::this_mac());
     state.suppressor.mark(&copy);
     autosave::save_atomic(&copy, &text)?;
     let vault = Vault::new(&root);

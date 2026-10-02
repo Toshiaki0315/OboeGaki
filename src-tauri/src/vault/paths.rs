@@ -127,14 +127,21 @@ pub fn nfc_under(root: &Path, path: &Path) -> PathBuf {
 }
 
 /// 競合コピーの置き場を決める（spec §7.5 の「両方残す」）。
-/// `名前 (競合 YYYY-MM-DD).md` の形。同名があれば連番で逃がす。
-pub fn conflict_copy_path(path: &Path, date: &str) -> PathBuf {
+/// `名前 (競合 YYYY-MM-DD 書き手).md` の形（書き手が空なら `名前 (競合 YYYY-MM-DD).md`）。
+/// 同名があれば連番で逃がす。書き手は `history::author_label` で整えた Mac の名前 —
+/// 共有フォルダでは同期ソフトも競合コピーを作るので、誰のものかを見分ける（ADR-0052 決定 3）
+pub fn conflict_copy_path(path: &Path, date: &str, author: &str) -> PathBuf {
     let folder = path.parent().unwrap_or(Path::new("."));
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or(UNTITLED);
-    unique_path(folder, &format!("{stem} (競合 {date})"), ".md", None)
+    let label = if author.is_empty() {
+        format!("{stem} (競合 {date})")
+    } else {
+        format!("{stem} (競合 {date} {author})")
+    };
+    unique_path(folder, &label, ".md", None)
 }
 
 /// `candidate` が vault の中に留まるか。Tauri commands の入口で必ず通す。
@@ -354,11 +361,31 @@ mod tests {
     fn test_conflict_copy_path_競合の名前を作り_同名は連番で逃がす() {
         let dir = TempDir::new().unwrap();
         let base = blank_note(dir.path(), "会議.md");
-        let copy = conflict_copy_path(&base, "2026-09-04");
+        let copy = conflict_copy_path(&base, "2026-09-04", "");
         assert_eq!(copy, dir.path().join("会議 (競合 2026-09-04).md"));
 
         blank_note(dir.path(), "会議 (競合 2026-09-04).md");
-        let second = conflict_copy_path(&base, "2026-09-04");
+        let second = conflict_copy_path(&base, "2026-09-04", "");
         assert_eq!(second, dir.path().join("会議 (競合 2026-09-04)-2.md"));
+    }
+
+    #[test]
+    fn test_conflict_copy_path_書き手を名前に入れる() {
+        // 同期ソフトも競合コピーを作るので、アプリのものが誰のかを見分ける（ADR-0052 決定 3）
+        let dir = TempDir::new().unwrap();
+        let base = blank_note(dir.path(), "会議.md");
+        let copy = conflict_copy_path(&base, "2026-09-04", "MacBook");
+        assert_eq!(copy, dir.path().join("会議 (競合 2026-09-04 MacBook).md"));
+
+        // 別の人の競合コピーとは名前が分かれ、同じ人のものは連番で逃がす
+        blank_note(dir.path(), "会議 (競合 2026-09-04 MacBook).md");
+        assert_eq!(
+            conflict_copy_path(&base, "2026-09-04", "iMac"),
+            dir.path().join("会議 (競合 2026-09-04 iMac).md")
+        );
+        assert_eq!(
+            conflict_copy_path(&base, "2026-09-04", "MacBook"),
+            dir.path().join("会議 (競合 2026-09-04 MacBook)-2.md")
+        );
     }
 }

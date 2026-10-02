@@ -2396,7 +2396,8 @@ function App() {
                   onChoose: () => void sync.resolveConflict("mine"),
                 },
                 {
-                  label: "両方残す（自分の版を「名前 (競合 日付)」に保存）",
+                  label:
+                    "両方残す（自分の版を「名前 (競合 日付 この Mac の名前)」に保存）",
                   onChoose: () => void sync.resolveConflict("both"),
                 },
               ]}
