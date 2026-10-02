@@ -48,6 +48,9 @@ import { FormatToolbar } from "./components/FormatToolbar";
 import { FuzzyPalette } from "./components/FuzzyPalette";
 import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
+import { QiitaPublishDialog } from "./components/QiitaPublishDialog";
+import { qiitaDraft } from "./lib/qiita";
+import { parseFrontMatterMeta } from "./markdown/front-matter";
 import { ListControls } from "./components/ListControls";
 
 import { ListPalette } from "./components/ListPalette";
@@ -134,6 +137,7 @@ import {
   historyList,
   historyRead,
   historyUsage,
+  qiitaPublish,
   qiitaTokenClear,
   qiitaTokenSaved,
   qiitaTokenSet,
@@ -1037,6 +1041,52 @@ function App() {
     return found;
   }
 
+  /// Qiita への投稿の小窓を開く（14-5 / ADR-0063）。未保存分を書き切ってから送る形を
+  /// 整える。トークンが無ければ窓を出さずに入れ場所を言う（押してから断らない）
+  async function openQiitaPublish() {
+    if (!vaultRoot || !currentPath) return;
+    if (!(await qiitaTokenSaved())) {
+      setStatus(
+        "Qiita のトークンが入っていません。環境設定の「Qiita」で入れてください",
+      );
+      return;
+    }
+    await sync.flush();
+    const text = editorRef.current?.getText() ?? "";
+    const draft = qiitaDraft(
+      text,
+      noteStem(currentPath),
+      await resolveEmbeds(text),
+    );
+    const update = parseFrontMatterMeta(text).qiita !== undefined;
+    setDialog({ kind: "qiita", draft, update });
+  }
+
+  /// 決めたタグで送る。成功したら front matter（記事 ID）を書き戻した本文を読み直し、
+  /// 記事をブラウザで開くか聞く。失敗は窓に出す（reject のまま返す）
+  async function publishToQiita(
+    draft: { title: string; body: string },
+    tags: string[],
+  ) {
+    if (!vaultRoot || !currentPath) return;
+    const path = currentPath;
+    const result = await qiitaPublish(vaultRoot, path, { ...draft, tags });
+    if (currentPathRef.current === path) adopt(result.text);
+    closeDialog();
+    await refresh();
+    const done = result.created
+      ? "Qiita に限定共有で出しました"
+      : "Qiita の記事を更新しました";
+    setStatus(done);
+    const open = await confirmDialog(
+      result.created
+        ? `${done}。ブラウザで開いて読み返しますか？（公開は Qiita の画面で押してください）`
+        : `${done}。ブラウザで開きますか？`,
+      { title: APP_NAME, kind: "info" },
+    );
+    if (open) await openExternalUrl(result.url);
+  }
+
   /// 保管フォルダ全体の置換（ADR-0055 / 12-3）。開いているノートは先に書き
   /// 切り、置換の対象だったら読み直して本文を差し替える（Rust は書いた
   /// ノートを監視から抑制しているので、ここで自分で追いかける）
@@ -1494,6 +1544,7 @@ function App() {
         void runWithStatus(setStatus, "読み込み", () => handleImport("pptx")),
       "import-image": () =>
         void runWithStatus(setStatus, "読み込み", () => handleImport("image")),
+      "qiita-publish": () => void openQiitaPublish(),
       print: () => void runWithStatus(setStatus, "印刷", () => handlePrint()),
       history: () => void openHistory(),
       trash: () => void handleTrash(),
@@ -2426,6 +2477,14 @@ function App() {
               onRestore={(entry) => void restoreVersion(entry)}
               onClose={closeDialog}
               historyMinutes={settings.historyMinutes}
+            />
+          )}
+          {dialog?.kind === "qiita" && (
+            <QiitaPublishDialog
+              draft={dialog.draft}
+              update={dialog.update}
+              onPublish={(tags) => publishToQiita(dialog.draft, tags)}
+              onClose={closeDialog}
             />
           )}
           {assistantOpen && (

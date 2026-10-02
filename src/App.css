@@ -2179,6 +2179,60 @@ fieldset.preferences-fields:disabled {
   padding: 0;
 }
 
+/* Qiita への投稿の小窓（14-5）。警告と失敗は囲みの注意・警告の色を借りる */
+.qiita-palette {
+  width: min(36rem, 92vw);
+}
+.qiita-body {
+  padding: 0.6rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.qiita-title {
+  font-weight: 600;
+  margin: 0;
+}
+.qiita-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+.qiita-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.2rem 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.qiita-tag button {
+  border: none;
+  background: none;
+  padding: 0 0.3rem;
+  cursor: pointer;
+  color: inherit;
+}
+.qiita-tags input {
+  flex: 1 1 8rem;
+  min-width: 8rem;
+}
+.qiita-warning {
+  border-left: 3px solid var(--note-warn);
+  background: var(--note-warn-bg);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9em;
+}
+.qiita-warning p,
+.qiita-warning ul {
+  margin: 0;
+}
+.qiita-error {
+  color: var(--note-alert);
+  margin: 0;
+}
+
 /* 版の履歴の差分（ADR-0054）。行単位の色分けだけ。地は薄く、字は本文の色 */
 .history-palette {
   width: min(48rem, 92vw);

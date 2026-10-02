@@ -103,6 +103,9 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         // PDF は印刷と同じ道（ADR-0038）。**項目を分けて置く** — 印刷の窓の
         // 中にあると気づかれない（差分の調べ 2026-09-06）
         .item(&item("export-pdf", "PDF…", None)?)
+        .separator()
+        // 外へ出す（ADR-0063）。書き出しと同じ「ノートを別の形にして渡す」なのでここに置く
+        .item(&item("qiita-publish", "Qiita に投稿…", None)?)
         .build()?;
     // 読み込みも形式ごとに分ける。**選ぶ窓の絞り込みが形式ごとに効く**ので、
     // 「PDF を読み込む」と決めてから探せる

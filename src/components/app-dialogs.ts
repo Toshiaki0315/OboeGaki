@@ -8,6 +8,7 @@ import type { OutlineItem } from "../editor/outline";
 import { folderLabel } from "../lib/folder-tree";
 import type { HistoryEntry } from "../lib/ipc";
 import { noteStem } from "../lib/note-path";
+import type { QiitaDraft } from "../lib/qiita";
 import type { Finding } from "../lib/style-check";
 
 export type OpenDialog =
@@ -37,7 +38,9 @@ export type OpenDialog =
   /// ノートをテンプレートに登録する名前
   | { kind: "template"; path: string }
   /// 版の履歴。base は開いた時点の本文（差分の「今」。ADR-0054）
-  | { kind: "history"; entries: HistoryEntry[]; base: string };
+  | { kind: "history"; entries: HistoryEntry[]; base: string }
+  /// Qiita への投稿（14-5）。update は front matter に記事 ID がある（更新になる）
+  | { kind: "qiita"; draft: QiitaDraft; update: boolean };
 
 export type DialogKind = OpenDialog["kind"];
 

@@ -18,3 +18,16 @@ export async function qiitaTokenSaved(): Promise<boolean> {
 export async function qiitaTokenClear(): Promise<void> {
   await invoke("qiita_token_clear");
 }
+
+/// 投稿の結果。text は front matter（記事 ID と更新時刻）を書き戻した本文
+export type QiitaPublished = { text: string; url: string; created: boolean };
+
+/// ノートを Qiita へ出す（front matter に `qiita:` があれば更新、無ければ限定共有で新規）。
+/// 送る形は qiitaDraft が整えたもの。失敗は理由の文字で reject する
+export async function qiitaPublish(
+  root: string,
+  path: string,
+  draft: { title: string; body: string; tags: string[] },
+): Promise<QiitaPublished> {
+  return invoke<QiitaPublished>("qiita_publish", { root, path, draft });
+}
