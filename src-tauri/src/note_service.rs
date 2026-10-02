@@ -212,7 +212,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(9, 30, 0)
             .unwrap();
-        history::keep(&store, &key, "古い", at, true, 0).unwrap();
+        history::keep(&store, &key, "古い", at, true, 0, "").unwrap();
         let found = versions(&vault, &path);
         assert_eq!(found.len(), 1);
         let stamp = found[0].stamp();

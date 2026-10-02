@@ -49,6 +49,8 @@ pub fn restore_version(root: &str, note: &Path, version: &Path) -> CmdResult<Str
 pub struct HistoryEntry {
     pub stamp: String,
     pub path: String,
+    /// 残した Mac の名前。古い版は None（画面では「不明」。ADR-0052 / 11-2）
+    pub author: Option<String>,
 }
 
 #[tauri::command]
@@ -59,6 +61,7 @@ pub fn history_list(root: String, path: String) -> CmdResult<Vec<HistoryEntry>> 
         .map(|version| HistoryEntry {
             stamp: version.stamp(),
             path: version.path.to_string_lossy().into_owned(),
+            author: version.author,
         })
         .collect())
 }
@@ -180,6 +183,7 @@ mod tests {
             chrono::Local::now().naive_local(),
             true,
             0,
+            "",
         )
         .unwrap()
         .expect("版が残る");
@@ -201,7 +205,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        let kept = history::keep(&store, "path:a.md", "旧\n", at, true, 0)
+        let kept = history::keep(&store, "path:a.md", "旧\n", at, true, 0, "")
             .unwrap()
             .unwrap();
         let restored = restore_version(root_str, &note, &kept).unwrap();
@@ -231,7 +235,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        let kept = history::keep(&store, "path:a.md", "旧\n", at, true, 0)
+        let kept = history::keep(&store, "path:a.md", "旧\n", at, true, 0, "")
             .unwrap()
             .unwrap();
 

@@ -2187,6 +2187,11 @@ fieldset.preferences-fields:disabled {
   flex: 1 1 auto;
   text-align: left;
 }
+.history-row .history-author {
+  margin-left: 0.8rem;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
 .history-row.selected {
   background: color-mix(in srgb, currentColor 10%, transparent);
 }

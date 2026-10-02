@@ -23,11 +23,14 @@ pub const TRUNCATED_MARK: &str = "\n…（続きがあります。先頭だけ�
 /// 関連するノート 1 件（根拠ごと返す。型は note_service = GUI と共通。21-4）
 pub use crate::note_service::RelatedNote;
 
-/// 版 1 つ（一覧では時刻だけ。本文は `history_text` で名指しに引く）
+/// 版 1 つ（一覧では時刻と書き手。本文は `history_text` で名指しに引く）
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HistoryEntry {
     /// `2026-09-02 10:00:00`。`history_text` にそのまま渡す
     pub stamp: String,
+    /// 残した Mac の名前。古い版は書かない（不明。ADR-0052 / 11-2）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
 }
 
 /// 資源として並べる 1 件
@@ -252,6 +255,7 @@ impl McpVault {
             .into_iter()
             .map(|version| HistoryEntry {
                 stamp: version.stamp(),
+                author: version.author,
             })
             .collect())
     }
@@ -642,14 +646,26 @@ mod tests {
                 .and_hms_opt(10, 0, 0)
                 .unwrap()
         };
-        crate::history::keep(&store, "path:設計.md", "古い本文", at(1), true, 0).unwrap();
-        crate::history::keep(&store, "path:設計.md", "新しい本文", at(2), true, 0).unwrap();
+        crate::history::keep(&store, "path:設計.md", "古い本文", at(1), true, 0, "").unwrap();
+        crate::history::keep(
+            &store,
+            "path:設計.md",
+            "新しい本文",
+            at(2),
+            true,
+            0,
+            "MacBook",
+        )
+        .unwrap();
 
         let mcp = McpVault::open(root.path()).unwrap();
         let versions = mcp.note_history("設計.md").unwrap();
         assert_eq!(versions.len(), 2);
         // 新しい順
         assert_eq!(versions[0].stamp, "2026-09-02 10:00:00");
+        // 書き手を添える。古い形の版は書き手を出さない（ADR-0052 / 11-2）
+        assert_eq!(versions[0].author.as_deref(), Some("MacBook"));
+        assert_eq!(versions[1].author, None);
         // 本文はその版を名指しで引く
         let text = mcp.history_text("設計.md", &versions[1].stamp).unwrap();
         assert_eq!(text.text, "古い本文");
@@ -907,7 +923,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        crate::history::keep(&store, "path:設計.md", "古い", at, true, 0).unwrap();
+        crate::history::keep(&store, "path:設計.md", "古い", at, true, 0, "").unwrap();
         let mcp = McpVault::open(root.path()).unwrap();
         let versions = mcp.note_history("設計.md").unwrap();
         let text = mcp.history_text("設計.md", &versions[0].stamp).unwrap();
@@ -1009,7 +1025,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        crate::history::keep(&store, "path:設計.md", "前の本文", at, true, 0).unwrap();
+        crate::history::keep(&store, "path:設計.md", "前の本文", at, true, 0, "").unwrap();
 
         let mcp = McpVault::open(root.path()).unwrap();
         let moved = mcp.move_note("設計.md", "仕事").unwrap();

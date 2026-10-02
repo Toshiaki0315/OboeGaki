@@ -213,7 +213,7 @@ impl OboegakiMcp {
 
     #[tool(
         name = "note_history",
-        description = "ノートの版の一覧（新しい順）。at にその時刻を渡すとその版の本文。読むだけで書き戻さない / List a note's saved versions; pass `at` to read one. Read-only."
+        description = "ノートの版の一覧（新しい順。author は残した Mac の名前）。at にその時刻を渡すとその版の本文。読むだけで書き戻さない / List a note's saved versions (author = the Mac that saved it); pass `at` to read one. Read-only."
     )]
     async fn note_history(
         &self,

@@ -430,7 +430,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        crate::history::keep(&store, "path:a.markdown", "古い", at, true, 0).unwrap();
+        crate::history::keep(&store, "path:a.markdown", "古い", at, true, 0, "").unwrap();
         // 同じ名前なら動かさない（拡張子が違っても）
         assert_eq!(vault.rename(&path, "a").unwrap(), path);
         let renamed = vault.rename(&path, "b").unwrap();
@@ -451,7 +451,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        crate::history::keep(&store, "path:設計.md", "前の本文", at, true, 0).unwrap();
+        crate::history::keep(&store, "path:設計.md", "前の本文", at, true, 0, "").unwrap();
 
         let moved = vault.move_note(&path, "仕事").unwrap();
         assert_eq!(moved, root.path().join("仕事/設計.md"));

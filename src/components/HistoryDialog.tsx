@@ -86,7 +86,9 @@ export function HistoryDialog({
               onClick={() => setSelected(index)}
               aria-pressed={index === selected}
             >
-              {entry.stamp}
+              <span>{entry.stamp}</span>
+              {/* 共有フォルダで誰が変えたか（ADR-0052 / 11-2） */}
+              <span className="history-author">{entry.author ?? "不明"}</span>
             </button>
             <button onClick={() => onRestore(entry)}>戻す</button>
           </li>

@@ -123,6 +123,7 @@ impl Vault {
             chrono::Local::now().naive_local(),
             true,
             0,
+            &crate::history::this_mac(),
         )
         .map(|_| ())
     }

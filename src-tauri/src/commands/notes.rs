@@ -58,6 +58,8 @@ pub async fn note_write(
         chrono::Local::now().naive_local(),
         false,
         history_minutes.unwrap_or(history::DEFAULT_INTERVAL_MINUTES),
+        // 書き手（ADR-0052 決定 2）。共有フォルダで誰が変えたかを見せる
+        &history::this_mac(),
     ) {
         eprintln!("版を残せなかった: {error}");
     }

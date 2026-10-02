@@ -620,7 +620,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        crate::history::keep(&store, "path:a.md", "古い", at, true, 0).unwrap();
+        crate::history::keep(&store, "path:a.md", "古い", at, true, 0, "").unwrap();
         let trashed = vault.trash(&path).unwrap();
         assert!(crate::history::versions(&store, "path:a.md").is_empty());
         let back = vault.restore(&trashed).unwrap();
@@ -642,7 +642,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        crate::history::keep(&store, "path:要らない.md", "前の本文", at, true, 0).unwrap();
+        crate::history::keep(&store, "path:要らない.md", "前の本文", at, true, 0, "").unwrap();
 
         // ピン留め中は断る（spec §7.3。先にピンを外す一拍を挟む）
         assert!(vault.trash_note(&pinned).is_err());

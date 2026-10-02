@@ -155,7 +155,7 @@ mod tests {
             .unwrap()
             .and_hms_opt(10, 0, 0)
             .unwrap();
-        history::keep(&store, "path:仕事/a.md", "古い", at, true, 0).unwrap();
+        history::keep(&store, "path:仕事/a.md", "古い", at, true, 0, "").unwrap();
 
         let renamed = vault.rename_folder("仕事", "仕事2").unwrap();
         let moved = notes_under(&vault, &renamed);

@@ -6,8 +6,8 @@ import { describe, expect, test, vi } from "vitest";
 import { HistoryDialog } from "./HistoryDialog";
 
 const ENTRIES = [
-  { stamp: "2026-09-07 10:00", path: "h/a.md" },
-  { stamp: "2026-09-06 09:00", path: "h/b.md" },
+  { stamp: "2026-09-07 10:00", path: "h/a.md", author: "MacBook" },
+  { stamp: "2026-09-06 09:00", path: "h/b.md", author: null },
 ];
 
 const TEXTS: Record<string, string> = {
@@ -39,6 +39,13 @@ describe("HistoryDialog", () => {
     setup();
     expect(screen.getByText("2026-09-07 10:00")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "戻す" })).toHaveLength(2);
+  });
+
+  test("test_版ごとに書き手を添える_古い版は不明（ADR-0052 / 11-2）", () => {
+    setup();
+    const [newer, older] = screen.getAllByRole("listitem");
+    expect(newer.textContent).toContain("MacBook");
+    expect(older.textContent).toContain("不明");
   });
 
   test("test_版が無ければ案内を出す", () => {

@@ -54,7 +54,12 @@ export async function conflictCopy(
   return invoke<string>("conflict_copy", { root, path, text });
 }
 
-export type HistoryEntry = { stamp: string; path: string };
+export type HistoryEntry = {
+  stamp: string;
+  path: string;
+  /// 残した Mac の名前。書き手を混ぜる前の古い版は null（ADR-0052 / 11-2）
+  author: string | null;
+};
 
 export async function historyList(
   root: string,
