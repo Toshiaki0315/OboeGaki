@@ -78,6 +78,88 @@ pub fn with_pinned(text: &str, value: bool) -> String {
     }
 }
 
+/// front matter の中の `key:` の行
+fn is_key_line(line: &str, key: &str) -> bool {
+    line.strip_prefix(key)
+        .is_some_and(|rest| rest.starts_with(':'))
+}
+
+/// front matter の `key: 値` を読む（平らな 1 行の値だけ。引用符は外す）。
+/// 無ければ None。本文の同じ字面は見ない
+pub fn value(text: &str, key: &str) -> Option<String> {
+    let end = block_len(text)?;
+    text[..end]
+        .lines()
+        .skip(1)
+        .take_while(|line| line.trim_end_matches([' ', '\t']) != "---")
+        .find(|line| is_key_line(line, key))
+        .map(|line| unquote(line[key.len() + 1..].trim()))
+        .filter(|found| !found.is_empty())
+}
+
+fn unquote(raw: &str) -> String {
+    if raw.len() >= 2 && raw.starts_with('"') && raw.ends_with('"') {
+        return raw[1..raw.len() - 1]
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\");
+    }
+    if raw.len() >= 2 && raw.starts_with('\'') && raw.ends_with('\'') {
+        return raw[1..raw.len() - 1].replace("''", "'");
+    }
+    raw.to_string()
+}
+
+/// YAML で字のまま読めない値（`:` `#` を含む・引用符や空白で始まる）は `"` で囲む
+fn quote(value: &str) -> String {
+    let plain = !value.contains(':')
+        && !value.contains(" #")
+        && !value.starts_with(['"', '\'', ' ', '#', '-', '[', '{']);
+    if plain {
+        value.to_string()
+    } else {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+}
+
+/// `key: 値` を置く（あれば同じ場所で置き換え、無ければ末尾に足す）/ None で外した
+/// 本文を返す。他の行は原文のまま。外して空になれば front matter ごと消す。
+/// **アプリから front matter を書くのは、使う人の明示の操作の結果だけ**
+/// （ピン留め・Qiita への投稿。ADR-0063）
+pub fn with_value(text: &str, key: &str, value: Option<&str>) -> String {
+    let line = value.map(|value| format!("{key}: {}", quote(value)));
+    let Some(end) = block_len(text) else {
+        return match line {
+            Some(line) => format!("---\n{line}\n---\n{text}"),
+            None => text.to_string(),
+        };
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut placed = false;
+    for existing in text[..end]
+        .lines()
+        .skip(1)
+        .take_while(|line| line.trim_end_matches([' ', '\t']) != "---")
+    {
+        if is_key_line(existing, key) {
+            if let (Some(line), false) = (&line, placed) {
+                lines.push(line.clone());
+                placed = true;
+            }
+        } else {
+            lines.push(existing.to_string());
+        }
+    }
+    if let (Some(line), false) = (line, placed) {
+        lines.push(line);
+    }
+    let body = &text[end..];
+    if lines.is_empty() {
+        body.to_string()
+    } else {
+        format!("---\n{}\n---\n{body}", lines.join("\n"))
+    }
+}
+
 #[cfg(test)]
 // テスト名は日本語で書く。固有名（Finder / URL / Shift_JIS など）を小文字に
 // 崩さないため、snake_case の警告はこの mod だけ黙らせる（15-3）
@@ -148,5 +230,56 @@ mod tests {
     fn test_with_pinned_往復で元に戻る() {
         let doc = "# 題\n\n中身\n";
         assert_eq!(with_pinned(&with_pinned(doc, true), false), doc);
+    }
+
+    // ------------------------------------- 任意のキー（Qiita の記事 ID。TASKS 14-4）
+
+    #[test]
+    fn test_value_素の値も引用符の値も読む() {
+        let doc = "---\nqiita: c686397e4a0f\nqiita-updated-at: \"2026-10-02T10:00:00+09:00\"\n---\n# 題\n";
+        assert_eq!(value(doc, "qiita").as_deref(), Some("c686397e4a0f"));
+        assert_eq!(
+            value(doc, "qiita-updated-at").as_deref(),
+            Some("2026-10-02T10:00:00+09:00")
+        );
+        assert_eq!(value(doc, "なし"), None);
+        // 前方一致で取り違えない
+        assert_eq!(value(doc, "qiita-updated"), None);
+        assert_eq!(value("# 題\n\nqiita: 本文\n", "qiita"), None);
+    }
+
+    #[test]
+    fn test_with_value_無ければ作り_あれば置き換え_他の行は残す() {
+        let made = with_value("# 題\n", "qiita", Some("abc"));
+        assert_eq!(made, "---\nqiita: abc\n---\n# 題\n");
+        let doc = "---\npinned: true\nqiita: old\n---\n# 題\n";
+        assert_eq!(
+            with_value(doc, "qiita", Some("new")),
+            "---\npinned: true\nqiita: new\n---\n# 題\n"
+        );
+    }
+
+    #[test]
+    fn test_with_value_コロンを含む値は引用符で囲む() {
+        let doc = with_value(
+            "# 題\n",
+            "qiita-updated-at",
+            Some("2026-10-02T10:00:00+09:00"),
+        );
+        assert_eq!(
+            doc,
+            "---\nqiita-updated-at: \"2026-10-02T10:00:00+09:00\"\n---\n# 題\n"
+        );
+        assert_eq!(
+            value(&doc, "qiita-updated-at").as_deref(),
+            Some("2026-10-02T10:00:00+09:00")
+        );
+    }
+
+    #[test]
+    fn test_with_value_None_で外し_空になればfront_matterごと消す() {
+        let doc = "---\nqiita: abc\n---\n# 題\n";
+        assert_eq!(with_value(doc, "qiita", None), "# 題\n");
+        assert_eq!(with_value("# 題\n", "qiita", None), "# 題\n");
     }
 }

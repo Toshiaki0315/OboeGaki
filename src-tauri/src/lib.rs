@@ -173,6 +173,7 @@ pub fn run() {
             commands::qiita_token_set,
             commands::qiita_token_saved,
             commands::qiita_token_clear,
+            commands::qiita_publish,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,
