@@ -12,7 +12,8 @@
 // | タイトル枠が無ければ、いちばん大きい字の短い枠 | `##`（要望 2026-10-01） |
 // | 太字の数字だけの小さな枠（カードの番号） | いちばん近い枠の頭に付ける（同上） |
 // | 中央に揃えた短い行だけの枠（カードのラベル） | 枠ごとに 1 項目（同上） |
-// | `buNone`（行頭記号なし）で短い段落 | `###` |
+// | 題以上に大きな字の番号だけの枠（章の扉） | 題の頭に付ける（18-8） |
+// | 本文の枠で `buNone`（行頭記号を外した）の短い段落 | `###`（ただの文字の枠では見ない。18-8） |
 // | 文の終わりの記号で終わる段落 | 本文。それ以外は `- ` |
 // | 等幅フォント | コードブロック |
 // | 太字の run | `**強調**` |
@@ -39,6 +40,9 @@ export type ImportedShape =
       paragraphs: ImportedParagraph[];
       /// 枠まるごとが等幅（コードブロックとして扱う）。
       mono?: boolean;
+      /// ただの文字の枠（placeholder でない）。行頭記号が元々付かないので、
+      /// `buNone` を「記号を外した = 見出し」の印として読まない（18-8）
+      freeText?: boolean;
     }
   | { kind: "table"; rows: string[][] };
 
@@ -120,7 +124,7 @@ function shapeBlocks(shape: ImportedShape): string[] {
   shape.paragraphs.forEach((paragraph, index) => {
     const line = lines[index].trim();
     if (!line || isPageNumber(line)) return;
-    if (paragraph.bulletNone && looksLikeHeading(line)) {
+    if (paragraph.bulletNone && !shape.freeText && looksLikeHeading(line)) {
       flush();
       blocks.push(`### ${line}`);
       return;
@@ -314,6 +318,26 @@ function guessTitle(
   return best;
 }
 
+/// 章の番号とみなす字の大きさの下限（1/100 pt。28pt）。ページ番号は 10〜14pt ほど
+const MIN_CHAPTER_SIZE = 2800;
+
+/// 章の扉の大きな「2」を選ぶ（18-8）。番号だけの枠はページ番号として落としていたので、
+/// 章の番号が消えた。**題以上の大きさ（かつ 28pt 以上）**の番号だけを章の番号とし、
+/// いくつもあればいちばん大きいもの。タイトル枠は字の大きさを書かない（型から継ぐ）
+/// ことが多いので、そのときは 28pt だけで見る
+function chapterNumber(
+  numbers: readonly { index: number; text: string; size: number }[],
+  titleSize: number,
+): { index: number; text: string } | null {
+  const floor = Math.max(titleSize, MIN_CHAPTER_SIZE);
+  let best: { index: number; text: string; size: number } | null = null;
+  for (const number of numbers) {
+    if (number.size >= floor && (!best || number.size > best.size))
+      best = number;
+  }
+  return best;
+}
+
 /// 枠の位置と大きさ（EMU）。書いていなければ null
 type Rect = { left: number; top: number; right: number; bottom: number };
 
@@ -413,12 +437,16 @@ function parseSlide(xml: string, notesXml: string): ImportedSlide {
     rect: Rect | null;
     badge: string | null;
   }[] = [];
+  // 番号だけの枠（章の番号の候補。18-8）
+  const numbers: { index: number; text: string; size: number }[] = [];
+  let titleSize = 0;
 
   for (const shape of Array.from(doc.getElementsByTagName("p:sp"))) {
     const paragraphs = readParagraphs(shape);
     if (paragraphs.length === 0) continue;
     if (isTitle(shape)) {
       slide.title = titleText(paragraphs);
+      titleSize = largestSize(shape);
       continue;
     }
     // 枠の run が全部等幅ならコードブロックとして扱う
@@ -447,8 +475,16 @@ function parseSlide(xml: string, notesXml: string): ImportedSlide {
     const bold = paragraphs.every((paragraph) =>
       paragraph.runs.every((run) => run.bold || !run.text.trim()),
     );
+    if (!mono && /^\d{1,2}$/.test(text)) {
+      numbers.push({ index: entries.length, text, size: largestSize(shape) });
+    }
     entries.push({
-      shape: { kind: "text", paragraphs, mono },
+      shape: {
+        kind: "text",
+        paragraphs,
+        mono,
+        freeText: shape.getElementsByTagName("p:ph").length === 0,
+      },
       rect: rectOf(shape),
       badge: !mono && bold && /^\d{1,2}$/.test(text) ? text : null,
     });
@@ -458,8 +494,15 @@ function parseSlide(xml: string, notesXml: string): ImportedSlide {
     const guessed = guessTitle(candidates);
     if (guessed) {
       slide.title = guessed.text;
+      titleSize = guessed.size;
       removed.add(guessed.index); // 題は `##` に。本文に重ねて出さない
     }
+  }
+  const chapter = chapterNumber(numbers, titleSize);
+  if (chapter && slide.title) {
+    slide.title = `${chapter.text} ${slide.title}`;
+    removed.add(chapter.index);
+    entries[chapter.index].badge = null; // カードの番号として他の枠に付けない
   }
   for (const index of attachBadges(entries, removed)) removed.add(index);
   entries.forEach((entry, index) => {

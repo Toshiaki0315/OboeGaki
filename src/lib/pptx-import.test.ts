@@ -272,6 +272,10 @@ describe("タイトル枠の無いスライド（要望 2026-10-01）", () => {
     h?: number;
     bold?: boolean;
     title?: boolean;
+    /// 本文の枠（placeholder。行頭記号が既定で付く）
+    body?: boolean;
+    /// 行頭記号を外した段落（`<a:buNone/>`）
+    bulletNone?: boolean;
   };
   const box = ({
     text,
@@ -282,13 +286,15 @@ describe("タイトル枠の無いスライド（要望 2026-10-01）", () => {
     h = 1,
     bold,
     title,
+    body,
+    bulletNone,
   }: Box) =>
     `<p:sp><p:nvSpPr><p:cNvPr id="1" name="t"/><p:cNvSpPr/><p:nvPr>${
-      title ? '<p:ph type="title"/>' : ""
+      title ? '<p:ph type="title"/>' : body ? '<p:ph type="body" idx="1"/>' : ""
     }</p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm></p:spPr><p:txBody>${text
       .map(
         (line) =>
-          `<a:p><a:r><a:rPr lang="ja-JP"${size ? ` sz="${size}"` : ""}${bold ? ' b="1"' : ""}/><a:t>${line}</a:t></a:r></a:p>`,
+          `<a:p>${bulletNone ? "<a:pPr><a:buNone/></a:pPr>" : ""}<a:r><a:rPr lang="ja-JP"${size ? ` sz="${size}"` : ""}${bold ? ' b="1"' : ""}/><a:t>${line}</a:t></a:r></a:p>`,
       )
       .join("")}</p:txBody></p:sp>`;
   const slideXml = (boxes: Box[]) =>
@@ -310,6 +316,101 @@ describe("タイトル枠の無いスライド（要望 2026-10-01）", () => {
     return readPptx(await zip.generateAsync({ type: "uint8array" }));
   }
 
+  // ---------------------------------------------- 18-8（見本-図の枠.pptx で見つけた 2 つ）
+
+  test("test_ただの文字の枠では_記号の無い短い行を見出しにしない（18-8）", async () => {
+    // ただの文字の枠は元々行頭記号が付かないので、buNone は「外した」印にならない。
+    // 生成した資料は全段落に buNone が書いてあり、短い行が全部 `###` になっていた
+    const [slide] = await deckOf([
+      [
+        { text: ["概要"], size: 3200, y: 300000 },
+        { text: ["背景", "目的"], size: 1800, bulletNone: true },
+      ],
+    ]);
+    const md = slidesToMarkdown("資料", [slide]);
+    expect(md).toContain("- 背景\n- 目的");
+    expect(md).not.toContain("### ");
+  });
+
+  test("test_本文の枠では_今までどおり記号を外した短い行を見出しにする（18-8）", async () => {
+    const [slide] = await deckOf([
+      [
+        { text: ["概要"], title: true },
+        { text: ["背景"], size: 1800, body: true, bulletNone: true },
+      ],
+    ]);
+    expect(slidesToMarkdown("資料", [slide])).toContain("### 背景");
+  });
+
+  test("test_章の扉の大きな番号は_題の頭に付ける（18-8）", async () => {
+    const [slide] = await deckOf([
+      [
+        { text: ["2"], size: 7200, y: 1000000 },
+        { text: ["章の扉"], size: 3200, y: 1500000 },
+      ],
+    ]);
+    expect(slide.title).toBe("2 章の扉");
+    const md = slidesToMarkdown("資料", [slide]);
+    expect(md).toContain("## 2 章の扉");
+    expect(md.match(/^.*2.*$/gm)).toEqual(["## 2 章の扉"]);
+  });
+
+  test("test_タイトル枠の題にも_大きな番号を付ける（18-8）", async () => {
+    // タイトル枠は字の大きさを書かない（型から継ぐ）ことが多い。28pt 以上なら章の番号
+    const [slide] = await deckOf([
+      [
+        { text: ["1"], size: 6000 },
+        { text: ["はじめに"], title: true },
+      ],
+    ]);
+    expect(slide.title).toBe("1 はじめに");
+  });
+
+  test("test_題より小さい番号は_題に付けない（ページ番号のまま落とす。18-8）", async () => {
+    const [slide] = await deckOf([
+      [
+        { text: ["章の扉"], size: 3200, y: 300000 },
+        { text: ["7"], size: 1200, y: 6000000 },
+      ],
+    ]);
+    expect(slide.title).toBe("章の扉");
+    expect(slidesToMarkdown("資料", [slide])).not.toMatch(/7/);
+  });
+
+  test("test_大きな太字の番号も章の番号（カードの番号と取り違えない。18-8）", async () => {
+    const [slide] = await deckOf([
+      [
+        {
+          text: ["3"],
+          size: 7200,
+          bold: true,
+          x: 0,
+          y: 1000000,
+          w: 900000,
+          h: 900000,
+        },
+        {
+          text: ["章の扉"],
+          size: 3200,
+          x: 1000000,
+          y: 1000000,
+          w: 900000,
+          h: 900000,
+        },
+        {
+          text: ["説明の文です。"],
+          size: 1400,
+          x: 1000000,
+          y: 2000000,
+          w: 900000,
+          h: 900000,
+        },
+      ],
+    ]);
+    expect(slide.title).toBe("3 章の扉");
+    expect(slidesToMarkdown("資料", [slide])).not.toContain("**3**");
+  });
+
   test("test_いちばん大きい字の短い枠を題にし_本文からは外す", async () => {
     const [slide] = await deckOf([
       [
@@ -326,7 +427,8 @@ describe("タイトル枠の無いスライド（要望 2026-10-01）", () => {
   });
 
   test("test_大きい番号だけの枠や長い文は題にしない", async () => {
-    // 章の扉の大きな「1」や、大きな字の長い文は題ではない
+    // 章の扉の大きな「1」や、大きな字の長い文は題ではない。「1」は章の番号として
+    // 題の頭に付く（18-8。以前は落としていた）
     const [slide] = await deckOf([
       [
         { text: ["1"], size: 4950, y: 1000000 },
@@ -334,7 +436,7 @@ describe("タイトル枠の無いスライド（要望 2026-10-01）", () => {
         { text: ["ITで設備を制御する"], size: 3600, y: 1950000 },
       ],
     ]);
-    expect(slide.title).toBe("ITで設備を制御する");
+    expect(slide.title).toBe("1 ITで設備を制御する");
   });
 
   test("test_2_行の題は日本語の境目では空白を挟まずに繋ぐ", async () => {
