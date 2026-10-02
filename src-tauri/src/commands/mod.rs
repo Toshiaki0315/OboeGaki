@@ -198,8 +198,7 @@ fn decode(data: &str) -> CmdResult<Vec<u8>> {
 /// 作ったばかりの 1 ファイルを索引へ。失敗しても作成自体は成功なので
 /// ログだけ残す（全体の整合は vault_open の同期が取り直す）。
 fn index_one(vault: &Vault, path: &Path) {
-    if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(vault, path))
+    if let Err(error) = IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(vault, path))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }

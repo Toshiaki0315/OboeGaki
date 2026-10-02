@@ -42,7 +42,7 @@ pub fn rekey_moved_folder(vault: &Vault, before: &str, after: &str, moved: &[Pat
 #[tauri::command]
 pub async fn folder_list(root: String) -> CmdResult<Vec<(String, i64)>> {
     let vault = Vault::new(&root);
-    let db = IndexDb::open(&vault.managed_dir())?;
+    let db = IndexDb::open(&vault.local_dir())?;
     Ok(crate::note_service::folders_with_counts(
         &vault,
         &db,
@@ -54,7 +54,7 @@ pub async fn folder_list(root: String) -> CmdResult<Vec<(String, i64)>> {
 #[tauri::command]
 pub fn notes_in_folder(root: String, folder: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
-    let db = IndexDb::open(&vault.managed_dir())?;
+    let db = IndexDb::open(&vault.local_dir())?;
     Ok(crate::note_service::list_notes(&db, Some(&folder), None)?)
 }
 
@@ -124,7 +124,7 @@ fn after_folder_moved(
             .sync_gate
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(vault))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.sync(vault))
     };
     if let Err(error) = sync_outcome {
         eprintln!("索引の更新に失敗した: {error}");

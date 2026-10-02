@@ -88,6 +88,19 @@ Google Drive が入っていない）。11-4 で確かめる。
   3 択が出る。それで足りない規模になったら、CRDT（Yjs + CodeMirror 6）を
   別の ADR で検討する
 
+### 実装の記録（2026-10-02。TASKS 11-1）
+
+- 置き場は `Vault::local_dir()`。`Vault::new(root)` が
+  `~/Library/Application Support/<identifier>/vaults/<path_key(root)>/` に決める
+  （鍵は退避と同じ `path_key`）。**Tauri の `app_data_dir` には頼らない** —
+  MCP サーバ（別のプロセス）も同じ置き場を計算し、アプリと同じ索引とロックを見る。
+  identifier が tauri.conf.json とずれないことはテストが見張る
+- 鍵はパスの字面から作る（正規化しない）。アプリと MCP サーバで字面が違う
+  （シンボリックリンク越しなど）と置き場が分かれるが、索引が 2 つになるだけで壊れない
+- ホームが分からなければ旧の置き場（`.OboeGaki/`）に落とす。そのときは古い索引を消さない
+- テストでは本物の App Support に書かない（`#[cfg(test)]` の既定は一時フォルダの
+  管理フォルダの中）
+
 ## 根拠
 
 | 案  | 内容                                             | 問題                                                                            |

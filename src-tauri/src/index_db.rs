@@ -1,6 +1,7 @@
 // SQLite FTS5 索引と全文検索（spec §7.3）。参照実装 storage/index_db.py の移植。
 //
-// `.OboeGaki/index.sqlite` は**捨ててよいキャッシュ**（T7）。削除しても
+// 索引（`index.sqlite`）は**捨ててよいキャッシュ**（T7）。置き場は保管フォルダの外の
+// 各 Mac の App Support（`Vault::local_dir`。ADR-0052 / 11-1）。削除しても
 // `.md` から sync() で完全再構築できる。真実は常にファイル側にある。
 //
 // 日本語検索の設計（spec §7.3）:
@@ -276,10 +277,12 @@ pub struct IndexDb {
 }
 
 impl IndexDb {
-    /// 管理フォルダの中の索引を開く（無ければ作る）。
+    /// 置き場（`Vault::local_dir`。各 Mac のもの）の索引を開く（無ければ置き場ごと作る）。
     /// スキーマの世代が合わなければ捨てて作り直す（次の sync が埋め直す）。
-    pub fn open(managed_dir: &Path) -> rusqlite::Result<Self> {
-        let conn = Connection::open(managed_dir.join(INDEX_FILE))?;
+    pub fn open(local_dir: &Path) -> rusqlite::Result<Self> {
+        // App Support の下の置き場は、初めて開く保管フォルダではまだ無い
+        let _ = std::fs::create_dir_all(local_dir);
+        let conn = Connection::open(local_dir.join(INDEX_FILE))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         // 背景同期と watcher の更新が同時に走っても SQLITE_BUSY で落とさない
@@ -832,7 +835,7 @@ mod tests {
     }
 
     fn synced(vault: &Vault) -> IndexDb {
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(vault).unwrap();
         db
     }
@@ -1024,7 +1027,7 @@ mod tests {
         // **「何も起きなかった」と「壊れている」を分ける。** 変わらなかった
         // ことをはっきり言わないと、押した人には失敗と区別が付かない
         let (root, vault) = vault_with(&[("a.md", "# a\n"), ("b.md", "# b\n")]);
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
 
         let first = db.sync(&vault).unwrap();
         assert_eq!((first.added, first.updated, first.removed), (2, 0, 0));
@@ -1058,7 +1061,7 @@ mod tests {
         {
             let _db = synced(&vault);
         }
-        let index_path: PathBuf = vault.managed_dir().join(INDEX_FILE);
+        let index_path: PathBuf = vault.local_dir().join(INDEX_FILE);
         fs::remove_file(&index_path).unwrap();
 
         let db = synced(&vault); // 作り直し
@@ -1153,7 +1156,8 @@ mod tests {
     fn test_古いスキーマの索引は捨てて作り直す() {
         let (_root, vault) = vault_with(&[("a.md", "# a\n\n作り直しの検証。\n")]);
         // 旧世代の索引ファイルを装う: 版数 0 + 互換性の無いテーブル
-        let index_path = vault.managed_dir().join(INDEX_FILE);
+        let index_path = vault.local_dir().join(INDEX_FILE);
+        fs::create_dir_all(vault.local_dir()).unwrap();
         {
             let conn = Connection::open(&index_path).unwrap();
             conn.execute_batch("CREATE TABLE notes (old_only TEXT);")
@@ -1496,7 +1500,7 @@ mod tests {
         let (root, vault) = temp_vault();
         let path = note(root.path(), "a.md", "# a\n本文\n");
         let real = path.canonicalize().unwrap();
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.upsert(&vault, &real).unwrap();
         let listed: Vec<String> = db
             .list_notes()

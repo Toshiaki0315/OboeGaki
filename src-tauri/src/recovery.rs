@@ -38,13 +38,7 @@ pub fn vault_dir(app_data: &Path, vault_root: &Path) -> PathBuf {
 }
 
 fn key(path: &Path) -> String {
-    use sha1::{Digest, Sha1};
-    let digest = Sha1::digest(path.to_string_lossy().as_bytes());
-    digest
-        .iter()
-        .take(12)
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    crate::vault::path_key(path)
 }
 
 /// 未保存の内容を退避する。同じノートの退避は上書きする。

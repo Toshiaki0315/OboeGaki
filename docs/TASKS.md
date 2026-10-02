@@ -547,7 +547,8 @@ Claude Desktop などから保管フォルダを検索・参照・書き込み�
 Mac で使う。「保管フォルダは共有してよい。索引とロックは各 Mac のもの」。
 同時に同じノートを触ることは支援しない（競合の 3 択で受ける）。
 
-- [ ] **11-1. 索引とロックの置き場を App Support へ**
+- [x] **11-1. 索引とロックの置き場を App Support へ**（2026-10-02。`Vault::local_dir()`。
+      MCP サーバも同じ置き場を計算する。実装の記録は ADR-0052 の末尾）
       `app_data_dir/vaults/<保管フォルダのパスのハッシュ>/` に `index.sqlite` と
       `instance-oboegaki.lock`。置き場は `index_dir(root)` の 1 箇所で決め、
       `IndexDb::open(&vault.managed_dir())` の 25 箇所を置き換える。既存の

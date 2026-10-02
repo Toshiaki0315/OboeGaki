@@ -116,14 +116,14 @@ impl McpVault {
     /// 取れたらすぐ手放す）
     pub fn app_running(&self) -> bool {
         matches!(
-            crate::vault_lock::acquire(&self.vault.managed_dir()),
+            crate::vault_lock::acquire(&self.vault.local_dir()),
             crate::vault_lock::LockOutcome::Busy
         )
     }
 
     /// 索引を開く。アプリが動いていなければ差分同期してから
     fn index(&self) -> Result<IndexDb, String> {
-        let mut db = IndexDb::open(&self.vault.managed_dir()).map_err(|e| e.to_string())?;
+        let mut db = IndexDb::open(&self.vault.local_dir()).map_err(|e| e.to_string())?;
         if !self.app_running() {
             db.sync(&self.vault).map_err(|e| e.to_string())?;
         }
@@ -854,7 +854,7 @@ mod tests {
         let (root, vault) = temp_vault();
         note(root.path(), "設計.md", "# 設計\n\n古い本文\n");
         let mcp = McpVault::open(root.path()).unwrap();
-        let _app = crate::vault_lock::acquire(&vault.managed_dir());
+        let _app = crate::vault_lock::acquire(&vault.local_dir());
         assert!(mcp.app_running());
 
         let before = mcp.read_note("設計.md").unwrap();

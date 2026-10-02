@@ -135,7 +135,7 @@ pub fn start(
             // 待たない）。失敗しても通知は流す — 表示の更新が先
             let vault = crate::vault::Vault::new(&root);
             if connection.is_none() {
-                connection = crate::index_db::IndexDb::open(&vault.managed_dir()).ok();
+                connection = crate::index_db::IndexDb::open(&vault.local_dir()).ok();
             }
             let updated = match connection.as_mut() {
                 Some(db) => {

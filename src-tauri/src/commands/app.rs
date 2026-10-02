@@ -36,13 +36,13 @@ pub async fn vault_open(
         // MCP サーバの app_running はロックを取ってすぐ手放すので、その一瞬と
         // 重なると Busy に見える。別のウィンドウの Busy は続くので、少し待って
         // 数回だけ試し直す（レビュー 2026-09-24 / 21-3）
-        let mut outcome = crate::vault_lock::acquire(&vault.managed_dir());
+        let mut outcome = crate::vault_lock::acquire(&vault.local_dir());
         for _ in 0..3 {
             if !matches!(outcome, crate::vault_lock::LockOutcome::Busy) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(40));
-            outcome = crate::vault_lock::acquire(&vault.managed_dir());
+            outcome = crate::vault_lock::acquire(&vault.local_dir());
         }
         match outcome {
             crate::vault_lock::LockOutcome::Acquired(lock) => *held = Some(lock),
@@ -101,7 +101,7 @@ pub async fn vault_open(
                 let _serialized = gate
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.sync(&vault))
+                IndexDb::open(&vault.local_dir()).and_then(|mut db| db.sync(&vault))
             };
             if let Err(error) = sync_outcome {
                 eprintln!("索引の同期に失敗した（検索は古いままになる）: {error}");
@@ -244,7 +244,7 @@ pub fn index_sync(
             let _serialized = gate
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+            IndexDb::open(&vault.local_dir()).and_then(|mut db| {
                 if full {
                     db.rebuild(&vault)
                 } else {

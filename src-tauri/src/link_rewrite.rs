@@ -117,7 +117,7 @@ mod tests {
         let (root, vault) = temp_vault();
         note(root.path(), "a.md", "旧い\n");
         note(root.path(), "b.md", "旧い\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
         let locked = root.path().join("b.md");
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
@@ -142,7 +142,7 @@ mod tests {
         // 残らなかった（監査 2026-09-17。T7: 履歴は作り直せない）
         let (root, vault) = temp_vault();
         note(root.path(), "a.md", "# a\n\n旧い話\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
         let outcome = rewrite_all(&vault, Some(&mut db), |text| {
             text.contains("旧い")
@@ -163,7 +163,7 @@ mod tests {
         let (root, vault) = temp_vault();
         note(root.path(), "旧.md", "# 旧\n");
         note(root.path(), "b.md", "# b\n\n[[旧]] を見る\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
         let outcome = rewrite_links_to(&vault, &mut db, "旧", "新");
         assert_eq!(outcome.rewritten, 1);
@@ -181,7 +181,7 @@ mod tests {
         // 無くなる（レビュー 2026-09-23。以前は eprintln だけで書いていた）
         let (root, vault) = temp_vault();
         note(root.path(), "a.md", "旧い\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
         let _locked = crate::test_support::lock_history(&vault);
         let outcome = rewrite_all(&vault, Some(&mut db), |text| {
@@ -202,7 +202,7 @@ mod tests {
         let (root, vault) = temp_vault();
         note(root.path(), "旧.md", "# 旧\n");
         note(root.path(), "b.md", "[[旧]] を見る\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
         let _locked = crate::test_support::lock_history(&vault);
         let outcome = rewrite_links_to(&vault, &mut db, "旧", "新");
@@ -224,7 +224,7 @@ mod tests {
         note(root.path(), "a.md", "旧い話\n");
         note(root.path(), "仕事/b.md", "旧い\n旧い\n");
         note(root.path(), "c.md", "関係ない\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
 
         // 数えるだけ（書かない）
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn test_rewrite_links_to_自動保存の_upsert_で育てた索引でも引ける() {
         let (root, vault) = temp_vault();
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap(); // 空で開いた
         note(root.path(), "99_テスト/会議メモ.md", "# 会議メモ\n");
         db.upsert(&vault, &root.path().join("99_テスト/会議メモ.md"))
@@ -294,7 +294,7 @@ mod tests {
             "- 参考: [[会議メモ]]\n- [[別]]\n",
         );
         note(root.path(), "無関係.md", "何も指さない\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
 
         let outcome = rewrite_links_to(&vault, &mut db, "会議メモ", "定例");

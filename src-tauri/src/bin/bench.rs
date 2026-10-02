@@ -42,11 +42,14 @@ fn main() {
     }
     println!("生成: {NOTES} ノート in {:?}", stopwatch.elapsed());
 
-    let vault = Vault::new(root);
+    // 索引の置き場も一時フォルダに（既定の App Support に置くと、回すたびに 5,000 件の
+    // 索引が残る。ADR-0052 / 11-1）
+    let local = tempfile::tempdir().expect("tempdir");
+    let vault = Vault::with_local_dir(root, local.path());
     vault.ensure_layout().expect("layout");
 
     // --- 初回の索引構築（vault を最初に開くときのコスト）
-    let mut db = IndexDb::open(&vault.managed_dir()).expect("open");
+    let mut db = IndexDb::open(&vault.local_dir()).expect("open");
     let stopwatch = Instant::now();
     db.sync(&vault).expect("sync");
     println!("索引の初回構築: {:?}", stopwatch.elapsed());

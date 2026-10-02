@@ -20,7 +20,7 @@ pub fn note_trash(
     state.suppressor.mark(&moved);
     // ゴミ箱の中は索引に入れない（検索・一覧の対象外）
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.remove(&vault, &path))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.remove(&vault, &path))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
@@ -78,7 +78,7 @@ pub fn note_restore(
     let restored = vault.restore(&path)?;
     state.suppressor.mark(&restored);
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &restored))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &restored))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }

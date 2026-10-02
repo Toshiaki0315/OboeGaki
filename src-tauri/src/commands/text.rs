@@ -9,7 +9,7 @@ use crate::vault::Vault;
 #[tauri::command]
 pub fn tag_list(root: String) -> CmdResult<Vec<(String, i64)>> {
     let vault = Vault::new(&root);
-    let db = IndexDb::open(&vault.managed_dir())?;
+    let db = IndexDb::open(&vault.local_dir())?;
     Ok(crate::note_service::tags_with_counts(&db, |_| true)?)
 }
 
@@ -17,7 +17,7 @@ pub fn tag_list(root: String) -> CmdResult<Vec<(String, i64)>> {
 #[tauri::command]
 pub fn task_list(root: String) -> CmdResult<Vec<crate::index_db::TaskRow>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
+    IndexDb::open(&vault.local_dir())
         .and_then(|db| db.open_tasks())
         .map_err(CmdError::from)
 }
@@ -49,7 +49,7 @@ pub fn task_complete(
     state.suppressor.mark(&note);
     vault.write_with_version(&note, &current, &rewritten)?;
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &note))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
@@ -89,7 +89,7 @@ pub async fn replace_apply(
     include_code: bool,
 ) -> CmdResult<ReplaceOutcome> {
     let vault = Vault::new(&root);
-    let mut db = IndexDb::open(&vault.managed_dir())?;
+    let mut db = IndexDb::open(&vault.local_dir())?;
     let outcome = crate::link_rewrite::rewrite_all(&vault, Some(&mut db), |text| {
         crate::text_rewrite::replace_outside_code(text, &from, &to, case_sensitive, include_code)
     });
@@ -118,7 +118,7 @@ pub async fn tag_rename(
     to: String,
 ) -> CmdResult<ReplaceOutcome> {
     let vault = Vault::new(&root);
-    let mut db = IndexDb::open(&vault.managed_dir())?;
+    let mut db = IndexDb::open(&vault.local_dir())?;
     let outcome = crate::link_rewrite::rewrite_all(&vault, Some(&mut db), |text| {
         crate::text_rewrite::rename_tag(text, &from, &to)
     });

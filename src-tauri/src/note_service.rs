@@ -136,7 +136,7 @@ mod tests {
     use crate::test_support::{note, temp_vault};
 
     fn synced(vault: &Vault) -> IndexDb {
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(vault).unwrap();
         db
     }
@@ -226,7 +226,7 @@ mod tests {
         let (root, vault) = temp_vault();
         note(root.path(), "a.md", "# a\n[[b]] を見る\n");
         note(root.path(), "b.md", "# b\n");
-        let mut db = IndexDb::open(&vault.managed_dir()).unwrap();
+        let mut db = IndexDb::open(&vault.local_dir()).unwrap();
         db.sync(&vault).unwrap();
         let found = related(&db, "b.md", "b", 5, |_| true).unwrap();
         assert_eq!(found.len(), 1);

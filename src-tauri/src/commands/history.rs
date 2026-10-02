@@ -106,7 +106,7 @@ pub fn history_restore(
     let text = restore_version(&root, &note, &version)?;
     let vault = Vault::new(&root);
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &note))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &note))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
@@ -130,7 +130,7 @@ pub fn conflict_copy(
     autosave::save_atomic(&copy, &text)?;
     let vault = Vault::new(&root);
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &copy))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &copy))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }

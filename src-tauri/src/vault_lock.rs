@@ -6,7 +6,9 @@
 //
 // ロックは**ファイルロック**（OS の助言ロック）で取る。PID を書いて死活を
 // 見る方式と違い、**落ちた後の残骸が残らない**（プロセスが消えれば OS が
-// 外す）。ロックの実体は管理フォルダの中なので捨ててよい（T7）。
+// 外す）。ロックの実体は索引と同じ各 Mac の置き場（`Vault::local_dir`。保管
+// フォルダの外。ADR-0052）にあり、捨ててよい（T7）。flock は同期ソフト越しには
+// 効かないので、共有フォルダの中に置いても他の Mac は止められない
 
 use std::fs::{File, OpenOptions};
 use std::path::Path;
@@ -49,9 +51,9 @@ pub enum LockOutcome {
     Unavailable,
 }
 
-/// 管理フォルダにロックを置く。
-pub fn acquire(managed_dir: &Path) -> LockOutcome {
-    if std::fs::create_dir_all(managed_dir).is_err() {
+/// 置き場（`Vault::local_dir`）にロックを置く。
+pub fn acquire(local_dir: &Path) -> LockOutcome {
+    if std::fs::create_dir_all(local_dir).is_err() {
         return LockOutcome::Unavailable;
     }
     let Ok(file) = OpenOptions::new()
@@ -59,7 +61,7 @@ pub fn acquire(managed_dir: &Path) -> LockOutcome {
         .write(true)
         .create(true)
         .truncate(false)
-        .open(managed_dir.join(LOCK_FILE))
+        .open(local_dir.join(LOCK_FILE))
     else {
         return LockOutcome::Unavailable;
     };
@@ -112,14 +114,14 @@ mod tests {
     }
 
     #[test]
-    fn test_acquire_置いたロックは管理フォルダの中() {
+    fn test_acquire_置いたロックは渡した置き場の中() {
         let dir = TempDir::new().unwrap();
-        let managed = dir.path().join(".OboeGaki");
+        let local = dir.path().join("vaults/鍵");
 
-        let _held = acquire(&managed);
+        let _held = acquire(&local);
 
-        // 索引と同じ「捨ててよい」置き場（T7）
-        assert!(managed.join(LOCK_FILE).is_file());
+        // 索引と同じ「捨ててよい」置き場（T7）。無ければ作る
+        assert!(local.join(LOCK_FILE).is_file());
         // **素の名前は使わない**（hitofude と取り合って、どちらも
         // 止められない状態になる）
         assert_ne!(LOCK_FILE, "instance.lock");

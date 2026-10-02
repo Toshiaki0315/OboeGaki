@@ -46,7 +46,7 @@ pub async fn note_write(
     // 索引の後追い。失敗しても保存は成立している（次の sync が取り直す）
     let vault = Vault::new(&root);
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &path))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
@@ -68,7 +68,7 @@ pub async fn note_write(
 #[tauri::command]
 pub async fn note_list(root: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
-    let db = IndexDb::open(&vault.managed_dir())?;
+    let db = IndexDb::open(&vault.local_dir())?;
     Ok(crate::note_service::list_notes(&db, None, None)?)
 }
 
@@ -102,7 +102,7 @@ pub fn template_register(root: String, path: String, name: String) -> CmdResult<
 #[tauri::command]
 pub fn notes_with_tag(root: String, tag: String) -> CmdResult<Vec<crate::index_db::NoteMeta>> {
     let vault = Vault::new(&root);
-    let db = IndexDb::open(&vault.managed_dir())?;
+    let db = IndexDb::open(&vault.local_dir())?;
     Ok(crate::note_service::list_notes(&db, None, Some(&tag))?)
 }
 
@@ -119,7 +119,7 @@ pub struct SearchOutcome {
 #[tauri::command]
 pub async fn note_search(root: String, query: String) -> CmdResult<SearchOutcome> {
     let vault = Vault::new(&root);
-    let hits = IndexDb::open(&vault.managed_dir()).and_then(|db| db.search(&query))?;
+    let hits = IndexDb::open(&vault.local_dir()).and_then(|db| db.search(&query))?;
     Ok(SearchOutcome {
         hits,
         unreadable: crate::search_query::parse(&query).unreadable_dates,
@@ -138,7 +138,7 @@ pub fn note_create(
     let path = vault.create_in(folder.as_deref().unwrap_or(""), &title)?;
     state.suppressor.mark(&path);
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &path))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
@@ -208,7 +208,7 @@ pub async fn note_backlinks(
     title: String,
 ) -> CmdResult<Vec<crate::index_db::Backlink>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
+    IndexDb::open(&vault.local_dir())
         .and_then(|db| db.backlinks(&title))
         .map_err(CmdError::from)
 }
@@ -226,7 +226,7 @@ pub async fn note_related(
         .strip_prefix(&root)
         .map(|rest| rest.to_string_lossy().into_owned())
         .unwrap_or(path.clone());
-    let db = IndexDb::open(&vault.managed_dir())?;
+    let db = IndexDb::open(&vault.local_dir())?;
     // 型と組み立ては note_service（MCP と共通。21-4）
     Ok(crate::note_service::related(
         &db,
@@ -243,7 +243,7 @@ pub async fn note_related(
 #[tauri::command]
 pub fn link_map(root: String) -> CmdResult<Vec<(String, String, String)>> {
     let vault = Vault::new(&root);
-    IndexDb::open(&vault.managed_dir())
+    IndexDb::open(&vault.local_dir())
         .and_then(|db| db.link_map())
         .map_err(CmdError::from)
 }
@@ -266,7 +266,7 @@ pub fn note_move(
     state.suppressor.mark(&moved);
     // 隠してあったら隠したまま動かす（24-2）
     super::follow_hidden(&root, &path.to_string_lossy(), &moved.to_string_lossy());
-    if let Err(error) = IndexDb::open(&vault.managed_dir()).and_then(|mut db| {
+    if let Err(error) = IndexDb::open(&vault.local_dir()).and_then(|mut db| {
         db.remove(&vault, &path)?;
         db.upsert(&vault, &moved)
     }) {
@@ -300,7 +300,7 @@ pub fn note_rename(
     let vault = Vault::new(&root);
     let mut rewritten = 0;
     let mut failed = Vec::new();
-    match IndexDb::open(&vault.managed_dir()) {
+    match IndexDb::open(&vault.local_dir()) {
         Ok(mut db) => {
             if let Err(error) = db
                 .remove(&vault, &path)
@@ -335,7 +335,7 @@ pub fn note_append_daily(root: String, text: String) -> CmdResult<String> {
     let vault = Vault::new(&root);
     let path = vault.append_to_daily(&chrono::Local::now(), &text)?;
     if let Err(error) =
-        IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+        IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &path))
     {
         eprintln!("索引の更新に失敗した: {error}");
     }
@@ -359,7 +359,7 @@ pub fn note_pin(
         state.suppressor.mark(&path);
         vault.write_with_version(&path, &text, &updated)?;
         if let Err(error) =
-            IndexDb::open(&vault.managed_dir()).and_then(|mut db| db.upsert(&vault, &path))
+            IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(&vault, &path))
         {
             eprintln!("索引の更新に失敗した: {error}");
         }
