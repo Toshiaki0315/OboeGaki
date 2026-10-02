@@ -13,3 +13,4 @@ export * from "./ipc-llm";
 export * from "./ipc-text";
 export * from "./ipc-app";
 export * from "./ipc-os";
+export * from "./ipc-qiita";

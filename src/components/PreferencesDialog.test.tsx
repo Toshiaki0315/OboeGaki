@@ -26,6 +26,11 @@ function setup(over: Partial<PreferencesProps> = {}) {
     noteText: null,
     historyUsage: () => Promise.resolve(2048),
     installedModels: () => Promise.resolve(["gemma3:4b"]),
+    qiitaToken: {
+      saved: () => Promise.resolve(false),
+      save: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    },
     ...over,
   };
   const view = render(<PreferencesDialog {...props} />);
@@ -60,6 +65,12 @@ describe("PreferencesDialog", () => {
     fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
     fireEvent.click(screen.getByRole("button", { name: "設定をコピー" }));
     expect(props.onCopyMcpConfig).toHaveBeenCalled();
+  });
+
+  test("test_Qiita_のタブはトークンの状態だけを出す（14-1）", async () => {
+    setup();
+    fireEvent.click(screen.getByRole("tab", { name: "Qiita" }));
+    await screen.findByText("トークンは入っていません");
   });
 
   test("test_タブを押すとページが替わる", () => {

@@ -17,6 +17,7 @@ pub mod mcp;
 pub mod note_service;
 pub mod ocr;
 pub mod pdf;
+pub mod qiita;
 pub mod quit;
 pub mod recovery;
 pub mod references;
@@ -169,6 +170,9 @@ pub fn run() {
             commands::open_handoff_app,
             commands::open_handoff_url,
             commands::open_in_finder,
+            commands::qiita_token_set,
+            commands::qiita_token_saved,
+            commands::qiita_token_clear,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

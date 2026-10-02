@@ -16,9 +16,10 @@ import { AssistantPreferences } from "./AssistantPreferences";
 import { GeneralPreferences } from "./GeneralPreferences";
 import { McpPreferences } from "./McpPreferences";
 import { PptxPreferences } from "./PptxPreferences";
+import { QiitaPreferences, type QiitaTokenAccess } from "./QiitaPreferences";
 import { Dialog } from "./Dialog";
 
-type Tab = "general" | "pptx" | "mcp" | "assistant";
+type Tab = "general" | "pptx" | "mcp" | "assistant" | "qiita";
 
 export type PreferencesProps = {
   settings: Settings;
@@ -42,6 +43,8 @@ export type PreferencesProps = {
   historyUsage: () => Promise<number>;
   /// Ollama に入っているモデル名を聞く。失敗したら空
   installedModels: () => Promise<string[]>;
+  /// Qiita のトークンの出し入れ（14-1。値は画面に戻らない）
+  qiitaToken: QiitaTokenAccess;
   /// 書き取りのショートカットが登録できなかった理由（無ければ null）
   captureShortcutError?: string | null;
 };
@@ -116,6 +119,7 @@ export function PreferencesDialog(props: PreferencesProps) {
     // 使う人の方が少ない。「一般」に混ぜると、要らない人の目にも毎回入る
     { id: "mcp", label: "MCP" },
     { id: "assistant", label: "アシスタント" },
+    { id: "qiita", label: "Qiita" },
   ];
 
   return (
@@ -170,6 +174,8 @@ export function PreferencesDialog(props: PreferencesProps) {
           onResetPptxSettings={props.onResetPptxSettings}
           noteText={props.noteText}
         />
+      ) : tab === "qiita" ? (
+        <QiitaPreferences token={props.qiitaToken} />
       ) : (
         <AssistantPreferences
           settings={settings}

@@ -134,6 +134,9 @@ import {
   historyList,
   historyRead,
   historyUsage,
+  qiitaTokenClear,
+  qiitaTokenSaved,
+  qiitaTokenSet,
   llmModels,
   createFolder,
   duplicateNote,
@@ -188,6 +191,13 @@ import "./App.css";
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
 
 /// サイドバー下段の節（開くのは 1 つ。フォルダ・タグ・やること）
+
+/// Qiita のトークンの出し入れ（14-1）。参照を固定する（タブは変わるたびに聞き直す）
+const QIITA_TOKEN = {
+  saved: qiitaTokenSaved,
+  save: qiitaTokenSet,
+  clear: qiitaTokenClear,
+};
 
 function App() {
   const {
@@ -2195,6 +2205,7 @@ function App() {
               noteText={noteText}
               historyUsage={loadHistoryUsage}
               installedModels={loadInstalledModels}
+              qiitaToken={QIITA_TOKEN}
               captureShortcutError={captureShortcut.error}
             />
           )}
