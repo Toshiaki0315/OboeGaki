@@ -84,8 +84,11 @@ pub fn read_note(path: &Path) -> io::Result<String> {
 /// タイトルを付け替えた本文を返す（ADR-0005）。
 ///
 /// タイトルは本文から導かれるので、本文を書き換えるのが唯一の付け替え方。
-/// - 見出しがあれば、その行の文字だけを差し替える（深さは保つ）
-/// - 見出しが無ければ本文の先頭に `# タイトル` を足す
+/// - **H1（`# `）**があれば、その行の文字だけを差し替える
+/// - H1 が無ければ本文の先頭に `# タイトル` を足す。`##` 以下は題ではないので
+///   触らない — 差し替えると、その節の見出しの字が消える（実機報告 2026-10-05。
+///   参照実装も深さを問わず最初の見出しを差し替えていたが、題を読む `title_of` と
+///   ファイル名の追従は H1 だけを見る。ADR-0005 の「探し方を裏返す」に揃えた）
 /// - front matter とコードフェンスの中は見出しとして扱わない
 pub fn with_title(text: &str, title: &str) -> String {
     // 見出しは 1 行。改行や連続空白を持ち込ませない
@@ -117,10 +120,9 @@ pub fn with_title(text: &str, title: &str) -> String {
         if in_fence {
             continue;
         }
-        let hashes = line.chars().take_while(|c| *c == '#').count();
-        if (1..=6).contains(&hashes)
-            && line[hashes..].starts_with(' ')
-            && !line[hashes..].trim().is_empty()
+        if line
+            .strip_prefix("# ")
+            .is_some_and(|rest| !rest.trim().is_empty())
         {
             heading = Some(number);
             break;
@@ -129,10 +131,8 @@ pub fn with_title(text: &str, title: &str) -> String {
 
     match heading {
         Some(number) => {
-            let hashes = lines[number].chars().take_while(|c| *c == '#').count();
             let mut replaced = lines.clone();
-            let marker = &lines[number][..hashes];
-            let new_line = format!("{marker} {cleaned}");
+            let new_line = format!("# {cleaned}");
             replaced[number] = &new_line;
             replaced.join("\n")
         }
@@ -263,8 +263,32 @@ mod tests {
     }
 
     #[test]
-    fn test_with_title_見出しの行だけ差し替えて深さを保つ() {
-        assert_eq!(with_title("## 旧題\n\n本文\n", "新題"), "## 新題\n\n本文\n");
+    fn test_with_title_H1_の行だけ差し替える() {
+        assert_eq!(with_title("# 旧題\n\n本文\n", "新題"), "# 新題\n\n本文\n");
+    }
+
+    #[test]
+    fn test_with_title_見出し2以下は題ではないので_先頭に_H1_を足し_元の見出しは残す() {
+        // 実機報告 2026-10-05: 見出しの無い文を貼った新規ノートに題を付けると、3 行目の
+        // `## 節` の字が題に置き換わっていた（元の見出しが消え、題も `##` になった）。
+        // 題は最初の H1（ADR-0005「title_of の探し方を裏返す」）。`##` は題ではない
+        let pasted = "一行目の文。\n二行目の文。\n## 節\n\n中身\n";
+        assert_eq!(
+            with_title(pasted, "新題"),
+            "# 新題\n\n一行目の文。\n二行目の文。\n## 節\n\n中身\n"
+        );
+        assert_eq!(
+            with_title("## 旧題\n\n本文\n", "新題"),
+            "# 新題\n\n## 旧題\n\n本文\n"
+        );
+    }
+
+    #[test]
+    fn test_with_title_見出し2の後ろにある_H1_を差し替える() {
+        assert_eq!(
+            with_title("## 前置き\n\n# 旧題\n", "新題"),
+            "## 前置き\n\n# 新題\n"
+        );
     }
 
     #[test]
