@@ -105,6 +105,7 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .item(&item("export-pdf", "PDF…", None)?)
         .separator()
         // 外へ出す（ADR-0063）。書き出しと同じ「ノートを別の形にして渡す」なのでここに置く
+        .item(&item("export-qiita", "Qiita 用 Markdown…", None)?)
         .item(&item("qiita-publish", "Qiita に投稿…", None)?)
         .build()?;
     // 読み込みも形式ごとに分ける。**選ぶ窓の絞り込みが形式ごとに効く**ので、

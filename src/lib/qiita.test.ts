@@ -1,7 +1,7 @@
 // Qiita へ送る形に整える（TASKS 14-2 / ADR-0063 の決定）。通信なしで全部見る。
 
 import { describe, expect, test } from "vitest";
-import { qiitaDraft } from "./qiita";
+import { qiitaCliFile, qiitaDraft } from "./qiita";
 
 const draft = (text: string, embeds?: Map<string, string>) =>
   qiitaDraft(text, "ファイル名", embeds);
@@ -43,8 +43,73 @@ describe("タグ（決定 1: 本文の #タグ を初期値に）", () => {
     expect(result.tags).toEqual([]);
   });
 
-  test("test_本文の_#タグ_は消さない", () => {
-    expect(draft("# 題\n\n#Rust の話\n").body).toBe("#Rust の話\n");
+  test("test_タグだけの行は本文から外す（タグは_Qiita_のタグへ。要望_2026-10-05）", () => {
+    const result = draft("# 題\n\n本文です。\n\n#Rust #tauri\n");
+    expect(result.body).toBe("本文です。\n");
+    expect(result.tags).toEqual(["Rust", "tauri"]);
+  });
+
+  test("test_文中の_#タグ_は印だけ外して語を残す", () => {
+    expect(draft("# 題\n\n#Rust の話\n").body).toBe("Rust の話\n");
+  });
+
+  test("test_コードの中の_#_は触らない", () => {
+    const text = "# 題\n\n```sh\n#コメント\n```\n\n`#インライン`\n";
+    expect(draft(text).body).toBe("```sh\n#コメント\n```\n\n`#インライン`\n");
+  });
+});
+
+describe("qiita-cli の記事ファイル（要望 2026-10-05）", () => {
+  const sample = {
+    title: '設計: "メモ"',
+    body: "本文です。\n",
+    tags: ["Rust", "Tauri"],
+    localImages: [],
+  };
+
+  test("test_qiita-cli_と同じ_front_matter_と本文", () => {
+    expect(qiitaCliFile(sample, null)).toBe(
+      [
+        "---",
+        'title: "設計: \\"メモ\\""',
+        "tags:",
+        '  - "Rust"',
+        '  - "Tauri"',
+        "private: true",
+        'updated_at: ""',
+        "id: null",
+        "organization_url_name: null",
+        "slide: false",
+        "ignorePublish: false",
+        "---",
+        "本文です。",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("test_投稿済みのノートは記事_ID_と更新時刻を入れる（qiita-cli_で同じ記事の更新になる）", () => {
+    const file = qiitaCliFile(sample, {
+      id: "c686397e4a0f4f11683d",
+      updatedAt: "2026-10-02T10:00:00+09:00",
+    });
+    expect(file).toContain('id: "c686397e4a0f4f11683d"');
+    expect(file).toContain('updated_at: "2026-10-02T10:00:00+09:00"');
+    // 決定 2: 外に出す操作をアプリで完了させない（公開は Qiita の画面で）
+    expect(file).toContain("private: true");
+  });
+
+  test("test_タグは_5_個まで_無ければ空の項目を_1_つ置く", () => {
+    const many = qiitaCliFile(
+      { ...sample, tags: ["a", "b", "c", "d", "e", "f"] },
+      null,
+    );
+    expect(many).toContain('  - "e"');
+    expect(many).not.toContain('  - "f"');
+    // qiita-cli の雛形と同じ（埋めないと投稿で断られる = 気付ける）
+    expect(qiitaCliFile({ ...sample, tags: [] }, null)).toContain(
+      'tags:\n  - ""\n',
+    );
   });
 });
 

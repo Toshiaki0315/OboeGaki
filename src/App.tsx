@@ -730,6 +730,7 @@ function App() {
     handlePrint,
     handleExport,
     handleExportDocx,
+    handleExportQiita,
     handleExportPptx,
     handleImport,
   } = useExport({
@@ -1544,6 +1545,10 @@ function App() {
         void runWithStatus(setStatus, "読み込み", () => handleImport("pptx")),
       "import-image": () =>
         void runWithStatus(setStatus, "読み込み", () => handleImport("image")),
+      "export-qiita": () =>
+        void runWithStatus(setStatus, "Qiita 用の書き出し", () =>
+          handleExportQiita(),
+        ),
       "qiita-publish": () => void openQiitaPublish(),
       print: () => void runWithStatus(setStatus, "印刷", () => handlePrint()),
       history: () => void openHistory(),

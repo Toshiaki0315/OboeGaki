@@ -6,7 +6,7 @@
 // | --- | --- |
 // | front matter | 外す |
 // | 先頭の `# 題` | `title` へ（本文からは外す） |
-// | 本文の `#タグ` | タグの初期値（本文には残す） |
+// | 本文の `#タグ` | タグの初期値。`#タグ` だけの行は外し、文中の `#Rust` は `Rust` に（要望 2026-10-05） |
 // | `[[設計|手引き]]` / `[[設計]]` | `手引き` / `設計` |
 // | 行まるごとの `![[部品]]` | 部品の本文（1 段だけ。中の記法も直す） |
 // | `::大事::` | `大事` |
@@ -104,6 +104,8 @@ function rewrite(text: string, sink: Sink): string {
   // 開いている span ごとに「外したか」。閉じの `</span>` は対の開きと同じ扱いにする
   const spans: boolean[] = [];
   const seenTags = new Set<string>();
+  // `#タグ` の位置。タグだけの行は行ごと、文中のものは `#` だけ外す（後でまとめて決める）
+  const hashtags: { from: number; to: number }[] = [];
   parser.parse(text).iterate({
     enter: (ref) => {
       if (VERBATIM.has(ref.name)) return false;
@@ -135,6 +137,7 @@ function rewrite(text: string, sink: Sink): string {
             seenTags.add(key);
             sink.tags.push(tag);
           }
+          hashtags.push({ from: ref.from, to: ref.to });
           return false;
         }
         case "Image":
@@ -154,7 +157,45 @@ function rewrite(text: string, sink: Sink): string {
       }
     },
   });
-  return applyEdits(text, edits);
+  edits.push(...hashtagEdits(text, hashtags));
+  return tidyEnd(applyEdits(text, edits));
+}
+
+/// `#タグ` の外し方（要望 2026-10-05）。タグは Qiita のタグとして渡すので本文に
+/// 残さない。**タグだけの行**は行ごと外し、文中のもの（`#Rust の話`）は語を残して
+/// `#` だけ外す — 語まで消すと文が欠ける
+function hashtagEdits(
+  text: string,
+  hashtags: readonly { from: number; to: number }[],
+): Edit[] {
+  const edits: Edit[] = [];
+  const byLine = new Map<number, { from: number; to: number }[]>();
+  for (const tag of hashtags) {
+    const start = text.lastIndexOf("\n", tag.from - 1) + 1;
+    byLine.set(start, [...(byLine.get(start) ?? []), tag]);
+  }
+  for (const [start, tags] of byLine) {
+    const newline = text.indexOf("\n", start);
+    const end = newline < 0 ? text.length : newline;
+    let rest = text.slice(start, end);
+    for (const tag of [...tags].reverse()) {
+      rest = rest.slice(0, tag.from - start) + rest.slice(tag.to - start);
+    }
+    if (!rest.trim()) {
+      edits.push({ from: start, to: newline < 0 ? end : end + 1, insert: "" });
+    } else {
+      for (const tag of tags) {
+        edits.push({ from: tag.from, to: tag.from + 1, insert: "" });
+      }
+    }
+  }
+  return edits;
+}
+
+/// 末尾の空行は 1 つの改行に揃える（タグの行を外すと空行だけが残る）
+function tidyEnd(text: string): string {
+  const trimmed = text.replace(/\s+$/, "");
+  return trimmed ? `${trimmed}\n` : "";
 }
 
 /// `[[名前|別名]]` → 別名（空なら名前）
@@ -227,4 +268,40 @@ function applyEdits(text: string, edits: Edit[]): string {
     result = result.slice(0, edit.from) + edit.insert + result.slice(edit.to);
   }
   return result;
+}
+
+/// 投稿済みの記事の控え（front matter の `qiita` / `qiita-updated-at`）
+export type QiitaKnown = { id: string; updatedAt?: string };
+
+/// Qiita のタグの数の上限（画面側の決まり）
+const MAX_TAGS = 5;
+
+/// qiita-cli（https://github.com/increments/qiita-cli）の記事ファイルにする
+/// （要望 2026-10-05）。`public/` に置けば `npx qiita publish` でそのまま出せる。
+///
+/// - `private` は常に `true`。外に出す操作をアプリで完了させない（ADR-0063 決定 2）
+/// - 投稿済み（known）なら `id` と `updated_at` を入れる。qiita-cli は同じ記事の更新に
+///   し、向こうで編集されていれば断る（14-6 と同じ構え）
+/// - 字は JSON の書き方で `"` に入れる（YAML の二重引用符と同じ規則。題の `:` で崩れない）
+/// - タグは 5 個まで。無ければ雛形と同じ空の項目を置く（埋めないと投稿で断られ、気付ける）
+export function qiitaCliFile(
+  draft: QiitaDraft,
+  known: QiitaKnown | null,
+): string {
+  const quoted = (value: string) => JSON.stringify(value);
+  const tags = draft.tags.slice(0, MAX_TAGS);
+  const lines = [
+    "---",
+    `title: ${quoted(draft.title)}`,
+    "tags:",
+    ...(tags.length ? tags : [""]).map((tag) => `  - ${quoted(tag)}`),
+    "private: true",
+    `updated_at: ${quoted(known?.updatedAt ?? "")}`,
+    `id: ${known ? quoted(known.id) : "null"}`,
+    "organization_url_name: null",
+    "slide: false",
+    "ignorePublish: false",
+    "---",
+  ];
+  return `${lines.join("\n")}\n${draft.body}`;
 }

@@ -61,6 +61,8 @@ import {
   printPage,
   saveTo,
 } from "../lib/ipc";
+import { qiitaCliFile, qiitaDraft } from "../lib/qiita";
+import { parseFrontMatterMeta } from "../markdown/front-matter";
 import { buildDeck } from "../lib/slide-split";
 
 export type ExportInput = {
@@ -411,6 +413,53 @@ export function useExport(input: ExportInput) {
     onStatus(`書き出しました: ${target}`);
   }
 
+  /// Qiita 用の Markdown（qiita-cli の記事ファイル。要望 2026-10-05）。本文は
+  /// 「Qiita に投稿…」と同じ qiitaDraft で整える（`#タグ` はタグへ、独自の記法は素の
+  /// 文字へ）。投稿済みなら記事 ID を入れ、qiita-cli で同じ記事の更新にする
+  async function handleExportQiita() {
+    const { vaultRoot, currentPath } = latest.current;
+    if (!vaultRoot || !currentPath) return;
+    await latest.current.flush(); // 保存前の本文を書き出さない
+    const text = await readNote(vaultRoot, currentPath);
+    const title = noteStem(currentPath);
+    const draft = qiitaDraft(
+      text,
+      title,
+      await latest.current.resolveEmbeds(text),
+    );
+    const meta = parseFrontMatterMeta(text);
+    const id = typeof meta.qiita === "string" ? meta.qiita : null;
+    const updatedAt = meta["qiita-updated-at"];
+    const file = qiitaCliFile(
+      draft,
+      id
+        ? {
+            id,
+            updatedAt: typeof updatedAt === "string" ? updatedAt : undefined,
+          }
+        : null,
+    );
+    const target = await saveTo({
+      defaultPath: `${title}.md`,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (!target) return;
+    await exportWrite(target, file);
+    // 投稿で困ることは書き出した時点で言う（黙って壊れた記事を作らせない）
+    const notes: string[] = [];
+    if (draft.localImages.length > 0) {
+      notes.push(
+        `${draft.localImages.length} 枚の画像は Qiita に載りません（Qiita の画面で貼り直してください）`,
+      );
+    }
+    if (draft.tags.length === 0) {
+      notes.push("タグがありません（tags を埋めてください）");
+    } else if (draft.tags.length > 5) {
+      notes.push(`タグは 5 個までなので、6 個目から外しました`);
+    }
+    onStatus([`書き出しました: ${target}`, ...notes].join("。"));
+  }
+
   /// テンプレートから借りる配色と書体（TASKS 5-6）。**読めなければ null** —
   /// テンプレートが壊れていても書き出しは止めない。
   async function borrowedTheme() {
@@ -439,6 +488,7 @@ export function useExport(input: ExportInput) {
     handleExport,
     handleExportDocx,
     handleExportPptx,
+    handleExportQiita,
     handleImport,
   };
 }

@@ -76,6 +76,42 @@ describe("useExport", () => {
     expect(given.onStatus).toHaveBeenCalledWith("書き出しました: /out/題.html");
   });
 
+  test("test_Qiita_用_Markdown_を_qiita-cli_の形で書き出す（要望_2026-10-05）", async () => {
+    mocked.readNote.mockResolvedValue(
+      "---\nqiita: abc123\n---\n# 題\n\n本文です。\n\n#Rust\n",
+    );
+    mocked.saveTo.mockResolvedValue("/out/題.md");
+    const given = input();
+    const { result } = renderHook(() => useExport(given));
+    await act(() => result.current.handleExportQiita());
+    expect(given.flush).toHaveBeenCalled();
+    expect(mocked.saveTo).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: "題.md" }),
+    );
+    const [path, file] = mocked.exportWrite.mock.calls[0];
+    expect(path).toBe("/out/題.md");
+    expect(file).toContain('title: "題"');
+    expect(file).toContain('  - "Rust"');
+    expect(file).toContain('id: "abc123"');
+    expect(file).toContain("---\n本文です。\n");
+    expect(file).not.toContain("#Rust");
+    expect(given.onStatus).toHaveBeenCalledWith(
+      expect.stringContaining("書き出しました: /out/題.md"),
+    );
+  });
+
+  test("test_Qiita_用_Markdown_は載らない画像とタグの無さを知らせる", async () => {
+    mocked.readNote.mockResolvedValue("# 題\n\n![図](attachments/a.png)\n");
+    mocked.saveTo.mockResolvedValue("/out/題.md");
+    const given = input();
+    const { result } = renderHook(() => useExport(given));
+    await act(() => result.current.handleExportQiita());
+    const calls = vi.mocked(given.onStatus).mock.calls;
+    const said = calls[calls.length - 1]?.[0] ?? "";
+    expect(said).toContain("1 枚の画像は Qiita に載りません");
+    expect(said).toContain("タグ");
+  });
+
   test("test_保存先を選ばなければ何も書かない", async () => {
     mocked.saveTo.mockResolvedValue(null);
     const { result } = renderHook(() => useExport(input()));
