@@ -39,6 +39,8 @@ export type OpenDialog =
   | { kind: "template"; path: string }
   /// 版の履歴。base は開いた時点の本文（差分の「今」。ADR-0054）
   | { kind: "history"; entries: HistoryEntry[]; base: string }
+  /// 施錠ノートを開く前にパスワードを聞く（13-3）。path は開こうとしたノート
+  | { kind: "unlock"; path: string }
   /// Qiita への投稿（14-5）。update は front matter に記事 ID がある（更新になる）
   | { kind: "qiita"; draft: QiitaDraft; update: boolean };
 

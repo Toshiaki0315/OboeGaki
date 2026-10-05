@@ -2180,6 +2180,23 @@ fieldset.preferences-fields:disabled {
   padding: 0;
 }
 
+/* 施錠ノートの解錠の窓（13-3） */
+.unlock-palette {
+  width: min(26rem, 92vw);
+}
+.unlock-body {
+  padding: 0.6rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.unlock-body p {
+  margin: 0;
+}
+.unlock-error {
+  color: var(--note-alert);
+}
+
 /* Qiita への投稿の小窓（14-5）。警告と失敗は囲みの注意・警告の色を借りる */
 .qiita-palette {
   width: min(36rem, 92vw);

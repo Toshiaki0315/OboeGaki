@@ -143,6 +143,9 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         .separator()
         .item(&item("history", "版の履歴…", None)?)
         .item(&item("trash", "ゴミ箱へ移動", None)?)
+        .separator()
+        // 施錠ノート（ADR-0062）。席を立つ前に自分で鍵をかけられるように
+        .item(&item("lock-now", "施錠したノートを今すぐ施錠", None)?)
         .build()?;
     let edit = SubmenuBuilder::new(handle, "編集")
         .item(&PredefinedMenuItem::undo(handle, Some(labels.undo))?)

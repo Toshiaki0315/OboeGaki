@@ -3011,7 +3011,7 @@ dependencies = [
 
 [[package]]
 name = "oboegaki"
-version = "0.5.181"
+version = "0.5.182"
 dependencies = [
  "argon2",
  "base64 0.23.1",

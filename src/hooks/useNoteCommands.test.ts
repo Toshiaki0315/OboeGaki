@@ -682,3 +682,28 @@ describe("useNoteCommands: 開いているノートを動かす（24-1）", () =
     expect(given.sync.renamed).not.toHaveBeenCalled();
   });
 });
+
+describe("useNoteCommands: 施錠ノート（TASKS 13-3 / ADR-0062）", () => {
+  test("test_鍵が無くて開けなければ_開けなかったとは言わず解錠を頼む", async () => {
+    mocked.readNote.mockRejectedValue("note-locked");
+    const given = input({ onLocked: vi.fn() });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.openNote("/v/秘密.md.enc"));
+    expect(given.onLocked).toHaveBeenCalledWith("/v/秘密.md.enc");
+    expect(given.onStatus).not.toHaveBeenCalledWith(
+      expect.stringContaining("開けませんでした"),
+    );
+    expect(given.selectNote).not.toHaveBeenCalled();
+  });
+
+  test("test_ほかの失敗は今までどおり開けなかったと言う", async () => {
+    mocked.readNote.mockRejectedValue("消えています");
+    const given = input({ onLocked: vi.fn() });
+    const { result } = renderHook(() => useNoteCommands(given));
+    await act(() => result.current.openNote("/v/a.md"));
+    expect(given.onLocked).not.toHaveBeenCalled();
+    expect(given.onStatus).toHaveBeenCalledWith(
+      "開けませんでした: 消えています",
+    );
+  });
+});

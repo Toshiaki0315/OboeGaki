@@ -4,6 +4,7 @@
 // **文書の本文は EditorView が持つ**（T2）。ここが持つのは「開いたときの本文」
 // （エディタの初期値）と、どのノートを開いているかの周りだけ。Tauri は lib/ipc 経由
 
+import { NOTE_LOCKED } from "../lib/ipc-lock";
 import { useEffect, useRef, useState } from "react";
 import { APP_NAME } from "../lib/app-name";
 import { forgetLastNote, saveLastNote } from "../lib/last-vault";
@@ -61,6 +62,9 @@ export type NoteCommandsInput = {
   onStatus: (text: string) => void;
   /// 別のノートを開いたときの後始末（印刷用の組みを捨てるなど）
   onOpened?: () => void;
+  /// 施錠ノートを開こうとしたが鍵が無かった（ADR-0062）。解錠の窓を出し、
+  /// 解錠できたら開き直すのは呼び手
+  onLocked?: (path: string) => void;
   /// 開いているノートの本文（見出しの追従が読む）。エディタが無ければ undefined
   editorText: () => string | undefined;
   /// 「＋ 新規」の置き場所（絞っているフォルダ。空文字は直下）
@@ -146,6 +150,10 @@ export function useNoteCommands(input: NoteCommandsInput) {
         failure = error;
       }
       if (mine !== opening.current) return;
+    }
+    if (text === null && String(failure) === NOTE_LOCKED) {
+      latest.current.onLocked?.(path);
+      return;
     }
     if (text === null) {
       // 一覧と実体がずれている（外で消された等）。無反応に見せない

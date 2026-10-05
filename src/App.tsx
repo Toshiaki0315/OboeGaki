@@ -49,6 +49,8 @@ import { FuzzyPalette } from "./components/FuzzyPalette";
 import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { QiitaPublishDialog } from "./components/QiitaPublishDialog";
+import { UnlockDialog } from "./components/UnlockDialog";
+import { useAutoLock } from "./hooks/useAutoLock";
 import { qiitaDraft } from "./lib/qiita";
 import { parseFrontMatterMeta } from "./markdown/front-matter";
 import { ListControls } from "./components/ListControls";
@@ -81,7 +83,7 @@ import {
 } from "./lib/handoff";
 import { finderTarget, TRASH_FOLDER } from "./lib/finder";
 import { APP_NAME } from "./lib/app-name";
-import { noteStem } from "./lib/note-path";
+import { isLockedPath, noteStem } from "./lib/note-path";
 import {
   isHiddenFromMcp,
   relativeIn,
@@ -137,6 +139,8 @@ import {
   historyList,
   historyRead,
   historyUsage,
+  lockForget,
+  lockUnlock,
   qiitaPublish,
   qiitaTokenClear,
   qiitaTokenSaved,
@@ -195,6 +199,9 @@ import "./App.css";
 // 新規・改名・ゴミ箱。3 ペイン構成・タグ・検索（spec §5.1）は後のフェーズで載せる。
 
 /// サイドバー下段の節（開くのは 1 つ。フォルダ・タグ・やること）
+
+/// 触らないまま施錠するまでの分（ADR-0062）
+const AUTO_LOCK_MINUTES = 5;
 
 /// Qiita のトークンの出し入れ（14-1）。参照を固定する（タブは変わるたびに聞き直す）
 const QIITA_TOKEN = {
@@ -310,6 +317,7 @@ function App() {
     },
     onStatus: setStatus,
     onOpened: () => discardPrintBody(), // 前のノートの印刷用の組みを捨てる（ADR-0038）
+    onLocked: (path) => setDialog({ kind: "unlock", path }),
     editorText: () => editorRef.current?.getText(),
     defaultFolder: () => newNoteFolder(folderFilter),
     clearSelection: () => setSelectedNotes(new Set()),
@@ -385,6 +393,12 @@ function App() {
   // 保管フォルダを替えたら前の vault の選択は捨てる（検索・絞り込みは useSearch が捨てる）
   useEffect(() => {
     setSelectedNotes(new Set());
+  }, [vaultRoot]);
+  // 施錠ノートを解錠しているか（ADR-0062）。鍵そのものは Rust の中にだけある。
+  // 保管フォルダを替えたら Rust も鍵を捨てる（vault_open）
+  const [unlocked, setUnlocked] = useState(false);
+  useEffect(() => {
+    setUnlocked(false);
   }, [vaultRoot]);
   // 横に開いたノート（U-1）。**読むだけ**なので、保存も監視も繋がない
   // 横に開いた回数。Editor の作り直しは key だけなので、同じノートを開き直しても
@@ -1042,6 +1056,33 @@ function App() {
     return found;
   }
 
+  /// パスワードで解錠し、開こうとしていたノートを開く（13-3）。違えば窓に出す
+  async function unlockAndOpen(path: string, password: string) {
+    if (!vaultRoot) return;
+    await lockUnlock(vaultRoot, password);
+    setUnlocked(true);
+    closeDialog();
+    await openNote(path);
+  }
+
+  /// 施錠する（13-3）。**書き切ってから鍵を消し**、開いている施錠ノートを閉じる —
+  /// 先に鍵を消すと、打ちかけのぶんを書けずに失う
+  async function lockNow() {
+    await sync.flush();
+    await lockForget();
+    setUnlocked(false);
+    const open = currentPathRef.current;
+    if (open && isLockedPath(open)) noteCommands.closeNote();
+    setStatus("施錠しました");
+  }
+
+  // 触らないまま 5 分で施錠する（ADR-0062 決定 2: 席を外した隙に読まれない）
+  useAutoLock({
+    unlocked,
+    minutes: AUTO_LOCK_MINUTES,
+    onLock: () => void lockNow(),
+  });
+
   /// Qiita への投稿の小窓を開く（14-5 / ADR-0063）。未保存分を書き切ってから送る形を
   /// 整える。トークンが無ければ窓を出さずに入れ場所を言う（押してから断らない）
   async function openQiitaPublish() {
@@ -1550,6 +1591,7 @@ function App() {
           handleExportQiita(),
         ),
       "qiita-publish": () => void openQiitaPublish(),
+      "lock-now": () => void lockNow(),
       print: () => void runWithStatus(setStatus, "印刷", () => handlePrint()),
       history: () => void openHistory(),
       trash: () => void handleTrash(),
@@ -2482,6 +2524,13 @@ function App() {
               onRestore={(entry) => void restoreVersion(entry)}
               onClose={closeDialog}
               historyMinutes={settings.historyMinutes}
+            />
+          )}
+          {dialog?.kind === "unlock" && (
+            <UnlockDialog
+              title={noteStem(dialog.path)}
+              onUnlock={(password) => unlockAndOpen(dialog.path, password)}
+              onClose={closeDialog}
             />
           )}
           {dialog?.kind === "qiita" && (
