@@ -10,6 +10,10 @@
 //
 // WebView 非依存（T3）。Tauri のことは知らず、流れてきた答えは
 // コールバックで呼び出し側へ渡す。
+//
+// **通信の口は差し替えられる**（9-5）。繋ぎ方（Connect）と読み書き（Wire）を分け、
+// 本番は TcpStream、テストはメモリの代役を使う — 通信の許されない環境（sandbox の
+// CI など）でもテストが回る。公開の関数は本番の口（Tcp）で `_on` を呼ぶだけ。
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -40,14 +44,51 @@ impl std::fmt::Display for LlmError {
     }
 }
 
+/// 読み書きの口（9-5）。読み取りの時間切れは「まだ届いていない」（WouldBlock /
+/// TimedOut）として返すこと — その区切りごとに「止める」と無通信の時間を見ている
+pub trait Wire: Read + Write {
+    fn set_timeouts(&self, read: Duration, write: Duration);
+}
+
+impl Wire for TcpStream {
+    fn set_timeouts(&self, read: Duration, write: Duration) {
+        self.set_read_timeout(Some(read)).ok();
+        self.set_write_timeout(Some(write)).ok();
+    }
+}
+
+/// 繋ぎ方（9-5）。address は常に `127.0.0.1:<port>`（HOST は変えられない）
+pub trait Connect {
+    type Wire: Wire;
+    fn connect(&self, address: &str) -> std::io::Result<Self::Wire>;
+}
+
+/// 本番の口: 同じ機械の TCP
+pub struct Tcp;
+
+impl Connect for Tcp {
+    type Wire = TcpStream;
+    fn connect(&self, address: &str) -> std::io::Result<TcpStream> {
+        TcpStream::connect(address)
+    }
+}
+
 /// Ollama が動いているか。
 pub fn available(port: u16) -> bool {
-    request(port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| true).is_ok()
+    available_on(&Tcp, port)
+}
+
+pub fn available_on(net: &impl Connect, port: u16) -> bool {
+    request(net, port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| true).is_ok()
 }
 
 /// 入っているモデルの名前。動いていなければ空。
 pub fn models(port: u16) -> Vec<String> {
-    let Ok(body) = request(port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| true) else {
+    models_on(&Tcp, port)
+}
+
+pub fn models_on(net: &impl Connect, port: u16) -> Vec<String> {
+    let Ok(body) = request(net, port, "GET", "/api/tags", None, PROBE_TIMEOUT, |_| true) else {
         return Vec::new();
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) else {
@@ -69,7 +110,11 @@ pub fn models(port: u16) -> Vec<String> {
 /// 載っていなければ「読み込んでいます…」と言えるようにするためのもの。
 /// **6 分の沈黙は壊れて見える**（ADR-0025 追記）。
 pub fn is_loaded(port: u16, model: &str) -> bool {
-    let Ok(body) = request(port, "GET", "/api/ps", None, PROBE_TIMEOUT, |_| true) else {
+    is_loaded_on(&Tcp, port, model)
+}
+
+pub fn is_loaded_on(net: &impl Connect, port: u16, model: &str) -> bool {
+    let Ok(body) = request(net, port, "GET", "/api/ps", None, PROBE_TIMEOUT, |_| true) else {
         return false;
     };
     body.contains(model)
@@ -90,6 +135,15 @@ pub struct Generation<'a> {
 /// 生成する。流れてきたぶんは `on_chunk` へ渡す（**黙って待たせない**）。
 /// `should_stop` が真を返したら、そこまでで切り上げる（L-1「止める」）。
 pub fn generate(
+    order: Generation<'_>,
+    on_chunk: impl FnMut(&str),
+    should_stop: impl Fn() -> bool,
+) -> Result<String, LlmError> {
+    generate_on(&Tcp, order, on_chunk, should_stop)
+}
+
+pub fn generate_on(
+    net: &impl Connect,
     order: Generation<'_>,
     mut on_chunk: impl FnMut(&str),
     should_stop: impl Fn() -> bool,
@@ -112,6 +166,7 @@ pub fn generate(
     .to_string();
     let mut answer = String::new();
     request_until(
+        net,
         port,
         "POST",
         "/api/generate",
@@ -144,6 +199,14 @@ pub const OCR_PROMPT: &str = "この画像に書かれている文字を、**そ
 /// 空なら「読めなかった」と扱う（呼び出し側）。答えは一度に受ける —
 /// 読み取りは流しながら見せるものではない。
 pub fn read_image(order: Generation<'_>, image: &[u8]) -> Result<String, LlmError> {
+    read_image_on(&Tcp, order, image)
+}
+
+pub fn read_image_on(
+    net: &impl Connect,
+    order: Generation<'_>,
+    image: &[u8],
+) -> Result<String, LlmError> {
     use base64::Engine;
     let encoded = base64::engine::general_purpose::STANDARD.encode(image);
     let body = serde_json::json!({
@@ -156,6 +219,7 @@ pub fn read_image(order: Generation<'_>, image: &[u8]) -> Result<String, LlmErro
     })
     .to_string();
     let collected = request(
+        net,
         order.port,
         "POST",
         "/api/generate",
@@ -173,11 +237,16 @@ pub fn read_image(order: Generation<'_>, image: &[u8]) -> Result<String, LlmErro
 /// 中身の無い生成に `keep_alive: 0` を付けると、Ollama は答えずに降ろす。
 /// **載っていなければ通信もしない**（走っている生成を壊さない）。
 pub fn unload(port: u16, model: &str) -> Result<(), LlmError> {
-    if !is_loaded(port, model) {
+    unload_on(&Tcp, port, model)
+}
+
+pub fn unload_on(net: &impl Connect, port: u16, model: &str) -> Result<(), LlmError> {
+    if !is_loaded_on(net, port, model) {
         return Ok(());
     }
     let body = serde_json::json!({ "model": model, "keep_alive": 0 }).to_string();
     request(
+        net,
         port,
         "POST",
         "/api/generate",
@@ -200,6 +269,7 @@ const MAX_TOTAL: Duration = Duration::from_secs(30 * 60);
 /// HTTP の 1 往復。行が届くたびに `on_line` を呼び、本文全体も返す。
 /// `on_line` が `false` を返したら、そこで読むのをやめる。
 fn request(
+    net: &impl Connect,
     port: u16,
     method: &str,
     path: &str,
@@ -207,7 +277,7 @@ fn request(
     timeout: Duration,
     on_line: impl FnMut(&str) -> bool,
 ) -> Result<String, LlmError> {
-    request_until(port, method, path, body, timeout, &|| false, on_line)
+    request_until(net, port, method, path, body, timeout, &|| false, on_line)
 }
 
 /// 読み取りの待ちの区切り。この間隔で「止める」と無通信の時間を確かめる（24-5）
@@ -217,7 +287,9 @@ const POLL: Duration = Duration::from_millis(200);
 /// 取りの待ちを生成の時間切れ（1〜120 分）にしたまま、止める印を行が届いたときに
 /// しか見なかったので、モデルの読み込み中や長い文を読んでいる間は止まらなかった
 /// （24-5）。止めたら、そこまでに受け取ったぶんを返す
+#[allow(clippy::too_many_arguments)] // 1 往復の注文そのもの。まとめると呼び手が読みにくい
 fn request_until(
+    net: &impl Connect,
     port: u16,
     method: &str,
     path: &str,
@@ -227,11 +299,9 @@ fn request_until(
     mut on_line: impl FnMut(&str) -> bool,
 ) -> Result<String, LlmError> {
     let address = format!("{HOST}:{port}");
-    let stream = TcpStream::connect(&address).map_err(|_| LlmError::NotRunning)?;
+    let mut stream = net.connect(&address).map_err(|_| LlmError::NotRunning)?;
     // 読み取りは短く区切り、区切りごとに止める印と無通信の時間（timeout）を見る
-    stream.set_read_timeout(Some(POLL.min(timeout))).ok();
-    stream.set_write_timeout(Some(timeout)).ok();
-    let mut stream = stream;
+    stream.set_timeouts(POLL.min(timeout), timeout);
 
     let payload = body.unwrap_or("");
     let head = format!(
@@ -284,7 +354,7 @@ fn request_until(
 
 /// 2xx 以外の本文から Ollama の言い分（`{"error":"…"}`）を拾う。
 /// 「HTTP 404」だけでは、設定のモデル名の打ち間違いに気づけない。
-fn http_failure(status: u16, reader: &mut BufReader<TcpStream>) -> String {
+fn http_failure(status: u16, reader: &mut BufReader<impl Read>) -> String {
     let mut body = String::new();
     let _ = reader
         .by_ref()
@@ -312,7 +382,7 @@ fn http_failure(status: u16, reader: &mut BufReader<TcpStream>) -> String {
 /// 無通信が `idle` を超えたら時間切れ。バイト列で受けて最後に文字列にする —
 /// `read_line` は区切りが多バイト文字の途中に来ると、読めたぶんを捨てるので字が欠ける
 fn read_line_waiting(
-    reader: &mut BufReader<TcpStream>,
+    reader: &mut BufReader<impl Read>,
     line: &mut String,
     idle: Duration,
     should_stop: &dyn Fn() -> bool,
@@ -347,7 +417,7 @@ fn read_line_waiting(
 }
 
 fn read_status(
-    reader: &mut BufReader<TcpStream>,
+    reader: &mut BufReader<impl Read>,
     idle: Duration,
     should_stop: &dyn Fn() -> bool,
 ) -> Result<Option<u16>, LlmError> {
@@ -438,84 +508,136 @@ pub fn question_prompt(question: &str, sources: &[(String, String)]) -> Option<S
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
-    use std::io::Read;
-    use std::net::TcpListener;
-    use std::sync::mpsc;
-    use std::thread;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
 
-    /// Ollama の代役。渡した応答をそのまま返し、受け取った本文を知らせる。
-    fn stub(response: &'static str) -> (u16, mpsc::Receiver<String>) {
-        // 実ソケットで Ollama の代役を立てる。ループバックに待ち受けできない
-        // 環境（sandbox の CI など）では**理由が読める形で**落ちるようにする —
-        // 黙って飛ばすと、いつの間にか何も試していない状態になる（レビュー 2026-09-16）
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .expect("127.0.0.1 に待ち受けできない。このテストは実ソケットが要る（sandbox ではループバックを許可する）");
-        let port = listener.local_addr().unwrap().port();
-        let (sender, receiver) = mpsc::channel();
-        thread::spawn(move || {
-            for stream in listener.incoming().take(1) {
-                let mut stream = stream.unwrap();
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut request = String::new();
-                let mut length = 0usize;
-                loop {
-                    let mut line = String::new();
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
-                        break;
-                    }
-                    if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
-                        length = value.trim().parse().unwrap_or(0);
-                    }
-                    request.push_str(&line);
-                    if line.trim().is_empty() {
-                        break;
-                    }
-                }
-                let mut body = vec![0u8; length];
-                reader.read_exact(&mut body).ok();
-                request.push_str(&String::from_utf8_lossy(&body));
-                let _ = sender.send(request);
-                let _ = stream.write_all(response.as_bytes());
+    /// 偽の Ollama が流すものの 1 区切り
+    enum Step {
+        Bytes(Vec<u8>),
+        /// その回数だけ「まだ何も届いていない」（読み取りの時間切れ）を返す
+        Pause(usize),
+        /// ずっと何も返さない（モデルの読み込み中・長い文を読んでいる間）
+        Hang,
+    }
+
+    /// 1 回の「まだ届いていない」の間。本物の読み取りの区切り（POLL）の代わり
+    const PAUSE: Duration = Duration::from_millis(20);
+
+    /// 偽の繋ぎ先（9-5）。**ループバックに待ち受けを立てずに** Ollama の代役をする —
+    /// 通信の許されない環境（sandbox の CI など）でもテストが回る
+    #[derive(Clone, Default)]
+    struct FakeNet {
+        steps: Arc<Mutex<VecDeque<Step>>>,
+        sent: Arc<Mutex<Vec<u8>>>,
+        address: Arc<Mutex<Option<String>>>,
+        refuse: bool,
+    }
+
+    impl FakeNet {
+        fn answering(steps: Vec<Step>) -> Self {
+            let net = Self::default();
+            *net.steps.lock().unwrap() = steps.into();
+            net
+        }
+        fn replying(response: &str) -> Self {
+            Self::answering(vec![Step::Bytes(response.as_bytes().to_vec())])
+        }
+        /// 誰も待ち受けていない（Ollama が動いていない）
+        fn refusing() -> Self {
+            Self {
+                refuse: true,
+                ..Self::default()
             }
-        });
-        (port, receiver)
+        }
+        /// 送られてきた頼み（頭と本文）
+        fn sent(&self) -> String {
+            String::from_utf8_lossy(&self.sent.lock().unwrap()).into_owned()
+        }
+    }
+
+    struct FakeWire(FakeNet);
+
+    impl Read for FakeWire {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut steps = self.0.steps.lock().unwrap();
+            match steps.pop_front() {
+                None => Ok(0),
+                Some(Step::Bytes(mut bytes)) => {
+                    let n = bytes.len().min(buf.len());
+                    buf[..n].copy_from_slice(&bytes[..n]);
+                    if n < bytes.len() {
+                        steps.push_front(Step::Bytes(bytes.split_off(n)));
+                    }
+                    Ok(n)
+                }
+                Some(Step::Pause(left)) => {
+                    if left > 1 {
+                        steps.push_front(Step::Pause(left - 1));
+                    }
+                    drop(steps);
+                    std::thread::sleep(PAUSE);
+                    Err(std::io::ErrorKind::WouldBlock.into())
+                }
+                Some(Step::Hang) => {
+                    steps.push_front(Step::Hang);
+                    drop(steps);
+                    std::thread::sleep(PAUSE);
+                    Err(std::io::ErrorKind::WouldBlock.into())
+                }
+            }
+        }
+    }
+
+    impl Write for FakeWire {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.sent.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Wire for FakeWire {
+        fn set_timeouts(&self, _read: Duration, _write: Duration) {}
+    }
+
+    impl Connect for FakeNet {
+        type Wire = FakeWire;
+        fn connect(&self, address: &str) -> std::io::Result<FakeWire> {
+            if self.refuse {
+                return Err(std::io::ErrorKind::ConnectionRefused.into());
+            }
+            *self.address.lock().unwrap() = Some(address.to_string());
+            Ok(FakeWire(self.clone()))
+        }
+    }
+
+    fn order<'a>(model: &'a str, prompt: &'a str, timeout: Duration) -> Generation<'a> {
+        Generation {
+            port: 11434,
+            model,
+            prompt,
+            context: 8192,
+            timeout,
+            keep_alive: "5m",
+        }
     }
 
     const OK_TAGS: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n\
         {\"models\":[{\"name\":\"gemma3:4b\"},{\"name\":\"qwen3:8b\"}]}\n";
-
-    /// 頼みを受け取ったまま何も返さない代役（モデルの読み込み中・長い文を読んでいる間）
-    fn silent() -> u16 {
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .expect("127.0.0.1 に待ち受けできない。このテストは実ソケットが要る");
-        let port = listener.local_addr().unwrap().port();
-        thread::spawn(move || {
-            if let Some(Ok(stream)) = listener.incoming().next() {
-                // 閉じずに持ち続ける（応答を返さない）
-                thread::sleep(Duration::from_secs(30));
-                drop(stream);
-            }
-        });
-        port
-    }
 
     /// 何も届かない間も「止める」が効く（24-5）。以前は止める印を行が届いたときに
     /// しか見ず、読み取りの待ちも生成の時間切れのままだったので、最初の 1 行が来るか
     /// 時間切れになるまで止まらなかった
     #[test]
     fn test_generate_何も届かない間も止めるとすぐ戻る() {
-        let port = silent();
+        let net = FakeNet::answering(vec![Step::Hang]);
         let started = std::time::Instant::now();
         let stop_at = started + Duration::from_millis(300);
-        let result = generate(
-            Generation {
-                port,
-                model: "gemma3:4b",
-                prompt: "こんにちは",
-                context: 8192,
-                timeout: Duration::from_secs(60),
-                keep_alive: "5m",
-            },
+        let result = generate_on(
+            &net,
+            order("gemma3:4b", "こんにちは", Duration::from_secs(60)),
             |_| {},
             || std::time::Instant::now() >= stop_at,
         );
@@ -531,42 +653,17 @@ mod tests {
     /// 途切れたときに UTF-8 として不完全なぶんを捨てるので、バイト列で受ける
     #[test]
     fn test_generate_文字の途中で間が空いても字が欠けない() {
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .expect("127.0.0.1 に待ち受けできない。このテストは実ソケットが要る");
-        let port = listener.local_addr().unwrap().port();
-        thread::spawn(move || {
-            if let Some(Ok(mut stream)) = listener.incoming().next() {
-                // 頼みを読み切ってから返す（読まずに閉じると接続が切られる）
-                let mut reader = BufReader::new(stream.try_clone().unwrap());
-                let mut length = 0usize;
-                loop {
-                    let mut line = String::new();
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
-                        break;
-                    }
-                    if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
-                        length = value.trim().parse().unwrap_or(0);
-                    }
-                }
-                reader.read_exact(&mut vec![0u8; length]).ok();
-                let whole = "HTTP/1.1 200 OK\r\n\r\n{\"response\":\"あい\"}\n{\"done\":true}\n";
-                // 「あ」の 3 バイトの 1 バイト目までを送り、区切り（POLL）より長く黙る
-                let cut = whole.find('あ').unwrap() + 1;
-                stream.write_all(&whole.as_bytes()[..cut]).unwrap();
-                stream.flush().unwrap();
-                thread::sleep(POLL * 3);
-                stream.write_all(&whole.as_bytes()[cut..]).unwrap();
-            }
-        });
-        let answer = generate(
-            Generation {
-                port,
-                model: "gemma3:4b",
-                prompt: "こんにちは",
-                context: 8192,
-                timeout: Duration::from_secs(5),
-                keep_alive: "5m",
-            },
+        let whole = "HTTP/1.1 200 OK\r\n\r\n{\"response\":\"あい\"}\n{\"done\":true}\n";
+        // 「あ」の 3 バイトの 1 バイト目までを流し、区切りより長く黙ってから残りを流す
+        let cut = whole.find('あ').unwrap() + 1;
+        let net = FakeNet::answering(vec![
+            Step::Bytes(whole.as_bytes()[..cut].to_vec()),
+            Step::Pause(3),
+            Step::Bytes(whole.as_bytes()[cut..].to_vec()),
+        ]);
+        let answer = generate_on(
+            &net,
+            order("gemma3:4b", "こんにちは", Duration::from_secs(5)),
             |_| {},
             || false,
         )
@@ -575,38 +672,57 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_黙ったまま時間を過ぎたら時間切れ_動いていないとは言わない() {
+        let net = FakeNet::answering(vec![Step::Hang]);
+        let error = generate_on(
+            &net,
+            order("gemma3:4b", "こんにちは", Duration::from_millis(200)),
+            |_| {},
+            || false,
+        )
+        .unwrap_err();
+        assert_eq!(error, LlmError::TimedOut);
+    }
+
+    #[test]
+    fn test_送り先は127_0_0_1_の決めたポート() {
+        let net = FakeNet::replying(OK_TAGS);
+        assert!(available_on(&net, 11500));
+        assert_eq!(
+            net.address.lock().unwrap().as_deref(),
+            Some("127.0.0.1:11500")
+        );
+    }
+
+    #[test]
     fn test_available_動いていれば真() {
-        let (port, _received) = stub(OK_TAGS);
-        assert!(available(port));
+        assert!(available_on(&FakeNet::replying(OK_TAGS), 11434));
     }
 
     #[test]
     fn test_available_動いていなければ偽() {
         // 誰も居ないポート。**押してから断らない**ための確認
-        assert!(!available(1));
+        assert!(!available_on(&FakeNet::refusing(), 11434));
     }
 
     #[test]
     fn test_models_入っているモデルを返す() {
-        let (port, _received) = stub(OK_TAGS);
-        assert_eq!(models(port), vec!["gemma3:4b", "qwen3:8b"]);
+        assert_eq!(
+            models_on(&FakeNet::replying(OK_TAGS), 11434),
+            vec!["gemma3:4b", "qwen3:8b"]
+        );
     }
 
     #[test]
     fn test_generate_流れてきたぶんを渡しながら組み立てる() {
-        let response = "HTTP/1.1 200 OK\r\n\r\n\
-            {\"response\":\"これは\"}\n{\"response\":\"答え\"}\n{\"done\":true}\n";
-        let (port, received) = stub(response);
+        let net = FakeNet::replying(
+            "HTTP/1.1 200 OK\r\n\r\n\
+            {\"response\":\"これは\"}\n{\"response\":\"答え\"}\n{\"done\":true}\n",
+        );
         let mut pieces = Vec::new();
-        let answer = generate(
-            Generation {
-                port,
-                model: "gemma3:4b",
-                prompt: "こんにちは",
-                context: 8192,
-                timeout: Duration::from_secs(5),
-                keep_alive: "5m",
-            },
+        let answer = generate_on(
+            &net,
+            order("gemma3:4b", "こんにちは", Duration::from_secs(5)),
             |piece| pieces.push(piece.to_string()),
             || false,
         )
@@ -614,7 +730,11 @@ mod tests {
 
         assert_eq!(answer, "これは答え");
         assert_eq!(pieces, vec!["これは", "答え"]); // 黙って待たせない
-        let sent = received.recv().unwrap();
+        let sent = net.sent();
+        assert!(
+            sent.starts_with("POST /api/generate HTTP/1.1\r\n"),
+            "{sent}"
+        );
         assert!(sent.contains("\"model\":\"gemma3:4b\""));
         assert!(sent.contains("\"num_ctx\":8192"));
         assert!(sent.contains("\"keep_alive\":\"5m\""));
@@ -652,21 +772,16 @@ mod tests {
     fn test_generate_止められたら途中で切り上げる() {
         // 「止める」（L-1）。**受け取ったぶんは捨てない** — 途中まででも
         // 読める答えが出ていることがある
-        let response = "HTTP/1.1 200 OK\r\n\r\n\
-            {\"response\":\"これは\"}\n{\"response\":\"答え\"}\n{\"response\":\"です\"}\n";
-        let (port, _received) = stub(response);
+        let net = FakeNet::replying(
+            "HTTP/1.1 200 OK\r\n\r\n\
+            {\"response\":\"これは\"}\n{\"response\":\"答え\"}\n{\"response\":\"です\"}\n",
+        );
         let seen = std::cell::Cell::new(0);
         let mut pieces = Vec::new();
 
-        let answer = generate(
-            Generation {
-                port,
-                model: "gemma3:4b",
-                prompt: "こんにちは",
-                context: 8192,
-                timeout: Duration::from_secs(5),
-                keep_alive: "5m",
-            },
+        let answer = generate_on(
+            &net,
+            order("gemma3:4b", "こんにちは", Duration::from_secs(5)),
             |piece| {
                 pieces.push(piece.to_string());
                 seen.set(seen.get() + 1);
@@ -683,18 +798,13 @@ mod tests {
     fn test_generate_モデルが無いときは404の言い分ごと返す() {
         // 「HTTP 404」だけでは、設定のモデル名の打ち間違いに気づけない
         // （実機で「読み込んでいます…」のまま止まって見えた）
-        let response = "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n\
-            {\"error\":\"model \\\"gemma3:4b\\\" not found, try pulling it first\"}";
-        let (port, _received) = stub(response);
-        let error = generate(
-            Generation {
-                port,
-                model: "gemma3:4b",
-                prompt: "p",
-                context: 8192,
-                timeout: Duration::from_secs(5),
-                keep_alive: "5m",
-            },
+        let net = FakeNet::replying(
+            "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n\
+            {\"error\":\"model \\\"gemma3:4b\\\" not found, try pulling it first\"}",
+        );
+        let error = generate_on(
+            &net,
+            order("gemma3:4b", "p", Duration::from_secs(5)),
             |_| {},
             || false,
         )
@@ -709,15 +819,9 @@ mod tests {
 
     #[test]
     fn test_generate_動いていなければ_not_running() {
-        let error = generate(
-            Generation {
-                port: 1,
-                model: "m",
-                prompt: "p",
-                context: 8192,
-                timeout: Duration::from_secs(1),
-                keep_alive: "5m",
-            },
+        let error = generate_on(
+            &FakeNet::refusing(),
+            order("m", "p", Duration::from_secs(1)),
             |_| {},
             || false,
         )
@@ -727,24 +831,18 @@ mod tests {
 
     #[test]
     fn test_read_image_画像を添えて頼み_答えを返す() {
-        let (port, received) = stub(
+        let net = FakeNet::replying(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n\
              {\"response\":\"読めた文字\",\"done\":true}\n",
         );
-        let found = read_image(
-            Generation {
-                port,
-                model: "qwen2.5vl",
-                prompt: OCR_PROMPT,
-                context: 8192,
-                timeout: Duration::from_secs(5),
-                keep_alive: "5m",
-            },
+        let found = read_image_on(
+            &net,
+            order("qwen2.5vl", OCR_PROMPT, Duration::from_secs(5)),
             b"hi",
         )
         .expect("読めるはず");
         assert_eq!(found, "読めた文字");
-        let sent = received.recv().unwrap();
+        let sent = net.sent();
         // 画像は base64 で `images` に載せ、答えは一度に受ける（ADR-0027 決定 3）
         assert!(sent.contains("\"images\":[\"aGk=\"]"), "{sent}");
         assert!(sent.contains("\"stream\":false"), "{sent}");
@@ -754,21 +852,43 @@ mod tests {
     #[test]
     fn test_read_image_画像を読めないモデルは空を返す() {
         // 説明も何も返さないモデル。**壊れることではない** — 空で知らせる
-        let (port, _received) =
-            stub("HTTP/1.1 200 OK\r\n\r\n{\"response\":\"  \",\"done\":true}\n");
-        let found = read_image(
-            Generation {
-                port,
-                model: "m",
-                prompt: OCR_PROMPT,
-                context: 4096,
-                timeout: Duration::from_secs(5),
-                keep_alive: "5m",
-            },
-            b"hi",
-        )
-        .expect("空でも読める");
+        let net = FakeNet::replying("HTTP/1.1 200 OK\r\n\r\n{\"response\":\"  \",\"done\":true}\n");
+        let found = read_image_on(&net, order("m", OCR_PROMPT, Duration::from_secs(5)), b"hi")
+            .expect("空でも読める");
         assert_eq!(found, "");
+    }
+
+    #[test]
+    fn test_unload_載っていなければ通信もしない() {
+        // 走っている生成を壊さない。/api/ps に無ければ降ろしに行かない
+        let net = FakeNet::replying("HTTP/1.1 200 OK\r\n\r\n{\"models\":[]}\n");
+        unload_on(&net, 11434, "gemma3:4b").unwrap();
+        let sent = net.sent();
+        assert!(sent.starts_with("GET /api/ps "), "{sent}");
+        assert!(!sent.contains("/api/generate"), "{sent}");
+    }
+
+    /// **本物の TCP で**代役に通す（9-5 で既定のテストは偽の繋ぎ先にした。TCP の口
+    /// そのものはここと本物の Ollama のテストで見る）。ループバックに待ち受けを立てる
+    #[test]
+    #[ignore = "ループバックに待ち受けを立てる。手で回す: cargo test llm::tests::test_本物の_TCP -- --ignored"]
+    fn test_本物の_TCP_で代役に通る() {
+        use std::io::BufRead;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Some(Ok(mut stream)) = listener.incoming().next() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                        break;
+                    }
+                }
+                let _ = stream.write_all(OK_TAGS.as_bytes());
+            }
+        });
+        assert_eq!(models(port), vec!["gemma3:4b", "qwen3:8b"]);
     }
 
     #[test]
