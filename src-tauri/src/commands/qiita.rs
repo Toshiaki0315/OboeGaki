@@ -46,6 +46,7 @@ pub async fn qiita_publish(
     draft: Draft,
 ) -> CmdResult<Published> {
     let path = guarded(&root, &path)?;
+    super::refuse_locked(&path, "Qiita に出すことが")?;
     let token = Keychain
         .get()
         .ok()

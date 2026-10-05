@@ -12,6 +12,7 @@ mod assets;
 mod folders;
 mod history;
 mod llm;
+mod lock;
 mod notes;
 mod qiita;
 mod recovery;
@@ -24,6 +25,7 @@ pub use assets::*;
 pub use folders::*;
 pub use history::*;
 pub use llm::*;
+pub use lock::*;
 pub use notes::*;
 pub use qiita::*;
 pub use recovery::*;
@@ -138,6 +140,9 @@ pub struct WatchState {
     generating: Arc<std::sync::atomic::AtomicBool>,
     /// 「止める」が押されたか（L-1）。生成を始めるたびに下ろす
     stop_generating: Arc<std::sync::atomic::AtomicBool>,
+    /// 施錠ノートの鍵（ADR-0062）。**解錠している間だけ**ここにあり、施錠・別の
+    /// 保管フォルダを開く・アプリを閉じると消える（落とすと 0 で塗る）。画面には渡さない
+    key: Mutex<Option<crate::lock::Key>>,
 }
 
 impl Default for WatchState {
@@ -150,8 +155,17 @@ impl Default for WatchState {
             sync_gate: Arc::new(Mutex::new(())),
             generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             stop_generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            key: Mutex::new(None),
         }
     }
+}
+
+/// 施錠ノートを、平文を書く・外へ出す操作に通さない（ADR-0062）。what は「複製」など
+pub(crate) fn refuse_locked(path: &Path, what: &str) -> CmdResult<()> {
+    if crate::vault::is_locked_note(path) {
+        return Err(CmdError(format!("施錠したノートは{what}できません")));
+    }
+    Ok(())
 }
 
 /// フロント（lib/last-vault.ts）と揃える印。二重起動の断りだけに付ける。
@@ -203,5 +217,18 @@ fn index_one(vault: &Vault, path: &Path) {
     if let Err(error) = IndexDb::open(&vault.local_dir()).and_then(|mut db| db.upsert(vault, path))
     {
         eprintln!("索引の更新に失敗した: {error}");
+    }
+}
+
+#[cfg(test)]
+#[allow(non_snake_case)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_refuse_locked_は施錠ノートだけを断る() {
+        let error = refuse_locked(Path::new("/v/秘密.md.enc"), "複製").unwrap_err();
+        assert_eq!(error.0, "施錠したノートは複製できません");
+        assert!(refuse_locked(Path::new("/v/普通.md"), "複製").is_ok());
     }
 }

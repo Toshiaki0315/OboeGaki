@@ -3,8 +3,7 @@
 
 use super::*;
 
-/// リンクを辿らずに Markdown ファイルだけを名前順で集める（ゴミ箱用）。
-/// フォルダの中から accept に合うファイルを集める（リンクは辿らない）
+/// フォルダの中から accept に合うファイルを名前順で集める（リンクは辿らない。ゴミ箱用）
 pub(super) fn collect_files(directory: &Path, found: &mut Vec<PathBuf>, accept: fn(&Path) -> bool) {
     let Ok(entries) = fs::read_dir(directory) else {
         return;

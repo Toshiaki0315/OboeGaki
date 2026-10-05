@@ -34,7 +34,14 @@ pub fn attachment_save(root: String, data: String, suffix: String) -> CmdResult<
 /// どのノートからも指されていない添付（E-5）。絶対パスを名前順で返す。
 #[tauri::command]
 pub async fn attachments_unused(root: String) -> CmdResult<Vec<String>> {
-    Ok(Vault::new(&root)
+    let vault = Vault::new(&root);
+    // 施錠ノートの中は見られないので、使っているかを確かめられない（13-3）
+    if !vault.scan_locked().is_empty() {
+        return Err(CmdError(
+            "施錠したノートがあるので、使っていない添付を確かめられません".into(),
+        ));
+    }
+    Ok(vault
         .unused_attachments()
         .into_iter()
         .map(|path| path.to_string_lossy().into_owned())

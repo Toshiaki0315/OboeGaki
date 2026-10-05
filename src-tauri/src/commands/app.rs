@@ -16,6 +16,8 @@ pub async fn vault_open(
     root: String,
     trash_days: Option<u64>,
 ) -> CmdResult<()> {
+    // 前の保管フォルダの施錠ノートの鍵を持ち越さない（ADR-0062）
+    state.set_key(None);
     let vault = Vault::new(&root);
     vault.ensure_layout()?;
     // 「何を渡さないか」を書く場所は、最初から在った方が気付ける（中身は説明

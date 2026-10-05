@@ -43,6 +43,11 @@ fn key(path: &Path) -> String {
 
 /// 未保存の内容を退避する。同じノートの退避は上書きする。
 pub fn stash(dir: &Path, note_path: &Path, text: &str) -> io::Result<PathBuf> {
+    // 施錠ノートは退避しない（平文を書かない。ADR-0062 決定 4 / 13-4）。書かずに、
+    // 書いたはずの場所を返す（呼び手の流れは変えない）
+    if crate::vault::is_locked_note(note_path) {
+        return Ok(dir.join(format!("{}.{STASH_SUFFIX}", key(note_path))));
+    }
     fs::create_dir_all(dir)?;
     let key = key(note_path);
     let target = dir.join(format!("{key}.{STASH_SUFFIX}"));

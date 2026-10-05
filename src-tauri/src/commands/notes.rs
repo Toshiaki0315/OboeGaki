@@ -25,8 +25,15 @@ pub fn note_exists(root: String, path: String) -> CmdResult<bool> {
 }
 
 #[tauri::command]
-pub async fn note_read(root: String, path: String) -> CmdResult<String> {
+pub async fn note_read(
+    state: tauri::State<'_, WatchState>,
+    root: String,
+    path: String,
+) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
+    if crate::vault::is_locked_note(&path) {
+        return state.read_locked(&path);
+    }
     crate::vault::read_note(&path).map_err(CmdError::from)
 }
 
@@ -42,6 +49,13 @@ pub async fn note_write(
 ) -> CmdResult<()> {
     let path = guarded(&root, &path)?;
     state.suppressor.mark(&path);
+    if crate::vault::is_locked_note(&path) {
+        // 暗号文だけを書く。版は残さない（ADR-0062 決定 4）。索引は題だけ
+        state.write_locked(&path, &text)?;
+        let vault = Vault::new(&root);
+        index_one(&vault, &path);
+        return Ok(());
+    }
     autosave::save_atomic(&path, &text)?;
     // 索引の後追い。失敗しても保存は成立している（次の sync が取り直す）
     let vault = Vault::new(&root);
@@ -93,6 +107,7 @@ pub fn note_duplicate(
 #[tauri::command]
 pub fn template_register(root: String, path: String, name: String) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
+    super::refuse_locked(&path, "雛形に")?;
     Vault::new(&root)
         .register_template(&path, &name)
         .map(|placed| placed.to_string_lossy().into_owned())

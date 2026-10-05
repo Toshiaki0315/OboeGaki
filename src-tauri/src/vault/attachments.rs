@@ -28,6 +28,11 @@ impl Vault {
     /// サブフォルダと隠しファイル（`.DS_Store`）は**こちらの持ち物では
     /// ないので触らない**。
     pub fn unused_attachments(&self) -> Vec<PathBuf> {
+        // 施錠ノートの中は見られない。そこだけが使う画像を「使っていない」と言うと
+        // 消してしまうので、施錠ノートがあれば何も挙げない（迷ったら残す。13-3）
+        if !self.scan_locked().is_empty() {
+            return Vec::new();
+        }
         let Ok(entries) = fs::read_dir(self.attachments_dir()) else {
             return Vec::new();
         };

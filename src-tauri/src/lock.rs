@@ -49,6 +49,8 @@ pub enum LockError {
     /// 頭の設定がありえない・開いた中身が UTF-8 でない
     Corrupt,
     EmptyPassword,
+    /// 保管フォルダに施錠ノートが無い（確かめる相手が無い。最初の施錠は別の道）
+    NoLockedNotes,
     /// 乱数や鍵の導出が使えなかった（OS の不具合）
     System(String),
 }
@@ -68,6 +70,7 @@ impl std::fmt::Display for LockError {
             }
             Self::Corrupt => "施錠したノートが壊れています".to_string(),
             Self::EmptyPassword => "パスワードが空です".to_string(),
+            Self::NoLockedNotes => "施錠したノートがありません".to_string(),
             Self::System(reason) => format!("暗号の処理に失敗しました: {reason}"),
         };
         f.write_str(&text)

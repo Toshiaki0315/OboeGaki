@@ -104,6 +104,14 @@ impl Vault {
         before: &str,
         after: &str,
     ) -> std::io::Result<()> {
+        // 施錠ノートの上に平文を書かない（13-3）。ここを通る操作（ピン留め・やることの
+        // 完了・版の復元・リンクの書き換え・追記）は施錠ノートでは効かない
+        if super::is_locked_note(path) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "施錠したノートはこの操作で書き換えられません（ADR-0062）",
+            ));
+        }
         self.keep_version(path, before).map_err(|error| {
             std::io::Error::new(
                 error.kind(),

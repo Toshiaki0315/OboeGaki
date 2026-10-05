@@ -127,6 +127,8 @@ pub fn conflict_copy(
     text: String,
 ) -> CmdResult<String> {
     let note = guarded(&root, &path)?;
+    // 平文の写しを作らない。施錠ノートの競合は「外部の変更を採用」か「自分の版を採用」で
+    super::refuse_locked(&note, "両方残すことが")?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let copy = crate::vault::conflict_copy_path(&note, &today, &history::this_mac());
     state.suppressor.mark(&copy);

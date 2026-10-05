@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 mod attachments;
 mod daily;
 mod history_carry;
+mod locked;
 mod notes;
 mod paths;
 mod scan;
@@ -29,6 +30,7 @@ mod trash;
 
 pub use attachments::*;
 pub use history_carry::*;
+pub use locked::*;
 pub use paths::*;
 use scan::*;
 use templates::*;

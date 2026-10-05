@@ -56,6 +56,13 @@ impl Vault {
         if !self.inside(path) {
             return Err(outside_error("保管フォルダの外は複製できない", path));
         }
+        // 平文の写しを作らない（13-3）
+        if is_locked_note(path) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "施錠したノートは複製できません",
+            ));
+        }
         let text = read_note(path)?;
         let folder = path.parent().unwrap_or(&self.root).to_path_buf();
         let stem = path
@@ -173,6 +180,15 @@ impl Vault {
             None => self.root.clone(),
         };
         let stem = sanitize_filename(title);
+        // 施錠ノートは**ファイル名だけ**変える（13-3）。見出しは暗号文の中にあり、
+        // 書き換えるには平文を書くことになる。版も残さない（ADR-0062 決定 4）
+        if is_locked_note(path) {
+            let target = unique_path(&folder, &stem, LOCKED_SUFFIX, Some(path));
+            if target != *path {
+                fs::rename(path, &target)?;
+            }
+            return Ok(target);
+        }
         // 拡張子は元のまま（`.markdown` を `.md` に変えない。監査 2026-09-17）
         let (_, suffix) = split_name(path, ".md");
         if folder.join(format!("{stem}{suffix}")) == *path {
