@@ -187,6 +187,15 @@ describe("useAssistant", () => {
     expect(result.current.answer).toMatch(/いま考えています/);
   });
 
+  test("test_施錠したノートはアシスタントに渡さない（ADR-0062）", async () => {
+    const { result } = renderHook(() =>
+      useAssistant(input({ currentPath: "/v/秘密.md.enc" })),
+    );
+    await act(() => result.current.ask("summary"));
+    expect(mocked.llmGenerate).not.toHaveBeenCalled();
+    expect(result.current.answer).toMatch(/施錠したノート/);
+  });
+
   test("test_ノートを開いていなければ何もしない", async () => {
     const { result } = renderHook(() =>
       useAssistant(input({ currentPath: null })),

@@ -140,6 +140,7 @@ import {
   historyList,
   historyRead,
   historyUsage,
+  NOTE_LOCKED,
   lockChangePassword,
   lockForget,
   lockState,
@@ -629,6 +630,10 @@ function App() {
   /// （ADR-0054）
   async function openHistory() {
     if (!vaultRoot || !currentPath) return;
+    if (isLockedPath(currentPath)) {
+      setStatus("施錠したノートは版の履歴を残しません（ADR-0062）");
+      return;
+    }
     await sync.flush(); // 未保存分を書き切ってから一覧を出す
     try {
       const base = editorRef.current?.getText() ?? "";
@@ -1030,7 +1035,8 @@ function App() {
       const entry = useAppStore
         .getState()
         .notes.find((note) => noteStem(note.path).toLowerCase() === wanted);
-      if (!entry) return null;
+      // 施錠ノートの中身を、埋め込みで普通のノート（とその書き出し）へ出さない（ADR-0062）
+      if (!entry || isLockedPath(entry.path)) return null;
       try {
         return {
           path: entry.path,
@@ -1078,6 +1084,8 @@ function App() {
     setUnlocked(false);
     const open = currentPathRef.current;
     if (open && isLockedPath(open)) noteCommands.closeNote();
+    // 横に出した施錠ノートも閉じる（平文を画面に残さない）
+    if (reference && isLockedPath(reference.path)) closeReference();
     setStatus("施錠しました");
   }
 
@@ -1173,6 +1181,10 @@ function App() {
   /// 整える。トークンが無ければ窓を出さずに入れ場所を言う（押してから断らない）
   async function openQiitaPublish() {
     if (!vaultRoot || !currentPath) return;
+    if (isLockedPath(currentPath)) {
+      setStatus("施錠したノートは Qiita に出せません");
+      return;
+    }
     if (!(await qiitaTokenSaved())) {
       setStatus(
         "Qiita のトークンが入っていません。環境設定の「Qiita」で入れてください",
@@ -1369,7 +1381,11 @@ function App() {
       setReferenceSession((session) => session + 1);
       setRightPane("reference");
     } catch (error) {
-      setStatus(`横に開けませんでした: ${String(error)}`);
+      setStatus(
+        String(error) === NOTE_LOCKED
+          ? "施錠したノートは、解錠してから横に開いてください"
+          : `横に開けませんでした: ${String(error)}`,
+      );
     }
   }
 

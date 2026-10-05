@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { useLatest } from "./useLatest";
-import { noteStem } from "../lib/note-path";
+import { isLockedPath, noteStem } from "../lib/note-path";
 import { buildDocx } from "../lib/export-docx";
 import { ocrFailureText, ocrReaderFrom } from "../lib/ocr";
 import {
@@ -109,6 +109,13 @@ export function useExport(input: ExportInput) {
     return () => cancelAnimationFrame(frame);
   }, [printBody, latest]); // latest は不変の ref（lint が useLatest を ref と知らない）
 
+  /// 施錠したノートは書き出さない・刷らない（平文のファイルを外に作らない。ADR-0062）
+  function refuseLocked(path: string): boolean {
+    if (!isLockedPath(path)) return false;
+    onStatus("施錠したノートは書き出せません");
+    return true;
+  }
+
   // HTML 書き出し（ADR-0007 の CM6 版）。画像は data URL に埋め込んで
   // 1 ファイルで持ち運べる形にする
   /// 図を先に描く（描画は非同期。書き出しにも印刷にも SVG を埋める）。
@@ -174,6 +181,7 @@ export function useExport(input: ExportInput) {
   async function handlePrint(forPdf = false) {
     const { vaultRoot, currentPath } = latest.current;
     if (!vaultRoot || !currentPath) return;
+    if (refuseLocked(currentPath)) return;
     // **PDF はここから先が OS の仕事。** 印刷の窓のどこを押せばよいかを
     // 先に言っておく（差分の調べ 2026-09-06: できるのに気づかれない）
     if (forPdf) {
@@ -197,6 +205,7 @@ export function useExport(input: ExportInput) {
   async function handleExportDocx() {
     const { vaultRoot, currentPath, settings } = latest.current;
     if (!vaultRoot || !currentPath) return;
+    if (refuseLocked(currentPath)) return;
     await latest.current.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
@@ -227,6 +236,7 @@ export function useExport(input: ExportInput) {
   async function handleExportPptx() {
     const { vaultRoot, currentPath, pptxSettings } = latest.current;
     if (!vaultRoot || !currentPath) return;
+    if (refuseLocked(currentPath)) return;
     await latest.current.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
@@ -391,6 +401,7 @@ export function useExport(input: ExportInput) {
   async function handleExport() {
     const { vaultRoot, currentPath } = latest.current;
     if (!vaultRoot || !currentPath) return;
+    if (refuseLocked(currentPath)) return;
     await latest.current.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);
@@ -419,6 +430,7 @@ export function useExport(input: ExportInput) {
   async function handleExportQiita() {
     const { vaultRoot, currentPath } = latest.current;
     if (!vaultRoot || !currentPath) return;
+    if (refuseLocked(currentPath)) return;
     await latest.current.flush(); // 保存前の本文を書き出さない
     const text = await readNote(vaultRoot, currentPath);
     const title = noteStem(currentPath);

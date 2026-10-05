@@ -25,7 +25,7 @@ import {
   type SearchHit,
 } from "../lib/ipc";
 import { terms } from "../lib/keywords";
-import { noteStem } from "../lib/note-path";
+import { isLockedPath, noteStem } from "../lib/note-path";
 import { packSources, pickSources } from "../lib/sources";
 
 export type AssistantInput = {
@@ -228,6 +228,12 @@ export function useAssistant({
   /// （答えは横に出すだけ）。
   async function ask(task: string) {
     if (!vaultRoot || !currentPath) return;
+    // 施錠したノートは渡さない（ADR-0062 の「失うもの」）
+    if (isLockedPath(currentPath)) {
+      clear();
+      setAnswer("施錠したノートはアシスタントに渡しません");
+      return;
+    }
     // 頼まれたノートは flush を待つ**前**に控える。待つ間に替わっていたら旧ノートの
     // 本文を新ノートの答えとして出さない（21-8）
     const askedOn = currentPath;

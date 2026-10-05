@@ -112,6 +112,21 @@ describe("useExport", () => {
     expect(said).toContain("タグ");
   });
 
+  test("test_施錠したノートは書き出さない（平文のファイルを作らない。ADR-0062）", async () => {
+    const given = input({ currentPath: "/v/秘密.md.enc" });
+    const { result } = renderHook(() => useExport(given));
+    await act(() => result.current.handleExport());
+    await act(() => result.current.handleExportDocx());
+    await act(() => result.current.handleExportPptx());
+    await act(() => result.current.handleExportQiita());
+    await act(() => result.current.handlePrint(true));
+    expect(mocked.readNote).not.toHaveBeenCalled();
+    expect(mocked.saveTo).not.toHaveBeenCalled();
+    expect(given.onStatus).toHaveBeenCalledWith(
+      "施錠したノートは書き出せません",
+    );
+  });
+
   test("test_保存先を選ばなければ何も書かない", async () => {
     mocked.saveTo.mockResolvedValue(null);
     const { result } = renderHook(() => useExport(input()));
