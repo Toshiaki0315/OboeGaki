@@ -5,7 +5,7 @@ import { useRef } from "react";
 import { NOTE_DRAG_TYPE } from "../lib/note-drop";
 import { draggedNotes, encodeNoteDrag } from "../lib/note-selection";
 import { formatStamp, type NoteEntry } from "../lib/note-order";
-import { labelFolder, noteStem } from "../lib/note-path";
+import { isLockedPath, labelFolder, noteStem } from "../lib/note-path";
 import { menuAt } from "../lib/context-menu";
 
 export type NoteRowsProps = {
@@ -106,6 +106,11 @@ export function NoteRows({
               ファイル名の幹だけにして、フォルダは自分の段に出す */}
             <span className="note-row-title">
               {entry.pinned && <span className="pin-mark">📌</span>}
+              {isLockedPath(entry.path) && (
+                <span className="lock-mark" title="施錠したノート">
+                  🔒
+                </span>
+              )}
               {isHiddenFromMcp(entry.path) && (
                 <span className="mcp-hidden-mark" title="Claude に渡さない">
                   ⊘

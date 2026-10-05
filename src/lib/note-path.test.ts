@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { nfcUnder, noteFolder, noteLabel, noteStem } from "./note-path";
+import {
+  isLockedPath,
+  nfcUnder,
+  noteFolder,
+  noteLabel,
+  noteStem,
+} from "./note-path";
 
 describe("noteStem", () => {
   test("test_フォルダと拡張子を外した幹", () => {
@@ -45,5 +51,16 @@ describe("nfcUnder", () => {
   });
   test("test_root の外はそのまま", () => {
     expect(nfcUnder("/v", "/other/フ\u{309A}.md")).toBe("/other/フ\u{309A}.md");
+  });
+});
+
+describe("施錠ノート（TASKS 13-2 / ADR-0062）", () => {
+  test("test_.md.enc_は施錠ノートで_題からは印ごと外す", () => {
+    expect(isLockedPath("/v/仕事/秘密.md.enc")).toBe(true);
+    expect(isLockedPath("/v/仕事/秘密.MD.ENC")).toBe(true);
+    expect(isLockedPath("/v/仕事/秘密.md")).toBe(false);
+    expect(isLockedPath("/v/.md.enc")).toBe(false);
+    expect(noteStem("/v/仕事/秘密.md.enc")).toBe("秘密");
+    expect(noteLabel("/v", "/v/仕事/秘密.md.enc")).toBe("仕事/秘密");
   });
 });

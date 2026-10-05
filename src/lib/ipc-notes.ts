@@ -1,6 +1,7 @@
 // ノート・フォルダ・雛形・ゴミ箱・タグ・やること・検索・リンク（Rust の note_* / folder_* / task_*）。
 // Tauri コマンドの薄い包み（分け方は ipc.ts を見る）。
 
+import { NOTE_EXTENSION } from "./note-path";
 import { invoke } from "@tauri-apps/api/core";
 import type { NoteEntry } from "./note-order";
 
@@ -26,7 +27,7 @@ export type FolderCount = { folder: string; count: number };
 export function toEntry(root: string, meta: NoteMeta): NoteEntry {
   return {
     path: `${root}/${meta.path}`,
-    label: meta.path.replace(/\.(md|markdown)$/i, ""),
+    label: meta.path.replace(NOTE_EXTENSION, ""),
     preview: meta.preview,
     mtimeMs: meta.mtime_ms,
     pinned: meta.pinned,

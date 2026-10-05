@@ -3,6 +3,7 @@
 // 前回の未保存。本文は手（readText / replaceText）で触り、EditorView は
 // 持たない（T2）。Rust への包みは lib/ipc。
 
+import { NOTE_EXTENSION } from "../lib/note-path";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLatest } from "./useLatest";
 import { createDebouncer } from "../lib/debounce";
@@ -416,7 +417,7 @@ export function useNoteSync({
     adopt(found.externalText);
     await refreshListsRef.current();
     onStatusRef.current(
-      `自分の版を「${copy.slice(root.length + 1).replace(/\.(md|markdown)$/i, "")}」に残しました`,
+      `自分の版を「${copy.slice(root.length + 1).replace(NOTE_EXTENSION, "")}」に残しました`,
     );
   }
 

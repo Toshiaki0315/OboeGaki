@@ -7,11 +7,13 @@ use crate::index_db::IndexDb;
 use crate::vault::Vault;
 use std::path::PathBuf;
 
-/// そのフォルダ（相対）の下にあるノート
+/// そのフォルダ（相対）の下にあるノート。施錠ノートも含める（フォルダを動かしたら
+/// 索引の行も付け替える。13-2）
 pub fn notes_under(vault: &Vault, folder: &str) -> Vec<PathBuf> {
     vault
         .scan()
         .into_iter()
+        .chain(vault.scan_locked())
         .filter(|path| {
             path.strip_prefix(vault.root())
                 .map(|relative| relative.starts_with(folder))
@@ -170,5 +172,13 @@ mod tests {
         rekey_moved_folder(&vault, "仕事2", &into, &moved);
         assert_eq!(history::versions(&store, "path:古い/仕事2/a.md").len(), 1);
         assert!(history::versions(&store, "path:仕事2/a.md").is_empty());
+    }
+
+    #[test]
+    fn test_notes_under_は施錠ノートも含める() {
+        let (root, vault) = crate::test_support::temp_vault();
+        crate::test_support::blank_note(root.path(), "仕事/a.md");
+        crate::test_support::note(root.path(), "仕事/秘密.md.enc", "暗号文");
+        assert_eq!(notes_under(&vault, "仕事").len(), 2);
     }
 }

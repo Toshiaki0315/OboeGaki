@@ -77,7 +77,7 @@ impl Default for Suppressor {
 /// `vault::scan` と同じでなければならない（一覧には出ないのに通知は来る、
 /// という食い違いを作らない）。一時ファイル（.tmp）も外す。
 pub fn is_relevant(root: &Path, path: &Path) -> bool {
-    if !crate::vault::is_markdown(path) {
+    if !crate::vault::is_markdown(path) && !crate::vault::is_locked_note(path) {
         return false;
     }
     let Ok(relative) = path.strip_prefix(root) else {
@@ -233,5 +233,13 @@ mod tests {
         let root = Path::new("/v");
         assert!(!is_relevant(root, Path::new("/v/.a.md.x1y2.tmp")));
         assert!(!is_relevant(root, Path::new("/v/.DS_Store")));
+    }
+
+    #[test]
+    fn test_施錠ノートの変化も知らせる() {
+        // 一覧に出るものの変化は届ける（scan と scan_locked の和に揃える。13-2）
+        let root = Path::new("/v");
+        assert!(is_relevant(root, Path::new("/v/秘密.md.enc")));
+        assert!(!is_relevant(root, Path::new("/v/秘密.enc")));
     }
 }

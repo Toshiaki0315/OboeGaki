@@ -1596,7 +1596,8 @@ button.danger {
   --note-alert-bg: #2e1d1b;
 }
 
-.pin-mark {
+.pin-mark,
+.lock-mark {
   font-size: 0.75em;
   margin-right: 0.25em;
 }

@@ -4,7 +4,8 @@
 use super::*;
 
 /// リンクを辿らずに Markdown ファイルだけを名前順で集める（ゴミ箱用）。
-pub(super) fn collect_markdown(directory: &Path, found: &mut Vec<PathBuf>) {
+/// フォルダの中から accept に合うファイルを集める（リンクは辿らない）
+pub(super) fn collect_files(directory: &Path, found: &mut Vec<PathBuf>, accept: fn(&Path) -> bool) {
     let Ok(entries) = fs::read_dir(directory) else {
         return;
     };
@@ -19,8 +20,8 @@ pub(super) fn collect_markdown(directory: &Path, found: &mut Vec<PathBuf>) {
             continue;
         }
         if entry.is_dir() {
-            collect_markdown(&entry, found);
-        } else if is_markdown(&entry) {
+            collect_files(&entry, found, accept);
+        } else if accept(&entry) {
             found.push(entry);
         }
     }
@@ -30,6 +31,16 @@ impl Vault {
     /// vault 内の Markdown ファイルをフォルダごとの名前順で返す。
     /// パスの相対部分は **NFC に揃える**（`nfc_under`）。
     pub fn scan(&self) -> Vec<PathBuf> {
+        self.scan_with(is_markdown)
+    }
+
+    /// 施錠ノート（`.md.enc`）を scan と同じ順・同じ規則で返す（13-2）。**scan とは
+    /// 混ぜない** — scan の呼び手の多くは本文を読んで書き換える（置換・添付の掃除など）
+    pub fn scan_locked(&self) -> Vec<PathBuf> {
+        self.scan_with(is_locked_note)
+    }
+
+    fn scan_with(&self, accept: fn(&Path) -> bool) -> Vec<PathBuf> {
         let mut found = Vec::new();
         if !self.root.is_dir() {
             return found;
@@ -38,7 +49,7 @@ impl Vault {
         if let Ok(real) = self.root.canonicalize() {
             ancestors.insert(real);
         }
-        self.walk(&self.root, &ancestors, &mut found);
+        self.walk(&self.root, &ancestors, &mut found, accept);
         found
             .into_iter()
             .map(|path| nfc_under(&self.root, &path))
@@ -50,6 +61,7 @@ impl Vault {
         directory: &Path,
         ancestors: &HashSet<PathBuf>,
         found: &mut Vec<PathBuf>,
+        accept: fn(&Path) -> bool,
     ) {
         // 読めないフォルダで走査ごと止めない。索引の同期はまるごと 1 回の
         // 処理なので、途中で失敗すると他の正常なノートまで索引に入らない
@@ -86,8 +98,8 @@ impl Vault {
                 }
                 let mut next = ancestors.clone();
                 next.insert(real);
-                self.walk(&entry, &next, found);
-            } else if is_markdown(&entry) {
+                self.walk(&entry, &next, found, accept);
+            } else if accept(&entry) {
                 found.push(entry);
             }
         }
@@ -644,5 +656,19 @@ mod tests {
         symlink(outside.path(), root.path().join("linkdir")).unwrap();
         assert!(vault.create_folder("linkdir/新しい").is_err());
         assert!(!outside.path().join("新しい").exists());
+    }
+
+    #[test]
+    fn test_scan_locked_は施錠ノートだけを拾い_scan_は拾わない() {
+        // 本文を読む処理の多く（置換・添付の掃除…）は scan を使う。施錠ノートを
+        // 混ぜると暗号文を読んで書き換えかねないので、別の口にする（13-2）
+        let (root, vault) = crate::test_support::temp_vault();
+        crate::test_support::blank_note(root.path(), "普通.md");
+        crate::test_support::note(root.path(), "仕事/秘密.md.enc", "暗号文");
+        assert_eq!(vault.scan(), vec![root.path().join("普通.md")]);
+        assert_eq!(
+            vault.scan_locked(),
+            vec![root.path().join("仕事/秘密.md.enc")]
+        );
     }
 }

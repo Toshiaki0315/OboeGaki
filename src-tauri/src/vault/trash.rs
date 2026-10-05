@@ -267,7 +267,10 @@ impl Vault {
     /// （シンボリックリンクは辿らない）。
     pub fn trash_list(&self) -> Vec<PathBuf> {
         let mut found = Vec::new();
-        collect_markdown(&self.trash_dir(), &mut found);
+        // 施錠ノートも出す。出さないと見えないまま 30 日で消える（13-2）
+        collect_files(&self.trash_dir(), &mut found, |path| {
+            is_markdown(path) || is_locked_note(path)
+        });
         found
     }
 
@@ -656,5 +659,16 @@ mod tests {
             crate::history::versions(&store, "path:.trash/要らない.md").len(),
             1
         );
+    }
+
+    #[test]
+    fn test_ゴミ箱の一覧に施錠ノートも出る() {
+        // 出さないと、見えないまま 30 日で消える（13-2）
+        let (root, vault) = crate::test_support::temp_vault();
+        let locked = crate::test_support::note(root.path(), "秘密.md.enc", "暗号文");
+        vault.trash(&locked).unwrap();
+        let listed = vault.trash_list();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].to_string_lossy().ends_with("秘密.md.enc"));
     }
 }

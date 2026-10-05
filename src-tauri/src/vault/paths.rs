@@ -34,6 +34,36 @@ pub(super) fn outside_error(message: &str, path: &Path) -> io::Error {
     )
 }
 
+/// 施錠ノート（ADR-0062）の名前の終わり。中身は lock.rs の形の暗号文
+pub const LOCKED_SUFFIX: &str = ".md.enc";
+
+/// 施錠ノートか（名前だけで見る。中は開かない）。`.md.enc` で終わり、前に名前がある。
+/// **Markdown としては扱わない**（is_markdown は偽）— 本文を読む道に混ぜない
+pub fn is_locked_note(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            let lower = name.to_ascii_lowercase();
+            lower.len() > LOCKED_SUFFIX.len() && lower.ends_with(LOCKED_SUFFIX)
+        })
+        .unwrap_or(false)
+}
+
+/// ノートの題（ファイル名から `.md` / `.markdown` / `.md.enc` を外したもの）
+pub fn note_stem(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(UNTITLED);
+    if is_locked_note(path) {
+        return name[..name.len() - LOCKED_SUFFIX.len()].to_string();
+    }
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(UNTITLED)
+        .to_string()
+}
+
 pub(crate) fn is_markdown(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -223,6 +253,30 @@ mod tests {
     use super::*;
     use crate::test_support::blank_note;
     use std::fs;
+
+    // ------------------------------------------ 施錠ノート（TASKS 13-2 / ADR-0062）
+
+    #[test]
+    fn test_施錠ノートは_md_enc_で見分ける() {
+        assert!(is_locked_note(Path::new("/v/秘密.md.enc")));
+        assert!(is_locked_note(Path::new("/v/秘密.MD.ENC")));
+        assert!(!is_locked_note(Path::new("/v/秘密.md")));
+        assert!(!is_locked_note(Path::new("/v/秘密.enc")));
+        assert!(
+            !is_locked_note(Path::new("/v/.md.enc")),
+            "名前の無いものは違う"
+        );
+        // 施錠ノートは Markdown として扱わない（本文を読む道に混ぜない）
+        assert!(!is_markdown(Path::new("/v/秘密.md.enc")));
+    }
+
+    #[test]
+    fn test_ノートの題は施錠の印も外す() {
+        assert_eq!(note_stem(Path::new("/v/秘密.md.enc")), "秘密");
+        assert_eq!(note_stem(Path::new("/v/普通.md")), "普通");
+        assert_eq!(note_stem(Path::new("/v/古い.markdown")), "古い");
+        assert_eq!(note_stem(Path::new("/v/v1.2.md")), "v1.2");
+    }
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 

@@ -199,12 +199,16 @@ fn index_one(tx: &rusqlite::Transaction, root: &Path, absolute: &Path) -> rusqli
     let (Ok(meta), Ok(bytes)) = (fs::metadata(absolute), fs::read(absolute)) else {
         return Ok(());
     };
-    let text = crate::vault::decode_text(&bytes);
-    let title = absolute
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(crate::vault::UNTITLED)
-        .to_string();
+    // 施錠ノート（13-2 / ADR-0062）は**中身を読まない**。題（ファイル名）だけを入れ、
+    // 本文・プレビュー・タグ・やること・リンクは空。どの呼び手（同期・監視・保存）から
+    // 来てもここで止まる
+    let locked = crate::vault::is_locked_note(absolute);
+    let text = if locked {
+        String::new()
+    } else {
+        crate::vault::decode_text(&bytes)
+    };
+    let title = crate::vault::note_stem(absolute);
     let preview = note_preview(&text);
     let pinned = crate::front_matter::pinned(&text);
     // 題名の突き合わせ鍵。macOS のファイル名は NFD で来ることがあり、
@@ -386,7 +390,8 @@ impl IndexDb {
         let tx = self.conn.transaction()?;
         let mut seen: HashSet<String> = HashSet::new();
         let mut result = SyncResult::default();
-        for absolute in vault.scan() {
+        // 施錠ノートも一覧に載せる（題だけ。index_one が中身を読まない）
+        for absolute in vault.scan().into_iter().chain(vault.scan_locked()) {
             let Ok(relative) = absolute.strip_prefix(&root) else {
                 continue;
             };
@@ -1518,5 +1523,48 @@ mod tests {
             db.upsert(&vault, &stray),
             Err(rusqlite::Error::InvalidPath(_))
         ));
+    }
+
+    // ------------------------------------------ 施錠ノート（TASKS 13-2 / ADR-0062）
+
+    #[test]
+    fn test_施錠ノートは題だけ索引に入れ_中身は読まない() {
+        // 中身がたまたま平文でも（壊れたファイル・細工）、索引には入れない
+        let (_root, vault) = vault_with(&[
+            (
+                "秘密.md.enc",
+                "#見られたくない 見られたくない語\n- [ ] 内緒の用事\n[[別]]\n",
+            ),
+            ("普通.md", "# 普通\n\n公開の語\n"),
+        ]);
+        let db = synced(&vault);
+        let notes = db.list_notes().unwrap();
+        let locked = notes.iter().find(|n| n.path == "秘密.md.enc").unwrap();
+        assert_eq!(locked.title, "秘密");
+        assert_eq!(locked.preview, "");
+        assert!(db.search("見られたくない").unwrap().is_empty());
+        assert!(db.tag_uses().unwrap().is_empty());
+        assert!(db.backlinks("別").unwrap().is_empty());
+        // 題では引ける（ファイル名は施錠中も見えている）
+        assert_eq!(paths(&db.search("秘密").unwrap()), vec!["秘密.md.enc"]);
+    }
+
+    #[test]
+    fn test_施錠ノートを_upsert_しても中身は入れない() {
+        let (root, vault) = vault_with(&[]);
+        let mut db = synced(&vault);
+        let path = note(root.path(), "秘密.md.enc", "見られたくない語");
+        db.upsert(&vault, &path).unwrap();
+        assert_eq!(db.list_notes().unwrap().len(), 1);
+        assert!(db.search("見られたくない").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_同期は施錠ノートを消えたものとして落とさない() {
+        let (_root, vault) = vault_with(&[("秘密.md.enc", "暗号文")]);
+        let mut db = synced(&vault);
+        let again = db.sync(&vault).unwrap();
+        assert_eq!((again.added, again.updated, again.removed), (0, 0, 0));
+        assert_eq!(db.list_notes().unwrap().len(), 1);
     }
 }

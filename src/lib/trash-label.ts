@@ -5,8 +5,7 @@
 /// （要望 2026-09-04）。題名とフォルダに分けて、フォルダは添えに回す。
 
 import { TRASH_FOLDER } from "./finder";
-
-const EXTENSION = /\.(md|markdown)$/i;
+import { NOTE_EXTENSION as EXTENSION } from "./note-path";
 
 /// 一覧の帯に出す絞り込みの呼び名。
 ///
