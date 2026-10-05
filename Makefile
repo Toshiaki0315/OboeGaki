@@ -54,7 +54,7 @@ app:              ## アプリ（.app）を組む。DMG は作らない
 	@echo "  右クリック →「開く」で Gatekeeper を通す"
 
 LEVEL ?= patch
-bump:             ## 版を 1 つ上げる（既定 patch。make bump LEVEL=minor で 0.6.0）
+bump:             ## 版を 1 つ上げる（既定 patch = 0.6.n の n。make bump LEVEL=minor で 0.7.0）
 	sh scripts/bump-version.sh $(LEVEL)
 
 # 開発中に手で繋ぐとき用。**束ねた .app には自動で入る** — [[bin]] は
