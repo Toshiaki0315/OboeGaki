@@ -9,6 +9,7 @@ import { folderLabel } from "../lib/folder-tree";
 import type { HistoryEntry } from "../lib/ipc";
 import { noteStem } from "../lib/note-path";
 import type { QiitaDraft } from "../lib/qiita";
+import type { LockPasswordMode } from "./LockPasswordDialog";
 import type { Finding } from "../lib/style-check";
 
 export type OpenDialog =
@@ -41,6 +42,8 @@ export type OpenDialog =
   | { kind: "history"; entries: HistoryEntry[]; base: string }
   /// 施錠ノートを開く前にパスワードを聞く（13-3）。path は開こうとしたノート
   | { kind: "unlock"; path: string }
+  /// 施錠のパスワード（13-5）。create は最初に決める・enter は今のを入れる・change は変える
+  | { kind: "lockPassword"; mode: LockPasswordMode; path: string | null }
   /// Qiita への投稿（14-5）。update は front matter に記事 ID がある（更新になる）
   | { kind: "qiita"; draft: QiitaDraft; update: boolean };
 

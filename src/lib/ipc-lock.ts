@@ -25,3 +25,27 @@ export async function lockUnlock(
 export async function lockForget(): Promise<void> {
   await invoke("lock_forget");
 }
+
+/// ノートを施錠する（`.md` → `.md.enc`）。施錠したノートの場所を返す。解錠していなければ
+/// password が要る（保管フォルダで最初なら、そのパスワードに決まる）
+export function noteLock(
+  root: string,
+  path: string,
+  password?: string,
+): Promise<string> {
+  return invoke<string>("note_lock", { root, path, password });
+}
+
+/// 施錠を外す（`.md.enc` → `.md`）。戻したノートの場所を返す
+export function noteUnlock(root: string, path: string): Promise<string> {
+  return invoke<string>("note_unlock", { root, path });
+}
+
+/// パスワードを変える（施錠ノートを全部書き直す）。書き直した数を返す
+export function lockChangePassword(
+  root: string,
+  old: string,
+  next: string,
+): Promise<number> {
+  return invoke<number>("lock_change_password", { root, old, new: next });
+}

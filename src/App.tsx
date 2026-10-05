@@ -50,6 +50,7 @@ import { GraphDialog } from "./components/GraphDialog";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { QiitaPublishDialog } from "./components/QiitaPublishDialog";
 import { UnlockDialog } from "./components/UnlockDialog";
+import { LockPasswordDialog } from "./components/LockPasswordDialog";
 import { useAutoLock } from "./hooks/useAutoLock";
 import { qiitaDraft } from "./lib/qiita";
 import { parseFrontMatterMeta } from "./markdown/front-matter";
@@ -139,8 +140,12 @@ import {
   historyList,
   historyRead,
   historyUsage,
+  lockChangePassword,
   lockForget,
+  lockState,
   lockUnlock,
+  noteLock,
+  noteUnlock,
   qiitaPublish,
   qiitaTokenClear,
   qiitaTokenSaved,
@@ -1076,6 +1081,87 @@ function App() {
     setStatus("施錠しました");
   }
 
+  /// 開いているノートを施錠する（13-5）。解錠していればそのまま、していなければ
+  /// パスワードを聞く（保管フォルダで最初なら決めてもらう）
+  async function lockCurrent() {
+    if (!vaultRoot || !currentPath) return;
+    if (isLockedPath(currentPath)) {
+      setStatus("このノートは施錠してあります");
+      return;
+    }
+    await sync.flush();
+    const state = await lockState(vaultRoot);
+    if (!state.unlocked) {
+      setDialog({
+        kind: "lockPassword",
+        mode: state.hasLockedNotes ? "enter" : "create",
+        path: currentPath,
+      });
+      return;
+    }
+    const ok = await confirmDialog(
+      `「${noteStem(currentPath)}」を施錠しますか？\n（このノートの版の履歴は消えます）`,
+      { title: APP_NAME, kind: "warning" },
+    );
+    if (ok) await lockPath(currentPath);
+  }
+
+  /// 施錠して、施錠したノートを開き直す。password は解錠していないときだけ
+  async function lockPath(path: string, password?: string) {
+    if (!vaultRoot) return;
+    await sync.flush();
+    const locked = await noteLock(vaultRoot, path, password);
+    setUnlocked(true);
+    closeDialog();
+    await refresh();
+    await openNote(locked);
+    setStatus("施錠しました（このノートの版の履歴は消しました）");
+  }
+
+  /// 開いている施錠ノートの施錠を外す（13-5）。中身は普通のノートとして保存される
+  async function unlockCurrent() {
+    if (!vaultRoot || !currentPath) return;
+    if (!isLockedPath(currentPath)) {
+      setStatus("このノートは施錠していません");
+      return;
+    }
+    const ok = await confirmDialog(
+      `「${noteStem(currentPath)}」の施錠を外しますか？\n（中身は普通のノートとして保存され、検索にも出ます）`,
+      { title: APP_NAME, kind: "warning" },
+    );
+    if (!ok) return;
+    await sync.flush();
+    try {
+      const plain = await noteUnlock(vaultRoot, currentPath);
+      await refresh();
+      await openNote(plain);
+      setStatus("施錠を外しました");
+    } catch (error) {
+      setStatus(`施錠を外せませんでした: ${String(error)}`);
+    }
+  }
+
+  /// 施錠のパスワードを変える（13-5）
+  async function changeLockPassword(next: string, current: string) {
+    if (!vaultRoot) return;
+    await sync.flush();
+    const count = await lockChangePassword(vaultRoot, current, next);
+    setUnlocked(true);
+    closeDialog();
+    setStatus(
+      `${count} 件の施錠したノートを新しいパスワードで施錠し直しました`,
+    );
+  }
+
+  async function openLockPasswordChange() {
+    if (!vaultRoot) return;
+    if (!(await lockState(vaultRoot)).hasLockedNotes) {
+      setStatus("施錠したノートがありません");
+      return;
+    }
+    setDialog({ kind: "lockPassword", mode: "change", path: null });
+  }
+
   // 触らないまま 5 分で施錠する（ADR-0062 決定 2: 席を外した隙に読まれない）
   useAutoLock({
     unlocked,
@@ -1592,6 +1678,10 @@ function App() {
         ),
       "qiita-publish": () => void openQiitaPublish(),
       "lock-now": () => void lockNow(),
+      "lock-note": () =>
+        void runWithStatus(setStatus, "施錠", () => lockCurrent()),
+      "unlock-note": () => void unlockCurrent(),
+      "lock-password": () => void openLockPasswordChange(),
       print: () => void runWithStatus(setStatus, "印刷", () => handlePrint()),
       history: () => void openHistory(),
       trash: () => void handleTrash(),
@@ -2530,6 +2620,20 @@ function App() {
             <UnlockDialog
               title={noteStem(dialog.path)}
               onUnlock={(password) => unlockAndOpen(dialog.path, password)}
+              onClose={closeDialog}
+            />
+          )}
+          {dialog?.kind === "lockPassword" && (
+            <LockPasswordDialog
+              mode={dialog.mode}
+              title={dialog.path ? noteStem(dialog.path) : ""}
+              onSubmit={(password, current) =>
+                dialog.mode === "change"
+                  ? changeLockPassword(password, current)
+                  : dialog.path
+                    ? lockPath(dialog.path, password)
+                    : Promise.resolve()
+              }
               onClose={closeDialog}
             />
           )}
