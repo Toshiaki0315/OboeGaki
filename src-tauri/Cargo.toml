@@ -1,7 +1,7 @@
 [package]
 name = "oboegaki"
 default-run = "oboegaki"
-version = "0.5.178"
+version = "0.5.179"
 description = "覚書 — ライブプレビュー型 Markdown エディタ"
 authors = ["NOMURA Toshiaki"]
 edition = "2021"
@@ -70,6 +70,10 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "io-std"]
 xattr = "1.6.1"
 security-framework = "3.7.0"
 ureq = { version = "3.4.2", default-features = false, features = ["native-tls"] }
+chacha20poly1305 = "0.11.0"
+argon2 = "0.6.0"
+zeroize = "1.9.0"
+getrandom = "0.4.3"
 
 [dev-dependencies]
 tempfile = "3.27.0"
@@ -80,3 +84,11 @@ tempfile = "3.27.0"
 [lints.clippy]
 unwrap_used = "warn"
 
+
+# 施錠付きノートの鍵の導出（Argon2id。ADR-0062）は最適化なしだと 1 回 1.1 秒かかる
+# （リリースは 78ms。2026-10-05 実測）。`make run`（dev）で解錠のたびに待たせないよう、
+# この crate だけ最適化して組む
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

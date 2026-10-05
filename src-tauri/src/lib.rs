@@ -13,6 +13,7 @@ mod history;
 pub mod index_db;
 pub mod link_rewrite;
 pub mod llm;
+pub mod lock;
 pub mod mcp;
 pub mod note_service;
 pub mod ocr;
