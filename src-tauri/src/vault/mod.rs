@@ -170,12 +170,30 @@ pub fn local_dir_in(app_support: &Path, root: &Path) -> PathBuf {
     app_support.join(LOCAL_DIRNAME).join(path_key(root))
 }
 
+/// App Support を差し替える環境変数。**本番では設定しない。** 本番として組んだバイナリを
+/// 動かすテスト（tests/mcp_stdio.rs）が、本物の App Support に書かないための口
+/// （cfg(test) は lib の単体テストにしか効かない。2026-10-06）
+pub const APP_SUPPORT_ENV: &str = "OBOEGAKI_APP_SUPPORT";
+
+/// 各 Mac の置き場の根（App Support）。上書き（APP_SUPPORT_ENV）が先、無ければホームの下。
+/// どちらも無ければ None
+pub fn local_base(
+    overridden: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    if let Some(base) = overridden.filter(|base| !base.is_empty()) {
+        return Some(PathBuf::from(base));
+    }
+    home.filter(|home| !home.is_empty())
+        .map(|home| app_support_in(Path::new(&home)))
+}
+
 /// 既定の置き場。ホームが分からなければ、仕方なく管理フォルダの中（旧の置き場）
 #[cfg(not(test))]
 fn default_local_dir(root: &Path) -> PathBuf {
-    match std::env::var_os("HOME") {
-        Some(home) if !home.is_empty() => local_dir_in(&app_support_in(Path::new(&home)), root),
-        _ => root.join(MANAGED_DIR),
+    match local_base(std::env::var_os(APP_SUPPORT_ENV), std::env::var_os("HOME")) {
+        Some(base) => local_dir_in(&base, root),
+        None => root.join(MANAGED_DIR),
     }
 }
 
@@ -505,5 +523,26 @@ mod tests {
         assert!(vault.is_empty()); // 一覧に出ないものは数えない
         blank_note(root.path(), "仕事/a.md");
         assert!(!vault.is_empty());
+    }
+
+    #[test]
+    fn test_各Macの置き場は環境変数で差し替えられ_無ければホームの下() {
+        // 本番として組んだバイナリを動かすテスト（tests/mcp_stdio.rs）が、本物の
+        // App Support に書かないための口（2026-10-06）
+        let home = Some(std::ffi::OsString::from("/Users/someone"));
+        assert_eq!(
+            local_base(Some("/tmp/置き場".into()), home.clone()),
+            Some(PathBuf::from("/tmp/置き場"))
+        );
+        assert_eq!(
+            local_base(None, home.clone()),
+            Some(app_support_in(Path::new("/Users/someone")))
+        );
+        // 空の値は無いのと同じ
+        assert_eq!(
+            local_base(Some("".into()), home),
+            Some(app_support_in(Path::new("/Users/someone")))
+        );
+        assert_eq!(local_base(None, None), None);
     }
 }

@@ -18,6 +18,10 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 /// 起動中のサーバ。落とし忘れないよう Drop で殺す
 struct Server {
+    /// 索引とロックの置き場（App Support の代わり）。**本物の App Support に書かない** —
+    /// 子プロセスは本番として組んだバイナリなので、lib の cfg(test) の切り替えが効かない
+    /// （make check のたびに本物の App Support に置き場が増えていた。2026-10-06）
+    app_support: tempfile::TempDir,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
@@ -35,7 +39,9 @@ impl Server {
     fn start(root: &std::path::Path) -> Self {
         // cargo が同じ profile で組んだバイナリ（テストの隣）を使う
         let exe = std::path::Path::new(env!("CARGO_BIN_EXE_oboegaki-mcp"));
+        let app_support = tempfile::tempdir().unwrap();
         let mut child = Command::new(exe)
+            .env("OBOEGAKI_APP_SUPPORT", app_support.path())
             .arg(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -45,6 +51,7 @@ impl Server {
         let stdin = child.stdin.take().expect("stdin");
         let stdout = BufReader::new(child.stdout.take().expect("stdout"));
         let mut server = Server {
+            app_support,
             child,
             stdin,
             stdout,
@@ -315,4 +322,18 @@ fn 残りの道具も引数名ごと往復する() {
             .contains("予定"),
         "{raw}"
     );
+}
+
+#[test]
+fn 索引とロックは渡した置き場に作り_本物の_App_Support_には書かない() {
+    let dir = vault();
+    let mut server = Server::start(dir.path());
+    server.call("search_notes", serde_json::json!({ "query": "決めたこと" }));
+    let vaults = server.app_support.path().join("vaults");
+    let made: Vec<_> = std::fs::read_dir(&vaults)
+        .expect("渡した置き場に vaults/ が無い")
+        .flatten()
+        .collect();
+    assert_eq!(made.len(), 1);
+    assert!(made[0].path().join("index.sqlite").is_file());
 }
