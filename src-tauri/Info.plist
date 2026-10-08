@@ -14,5 +14,9 @@
 	</array>
 	<key>CFBundleAllowMixedLocalizations</key>
 	<true/>
+	<!-- 文字起こし（ADR-0070）。同梱の oboegaki-transcribe が macOS の音声認識を使う。
+	     この Mac の中だけで行う。許可を求められたときの説明（無いと落とされることがある） -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>音声・動画を文字起こしして議事録を作るために、この Mac の中の音声認識を使います。音声は外へ送りません。</string>
 </dict>
 </plist>
