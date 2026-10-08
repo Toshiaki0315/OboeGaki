@@ -15,6 +15,7 @@ pub mod link_rewrite;
 pub mod llm;
 pub mod lock;
 pub mod mcp;
+pub mod minutes;
 pub mod note_service;
 pub mod ocr;
 pub mod pdf;
@@ -185,6 +186,7 @@ pub fn run() {
             commands::transcribe_probe,
             commands::transcribe_file,
             commands::transcribe_stop,
+            commands::minutes_make,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

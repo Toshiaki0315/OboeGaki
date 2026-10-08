@@ -60,3 +60,70 @@ pub async fn transcribe_file(
 pub fn transcribe_stop(state: tauri::State<'_, WatchState>) {
     state.stop_transcribing.store(true, Ordering::SeqCst);
 }
+
+/// 議事録を頼む中身（設定から）
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinutesRequest {
+    /// `[mm:ss] 文` の行（transcribe_file の lines）
+    pub lines: String,
+    pub port: u16,
+    /// 議事録のモデル（28-5。既定は gemma3:12b）
+    pub model: String,
+    pub timeout_minutes: u64,
+    pub keep_alive: String,
+}
+
+/// 議事録の窓（トークン）。区切り 1 つ（8,000 字まで）と頼み方が収まる
+const MINUTES_CONTEXT: u32 = 16_384;
+
+/// 文字起こしから議事録を作る（ADR-0070 決定 3: 長ければ区切って 2 段）。どの段かは
+/// `minutes-stage` で知らせる。アシスタントと同じ旗を使い、同時には走らせない。止められる
+#[tauri::command]
+pub async fn minutes_make(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WatchState>,
+    request: MinutesRequest,
+) -> CmdResult<String> {
+    if state.generating.swap(true, Ordering::SeqCst) {
+        return Err(CmdError(
+            "アシスタントが考えています。終わってからもう一度".into(),
+        ));
+    }
+    state.stop_generating.store(false, Ordering::SeqCst);
+    let flag = FlagGuard(state.generating.clone());
+    let stop = state.stop_generating.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _flag = flag;
+        let timeout = std::time::Duration::from_secs(request.timeout_minutes.clamp(1, 120) * 60);
+        crate::minutes::make_with(
+            &request.lines,
+            |prompt| {
+                let answer = crate::llm::generate(
+                    crate::llm::Generation {
+                        port: request.port,
+                        model: &request.model,
+                        prompt,
+                        context: MINUTES_CONTEXT,
+                        timeout,
+                        keep_alive: &request.keep_alive,
+                    },
+                    |_| {},
+                    || stop.load(Ordering::SeqCst),
+                )
+                .map_err(|error| error.to_string())?;
+                // 止められたら途中の答えでまとめに進まない
+                if stop.load(Ordering::SeqCst) {
+                    return Err("議事録づくりを止めました".into());
+                }
+                Ok(answer)
+            },
+            |stage| {
+                let _ = app.emit("minutes-stage", stage);
+            },
+        )
+    })
+    .await
+    .map_err(|error| CmdError(error.to_string()))?
+    .map_err(CmdError)
+}
