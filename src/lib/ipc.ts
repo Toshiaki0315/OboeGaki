@@ -15,3 +15,4 @@ export * from "./ipc-app";
 export * from "./ipc-os";
 export * from "./ipc-qiita";
 export * from "./ipc-lock";
+export * from "./ipc-transcribe";

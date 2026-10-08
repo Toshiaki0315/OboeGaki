@@ -111,6 +111,17 @@ pub fn stamp(seconds: f64) -> String {
     }
 }
 
+/// 文字起こし（SpeechAnalyzer）が使える macOS の版か（ADR-0070 決定 1）
+pub fn supported_major(major: isize) -> bool {
+    major >= 26
+}
+
+/// この Mac の macOS で使えるか（メニューに出すかを決める。言語データまでは見ない）
+pub fn os_supported() -> bool {
+    let version = objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion();
+    supported_major(version.majorVersion)
+}
+
 /// 実行ファイルの置き場（おぼえがき本体の隣）
 pub fn helper_beside(exe: &Path) -> PathBuf {
     exe.parent().unwrap_or(Path::new(".")).join(HELPER)
@@ -393,5 +404,12 @@ mod tests {
             last
         );
         assert!(!transcript.segments.is_empty());
+    }
+
+    #[test]
+    fn test_文字起こしは_macOS_26_から() {
+        assert!(!supported_major(15));
+        assert!(supported_major(26));
+        assert!(supported_major(27));
     }
 }

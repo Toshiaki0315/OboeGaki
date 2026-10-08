@@ -187,6 +187,8 @@ pub fn run() {
             commands::transcribe_file,
             commands::transcribe_stop,
             commands::minutes_make,
+            commands::file_size,
+            commands::attachment_copy,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

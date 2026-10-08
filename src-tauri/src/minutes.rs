@@ -17,6 +17,7 @@ const SECTIONS: &str =
     "- 見出しは「## 要旨」「## 話されたこと」「## 決まったこと」「## やること」「## 用語」の順
 - 「要旨」は 3 行以内。「話されたこと」は話の流れに沿って箇条書き（各項目の頭に [mm:ss] を付ける）
 - 「決まったこと」「やること」は、無ければ「なし」とだけ書く。やることは `- [ ] ` で書く
+- 「やること」は、話の中で誰かがすると決めたことだけ。話題・注意点・提案・思考実験は入れない
 - 文字起こしに書かれていないことは書かない。評価や感想も書かない
 - 文字起こしには音声認識の誤り（同音の取り違え）がある。文脈から明らかなものだけ直してよい
 - 題（# の見出し）は書かない";
@@ -123,7 +124,7 @@ fn merge_prompt(notes: &[String]) -> String {
         .join("\n\n");
     format!(
         "次は、長い録音を区切って、区切りごとに抜き出した要点です。これを 1 つの日本語の議事録に\n\
-         まとめてください（区切りの順は録音の順）。\n\n{SECTIONS}\n\n# 区切りごとの要点\n\n{joined}"
+         まとめてください。区切りの見出しは残さず、録音の順に 1 つの流れにまとめてください。\n\n{SECTIONS}\n\n# 区切りごとの要点\n\n{joined}"
     )
 }
 
@@ -135,10 +136,21 @@ pub fn make(text: &str, ask: impl FnMut(&str) -> Result<String, String>) -> Resu
 /// 議事録を作る。頼むたびに on_stage で知らせる。どこかで失敗したらそこで止める
 pub fn make_with(
     text: &str,
+    ask: impl FnMut(&str) -> Result<String, String>,
+    on_stage: impl FnMut(Stage),
+) -> Result<String, String> {
+    make_chunked(text, CHUNK_SECONDS, CHUNK_CHARS, ask, on_stage)
+}
+
+/// 区切りの長さを渡せる内側（本物のモデルで 2 段を試すため）
+pub fn make_chunked(
+    text: &str,
+    span: f64,
+    max_chars: usize,
     mut ask: impl FnMut(&str) -> Result<String, String>,
     mut on_stage: impl FnMut(Stage),
 ) -> Result<String, String> {
-    let chunks = split(text, CHUNK_SECONDS, CHUNK_CHARS);
+    let chunks = split(text, span, max_chars);
     match chunks.len() {
         0 => Err("文字起こしが空です".into()),
         1 => {
@@ -155,6 +167,21 @@ pub fn make_with(
             Ok(tidy(&ask(&merge_prompt(&notes))?))
         }
     }
+}
+
+/// `### 区切り 2` のような、まとめのために付けた見出しか
+fn is_chunk_heading(line: &str) -> bool {
+    let Some(rest) = line.trim().strip_prefix('#') else {
+        return false;
+    };
+    let title = rest.trim_start_matches('#').trim();
+    title
+        .strip_prefix("区切り")
+        .map(|number| {
+            let number = number.trim();
+            !number.is_empty() && number.chars().all(|c| c.is_ascii_digit())
+        })
+        .unwrap_or(false)
 }
 
 /// モデルの崩れを直す: 本文を包む ``` を外す・先頭の `# 題` を外す（題はノートが付ける）・
@@ -176,6 +203,8 @@ pub fn tidy(raw: &str) -> String {
             lines.remove(0);
         }
     }
+    // まとめに渡した「区切り N」の見出しが残ったら外す（本物の gemma3:12b が残した）
+    lines.retain(|line| !is_chunk_heading(line));
     let fixed: Vec<String> = lines
         .iter()
         .map(|line| {
@@ -195,7 +224,16 @@ pub fn tidy(raw: &str) -> String {
             }
         })
         .collect();
-    let joined = fixed.join("\n");
+    // 外した見出しのあとに空行が重なるので、続く空行は 1 つにする
+    let mut compact: Vec<String> = Vec::with_capacity(fixed.len());
+    for line in fixed {
+        let blank = line.trim().is_empty();
+        if blank && compact.last().is_some_and(|last| last.trim().is_empty()) {
+            continue;
+        }
+        compact.push(line);
+    }
+    let joined = compact.join("\n");
     let trimmed = joined.trim();
     if trimmed.is_empty() {
         String::new()
@@ -331,11 +369,77 @@ mod tests {
     }
 
     #[test]
+    fn test_まとめでは区切りの見出しを残させず_やることは決めたことだけにさせる() {
+        // 本物の gemma3:12b が「### 区切り 1」を残し、注意点や思考実験を「やること」に入れた
+        let text = lines(&[("00:00", "前半"), ("20:00", "後半")]);
+        let mut asked = Vec::new();
+        make(&text, |prompt| {
+            asked.push(prompt.to_string());
+            Ok("x".into())
+        })
+        .unwrap();
+        let merge = asked.last().unwrap();
+        assert!(merge.contains("区切りの見出しは残さず"), "{merge}");
+        assert!(merge.contains("誰かがすると決めたことだけ"), "{merge}");
+    }
+
+    #[test]
+    fn test_後処理で区切りの見出しを外す() {
+        assert_eq!(
+            tidy(
+                "## 話されたこと\n\n### 区切り 1\n\n- [00:00] 一\n\n### 区切り 2\n\n- [20:00] 二\n"
+            ),
+            "## 話されたこと\n\n- [00:00] 一\n\n- [20:00] 二\n"
+        );
+    }
+
+    #[test]
     fn test_後処理は中身の_なし_を消さない() {
         // 「なし」だけの項目でなければ触らない
         assert_eq!(
             tidy("- [ ] なしにした件を確かめる\n"),
             "- [ ] なしにした件を確かめる\n"
         );
+    }
+
+    /// 本物の Ollama で議事録を作る（手で回す。起こした文は環境変数で渡す）。21 分の録音でも
+    /// 2 段を通すため、区切りを 10 分にする:
+    /// `OBOEGAKI_MINUTES_SAMPLE=<[mm:ss] の行のファイル> cargo test minutes::tests::test_本物 -- --ignored --nocapture`
+    #[test]
+    #[ignore = "本物の Ollama と起こした文が要る"]
+    fn test_本物のモデルで_2_段の議事録を作る() {
+        let path = std::env::var("OBOEGAKI_MINUTES_SAMPLE").expect("OBOEGAKI_MINUTES_SAMPLE");
+        let model = std::env::var("OBOEGAKI_MINUTES_MODEL").unwrap_or_else(|_| "gemma3:12b".into());
+        let text = std::fs::read_to_string(path).unwrap();
+        let started = std::time::Instant::now();
+        let mut stages = Vec::new();
+        let minutes = make_chunked(
+            &text,
+            10.0 * 60.0,
+            CHUNK_CHARS,
+            |prompt| {
+                crate::llm::generate(
+                    crate::llm::Generation {
+                        port: 11434,
+                        model: &model,
+                        prompt,
+                        context: 16_384,
+                        timeout: std::time::Duration::from_secs(600),
+                        keep_alive: "1m",
+                    },
+                    |_| {},
+                    || false,
+                )
+                .map_err(|error| error.to_string())
+            },
+            |stage| stages.push((stage, started.elapsed())),
+        )
+        .unwrap();
+        println!(
+            "{model}: {:?} / 段 {stages:?}\n----\n{minutes}",
+            started.elapsed()
+        );
+        assert!(minutes.contains("## 要旨"));
+        assert!(!minutes.contains("\\["), "崩れたチェックボックスが残った");
     }
 }

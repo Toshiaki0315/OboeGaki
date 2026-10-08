@@ -132,6 +132,27 @@ impl Vault {
         Ok(path)
     }
 
+    /// 保管フォルダの外のファイルを添付に写す（文字起こしの元の録音。ADR-0070 決定 4）。
+    /// 名前は日時 + 元の拡張子。**読み込まずにファイルからファイルへ写す**（動画は大きい）。
+    /// 失敗したら半端なものを残さない
+    pub fn copy_attachment(&self, source: &Path) -> io::Result<PathBuf> {
+        if !source.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("写すファイルがありません: {}", source.display()),
+            ));
+        }
+        fs::create_dir_all(self.attachments_dir())?;
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let suffix = attachment_suffix(&source.to_string_lossy());
+        let target = unique_path(&self.attachments_dir(), &stamp, &suffix, None);
+        if let Err(error) = fs::copy(source, &target) {
+            let _ = fs::remove_file(&target);
+            return Err(error);
+        }
+        Ok(target)
+    }
+
     /// 本文へ挿す Markdown。**vault からの相対パス**で書く。
     /// 絶対パスで書くと、保管フォルダごと移したときに全部切れる。
     pub fn attachment_link(&self, path: &Path) -> String {
@@ -307,5 +328,32 @@ mod tests {
         assert_eq!(moved.len(), 1);
         assert!(!orphan.exists());
         assert!(note.is_file()); // ノートは添付ではない
+    }
+
+    // ---------------------------------- 元のファイルを写す（TASKS 28-4 / ADR-0070 決定 4）
+
+    #[test]
+    fn test_copy_attachment_元のファイルを拡張子ごと写す() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let source = outside.path().join("定例 会議.M4A");
+        std::fs::write(&source, b"audio").unwrap();
+        let vault = Vault::new(root.path());
+        let copied = vault.copy_attachment(&source).unwrap();
+        assert_eq!(copied.parent().unwrap(), vault.attachments_dir());
+        assert_eq!(copied.extension().unwrap(), "m4a");
+        assert_eq!(std::fs::read(&copied).unwrap(), b"audio");
+        assert!(source.exists(), "元は残す（写すだけ）");
+    }
+
+    #[test]
+    fn test_copy_attachment_無いファイルは断り_半端なものを残さない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        assert!(vault.copy_attachment(Path::new("/無い/録音.m4a")).is_err());
+        let left = std::fs::read_dir(vault.attachments_dir())
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        assert_eq!(left, 0);
     }
 }

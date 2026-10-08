@@ -144,3 +144,19 @@ mod tests {
         assert!(denied.contains("大きすぎます"), "{denied}");
     }
 }
+
+/// ファイルの大きさ（バイト）。添付に写す前に見せる（文字起こし。ADR-0070 決定 4）。
+/// 選ぶのはユーザーで、読むだけなので封じ込めの対象にしない
+#[tauri::command]
+pub fn file_size(path: String) -> CmdResult<u64> {
+    Ok(fs::metadata(&path)?.len())
+}
+
+/// 保管フォルダの外のファイルを添付に写し、保管フォルダからの相対パスを返す
+#[tauri::command]
+pub async fn attachment_copy(root: String, path: String) -> CmdResult<String> {
+    let vault = Vault::new(&root);
+    let copied = vault.copy_attachment(std::path::Path::new(&path))?;
+    let relative = copied.strip_prefix(vault.root()).unwrap_or(&copied);
+    Ok(relative.to_string_lossy().replace('\\', "/"))
+}

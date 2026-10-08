@@ -117,8 +117,14 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
             "import-image",
             "画像（PNG・JPEG・HEIC・TIFF）…",
             None,
-        )?)
-        .build()?;
+        )?);
+    // 文字起こし（ADR-0070 決定 1）は macOS 26 の SpeechAnalyzer だけ。使えない Mac には出さない
+    let import = if crate::transcribe::os_supported() {
+        import.item(&item("import-audio", "音声・動画（文字起こし）…", None)?)
+    } else {
+        import
+    }
+    .build()?;
 
     let file = SubmenuBuilder::new(handle, "ファイル")
         .item(&item("new-note", "新規ノート", Some("CmdOrCtrl+N"))?)

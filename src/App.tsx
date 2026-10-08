@@ -51,6 +51,8 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { QiitaPublishDialog } from "./components/QiitaPublishDialog";
 import { UnlockDialog } from "./components/UnlockDialog";
 import { LockPasswordDialog } from "./components/LockPasswordDialog";
+import { TranscribeProgressDialog } from "./components/TranscribeProgressDialog";
+import { useTranscribe } from "./hooks/useTranscribe";
 import { useAutoLock } from "./hooks/useAutoLock";
 import { qiitaDraft } from "./lib/qiita";
 import { parseFrontMatterMeta } from "./markdown/front-matter";
@@ -1170,6 +1172,16 @@ function App() {
     setDialog({ kind: "lockPassword", mode: "change", path: null });
   }
 
+  // 音声・動画から議事録のノートを作る（ADR-0070 / 28-4）
+  const transcribe = useTranscribe({
+    vaultRoot,
+    settings,
+    defaultFolder: () => newNoteFolder(folderFilter),
+    refreshLists: refresh,
+    openNote,
+    onStatus: setStatus,
+  });
+
   // 触らないまま 5 分で施錠する（ADR-0062 決定 2: 席を外した隙に読まれない）
   useAutoLock({
     unlocked,
@@ -1686,6 +1698,7 @@ function App() {
         void runWithStatus(setStatus, "読み込み", () => handleImport("pdf")),
       "import-pptx": () =>
         void runWithStatus(setStatus, "読み込み", () => handleImport("pptx")),
+      "import-audio": () => void transcribe.start(),
       "import-image": () =>
         void runWithStatus(setStatus, "読み込み", () => handleImport("image")),
       "export-qiita": () =>
@@ -2637,6 +2650,12 @@ function App() {
               title={noteStem(dialog.path)}
               onUnlock={(password) => unlockAndOpen(dialog.path, password)}
               onClose={closeDialog}
+            />
+          )}
+          {transcribe.progress && (
+            <TranscribeProgressDialog
+              progress={transcribe.progress}
+              onStop={() => void transcribe.stop()}
             />
           )}
           {dialog?.kind === "lockPassword" && (
