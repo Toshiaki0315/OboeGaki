@@ -28,6 +28,7 @@ pub mod tags;
 pub mod tasks;
 pub mod template;
 pub mod text_rewrite;
+pub mod transcribe;
 pub mod vault;
 pub mod vault_lock;
 pub mod watcher;
@@ -181,6 +182,9 @@ pub fn run() {
             commands::note_lock,
             commands::note_unlock,
             commands::lock_change_password,
+            commands::transcribe_probe,
+            commands::transcribe_file,
+            commands::transcribe_stop,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

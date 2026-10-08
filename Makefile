@@ -1,6 +1,6 @@
 # 覚書（OboeGaki）Tauri 版の開発コマンド入口。hitofude と同じ流儀。
 
-.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg samples bump icon mcp
+.PHONY: setup run test test-rust check ci fmt bench-search bench-startup bench app dmg samples bump icon mcp transcriber
 
 setup:            ## 初回セットアップ
 	npm install
@@ -10,7 +10,17 @@ setup:            ## 初回セットアップ
 # tauri.conf.json の devUrl は静的なので、同じ値を --config で被せて揃える。
 OBOEGAKI_DEV_PORT ?= 1430
 
-run:              ## アプリ起動（Tauri dev = WKWebView。初回は Rust ビルドで数分）
+# 文字起こしの部品（ADR-0070）。SpeechAnalyzer は Swift からしか呼べないので Swift で組む。
+# **macOS 26 の SDK（Xcode 26）が要る**ので CI（cargo test）には入れず、ここだけで組む。
+# 置き場は本体の隣（dev は target/debug、.app は tauri.conf.json の bundle.macOS.files が写す）
+TRANSCRIBER := src-tauri/target/release/oboegaki-transcribe
+transcriber:      ## 文字起こしの部品（Swift）を組む（macOS 26 の SDK が要る）
+	@mkdir -p src-tauri/target/release src-tauri/target/debug
+	xcrun swiftc -O -parse-as-library -target $(shell uname -m)-apple-macos13 \
+	  src-tauri/transcribe/main.swift -o $(TRANSCRIBER)
+	cp $(TRANSCRIBER) src-tauri/target/debug/oboegaki-transcribe
+
+run: transcriber ## アプリ起動（Tauri dev = WKWebView。初回は Rust ビルドで数分）
 	OBOEGAKI_DEV_PORT=$(OBOEGAKI_DEV_PORT) npm run tauri dev -- \
 	  --config '{"build":{"devUrl":"http://localhost:$(OBOEGAKI_DEV_PORT)"}}'
 
@@ -46,7 +56,7 @@ APP := src-tauri/target/release/bundle/macos/OboeGaki.app
 # 「について」に出すビルド日時（build.rs が受け取る。渡さなければ「開発版」）
 BUILD_TIME := $(shell date '+%Y-%m-%d %H:%M')
 
-app:              ## アプリ（.app）を組む。DMG は作らない
+app: transcriber ## アプリ（.app）を組む。DMG は作らない
 	OBOEGAKI_BUILD_TIME="$(BUILD_TIME)" npm run tauri build -- --bundles app
 	@echo "アプリ: $(APP)"
 	@echo "開く:   open $(APP)"
@@ -86,7 +96,7 @@ icon:             ## アプリのアイコンを描き直して全サイズを�
 	swift scripts/make_icon.swift src-tauri/icons/icon-source.png
 	npx tauri icon src-tauri/icons/icon-source.png -o src-tauri/icons
 
-dmg:              ## インストール用 DMG を新規ビルドから作る（hitofude の make dmg と同役）
+dmg: transcriber ## インストール用 DMG を新規ビルドから作る（hitofude の make dmg と同役）
 	OBOEGAKI_BUILD_TIME="$(BUILD_TIME)" npm run tauri build
 	@echo "DMG: src-tauri/target/release/bundle/dmg/"
 	@echo "署名・公証は Apple Developer アカウント取得後（hitofude TASKS 0-C と同じ）"

@@ -18,6 +18,7 @@ mod qiita;
 mod recovery;
 mod system;
 mod text;
+mod transcribe;
 mod trash;
 
 pub use app::*;
@@ -31,6 +32,7 @@ pub use qiita::*;
 pub use recovery::*;
 pub use system::*;
 pub use text::*;
+pub use transcribe::*;
 pub use trash::*;
 
 use crate::index_db::IndexDb;
@@ -143,6 +145,10 @@ pub struct WatchState {
     /// 施錠ノートの鍵（ADR-0062）。**解錠している間だけ**ここにあり、施錠・別の
     /// 保管フォルダを開く・アプリを閉じると消える（落とすと 0 で塗る）。画面には渡さない
     key: Mutex<Option<crate::lock::Key>>,
+    /// 文字起こしが走っているか（ADR-0070）。二重に始めない
+    transcribing: Arc<std::sync::atomic::AtomicBool>,
+    /// 文字起こしの「止める」が押されたか。始めるたびに下ろす
+    stop_transcribing: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for WatchState {
@@ -156,6 +162,8 @@ impl Default for WatchState {
             generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             stop_generating: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             key: Mutex::new(None),
+            transcribing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            stop_transcribing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }

@@ -1842,7 +1842,9 @@ PowerPoint・印刷）は docs/manual_test.md の各項目で確かめる。見�
 macOS 26 の SpeechAnalyzer だけ・議事録のモデルは別に選べる・区切って 2 段・元のファイルは
 添付に写す（決定 1〜4）。
 
-- [ ] **28-1. 文字起こしの実行ファイル（Swift）と Rust からの呼び出し**
+- [x] **28-1. 文字起こしの実行ファイル（Swift）と Rust からの呼び出し**（2026-10-09。`src-tauri/transcribe/main.swift`
+      → `make transcriber`。.app へは tauri.conf.json の bundle.macOS.files が写す。CI は Swift を組まない。
+      Rust の transcribe.rs は偽の実行ファイルでテスト。本物で 21 分を 9.0 秒）
       `oboegaki-transcribe`（パス → `[mm:ss] 文` の行）を組み、`Contents/MacOS/` に同梱する
       （ビルドの手順・`make app`・CI）。Rust は子プロセスで呼び、行を受けながら進み具合を返す。
       止められること。macOS 26 未満・言語データが無いときを見分けて返す（ダウンロードは確かめてから）
