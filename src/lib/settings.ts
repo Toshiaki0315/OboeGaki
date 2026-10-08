@@ -70,6 +70,9 @@ export type Settings = {
   /// アシスタントのモデル名（ADR-0025。**空にはできない** — 空のまま
   /// 保存できると、押しても何も起きないアプリになる）。
   llmModel: string;
+  /// 議事録のモデル（TASKS 28-5 / ADR-0070 決定 2）。空なら自動（minutesModelOf）。
+  /// 普段の要約は速い小さいモデル、議事録は作り話をしにくい大きいモデルにできるように
+  minutesModel: string;
   /// Ollama のポート。**送り先は 127.0.0.1 に固定**で、これは同じ機械の
   /// 別の窓口を指すだけ。
   llmPort: number;
@@ -125,6 +128,7 @@ export const DEFAULT_SETTINGS: Settings = {
   slideTemplate: "",
   assistantEnabled: true, // 今までどおり使える状態から始める
   llmModel: "gemma3:4b", // ADR-0025 の既定（1b は日本語が壊れる）
+  minutesModel: "", // 自動（gemma3:12b が入っていればそれ）
   llmPort: 11434,
   llmContext: 8192, // 既定の 4k では長いノートが黙って切れる
   llmTimeoutMinutes: 10,
@@ -132,6 +136,21 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const KEEP_ALIVE_CHOICES = ["0", "1m", "5m", "30m"];
+
+/// 議事録に勧めるモデル（スパイク #4: gemma3:4b は話に無い「やること」を作り、12b は作らなかった）
+export const RECOMMENDED_MINUTES_MODEL = "gemma3:12b";
+
+/// 議事録に使うモデル（ADR-0070 決定 2）。選んであればそれ、自動なら gemma3:12b が
+/// 入っていればそれ、無ければ普段のモデル
+export function minutesModelOf(
+  settings: Pick<Settings, "minutesModel" | "llmModel">,
+  installed: readonly string[],
+): string {
+  if (settings.minutesModel) return settings.minutesModel;
+  return installed.includes(RECOMMENDED_MINUTES_MODEL)
+    ? RECOMMENDED_MINUTES_MODEL
+    : settings.llmModel;
+}
 
 const WIDTHS: Record<ContentWidth, string> = {
   narrow: "46rem", // 2026-09-10 までの「標準」
@@ -229,6 +248,8 @@ export function loadSettings(storage: StorageLike): Settings {
       typeof stored.llmModel === "string" && stored.llmModel.trim()
         ? stored.llmModel.trim()
         : DEFAULT_SETTINGS.llmModel,
+    minutesModel:
+      typeof stored.minutesModel === "string" ? stored.minutesModel.trim() : "",
     llmPort: readNumber(stored.llmPort, 1, 65535, DEFAULT_SETTINGS.llmPort),
     llmContext: readNumber(
       stored.llmContext,

@@ -86,6 +86,17 @@ describe("AssistantPreferences", () => {
     expect(screen.queryByText(/Ollama に入っていません/)).toBeNull();
   });
 
+  test("test_議事録のモデルは別に選べ_空なら自動と書く（28-5）", () => {
+    const props = setup({ installedModels: ["gemma3:4b", "gemma3:12b"] });
+    const field = screen.getByLabelText("議事録のモデル") as HTMLInputElement;
+    expect(field.value).toBe("");
+    expect(field.placeholder).toBe("自動（gemma3:12b）");
+    fireEvent.change(field, { target: { value: "qwen3:8b" } });
+    expect(props.onChangeSettings).toHaveBeenCalledWith({
+      minutesModel: "qwen3:8b",
+    });
+  });
+
   test("test_文字の読み取りの選択", () => {
     const props = setup();
     fireEvent.change(screen.getByLabelText(/文字の読み取り/), {

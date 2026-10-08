@@ -2,19 +2,20 @@
 
 import { describe, expect, it, test } from "vitest";
 import {
-  clampPaneWidth,
   CONTENT_WIDTHS,
-  contentWidthCss,
   DEFAULT_SETTINGS,
-  cleanSettingsPatch,
   HISTORY_CHOICES,
-  loadSettings,
   MAX_PANE_WIDTH,
   MIN_PANE_WIDTH,
   OCR_ENGINES,
+  SETTINGS_KEY,
+  clampPaneWidth,
+  cleanSettingsPatch,
+  contentWidthCss,
+  loadSettings,
+  minutesModelOf,
   resolveTheme,
   saveSettings,
-  SETTINGS_KEY,
 } from "./settings";
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -318,5 +319,32 @@ describe("cleanSettingsPatch（数値欄の読めない値だけ捨てる）", (
       theme: "dark",
       lineNumbers: true,
     });
+  });
+});
+
+describe("議事録のモデル（TASKS 28-5 / ADR-0070 決定 2）", () => {
+  it("test_既定は空_自動", () => {
+    expect(DEFAULT_SETTINGS.minutesModel).toBe("");
+    const storage = fakeStorage({
+      [SETTINGS_KEY]: '{"minutesModel":"  qwen3:8b "}',
+    });
+    expect(loadSettings(storage).minutesModel).toBe("qwen3:8b");
+    const broken = fakeStorage({ [SETTINGS_KEY]: '{"minutesModel":3}' });
+    expect(loadSettings(broken).minutesModel).toBe("");
+  });
+
+  it("test_自動なら_gemma3_12b_があればそれ_無ければ普段のモデル", () => {
+    const auto = { ...DEFAULT_SETTINGS, minutesModel: "" };
+    expect(minutesModelOf(auto, ["gemma3:4b", "gemma3:12b"])).toBe(
+      "gemma3:12b",
+    );
+    expect(minutesModelOf(auto, ["gemma3:4b"])).toBe("gemma3:4b");
+    // まだ聞けていない（空）なら普段のモデル
+    expect(minutesModelOf(auto, [])).toBe(auto.llmModel);
+  });
+
+  it("test_選んであればそれを使う", () => {
+    const chosen = { ...DEFAULT_SETTINGS, minutesModel: "qwen3:8b" };
+    expect(minutesModelOf(chosen, ["gemma3:12b"])).toBe("qwen3:8b");
   });
 });

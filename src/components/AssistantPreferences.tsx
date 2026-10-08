@@ -4,6 +4,7 @@
 import {
   CONTEXT_CHOICES,
   KEEP_ALIVE_CHOICES,
+  minutesModelOf,
   type OcrEngine,
   type Settings,
 } from "../lib/settings";
@@ -73,6 +74,18 @@ export function AssistantPreferences({
               <span className="pref-unit">（Ollama に入っていません）</span>
             ) : null}
           </span>
+        </label>
+        {/* 議事録だけ別のモデル（28-5 / ADR-0070 決定 2）。空なら自動 */}
+        <label>
+          <span>議事録のモデル</span>
+          <input
+            value={settings.minutesModel}
+            placeholder={`自動（${minutesModelOf({ ...settings, minutesModel: "" }, installedModels)}）`}
+            list="llm-model-choices"
+            onChange={(event) =>
+              onChangeSettings({ minutesModel: event.currentTarget.value })
+            }
+          />
         </label>
         <label>
           <span>ポート</span>
