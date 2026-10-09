@@ -189,6 +189,7 @@ pub fn run() {
             commands::minutes_make,
             commands::file_size,
             commands::attachment_copy,
+            commands::attachment_open,
             commands::llm_available,
             commands::llm_models,
             commands::llm_loaded,

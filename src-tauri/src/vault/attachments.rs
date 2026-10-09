@@ -153,6 +153,39 @@ impl Vault {
         Ok(target)
     }
 
+    /// Cmd+クリックで既定のアプリに渡してよい添付か（ADR-0070「あとで聞き直せる」）。
+    /// 本文に仕込んだ相対パスで任意のファイル（アプリ・スクリプト）を動かされないよう、
+    /// **`attachments/` の中**（リンクを辿った先も）で、**音声・動画・画像・PDF** だけを通す
+    pub fn openable_attachment(&self, relative: &str) -> io::Result<PathBuf> {
+        const OPENABLE: [&str; 17] = [
+            "m4a", "mp3", "wav", "aac", "aiff", "caf", "mp4", "mov", "m4v", "png", "jpg", "jpeg",
+            "gif", "heic", "tiff", "webp", "pdf",
+        ];
+        let refuse = |why: &str| io::Error::new(io::ErrorKind::PermissionDenied, why.to_string());
+        let candidate = self.root.join(relative);
+        let (Ok(real), Ok(attachments)) = (
+            candidate.canonicalize(),
+            self.attachments_dir().canonicalize(),
+        ) else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("添付が見つかりません: {relative}"),
+            ));
+        };
+        if !real.starts_with(&attachments) || !real.is_file() {
+            return Err(refuse("添付の中のファイルだけを開けます"));
+        }
+        let extension = real
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !OPENABLE.contains(&extension.as_str()) {
+            return Err(refuse("開けるのは音声・動画・画像・PDF の添付だけです"));
+        }
+        Ok(real)
+    }
+
     /// 本文へ挿す Markdown。**vault からの相対パス**で書く。
     /// 絶対パスで書くと、保管フォルダごと移したときに全部切れる。
     pub fn attachment_link(&self, path: &Path) -> String {
@@ -355,5 +388,54 @@ mod tests {
             .map(|entries| entries.count())
             .unwrap_or(0);
         assert_eq!(left, 0);
+    }
+
+    // ------------------------------- Cmd+クリックで添付を開く（ADR-0070 の「聞き直せる」）
+
+    #[test]
+    fn test_openable_attachment_添付の音声_動画_画像_PDF_は開ける() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        std::fs::create_dir_all(vault.attachments_dir()).unwrap();
+        for name in ["録音.m4a", "動画.MP4", "図.png", "資料.pdf"] {
+            std::fs::write(vault.attachments_dir().join(name), b"x").unwrap();
+            let found = vault
+                .openable_attachment(&format!("attachments/{name}"))
+                .unwrap();
+            assert!(found.ends_with(name), "{found:?}");
+        }
+    }
+
+    #[test]
+    fn test_openable_attachment_アプリやスクリプトは開かない() {
+        let root = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        std::fs::create_dir_all(vault.attachments_dir()).unwrap();
+        for name in ["動く.command", "動く.sh", "動く.app", "名前だけ"] {
+            std::fs::write(vault.attachments_dir().join(name), b"x").unwrap();
+            assert!(
+                vault
+                    .openable_attachment(&format!("attachments/{name}"))
+                    .is_err(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_openable_attachment_添付の外と無いものは開かない() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let vault = Vault::new(root.path());
+        std::fs::create_dir_all(vault.attachments_dir()).unwrap();
+        std::fs::write(root.path().join("上.mp4"), b"x").unwrap();
+        assert!(vault.openable_attachment("attachments/../上.mp4").is_err());
+        assert!(vault.openable_attachment("上.mp4").is_err());
+        assert!(vault.openable_attachment("attachments/無い.mp4").is_err());
+        // 添付の中に置いたリンクが外を指していても開かない
+        let target = outside.path().join("外.mp4");
+        std::fs::write(&target, b"x").unwrap();
+        std::os::unix::fs::symlink(&target, vault.attachments_dir().join("リンク.mp4")).unwrap();
+        assert!(vault.openable_attachment("attachments/リンク.mp4").is_err());
     }
 }

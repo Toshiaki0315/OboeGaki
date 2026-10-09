@@ -18,11 +18,21 @@ import { NotePeek } from "./note-peek";
 export type Activation =
   | { kind: "link"; payload: string } // 既定のブラウザで開く
   | { kind: "tag"; payload: string } // そのタグで一覧を絞り込む
-  | { kind: "note"; payload: string }; // そのノートを開く（無ければ作る）
+  | { kind: "note"; payload: string } // そのノートを開く（無ければ作る）
+  | { kind: "file"; payload: string }; // 添付を既定のアプリで開く（保管フォルダからの相対）
 
 // 本文に仕込んだものが動く。相対パスは vault 内の参照であって
 // ブラウザへ渡すものではない（参照実装 _is_openable と同じ）
 const ALLOWED_SCHEMES = /^(https?:\/\/|mailto:)/i;
+
+/// 添付（`attachments/…`）だけは保管フォルダの中でも開く（録音を聞き直す。ADR-0070）。
+/// 外へ出る `..` は通さない。**開いてよい種類かは Rust が拡張子で決める**（attachment_open）
+function attachmentOf(url: string): string | null {
+  const bare = url.replace(/^<(.*)>$/, "$1");
+  if (!bare.startsWith("attachments/")) return null;
+  if (bare.split("/").some((part) => part === ".." || part === "")) return null;
+  return bare;
+}
 
 export function activationAt(
   state: EditorState,
@@ -59,9 +69,9 @@ export function activationAt(
         const urlNode = node.getChild("URL");
         if (!urlNode) return null;
         const url = state.sliceDoc(urlNode.from, urlNode.to).trim();
-        return ALLOWED_SCHEMES.test(url)
-          ? { kind: "link", payload: url }
-          : null;
+        if (ALLOWED_SCHEMES.test(url)) return { kind: "link", payload: url };
+        const file = attachmentOf(url);
+        return file ? { kind: "file", payload: file } : null;
       }
       case "Image":
         return null; // 画像は開かない（参照実装と同じ）

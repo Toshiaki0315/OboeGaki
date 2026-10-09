@@ -126,8 +126,33 @@ describe("activationAt", () => {
       kind: "link",
       payload: "mailto:a@example.com",
     });
-    const relative = "添付は [図](attachments/a.png) にある";
-    expect(at(relative, relative.indexOf("図"))).toBeNull();
+    const relative = "ほかは [メモ](notes/a.md) にある";
+    expect(at(relative, relative.indexOf("メモ"))).toBeNull();
+  });
+
+  test("添付へのリンクはファイルとして開く（録音を聞き直す。ADR-0070）", () => {
+    const doc = "[元の動画（1 分）](attachments/20261009-094159.mp4)";
+    expect(at(doc, doc.indexOf("元"))).toEqual({
+      kind: "file",
+      payload: "attachments/20261009-094159.mp4",
+    });
+    // 空白や括弧で <…> に包んだ名前も
+    const wrapped = "[録音](<attachments/会議 (1).m4a>)";
+    expect(at(wrapped, wrapped.indexOf("録"))).toEqual({
+      kind: "file",
+      payload: "attachments/会議 (1).m4a",
+    });
+  });
+
+  test("添付の外を指す相対パスは開かない", () => {
+    for (const url of [
+      "../attachments/a.mp4",
+      "/etc/hosts",
+      "attachments/../a.mp4",
+    ]) {
+      const doc = `[x](${url})`;
+      expect(at(doc, 1)).toBeNull();
+    }
   });
 
   test("オートリンクも開ける", () => {

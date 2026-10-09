@@ -160,3 +160,18 @@ pub async fn attachment_copy(root: String, path: String) -> CmdResult<String> {
     let relative = copied.strip_prefix(vault.root()).unwrap_or(&copied);
     Ok(relative.to_string_lossy().replace('\\', "/"))
 }
+
+/// 添付を既定のアプリで開く（Cmd+クリック。録音を聞き直す。ADR-0070）。開いてよいかは
+/// Vault::openable_attachment が決める（添付の中の音声・動画・画像・PDF だけ）
+#[tauri::command]
+pub fn attachment_open(root: String, path: String) -> CmdResult<()> {
+    let file = Vault::new(&root).openable_attachment(&path)?;
+    let status = std::process::Command::new("/usr/bin/open")
+        .arg(&file)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(CmdError(format!("開けませんでした: {}", file.display())))
+    }
+}

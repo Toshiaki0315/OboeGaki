@@ -143,6 +143,7 @@ import {
   historyRead,
   historyUsage,
   NOTE_LOCKED,
+  attachmentOpen,
   lockChangePassword,
   lockForget,
   lockState,
@@ -1570,6 +1571,13 @@ function App() {
     }
     if (action.kind === "tag") {
       filterByTag(action.payload);
+      return;
+    }
+    if (action.kind === "file") {
+      // 添付（録音・動画など）を既定のアプリで（ADR-0070）。断られたら言う
+      void attachmentOpen(root, action.payload).catch((error: unknown) =>
+        setStatus(`添付を開けませんでした: ${String(error)}`),
+      );
       return;
     }
     // 名前は NFC で来る（wikilinkTarget）。題名側も寄せて比べる — macOS の

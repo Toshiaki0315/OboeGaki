@@ -75,3 +75,12 @@ export function subscribeTranscribe(handlers: {
   ];
   return () => stops.forEach((stop) => stop());
 }
+
+/// 添付を既定のアプリで開く（Cmd+クリック。録音を聞き直す）。開いてよいのは添付の中の
+/// 音声・動画・画像・PDF だけ（Rust が決める）
+export async function attachmentOpen(
+  root: string,
+  path: string,
+): Promise<void> {
+  await invoke("attachment_open", { root, path });
+}
