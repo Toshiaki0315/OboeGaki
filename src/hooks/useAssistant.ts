@@ -1,4 +1,4 @@
-// アシスタント（Ollama）の状態と処理（ADR-0049）。要約 / レビュー（L-1）・
+// アシスタント（Ollama / macOS の fm。ADR-0071）の状態と処理（ADR-0049）。要約 / レビュー（L-1）・
 // 質問（L-2 / ADR-0025）・関連（L-3）・止める・降ろす。Rust への包みは
 // lib/ipc で、ここは判断と状態だけを持つ。**本文は手（noteText）で受け取り、
 // EditorView は持たない**（T2）。
@@ -11,6 +11,7 @@ import {
   loadingNotice,
 } from "../lib/assistant-text";
 import {
+  fmAvailable,
   llmAvailable,
   llmGenerate,
   llmLoaded,
@@ -107,11 +108,15 @@ export function useAssistant({
     }
   }, [currentPath, thinkingRef]);
 
-  // 開いたときだけ動いているか確かめる（**押してから断らない**）
+  // 開いたときだけ動いているか確かめる（**押してから断らない**）。頼み先ごとに見る先が違う
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    void llmAvailable(settings.llmPort)
+    const probe =
+      settings.llmEngine === "fm"
+        ? fmAvailable()
+        : llmAvailable(settings.llmPort);
+    void probe
       .then((found) => {
         if (alive) setLlmReady(found);
       })
@@ -121,7 +126,7 @@ export function useAssistant({
     return () => {
       alive = false;
     };
-  }, [open, settings.llmPort]);
+  }, [open, settings.llmPort, settings.llmEngine]);
 
   // 流れてきたぶんから順に出す（最初の 1 文字まで数秒あり、黙って待たせない）
   useEffect(
@@ -139,6 +144,7 @@ export function useAssistant({
               reason,
               settingsRef.current.llmTimeoutMinutes,
               settingsRef.current.llmModel,
+              settingsRef.current.llmEngine,
             ),
           );
         },
@@ -253,6 +259,8 @@ export function useAssistant({
       return;
     }
     if (currentPathRef.current === askedOn) stale.current = false; // 上と同じ理由
+    // fm にはモデルの読み込み待ちを尋ねる先が無い（ADR-0071）
+    if (settings.llmEngine === "fm") return;
     // 載っていなければ読み込みから（6 分の沈黙は壊れて見える）。
     // **先に届いた断りや答えを上書きしない**（loadingNotice が判断する）—
     // モデル名の間違いの 404 は、この確認より速く返ることがある
@@ -264,6 +272,11 @@ export function useAssistant({
   async function unloadModel() {
     if (!settings.assistantEnabled) {
       onStatus("アシスタントは環境設定で切ってあります");
+      return;
+    }
+    // fm はモデルを載せたままにしない（降ろすものが無い。ADR-0071）
+    if (settings.llmEngine === "fm") {
+      onStatus("macOS の AI（fm）には降ろす操作が要りません");
       return;
     }
     const done = await llmUnload(settings.llmPort, settings.llmModel);

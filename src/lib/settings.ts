@@ -19,6 +19,10 @@ export type LineSpacing = "tight" | "normal" | "relaxed";
 /// （速くて正確）。ローカルLLM は画像を読めるモデルを選べる人向け
 export type OcrEngine = "mac" | "llm";
 export const OCR_ENGINES: OcrEngine[] = ["mac", "llm"];
+/// アシスタントと議事録の頼み先（ADR-0071）。既定は Ollama（今までどおり）。
+/// fm は macOS 27 の Foundation Models（端末内のモデル）
+export type LlmEngine = "ollama" | "fm";
+export const LLM_ENGINES: LlmEngine[] = ["ollama", "fm"];
 /// 本文の横幅（ADR-0018）。**px では持たない** — 名前で選ばせて、実際の
 /// 幅は対応表が決める。
 export type ContentWidth = "narrow" | "standard" | "wide" | "wider" | "full";
@@ -67,6 +71,8 @@ export type Settings = {
   /// 設定も押せなくし、`Cmd+6` でも出さない。使わない人の画面に、使えない
   /// ものを置いておかない。
   assistantEnabled: boolean;
+  /// 頼み先。fm を選ぶと下の Ollama の項（モデル・ポートなど）は効かない
+  llmEngine: LlmEngine;
   /// アシスタントのモデル名（ADR-0025。**空にはできない** — 空のまま
   /// 保存できると、押しても何も起きないアプリになる）。
   llmModel: string;
@@ -127,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
   confirmHandoff: true,
   slideTemplate: "",
   assistantEnabled: true, // 今までどおり使える状態から始める
+  llmEngine: "ollama",
   llmModel: "gemma3:4b", // ADR-0025 の既定（1b は日本語が壊れる）
   minutesModel: "", // 自動（gemma3:12b が入っていればそれ）
   llmPort: 11434,
@@ -243,6 +250,7 @@ export function loadSettings(storage: StorageLike): Settings {
       stored.assistantEnabled,
       DEFAULT_SETTINGS.assistantEnabled,
     ),
+    llmEngine: pick(stored.llmEngine, LLM_ENGINES, DEFAULT_SETTINGS.llmEngine),
     // 空のモデル名は既定へ戻す（押しても何も起きないアプリにしない）
     llmModel:
       typeof stored.llmModel === "string" && stored.llmModel.trim()

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("../lib/ipc", () => ({
   llmAvailable: vi.fn(),
+  fmAvailable: vi.fn(),
   llmGenerate: vi.fn(),
   llmStop: vi.fn(),
   llmLoaded: vi.fn(),
@@ -293,5 +294,56 @@ describe("useAssistant", () => {
     const { result } = renderHook(() => useAssistant(given));
     await act(() => result.current.unloadModel());
     expect(given.onStatus).toHaveBeenCalledWith("モデルを降ろしました");
+  });
+
+  // ---- 頼み先が macOS の fm（ADR-0071）
+  const fmSettings = {
+    ...DEFAULT_SETTINGS,
+    assistantEnabled: true,
+    llmEngine: "fm" as const,
+  };
+
+  test("test_fm なら Ollama ではなく fm があるかを確かめる", async () => {
+    mocked.fmAvailable.mockResolvedValue(false);
+    const { result } = renderHook(() =>
+      useAssistant(input({ settings: fmSettings })),
+    );
+    await waitFor(() => expect(result.current.llmReady).toBe(false));
+    expect(mocked.fmAvailable).toHaveBeenCalled();
+    expect(mocked.llmAvailable).not.toHaveBeenCalled();
+  });
+
+  test("test_fm ではモデルの読み込み待ちを Ollama に尋ねない", async () => {
+    mocked.fmAvailable.mockResolvedValue(true);
+    const { result } = renderHook(() =>
+      useAssistant(input({ settings: fmSettings })),
+    );
+    await act(() => result.current.ask("summary"));
+    expect(mocked.llmGenerate).toHaveBeenCalledWith(
+      fmSettings,
+      expect.objectContaining({ task: "summary" }),
+    );
+    expect(mocked.llmLoaded).not.toHaveBeenCalled();
+    expect(result.current.answer).toBe("");
+  });
+
+  test("test_fm の失敗は fm の言葉で出す", async () => {
+    mocked.fmAvailable.mockResolvedValue(true);
+    const { result } = renderHook(() =>
+      useAssistant(input({ settings: fmSettings })),
+    );
+    act(() => handlers!.onFailed("not-running"));
+    expect(result.current.answer).toContain("macOS 27");
+  });
+
+  test("test_fm ではモデルを降ろしに行かない", async () => {
+    mocked.fmAvailable.mockResolvedValue(true);
+    const given = input({ settings: fmSettings });
+    const { result } = renderHook(() => useAssistant(given));
+    await act(() => result.current.unloadModel());
+    expect(mocked.llmUnload).not.toHaveBeenCalled();
+    expect(given.onStatus).toHaveBeenCalledWith(
+      expect.stringContaining("macOS"),
+    );
   });
 });

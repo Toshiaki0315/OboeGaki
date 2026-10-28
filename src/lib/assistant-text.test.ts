@@ -64,3 +64,17 @@ describe("appendChunk", () => {
     expect(appendChunk(LOADING_NOTICE, "要約です")).toBe("要約です");
   });
 });
+
+describe("llmErrorText（頼み先が macOS の fm。ADR-0071）", () => {
+  it("fm が無ければ macOS 27 が要ると言い_Ollama を案内しない", () => {
+    const text = llmErrorText("not-running", 10, "gemma3:4b", "fm");
+    expect(text).toContain("macOS 27");
+    expect(text).not.toContain("ollama");
+  });
+
+  it("fm の失敗は中身ごと見せる", () => {
+    expect(
+      llmErrorText("failed: Apple Intelligence is off", 10, "m", "fm"),
+    ).toContain("Apple Intelligence is off");
+  });
+});

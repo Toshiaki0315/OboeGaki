@@ -8,6 +8,7 @@
 pub mod assets;
 pub mod autosave;
 pub mod commands;
+pub mod fm;
 pub mod front_matter;
 mod history;
 pub mod index_db;
@@ -196,6 +197,7 @@ pub fn run() {
             commands::llm_unload,
             commands::llm_stop,
             commands::llm_generate,
+            commands::fm_available,
             commands::conflict_copy,
             commands::startup_elapsed_ms,
             commands::app_exit,

@@ -2,6 +2,7 @@
 
 import { describe, expect, it, test } from "vitest";
 import {
+  LLM_ENGINES,
   CONTENT_WIDTHS,
   DEFAULT_SETTINGS,
   HISTORY_CHOICES,
@@ -346,5 +347,27 @@ describe("議事録のモデル（TASKS 28-5 / ADR-0070 決定 2）", () => {
   it("test_選んであればそれを使う", () => {
     const chosen = { ...DEFAULT_SETTINGS, minutesModel: "qwen3:8b" };
     expect(minutesModelOf(chosen, ["gemma3:12b"])).toBe("qwen3:8b");
+  });
+});
+
+describe("アシスタントの頼み先（ADR-0071）", () => {
+  const storage = (json: string) => ({
+    getItem: () => json,
+    setItem: () => {},
+    removeItem: () => {},
+  });
+  test("test_選べるのは Ollama と macOS の fm", () => {
+    expect(LLM_ENGINES).toEqual(["ollama", "fm"]);
+  });
+  test("test_既定は Ollama（今までどおり）", () => {
+    expect(DEFAULT_SETTINGS.llmEngine).toBe("ollama");
+  });
+  test("test_覚えた fm を読み戻す", () => {
+    expect(loadSettings(storage('{"llmEngine":"fm"}')).llmEngine).toBe("fm");
+  });
+  test("test_知らない値は既定の Ollama", () => {
+    expect(loadSettings(storage('{"llmEngine":"cloud"}')).llmEngine).toBe(
+      "ollama",
+    );
   });
 });

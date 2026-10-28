@@ -218,6 +218,19 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         )?)
         .build()?;
 
+    // アシスタントの頼み先（ADR-0071）。排他で必ず 1 つに ✓（決めるのは画面側 = T2）。
+    // **fm の無い Mac には出さない** — 選べるものが 1 つしか無い切り替えは効かないつまみ
+    let engines = if crate::fm::available() {
+        Some(
+            SubmenuBuilder::new(handle, "アシスタントの頼み先")
+                .item(&toggle("llm-engine-ollama", "Ollama", None)?)
+                .item(&toggle("llm-engine-fm", "macOS の AI（fm）", None)?)
+                .build()?,
+        )
+    } else {
+        None
+    };
+
     // 並びは**仲間ごと**（要望 2026-09-13）: 探す → ペイン → 見せ方 → 道具
     let view = SubmenuBuilder::new(handle, "表示")
         .item(&item(
@@ -248,23 +261,27 @@ pub(crate) fn build_menu(app: &tauri::App) -> tauri::Result<()> {
         )?)
         .item(&toggle("toggle-notes", "ノート一覧", Some("CmdOrCtrl+2"))?)
         .item(&toggle("outline", "アウトライン", Some("CmdOrCtrl+5"))?)
-        .item(&toggle("assistant", "アシスタント", Some("CmdOrCtrl+6"))?)
-        .separator()
-        .item(&modes)
-        .item(&zoom)
-        .separator()
-        // 別の角度からノートを見る道具
-        // リンクの図（M-2）。起点は開いているノート
-        .item(&item("link-graph", "リンクの図…", None)?)
-        // 文体を見る（U-4）。**指摘するだけで直さない**
-        .item(&item("style-check", "文体を見る…", None)?)
-        .separator()
-        // 標準のフルスクリーン（緑ボタンと同じ。2026-09-13 の見落とし確認）
-        .item(&PredefinedMenuItem::fullscreen(
-            handle,
-            Some(labels.fullscreen),
-        )?)
-        .build()?;
+        .item(&toggle("assistant", "アシスタント", Some("CmdOrCtrl+6"))?);
+    let view = match &engines {
+        Some(engines) => view.item(engines),
+        None => view,
+    }
+    .separator()
+    .item(&modes)
+    .item(&zoom)
+    .separator()
+    // 別の角度からノートを見る道具
+    // リンクの図（M-2）。起点は開いているノート
+    .item(&item("link-graph", "リンクの図…", None)?)
+    // 文体を見る（U-4）。**指摘するだけで直さない**
+    .item(&item("style-check", "文体を見る…", None)?)
+    .separator()
+    // 標準のフルスクリーン（緑ボタンと同じ。2026-09-13 の見落とし確認）
+    .item(&PredefinedMenuItem::fullscreen(
+        handle,
+        Some(labels.fullscreen),
+    )?)
+    .build()?;
     // ウインドウ（macOS の標準。2026-09-13 の見落とし確認で足した）。
     // **「閉じる」が無いと ⌘W が効かない** — 書き取りの小窓（ADR-0057）を
     // キーで閉じられなかった（Esc と Cmd+Enter では閉じられる）

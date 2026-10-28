@@ -72,6 +72,9 @@ pub struct MinutesRequest {
     pub model: String,
     pub timeout_minutes: u64,
     pub keep_alive: String,
+    /// 頼み先（ADR-0071）。無指定は Ollama
+    #[serde(default)]
+    pub engine: super::Engine,
 }
 
 /// 議事録の窓（トークン）。区切り 1 つ（8,000 字まで）と頼み方が収まる
@@ -96,10 +99,15 @@ pub async fn minutes_make(
     tauri::async_runtime::spawn_blocking(move || {
         let _flag = flag;
         let timeout = std::time::Duration::from_secs(request.timeout_minutes.clamp(1, 120) * 60);
-        crate::minutes::make_with(
+        let fm = crate::fm::path();
+        crate::minutes::make_chunked(
             &request.lines,
+            crate::minutes::CHUNK_SECONDS,
+            request.engine.minutes_chunk_chars(),
             |prompt| {
-                let answer = crate::llm::generate(
+                let answer = super::generate_by(
+                    request.engine,
+                    fm.as_deref(),
                     crate::llm::Generation {
                         port: request.port,
                         model: &request.model,

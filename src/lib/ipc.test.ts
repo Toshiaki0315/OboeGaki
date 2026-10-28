@@ -220,11 +220,13 @@ describe("LLM の包み", () => {
         llmContext: 8192,
         llmTimeoutMinutes: 6,
         llmKeepAlive: "5m",
+        llmEngine: "fm",
       },
       { task: "summary", title: "題", body: "本文" },
     );
     expect(invoked).toHaveBeenCalledWith("llm_generate", {
       request: {
+        engine: "fm",
         port: 1,
         model: "m",
         context: 8192,
@@ -499,6 +501,8 @@ describe("包みのコマンド名と引数（表）", () => {
           "preview-mode": false,
           "focus-mode": false,
           typewriter: false,
+          "llm-engine-ollama": true,
+          "llm-engine-fm": false,
         }),
       "menu_checks",
       { state: expect.objectContaining({ "inline-mode": true }) },

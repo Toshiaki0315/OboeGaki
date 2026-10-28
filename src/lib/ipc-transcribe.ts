@@ -2,6 +2,7 @@
 // Swift の部品、議事録は手元の Ollama。どちらも Rust 側で呼び、音声は外へ出さない。
 // Tauri コマンドの薄い包み（分け方は ipc.ts を見る）。
 
+import type { LlmEngine } from "./settings";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { safeSubscribe } from "./subscribe";
@@ -39,6 +40,8 @@ export type MinutesRequest = {
   model: string;
   timeoutMinutes: number;
   keepAlive: string;
+  /// 頼み先（ADR-0071）。fm なら port / model / keepAlive は効かない
+  engine: LlmEngine;
 };
 
 /// 文字起こしから議事録を作る（長ければ区切って 2 段）。止めるのは llmStop

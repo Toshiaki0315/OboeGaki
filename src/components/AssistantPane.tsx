@@ -7,12 +7,16 @@ import type { AssistantAction } from "../lib/assistant-actions";
 import { imeEnterGuard } from "../lib/ime";
 import { ASK_ACTION, ASSISTANT_ACTIONS } from "../lib/assistant-actions";
 import type { RelatedNote, SearchHit } from "../lib/ipc";
+import { FM_MISSING } from "../lib/assistant-text";
+import type { LlmEngine } from "../lib/settings";
 import { PathIcon } from "./MenuIcon";
 
 export type AssistantPaneProps = {
   hasNote: boolean;
-  /// null は調べている途中。false なら Ollama が動いていない
+  /// null は調べている途中。false なら頼み先（Ollama / fm）が使えない
   llmReady: boolean | null;
+  /// 頼み先（ADR-0071）。使えないときの案内を変える
+  engine?: LlmEngine;
   thinking: boolean;
   answer: string;
   question: string;
@@ -32,6 +36,7 @@ export type AssistantPaneProps = {
 export function AssistantPane({
   hasNote,
   llmReady,
+  engine = "ollama",
   thinking,
   answer,
   question,
@@ -77,7 +82,9 @@ export function AssistantPane({
           </button>
         ))}
       </div>
-      {llmReady === false ? (
+      {llmReady === false && engine === "fm" ? (
+        <p className="assistant-note">{FM_MISSING}</p>
+      ) : llmReady === false ? (
         // **押してから断らない**（G-3 のゴミ箱と同じ作法）
         <p className="assistant-note">
           アシスタントを使うには Ollama という無料のソフトが要ります。

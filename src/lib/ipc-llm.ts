@@ -12,7 +12,12 @@ import { safeSubscribe } from "./subscribe";
 /// 生成に渡す設定（環境設定のうち LLM の項）
 export type LlmSettings = Pick<
   Settings,
-  "llmPort" | "llmModel" | "llmContext" | "llmTimeoutMinutes" | "llmKeepAlive"
+  | "llmEngine"
+  | "llmPort"
+  | "llmModel"
+  | "llmContext"
+  | "llmTimeoutMinutes"
+  | "llmKeepAlive"
 >;
 
 /// 生成の注文。要約・レビュー・質問で送るものは違っても、形は 1 つ
@@ -30,6 +35,11 @@ export function llmAvailable(port: number): Promise<boolean> {
   return invoke<boolean>("llm_available", { port });
 }
 
+/// macOS 27 の `fm` があるか（ADR-0071）
+export function fmAvailable(): Promise<boolean> {
+  return invoke<boolean>("fm_available");
+}
+
 /// 生成を始める。始められたら true（走っている途中なら false）
 export function llmGenerate(
   settings: LlmSettings,
@@ -38,6 +48,7 @@ export function llmGenerate(
   // Rust 側は 1 つの構造体（GenerateRequest）で受ける
   return invoke<boolean>("llm_generate", {
     request: {
+      engine: settings.llmEngine,
       port: settings.llmPort,
       model: settings.llmModel,
       context: settings.llmContext,

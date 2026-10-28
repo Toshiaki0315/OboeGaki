@@ -97,6 +97,35 @@ describe("AssistantPreferences", () => {
     });
   });
 
+  test("test_頼み先を選べる（ADR-0071）", () => {
+    const props = setup();
+    fireEvent.change(screen.getByLabelText(/頼み先/), {
+      target: { value: "fm" },
+    });
+    expect(props.onChangeSettings).toHaveBeenCalledWith({ llmEngine: "fm" });
+  });
+
+  test("test_頼み先が fm なら効かない Ollama の項は出さない", () => {
+    setup({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        assistantEnabled: true,
+        llmEngine: "fm",
+      },
+    });
+    for (const label of [
+      /^モデル$/,
+      /議事録のモデル/,
+      /ポート/,
+      /一度に渡す量/,
+      /モデルを残す時間/,
+    ]) {
+      expect(screen.queryByLabelText(label)).toBeNull();
+    }
+    // 待ち時間は fm にも効く
+    expect(screen.getByLabelText(/応答待ち時間/)).toBeTruthy();
+  });
+
   test("test_文字の読み取りの選択", () => {
     const props = setup();
     fireEvent.change(screen.getByLabelText(/文字の読み取り/), {

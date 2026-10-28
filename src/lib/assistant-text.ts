@@ -4,8 +4,14 @@
 // 出し引きは順序に敏感で、間違えると断りが永久に消える — 表示の
 // 規則そのものをここで試験できる形に固める。
 
+import type { LlmEngine } from "./settings";
+
 /// モデルの読み込み待ちの場つなぎ。**6 分の沈黙は壊れて見える**。
 export const LOADING_NOTICE = "モデルを読み込んでいます…";
+
+/// fm が無いときの案内（ADR-0071）
+export const FM_MISSING =
+  "macOS の AI（fm コマンド）が見つかりません。macOS 27 以降で、Apple Intelligence を入にすると使えます。";
 
 /// ローカルLLM の断りを、画面に出す言葉にする。
 /// **動いているのに「動いているか確かめて」は嘘になる**ので、時間切れは
@@ -14,7 +20,16 @@ export function llmErrorText(
   code: string,
   minutes: number,
   model: string,
+  engine: LlmEngine = "ollama",
 ): string {
+  // fm（ADR-0071）にはモデル名もポートも無い。断りは fm の言い分をそのまま見せる
+  if (engine === "fm") {
+    if (code.startsWith("not-running")) return FM_MISSING;
+    if (code.startsWith("timed-out")) {
+      return `${minutes} 分待っても答えが返りませんでした（設定で延ばせます）。`;
+    }
+    return `macOS の AI（fm）から答えを受け取れませんでした: ${code.replace(/^failed: /, "")}`;
+  }
   if (code.startsWith("not-running")) {
     return "Ollama が動いていません。`ollama serve` で動かすか、https://ollama.com から入れてください。";
   }

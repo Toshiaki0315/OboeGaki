@@ -64,6 +64,12 @@ describe("AssistantPane", () => {
     expect(screen.queryByPlaceholderText("ノート全体に質問する")).toBeNull();
   });
 
+  test("test_頼み先が fm で無ければ macOS 27 を案内し_Ollama は勧めない（ADR-0071）", () => {
+    setup({ llmReady: false, engine: "fm" });
+    expect(screen.getByText(/macOS 27/)).toBeTruthy();
+    expect(screen.queryByText(/ollama\.com/)).toBeNull();
+  });
+
   test("test_質問は Enter で送り_変換中の Enter では送らない", () => {
     const props = setup({ question: "予算は？" });
     const input = screen.getByPlaceholderText("ノート全体に質問する");

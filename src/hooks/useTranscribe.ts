@@ -1,7 +1,7 @@
 // 音声・動画から議事録のノートを作る（TASKS 28-4 / ADR-0070）。
 //
 // 使えるか確かめる → ファイルを選ぶ → 添付に写すか聞く（大きさを見せる。決定 4）→
-// 文字起こし（この Mac の中）→ 議事録（手元の Ollama・議事録のモデル。決定 2・3）→
+// 文字起こし（この Mac の中）→ 議事録（手元の Ollama・議事録のモデル。決定 2・3。macOS の fm も選べる = ADR-0071）→
 // 選んでいるフォルダにノートを作って開く。議事録が作れなくても、起こした文は捨てない。
 // 進み具合は progress（窓に出す）。止めるは文字起こしと議事録の両方に効く。
 
@@ -11,6 +11,7 @@ import {
   confirmDialog,
   createNote,
   fileSize,
+  fmAvailable,
   llmAvailable,
   llmModels,
   llmStop,
@@ -112,17 +113,31 @@ export function useTranscribe(input: TranscribeInput) {
         return;
       }
 
-      // 議事録（作れなくても起こした文は捨てない）
+      // 議事録（作れなくても起こした文は捨てない）。頼み先は Ollama か macOS の fm（ADR-0071）
       let minutes: string | null = null;
       let missing: string | null = null;
+      const fm = settings.llmEngine === "fm";
       if (!settings.assistantEnabled) {
         missing = "アシスタントを切っています";
-      } else if (!(await llmAvailable(settings.llmPort).catch(() => false))) {
+      } else if (fm && !(await fmAvailable().catch(() => false))) {
+        missing = "macOS の AI（fm）が見つかりません";
+      } else if (
+        !fm &&
+        !(await llmAvailable(settings.llmPort).catch(() => false))
+      ) {
         missing = "アシスタント（Ollama）が動いていません";
       } else {
-        const installed = await llmModels(settings.llmPort).catch(() => []);
-        const model = minutesModelOf(settings, installed);
-        setProgress({ label: `議事録を作っています（${model}）…`, done: null });
+        // fm のモデルは選べない（端末内のもの 1 つ）
+        const model = fm
+          ? ""
+          : minutesModelOf(
+              settings,
+              await llmModels(settings.llmPort).catch(() => []),
+            );
+        setProgress({
+          label: `議事録を作っています（${fm ? "macOS の AI" : model}）…`,
+          done: null,
+        });
         try {
           minutes = await minutesMake({
             lines: transcription.lines,
@@ -130,6 +145,7 @@ export function useTranscribe(input: TranscribeInput) {
             model,
             timeoutMinutes: settings.llmTimeoutMinutes,
             keepAlive: settings.llmKeepAlive,
+            engine: settings.llmEngine,
           });
         } catch (reason) {
           missing = String(reason);

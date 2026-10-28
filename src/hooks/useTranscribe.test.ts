@@ -18,6 +18,7 @@ vi.mock("../lib/ipc", () => ({
   pickFile: vi.fn(),
   confirmDialog: vi.fn(),
   llmAvailable: vi.fn(),
+  fmAvailable: vi.fn(),
   llmModels: vi.fn(),
   llmStop: vi.fn(),
   createNote: vi.fn(),
@@ -181,5 +182,32 @@ describe("useTranscribe", () => {
     await act(() => result.current.stop());
     expect(mocked.transcribeStop).toHaveBeenCalled();
     expect(mocked.llmStop).toHaveBeenCalled();
+  });
+
+  test("test_頼み先が fm なら fm で議事録を作る（ADR-0071）", async () => {
+    mocked.fmAvailable.mockResolvedValue(true);
+    const given = input({
+      settings: { ...DEFAULT_SETTINGS, llmEngine: "fm" },
+    });
+    const { result } = renderHook(() => useTranscribe(given));
+    await act(() => result.current.start());
+    expect(mocked.llmAvailable).not.toHaveBeenCalled();
+    expect(mocked.llmModels).not.toHaveBeenCalled();
+    expect(mocked.minutesMake).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "fm" }),
+    );
+  });
+
+  test("test_頼み先が fm で fm が無ければ文字起こしだけ", async () => {
+    mocked.fmAvailable.mockResolvedValue(false);
+    const given = input({
+      settings: { ...DEFAULT_SETTINGS, llmEngine: "fm" },
+    });
+    const { result } = renderHook(() => useTranscribe(given));
+    await act(() => result.current.start());
+    expect(mocked.minutesMake).not.toHaveBeenCalled();
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("fm"),
+    );
   });
 });

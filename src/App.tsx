@@ -19,7 +19,7 @@ import { useNoteCommands } from "./hooks/useNoteCommands";
 import { useExport } from "./hooks/useExport";
 import { useOutline } from "./hooks/useOutline";
 import { usePreferences } from "./hooks/usePreferences";
-import { editModeChecks } from "./lib/menu-checks";
+import { editModeChecks, engineChecks } from "./lib/menu-checks";
 import { failureText, runWithStatus } from "./lib/run-command";
 import { editModeOf, nextEditMode, type EditMode } from "./lib/edit-mode";
 import {
@@ -1665,6 +1665,7 @@ function App() {
       ...editModeChecks({ source: sourceMode, preview: wysiwygMode }),
       "focus-mode": editorModes.focus,
       typewriter: editorModes.typewriter,
+      ...engineChecks(settings.llmEngine),
     },
     actions: {
       "new-note": () => void handleCreate(),
@@ -1749,6 +1750,15 @@ function App() {
         setRightPane((pane) => togglePane(pane, "assistant"));
       },
       "llm-unload": () => void assistant.unloadModel(),
+      // アシスタントの頼み先（ADR-0071）。議事録もこれに従う
+      "llm-engine-ollama": () => {
+        changeSettings({ llmEngine: "ollama" });
+        setStatus("アシスタントの頼み先を Ollama にしました");
+      },
+      "llm-engine-fm": () => {
+        changeSettings({ llmEngine: "fm" });
+        setStatus("アシスタントの頼み先を macOS の AI（fm）にしました");
+      },
       "heading-palette": openHeadingPalette,
       "style-check": checkStyleNow,
       "toggle-trees": () =>
@@ -2692,6 +2702,7 @@ function App() {
             <AssistantPane
               hasNote={currentPath !== null}
               llmReady={assistant.llmReady}
+              engine={settings.llmEngine}
               thinking={assistant.thinking}
               answer={assistant.answer}
               question={assistant.question}

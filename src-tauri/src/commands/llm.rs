@@ -5,6 +5,49 @@ use super::{decode, CmdError, CmdResult, FlagGuard, WatchState};
 
 // ------------------------------------------------------------ ローカルLLM
 
+/// 頼み先（ADR-0071）。画面の環境設定とメニューで選ぶ。無指定は Ollama（今までどおり）
+#[derive(serde::Deserialize, Default, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Engine {
+    #[default]
+    Ollama,
+    /// macOS 27 の `fm`（端末内の Foundation Models）
+    Fm,
+}
+
+impl Engine {
+    /// 議事録の 1 区切りの字数。fm の窓は小さい
+    pub fn minutes_chunk_chars(self) -> usize {
+        match self {
+            Self::Ollama => crate::minutes::CHUNK_CHARS,
+            Self::Fm => crate::fm::MINUTES_CHUNK_CHARS,
+        }
+    }
+}
+
+/// 頼み先に応じて生成する。fm には port / model / 窓 / keep_alive は効かない（持たない）
+pub(crate) fn generate_by(
+    engine: Engine,
+    fm: Option<&std::path::Path>,
+    order: crate::llm::Generation<'_>,
+    on_chunk: impl FnMut(&str),
+    should_stop: impl Fn() -> bool,
+) -> Result<String, crate::llm::LlmError> {
+    match engine {
+        Engine::Ollama => crate::llm::generate(order, on_chunk, should_stop),
+        Engine::Fm => match fm {
+            Some(fm) => crate::fm::respond(fm, order.prompt, order.timeout, on_chunk, should_stop),
+            None => Err(crate::llm::LlmError::NotRunning),
+        },
+    }
+}
+
+/// macOS 27 の `fm` があるか（ADR-0071）。無ければ頼み先に選べない
+#[tauri::command]
+pub async fn fm_available() -> bool {
+    crate::fm::available()
+}
+
 /// Ollama が動いているか（TASKS 4-8 / ADR-0025）。
 ///
 /// **押してから断らない**ための確認。動いていなければ機能ごと畳む。
@@ -76,6 +119,9 @@ pub struct GenerateRequest {
     pub context: u32,
     pub timeout_minutes: u64,
     pub keep_alive: String,
+    /// 頼み先（ADR-0071）。無指定は Ollama
+    #[serde(default)]
+    pub engine: Engine,
 }
 
 #[tauri::command]
@@ -96,6 +142,7 @@ pub fn llm_generate(
         context,
         timeout_minutes,
         keep_alive,
+        engine,
     } = request;
     if state.generating.swap(true, Ordering::SeqCst) {
         return Ok(false);
@@ -123,7 +170,9 @@ pub fn llm_generate(
         };
         // 分は 1〜120 に丸める（極端な値の乗算パニックと「実質無限」を防ぐ）
         let minutes = timeout_minutes.clamp(1, 120);
-        let outcome = crate::llm::generate(
+        let outcome = generate_by(
+            engine,
+            crate::fm::path().as_deref(),
             crate::llm::Generation {
                 port,
                 model: &model,
@@ -246,6 +295,71 @@ mod tests {
         };
         let failed = recognize_with(Some(&reader), b"not an image").unwrap_err();
         assert!(failed.contains("not-running"), "{failed}");
+    }
+
+    fn generation(prompt: &str) -> crate::llm::Generation<'_> {
+        crate::llm::Generation {
+            port: 1, // 誰も居ないポート
+            model: "m",
+            prompt,
+            context: 4096,
+            timeout: std::time::Duration::from_secs(10),
+            keep_alive: "5m",
+        }
+    }
+
+    #[test]
+    fn test_頼み先_無指定は_Ollama() {
+        let request: GenerateRequest = serde_json::from_value(serde_json::json!({
+            "port": 1, "model": "m", "task": "summary", "title": "t", "body": "b",
+            "context": 4096, "timeoutMinutes": 1, "keepAlive": "5m"
+        }))
+        .unwrap();
+        assert_eq!(request.engine, Engine::Ollama);
+        let chosen: Engine = serde_json::from_value(serde_json::json!("fm")).unwrap();
+        assert_eq!(chosen, Engine::Fm);
+    }
+
+    #[test]
+    fn test_頼み先_fm_なら_fm_に頼む() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let fm = dir.path().join("fm");
+        std::fs::write(&fm, "#!/bin/sh\nprintf 'fm の答え'\n").unwrap();
+        std::fs::set_permissions(&fm, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let answer = generate_by(Engine::Fm, Some(&fm), generation("p"), |_| {}, || false);
+        assert_eq!(answer.unwrap(), "fm の答え");
+    }
+
+    #[test]
+    fn test_頼み先_fm_が無ければ_not_running() {
+        let failed = generate_by(Engine::Fm, None, generation("p"), |_| {}, || false);
+        assert_eq!(failed.unwrap_err(), crate::llm::LlmError::NotRunning);
+    }
+
+    #[test]
+    fn test_頼み先_Ollama_なら_fm_があっても_Ollama_に頼む() {
+        // 誰も居ないポートなので「動いていない」= Ollama へ行った証
+        let failed = generate_by(
+            Engine::Ollama,
+            Some(std::path::Path::new("/bin/echo")),
+            generation("p"),
+            |_| {},
+            || false,
+        );
+        assert_eq!(failed.unwrap_err(), crate::llm::LlmError::NotRunning);
+    }
+
+    #[test]
+    fn test_議事録の区切りは_fm_では小さくする() {
+        assert_eq!(
+            Engine::Ollama.minutes_chunk_chars(),
+            crate::minutes::CHUNK_CHARS
+        );
+        assert_eq!(
+            Engine::Fm.minutes_chunk_chars(),
+            crate::fm::MINUTES_CHUNK_CHARS
+        );
     }
 
     #[test]

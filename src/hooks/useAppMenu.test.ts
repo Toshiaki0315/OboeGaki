@@ -25,6 +25,8 @@ const CHECKS: MenuChecks = {
   "preview-mode": false,
   "focus-mode": false,
   typewriter: false,
+  "llm-engine-ollama": true,
+  "llm-engine-fm": false,
 };
 
 let pressed: ((id: string) => void) | null = null;

@@ -1,8 +1,9 @@
-// 環境設定「アシスタント」タブ。Ollama の繋ぎ方・外のサービス・文字の
+// 環境設定「アシスタント」タブ。頼み先（Ollama / macOS の fm）・Ollama の繋ぎ方・外のサービス・文字の
 // 読み取り。設定そのものは親（App）が持ち、ここは表示と変更の通知だけ。
 
 import {
   CONTEXT_CHOICES,
+  type LlmEngine,
   KEEP_ALIVE_CHOICES,
   minutesModelOf,
   type OcrEngine,
@@ -42,7 +43,7 @@ export function AssistantPreferences({
         AI アシスタントを使う
       </label>
       <p className="pref-note">
-        Ollama に繋いで、要約やレビューを頼みます。やり取りは
+        Ollama か macOS の AI（fm）に、要約やレビューを頼みます。やり取りは
         このパソコンの中だけで行われ、ノートは外へ出ません。
       </p>
       {/* **まとめて押せなくする。** 1 つずつ disabled を付けると、
@@ -51,76 +52,96 @@ export function AssistantPreferences({
         className="preferences-fields"
         disabled={!settings.assistantEnabled}
       >
+        {/* 頼み先（ADR-0071）。メニュー「表示 → アシスタントの頼み先」と同じ */}
         <label>
-          <span>モデル</span>
-          <span className="pref-unit-row">
-            <input
-              value={settings.llmModel}
-              placeholder="gemma3:4b"
-              list="llm-model-choices"
-              onChange={(event) =>
-                onChangeSettings({
-                  llmModel: event.currentTarget.value,
-                })
-              }
-            />
-            <datalist id="llm-model-choices">
-              {installedModels.map((model) => (
-                <option key={model} value={model} />
-              ))}
-            </datalist>
-            {installedModels.length > 0 &&
-            !installedModels.includes(settings.llmModel) ? (
-              <span className="pref-unit">（Ollama に入っていません）</span>
-            ) : null}
-          </span>
-        </label>
-        {/* 議事録だけ別のモデル（28-5 / ADR-0070 決定 2）。空なら自動 */}
-        <label>
-          <span>議事録のモデル</span>
-          <input
-            value={settings.minutesModel}
-            placeholder={`自動（${minutesModelOf({ ...settings, minutesModel: "" }, installedModels)}）`}
-            list="llm-model-choices"
-            onChange={(event) =>
-              onChangeSettings({ minutesModel: event.currentTarget.value })
-            }
-          />
-        </label>
-        <label>
-          <span>ポート</span>
-          <span className="pref-unit-row">
-            <input
-              type="number"
-              min={1}
-              max={65535}
-              value={settings.llmPort}
-              onChange={(event) =>
-                onChangeSettings({
-                  llmPort: Number(event.currentTarget.value),
-                })
-              }
-            />
-            <span className="pref-unit">（このパソコンの中だけ）</span>
-          </span>
-        </label>
-        <label>
-          <span>一度に渡す量</span>
+          <span>頼み先</span>
           <select
-            value={settings.llmContext}
+            value={settings.llmEngine}
             onChange={(event) =>
               onChangeSettings({
-                llmContext: Number(event.currentTarget.value),
+                llmEngine: event.currentTarget.value as LlmEngine,
               })
             }
           >
-            {CONTEXT_CHOICES.map((tokens) => (
-              <option key={tokens} value={tokens}>
-                {tokens / 1024}k トークン
-              </option>
-            ))}
+            <option value="ollama">Ollama</option>
+            <option value="fm">macOS の AI（fm・macOS 27 以降）</option>
           </select>
         </label>
+        {/* **効かないつまみを出さない** — fm にはモデル・ポート・窓・残す時間が無い */}
+        {settings.llmEngine === "ollama" && (
+          <>
+            <label>
+              <span>モデル</span>
+              <span className="pref-unit-row">
+                <input
+                  value={settings.llmModel}
+                  placeholder="gemma3:4b"
+                  list="llm-model-choices"
+                  onChange={(event) =>
+                    onChangeSettings({
+                      llmModel: event.currentTarget.value,
+                    })
+                  }
+                />
+                <datalist id="llm-model-choices">
+                  {installedModels.map((model) => (
+                    <option key={model} value={model} />
+                  ))}
+                </datalist>
+                {installedModels.length > 0 &&
+                !installedModels.includes(settings.llmModel) ? (
+                  <span className="pref-unit">（Ollama に入っていません）</span>
+                ) : null}
+              </span>
+            </label>
+            {/* 議事録だけ別のモデル（28-5 / ADR-0070 決定 2）。空なら自動 */}
+            <label>
+              <span>議事録のモデル</span>
+              <input
+                value={settings.minutesModel}
+                placeholder={`自動（${minutesModelOf({ ...settings, minutesModel: "" }, installedModels)}）`}
+                list="llm-model-choices"
+                onChange={(event) =>
+                  onChangeSettings({ minutesModel: event.currentTarget.value })
+                }
+              />
+            </label>
+            <label>
+              <span>ポート</span>
+              <span className="pref-unit-row">
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={settings.llmPort}
+                  onChange={(event) =>
+                    onChangeSettings({
+                      llmPort: Number(event.currentTarget.value),
+                    })
+                  }
+                />
+                <span className="pref-unit">（このパソコンの中だけ）</span>
+              </span>
+            </label>
+            <label>
+              <span>一度に渡す量</span>
+              <select
+                value={settings.llmContext}
+                onChange={(event) =>
+                  onChangeSettings({
+                    llmContext: Number(event.currentTarget.value),
+                  })
+                }
+              >
+                {CONTEXT_CHOICES.map((tokens) => (
+                  <option key={tokens} value={tokens}>
+                    {tokens / 1024}k トークン
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <label>
           <span>応答待ち時間</span>
           <span className="pref-unit-row">
@@ -138,23 +159,25 @@ export function AssistantPreferences({
             <span className="pref-unit">分</span>
           </span>
         </label>
-        <label>
-          <span>モデルを残す時間</span>
-          <select
-            value={settings.llmKeepAlive}
-            onChange={(event) =>
-              onChangeSettings({
-                llmKeepAlive: event.currentTarget.value,
-              })
-            }
-          >
-            {KEEP_ALIVE_CHOICES.map((value) => (
-              <option key={value} value={value}>
-                {value === "0" ? "すぐ降ろす" : value.replace("m", " 分")}
-              </option>
-            ))}
-          </select>
-        </label>
+        {settings.llmEngine === "ollama" && (
+          <label>
+            <span>モデルを残す時間</span>
+            <select
+              value={settings.llmKeepAlive}
+              onChange={(event) =>
+                onChangeSettings({
+                  llmKeepAlive: event.currentTarget.value,
+                })
+              }
+            >
+              {KEEP_ALIVE_CHOICES.map((value) => (
+                <option key={value} value={value}>
+                  {value === "0" ? "すぐ降ろす" : value.replace("m", " 分")}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </fieldset>
       <h3 className="pref-section">外のサービス</h3>
       <p className="pref-note">

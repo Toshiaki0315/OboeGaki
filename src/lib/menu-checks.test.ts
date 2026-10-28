@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { editModeChecks, MENU_CHECK_IDS } from "./menu-checks";
+import { editModeChecks, engineChecks, MENU_CHECK_IDS } from "./menu-checks";
 
 describe("MENU_CHECK_IDS", () => {
   test("test_Rust と同じ見本と一致する", () => {
@@ -40,5 +40,18 @@ describe("editModeChecks（編集モードの上 3 つは排他。要望 2026-09
     expect(
       editModeChecks({ source: false, preview: true })["preview-mode"],
     ).toBe(true);
+  });
+});
+
+describe("engineChecks（アシスタントの頼み先は排他。ADR-0071）", () => {
+  test("test_選んだ頼み先にだけ_✓", () => {
+    expect(engineChecks("ollama")).toEqual({
+      "llm-engine-ollama": true,
+      "llm-engine-fm": false,
+    });
+    expect(engineChecks("fm")).toEqual({
+      "llm-engine-ollama": false,
+      "llm-engine-fm": true,
+    });
   });
 });
