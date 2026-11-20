@@ -13,6 +13,11 @@ export const LOADING_NOTICE = "モデルを読み込んでいます…";
 export const FM_MISSING =
   "macOS の AI（fm コマンド）が見つかりません。macOS 27 以降で、Apple Intelligence を入にすると使えます。";
 
+/// fm の使用条件にまだ同意していないときの案内（実機 2026-11-21: 同意前の fm は
+/// 英文の警告を出して止まる。同意は Mac の全員に効くので管理者として打つ）
+export const FM_NEEDS_AGREEMENT =
+  "macOS の AI（fm）の使用条件にまだ同意していません。ターミナルで `sudo fm license` を実行して同意すると使えます。";
+
 /// ローカルLLM の断りを、画面に出す言葉にする。
 /// **動いているのに「動いているか確かめて」は嘘になる**ので、時間切れは
 /// 別の言葉にする。404 はモデル名の間違いなので、直し方まで言う。
@@ -25,6 +30,7 @@ export function llmErrorText(
   // fm（ADR-0071）にはモデル名もポートも無い。断りは fm の言い分をそのまま見せる
   if (engine === "fm") {
     if (code.startsWith("not-running")) return FM_MISSING;
+    if (code.startsWith("fm-license")) return FM_NEEDS_AGREEMENT;
     if (code.startsWith("timed-out")) {
       return `${minutes} 分待っても答えが返りませんでした（設定で延ばせます）。`;
     }

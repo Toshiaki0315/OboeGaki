@@ -77,4 +77,10 @@ describe("llmErrorText（頼み先が macOS の fm。ADR-0071）", () => {
       llmErrorText("failed: Apple Intelligence is off", 10, "m", "fm"),
     ).toContain("Apple Intelligence is off");
   });
+
+  it("fm の使用条件に同意していなければ_同意のしかたを言う（レビュー 2026-11-21）", () => {
+    const text = llmErrorText("fm-license", 6, "", "fm");
+    expect(text).toContain("sudo fm license");
+    expect(text).not.toContain("見つかりません");
+  });
 });

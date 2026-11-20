@@ -31,6 +31,8 @@ pub enum LlmError {
     /// 待っても答えが返らない。**NotRunning と混ぜない** — 動いているのに
     /// 「動いているか確かめてください」は嘘になる。
     TimedOut,
+    /// macOS の AI（fm）の使用条件にまだ同意していない（`sudo fm license` が要る。ADR-0071）
+    NeedsAgreement,
     Failed(String),
 }
 
@@ -39,6 +41,7 @@ impl std::fmt::Display for LlmError {
         match self {
             Self::NotRunning => write!(formatter, "not-running"),
             Self::TimedOut => write!(formatter, "timed-out"),
+            Self::NeedsAgreement => write!(formatter, "fm-license"),
             Self::Failed(message) => write!(formatter, "failed: {message}"),
         }
     }

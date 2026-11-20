@@ -62,7 +62,7 @@ pub fn respond(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| LlmError::NotRunning)?;
+        .map_err(spawn_failure)?;
     let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
         let _ = child.kill();
         let _ = child.wait();
@@ -131,15 +131,59 @@ pub fn respond(
         .map_err(|error| LlmError::Failed(error.to_string()))?;
     let stderr = errors.join().unwrap_or_default();
     if status.success() {
-        Ok(answer)
-    } else {
-        let reason = stderr.trim();
-        Err(LlmError::Failed(if reason.is_empty() {
-            format!("fm が失敗しました（{status}）")
-        } else {
-            reason.to_string()
-        }))
+        return Ok(answer);
     }
+    let reason = without_escapes(&stderr);
+    let reason = reason.trim();
+    if status.code() == Some(EXIT_NOT_AGREED) || reason.contains(NOT_AGREED_MARK) {
+        return Err(LlmError::NeedsAgreement);
+    }
+    Err(LlmError::Failed(if reason.is_empty() {
+        format!("fm が失敗しました（{status}）")
+    } else {
+        reason.to_string()
+    }))
+}
+
+/// 使用条件に同意していないときの fm の終わり方（実機 2026-11-21: 同意前は `--help` も
+/// これで終わる）。字面でも見る（終わり方の数は向こうが変えうる）
+const EXIT_NOT_AGREED: i32 = 69;
+const NOT_AGREED_MARK: &str = "LEGAL NOTICE";
+
+/// 起動できなかった理由。**無いときだけ**「動いていない」（画面は「見つかりません」と
+/// 案内する）。頼みが大きすぎて起動できない（E2BIG）のを「見つからない」と言わない
+/// （レビュー 2026-11-21）
+fn spawn_failure(error: std::io::Error) -> LlmError {
+    const E2BIG: i32 = 7;
+    match error.raw_os_error() {
+        _ if error.kind() == std::io::ErrorKind::NotFound => LlmError::NotRunning,
+        Some(E2BIG) => LlmError::Failed(
+            "ノートが長すぎて macOS の AI（fm）に渡せません。短くしてから頼んでください".into(),
+        ),
+        _ => LlmError::Failed(format!("fm を起動できませんでした: {error}")),
+    }
+}
+
+/// 端末の色の制御文字（`ESC [ … 文字`）を落とす。fm は失敗の言い分に色を付けて出す
+fn without_escapes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        if chars.peek() == Some(&'[') {
+            chars.next();
+            // 引数（数字・`;`）のあとの 1 字（@〜~）で終わる
+            for next in chars.by_ref() {
+                if ('@'..='~').contains(&next) {
+                    break;
+                }
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -289,5 +333,46 @@ mod tests {
             answer.chars().count()
         );
         assert!(!answer.trim().is_empty());
+    }
+
+    // ------------------------------- 失敗を読める形にする（レビュー 2026-11-21）
+
+    #[test]
+    fn test_使用条件に同意していなければ_その印で返す() {
+        // 実機の fm は、同意前だと色の制御文字つきの英文を出して 69 で終わる
+        // （`fm --help` も同じ）。以前は英文と制御文字がそのまま画面に出た
+        let dir = tempfile::tempdir().unwrap();
+        let fm = fake(
+            &dir,
+            r#"printf '\033[38;2;255;107;128mYOU HAVE NOT AGREED TO THE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\n\033[0m' >&2; exit 69"#,
+        );
+        assert_eq!(
+            respond(&fm, "p", LONG, |_| {}, || false),
+            Err(LlmError::NeedsAgreement)
+        );
+        assert_eq!(LlmError::NeedsAgreement.to_string(), "fm-license");
+    }
+
+    #[test]
+    fn test_失敗の理由から色の制御文字を落とす() {
+        let dir = tempfile::tempdir().unwrap();
+        let fm = fake(&dir, r#"printf '\033[31mだめでした\033[0m\n' >&2; exit 1"#);
+        assert_eq!(
+            respond(&fm, "p", LONG, |_| {}, || false),
+            Err(LlmError::Failed("だめでした".into()))
+        );
+    }
+
+    #[test]
+    fn test_頼みが長すぎて起動できなければ_見つからないとは言わない() {
+        // 頼みは 1 つの引数で渡すので、大きすぎると起動そのものが失敗する（E2BIG）。
+        // 以前は「fm が見つかりません」と出た
+        let dir = tempfile::tempdir().unwrap();
+        let fm = fake(&dir, "echo 届いた");
+        let huge = "あ".repeat(1024 * 1024);
+        match respond(&fm, &huge, LONG, |_| {}, || false) {
+            Err(LlmError::Failed(reason)) => assert!(reason.contains("長すぎ"), "{reason}"),
+            other => panic!("{other:?}"),
+        }
     }
 }
