@@ -24,16 +24,58 @@ pub fn write_locked(path: &Path, key: &Key, text: &str) -> Result<(), LockError>
         .map_err(|error| LockError::System(error.to_string()))
 }
 
-/// パスワードで解錠する。**既にある施錠ノートを 1 つ開けてみて**確かめ（認証タグ）、
-/// 合えばその salt の鍵を返す（保管フォルダに 1 つのパスワード。ADR-0062 決定 1）
+/// パスワードで解錠する。**施錠ノートを開けてみて**確かめ（認証タグ）、開けたノートの
+/// salt の鍵を返す（保管フォルダに 1 つのパスワード。ADR-0062 決定 1）。
+///
+/// 最初の 1 つだけで確かめると、それが壊れている（同期の途中で切れた）・別の
+/// パスワードで施錠されている（共有フォルダの別の Mac）ときに、ほかが正しくても
+/// 解錠できなかった（レビュー 2026-11-21）。開けるまで順に試す。同じ salt の鍵は
+/// 作り直さない（導出は 1 回約 80ms）
 pub fn unlock(vault: &Vault, password: &str) -> Result<Key, LockError> {
-    let Some(sample) = vault.scan_locked().into_iter().next() else {
-        return Err(LockError::NoLockedNotes);
+    let mut tried: Vec<Key> = Vec::new();
+    let mut failure: Option<LockError> = None;
+    // パスワード違いは、壊れたファイルの理由より先に言う
+    let mut note = |error: LockError| {
+        if failure.is_none() || error == LockError::WrongPassword {
+            failure = Some(error);
+        }
     };
-    let bytes = fs::read(&sample).map_err(|error| LockError::System(error.to_string()))?;
-    let key = Key::for_file(password, &bytes)?;
-    lock::open(&key, &bytes)?;
-    Ok(key)
+    'files: for path in vault.scan_locked() {
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                note(LockError::System(error.to_string()));
+                continue;
+            }
+        };
+        // 作った鍵のどれかで開けば、それで決まり。同じ salt の鍵で開かないなら、
+        // 作り直しても同じ鍵なので飛ばす
+        for key in &tried {
+            match lock::open(key, &bytes) {
+                Ok(_) => return Ok(key.clone()),
+                Err(LockError::OtherKey) => {}
+                Err(error) => {
+                    note(error);
+                    continue 'files;
+                }
+            }
+        }
+        let key = match Key::for_file(password, &bytes) {
+            Ok(key) => key,
+            Err(error) => {
+                note(error);
+                continue;
+            }
+        };
+        match lock::open(&key, &bytes) {
+            Ok(_) => return Ok(key),
+            Err(error) => {
+                note(error);
+                tried.push(key);
+            }
+        }
+    }
+    Err(failure.unwrap_or(LockError::NoLockedNotes))
 }
 
 // ------------------------------------------- 施錠する・外す・鍵の変更（13-5）
@@ -89,10 +131,16 @@ pub fn unlock_note(path: &Path, key: &Key) -> Result<std::path::PathBuf, LockErr
     Ok(target)
 }
 
-/// パスワードを変える: 施錠ノートを全部（ゴミ箱の中も）新しい鍵で書き直す。
-/// **まず全部を古い鍵で開けてみて**、1 つでも開けなければ手を付けずに止める
-/// （半分だけ新しい鍵になると、どちらのパスワードでも全部は開けなくなる）。
-/// 書き直すのは 1 つずつ一時ファイル経由（write_locked）。書き直した数を返す
+/// パスワードを変える: 施錠ノートを全部（ゴミ箱の中も）新しい鍵で書き直す。書き直した数を返す。
+///
+/// **半分だけ新しい鍵にしない**（どちらのパスワードでも全部は開けなくなる）:
+/// 1. まず全部を古い鍵で開けてみる。1 つでも開けなければ手を付けずに止める
+/// 2. 新しい暗号文を全部、それぞれの隣の一時ファイルに書き切り、新しい鍵で開けることを
+///    確かめる。ここで失敗したら一時ファイルを消して止める（まだ何も変わっていない）
+/// 3. 名前を入れ替える（rename だけ。空きを新たに使わない）。途中で失敗したら、入れ替えた
+///    ぶんを古い鍵で書き戻す
+///
+/// 以前は 1 つずつ書き直していて、途中で書けなくなると割れた（レビュー 2026-11-21）
 pub fn change_key(vault: &Vault, old: &Key, new: &Key) -> Result<usize, LockError> {
     let mut targets = vault.scan_locked();
     let mut trashed = Vec::new();
@@ -103,10 +151,47 @@ pub fn change_key(vault: &Vault, old: &Key, new: &Key) -> Result<usize, LockErro
         let text = zeroize::Zeroizing::new(read_locked(path, old)?);
         opened.push((path, text));
     }
+    let mut prepared = Vec::with_capacity(opened.len());
     for (path, text) in &opened {
-        write_locked(path, new, text)?;
+        // 失敗したら、書いたぶんの一時ファイルは prepared と一緒に落ちて消える
+        prepared.push(prepare(path, new, text)?);
+    }
+    for (swapped, ((path, _), temp)) in opened.iter().zip(prepared).enumerate() {
+        if let Err(error) = temp.persist(path) {
+            // 入れ替えたぶんを古い鍵に戻す（残りの一時ファイルは落ちて消える）
+            for (done, text) in opened.iter().take(swapped) {
+                if let Err(undo) = write_locked(done, old, text) {
+                    eprintln!("鍵を戻せなかった: {}: {undo}", done.display());
+                }
+            }
+            return Err(system(error.error));
+        }
     }
     Ok(opened.len())
+}
+
+/// 新しい鍵の暗号文を、本物の隣の一時ファイルに書き切る（入れ替えはまだ）。
+/// 名前は autosave と同じ形（`.名前.xxxxxx.tmp`）なので、落ちて残っても掃除が拾う
+fn prepare(path: &Path, key: &Key, text: &str) -> Result<tempfile::NamedTempFile, LockError> {
+    use std::io::Write;
+    let sealed = lock::seal(key, text)?;
+    let folder = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("note");
+    let mut temp = tempfile::Builder::new()
+        .prefix(&format!(".{name}."))
+        .suffix(".tmp")
+        .tempfile_in(folder)
+        .map_err(system)?;
+    temp.write_all(&sealed).map_err(system)?;
+    if let Ok(meta) = fs::metadata(path) {
+        let _ = temp.as_file().set_permissions(meta.permissions());
+    }
+    temp.as_file().sync_all().map_err(system)?;
+    let written = fs::read(temp.path()).map_err(system)?;
+    if lock::open(key, &written)? != text {
+        return Err(LockError::Corrupt);
+    }
+    Ok(temp)
 }
 
 #[cfg(test)]
@@ -319,5 +404,80 @@ mod tests {
         let new = Key::create("新しい合言葉", Params::FOR_TESTS).unwrap();
         assert!(change_key(&vault, &old, &new).is_err());
         assert_eq!(std::fs::read(&a).unwrap(), before);
+    }
+
+    // -------------------------- 鍵の変更が途中で失敗しても割れない（レビュー 2026-11-21）
+
+    #[test]
+    fn test_鍵の変更が途中で書けなくなっても_全部が古いパスワードで開けるまま() {
+        // 以前は 1 つずつ書き直していて、2 つ目で失敗すると 1 つ目だけ新しい鍵になった。
+        // 古いパスワードでは解錠できず、新しいパスワードでは 2 つ目が読めなかった
+        use std::os::unix::fs::PermissionsExt;
+        let (root, vault) = temp_vault();
+        let old = Key::create("古い", Params::FOR_TESTS).unwrap();
+        for (folder, text) in [("a", "一"), ("b", "二")] {
+            std::fs::create_dir_all(root.path().join(folder)).unwrap();
+            write_locked(
+                &root.path().join(format!("{folder}/{text}.md.enc")),
+                &old,
+                text,
+            )
+            .unwrap();
+        }
+        // 後に書き直す方（走査は名前順）のフォルダを書けなくする
+        let blocked = root.path().join("b");
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let new = Key::create("新しい", Params::FOR_TESTS).unwrap();
+        let result = change_key(&vault, &old, &new);
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(result.is_err());
+        let key = unlock(&vault, "古い").expect("古いパスワードで解錠できる");
+        for path in vault.scan_locked() {
+            assert!(
+                read_locked(&path, &key).is_ok(),
+                "{path:?} が古い鍵で読めない"
+            );
+        }
+        // 一時ファイルを残さない
+        for folder in ["a", "b"] {
+            let names: Vec<_> = std::fs::read_dir(root.path().join(folder))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(names.iter().all(|n| n.ends_with(".md.enc")), "{names:?}");
+        }
+    }
+
+    #[test]
+    fn test_最初の施錠ノートが壊れていても_ほかのノートで解錠できる() {
+        // 解錠は最初の 1 つだけで確かめていて、それが壊れている（同期の途中で切れた
+        // など）と、ほかが正しくても解錠できなかった
+        let (root, vault) = temp_vault();
+        std::fs::write(root.path().join("a.md.enc"), b"OBOELOCK").unwrap();
+        write_locked(&root.path().join("b.md.enc"), &key(), "本文").unwrap();
+        let unlocked = unlock(&vault, "合言葉").unwrap();
+        assert_eq!(
+            read_locked(&root.path().join("b.md.enc"), &unlocked).unwrap(),
+            "本文"
+        );
+    }
+
+    #[test]
+    fn test_最初の施錠ノートが別のパスワードでも_合うノートで解錠できる() {
+        // 共有フォルダで別の Mac が別のパスワードで施錠したものが先に来ることがある
+        let (root, vault) = temp_vault();
+        let other = Key::create("別の", Params::FOR_TESTS).unwrap();
+        write_locked(&root.path().join("a.md.enc"), &other, "よその").unwrap();
+        write_locked(&root.path().join("b.md.enc"), &key(), "本文").unwrap();
+        let unlocked = unlock(&vault, "合言葉").unwrap();
+        assert_eq!(
+            read_locked(&root.path().join("b.md.enc"), &unlocked).unwrap(),
+            "本文"
+        );
+        // どれにも合わなければ「パスワードが違う」
+        assert_eq!(
+            unlock(&vault, "ちがう").err(),
+            Some(LockError::WrongPassword)
+        );
     }
 }

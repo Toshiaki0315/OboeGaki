@@ -131,7 +131,9 @@ impl Params {
 // より重いこと。軽くしたら組めなくする
 const _: () = assert!(Params::DEFAULT.m_cost_kib >= 19 * 1024 && Params::DEFAULT.t_cost >= 2);
 
-/// パスワードから作った鍵。**落とすと 0 で塗る**（Zeroizing）。salt と設定は封入の頭に書く
+/// パスワードから作った鍵。**落とすと 0 で塗る**（Zeroizing）。salt と設定は封入の頭に書く。
+/// 写しも落とすと 0 で塗る（解錠で試した鍵を返すときに写す）
+#[derive(Clone)]
 pub struct Key {
     bytes: Zeroizing<[u8; 32]>,
     salt: [u8; SALT_LEN],
