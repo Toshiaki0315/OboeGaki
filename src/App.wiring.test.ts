@@ -140,6 +140,8 @@ describe("App の配線", () => {
       "import-pdf",
       "import-pptx",
       "import-image",
+      // 文字起こしの前後（部品の確かめ・ファイル選び）の失敗も（レビュー 2026-11-21）
+      "import-audio",
     ]) {
       const line =
         new RegExp(`"${id}": \\(\\) =>[\\s\\S]*?\\),\\n`).exec(source)?.[0] ??

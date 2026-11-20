@@ -23,6 +23,7 @@ vi.mock("../lib/ipc", () => ({
   llmStop: vi.fn(),
   createNote: vi.fn(),
   writeNote: vi.fn(),
+  writeClipboardText: vi.fn(),
 }));
 
 const mocked = vi.mocked(ipc);
@@ -208,6 +209,51 @@ describe("useTranscribe", () => {
     expect(mocked.minutesMake).not.toHaveBeenCalled();
     expect(given.onStatus).toHaveBeenLastCalledWith(
       expect.stringContaining("fm"),
+    );
+  });
+
+  test("test_fm_の使用条件に同意していなければ_同意のしかたを言う（レビュー 2026-11-21）", async () => {
+    mocked.fmAvailable.mockResolvedValue(true);
+    mocked.minutesMake.mockRejectedValue("fm-license");
+    const given = input({
+      settings: { ...DEFAULT_SETTINGS, llmEngine: "fm" },
+    });
+    const { result } = renderHook(() => useTranscribe(given));
+    await act(() => result.current.start());
+    expect(mocked.writeNote).toHaveBeenCalled(); // 文字起こしのノートは作る
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("sudo fm license"),
+    );
+  });
+
+  // 文字起こしは長い録音だと何十分もかかる。そのあとでノートを作れなかったら、
+  // 結果を黙って捨てない（レビュー 2026-11-21: 以前は catch が無く、何も出ずに消えた）
+  test("test_ノートを作れなければ_結果をクリップボードに写して理由を言う", async () => {
+    mocked.createNote.mockRejectedValue("保管フォルダに書けません");
+    mocked.writeClipboardText.mockResolvedValue(undefined);
+    const given = input();
+    const { result } = renderHook(() => useTranscribe(given));
+    await act(() => result.current.start());
+    expect(mocked.writeClipboardText).toHaveBeenCalledWith(
+      expect.stringContaining("予算の話"),
+    );
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      expect.stringMatching(/保管フォルダに書けません[\s\S]*クリップボード/),
+    );
+    expect(result.current.progress).toBeNull();
+  });
+
+  test("test_ノートに書けなくても_結果をクリップボードに写す", async () => {
+    mocked.writeNote.mockRejectedValue("空きがありません");
+    mocked.writeClipboardText.mockResolvedValue(undefined);
+    const given = input();
+    const { result } = renderHook(() => useTranscribe(given));
+    await act(() => result.current.start());
+    expect(mocked.writeClipboardText).toHaveBeenCalledWith(
+      expect.stringContaining("予算の話"),
+    );
+    expect(given.onStatus).toHaveBeenLastCalledWith(
+      expect.stringContaining("空きがありません"),
     );
   });
 });

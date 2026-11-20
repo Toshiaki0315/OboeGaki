@@ -21,9 +21,11 @@ import {
   transcribeFile,
   transcribeProbe,
   transcribeStop,
+  writeClipboardText,
   writeNote,
   type MinutesStage,
 } from "../lib/ipc";
+import { llmErrorText } from "../lib/assistant-text";
 import { minutesNote } from "../lib/minutes-note";
 import { minutesModelOf, type Settings } from "../lib/settings";
 import { useLatest } from "./useLatest";
@@ -148,7 +150,13 @@ export function useTranscribe(input: TranscribeInput) {
             engine: settings.llmEngine,
           });
         } catch (reason) {
-          missing = String(reason);
+          // 失敗の印（fm-license など）は、アシスタントと同じ言葉にする
+          missing = llmErrorText(
+            String(reason),
+            settings.llmTimeoutMinutes,
+            model,
+            settings.llmEngine,
+          );
         }
       }
 
@@ -169,12 +177,25 @@ export function useTranscribe(input: TranscribeInput) {
         minutes,
         lines: transcription.lines,
       });
-      const path = await createNote(
-        vaultRoot,
-        note.title,
-        latest.current.defaultFolder(),
-      );
-      await writeNote(vaultRoot, path, note.text, settings.historyMinutes);
+      // 長い録音の結果は何十分ぶん。ノートを作れなかったら黙って捨てず、
+      // クリップボードに写して理由を言う（レビュー 2026-11-21）
+      let path: string;
+      try {
+        path = await createNote(
+          vaultRoot,
+          note.title,
+          latest.current.defaultFolder(),
+        );
+        await writeNote(vaultRoot, path, note.text, settings.historyMinutes);
+      } catch (reason) {
+        const kept = await writeClipboardText(note.text).then(
+          () =>
+            "結果はクリップボードに写しました。新しいノートに貼り付けてください",
+          (error) => `クリップボードにも写せませんでした: ${String(error)}`,
+        );
+        onStatus(`ノートを作れませんでした: ${String(reason)}。${kept}`);
+        return;
+      }
       await latest.current.refreshLists();
       await latest.current.openNote(path);
       const told = minutes

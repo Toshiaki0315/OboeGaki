@@ -1707,7 +1707,8 @@ function App() {
         void runWithStatus(setStatus, "読み込み", () => handleImport("pdf")),
       "import-pptx": () =>
         void runWithStatus(setStatus, "読み込み", () => handleImport("pptx")),
-      "import-audio": () => void transcribe.start(),
+      "import-audio": () =>
+        void runWithStatus(setStatus, "文字起こし", () => transcribe.start()),
       "import-image": () =>
         void runWithStatus(setStatus, "読み込み", () => handleImport("image")),
       "export-qiita": () =>
