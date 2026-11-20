@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 ///
 /// vault の中に置かないのは、**保存できない理由が vault 側にあることが多い**
 /// ため（権限・容量・同期の衝突）。書けない場所へ保険を置いても保険にならない。
-fn recovery_dir(app: &tauri::AppHandle, root: &str) -> CmdResult<std::path::PathBuf> {
+pub(super) fn recovery_dir(app: &tauri::AppHandle, root: &str) -> CmdResult<std::path::PathBuf> {
     use tauri::Manager;
     let base = app.path().app_data_dir()?;
     Ok(crate::recovery::vault_dir(&base, Path::new(root)))

@@ -115,10 +115,25 @@ fn reindex(vault: &Vault, before: &Path, after: &Path) {
     }
 }
 
+/// 施錠して、元の `.md` の退避（未保存の控え。平文）も捨てる。保存に失敗している間の
+/// 退避を残すと、次の起動で平文のノートとして復元を勧められる（レビュー 2026-11-21）。
+/// 施錠に失敗したら退避は残す（打ちかけの本文の唯一の写しかもしれない）
+fn lock_and_forget(
+    vault: &Vault,
+    path: &Path,
+    key: &Key,
+    recovery: &Path,
+) -> Result<std::path::PathBuf, crate::lock::LockError> {
+    let target = crate::vault::lock_note(vault, path, key)?;
+    crate::recovery::discard(recovery, path);
+    Ok(target)
+}
+
 /// ノートを施錠する（`.md` → `.md.enc`。13-5）。施錠したノートの場所を返す。
 /// 鍵が無ければ password が要る（無ければ NOTE_LOCKED）
 #[tauri::command]
 pub async fn note_lock(
+    app: tauri::AppHandle,
     state: tauri::State<'_, WatchState>,
     root: String,
     path: String,
@@ -126,9 +141,10 @@ pub async fn note_lock(
 ) -> CmdResult<String> {
     let path = guarded(&root, &path)?;
     let vault = Vault::new(&root);
+    let recovery = super::recovery::recovery_dir(&app, &root)?;
     ensure_key(&state, &vault, password)?;
     state.suppressor.mark(&path);
-    let target = state.with_key(|key| crate::vault::lock_note(&vault, &path, key))?;
+    let target = state.with_key(|key| lock_and_forget(&vault, &path, key, &recovery))?;
     state.suppressor.mark(&target);
     reindex(&vault, &path, &target);
     Ok(target.to_string_lossy().into_owned())
@@ -165,4 +181,38 @@ pub async fn lock_change_password(
     let changed = crate::vault::change_key(&vault, &old_key, &new_key).map_err(error)?;
     state.set_key(Some(new_key));
     Ok(changed)
+}
+
+#[cfg(test)]
+#[allow(non_snake_case)]
+mod tests {
+    use super::*;
+    use crate::test_support::{note, temp_vault};
+
+    #[test]
+    fn test_施錠したら元のノートの平文の退避も捨てる() {
+        // 保存に失敗している間の退避は平文。施錠しても残すと、次の起動で平文の
+        // ノートとして復元を勧められる（レビュー 2026-11-21）
+        let (root, vault) = temp_vault();
+        let recovery = tempfile::TempDir::new().unwrap();
+        let plain = note(root.path(), "秘密.md", "# 秘密\n\n保存した本文\n");
+        crate::recovery::stash(recovery.path(), &plain, "# 秘密\n\n打ちかけの本文\n").unwrap();
+        assert_eq!(crate::recovery::pending(recovery.path()).len(), 1);
+        let key = Key::create("合言葉", Params::FOR_TESTS).unwrap();
+        let locked = lock_and_forget(&vault, &plain, &key, recovery.path()).unwrap();
+        assert!(locked.ends_with("秘密.md.enc"));
+        assert!(crate::recovery::pending(recovery.path()).is_empty());
+    }
+
+    #[test]
+    fn test_施錠に失敗したら退避は残す() {
+        // 施錠できなかったなら、打ちかけの本文の唯一の写しかもしれない
+        let (root, vault) = temp_vault();
+        let recovery = tempfile::TempDir::new().unwrap();
+        let plain = root.path().join("無い.md");
+        crate::recovery::stash(recovery.path(), &plain, "打ちかけ\n").unwrap();
+        let key = Key::create("合言葉", Params::FOR_TESTS).unwrap();
+        assert!(lock_and_forget(&vault, &plain, &key, recovery.path()).is_err());
+        assert_eq!(crate::recovery::pending(recovery.path()).len(), 1);
+    }
 }
